@@ -1,1 +1,2 @@
-This project is about 80% done. The first commit will have the fully functional library and fluid will be commited soon thereafter.
+This project is about 90% done. I am currently implementing the D version of fluid -- support full D syntax, new GUI interface for D, drop need for .h files, etc.
+The first commit will have the fully functional library with fluid integrated in the dub package.
