@@ -2,7 +2,7 @@ This project is about 90% done. I am currently implementing the D version of flu
 The first commit will have the fully functional library with fluid integrated in the dub package.
 
 Sneak peak:
-Everything is fully implemented in D syntax. Here is a simple example program.
+fldtk has the exact look and feel of FLTK. Everything is fully implemented in D syntax. Here is a simple example program.
 ``` D
 import fl;
 import std;
@@ -19,4 +19,5 @@ void main()
 ```
 which will produce a window with a clickable button.
 
-<img width="400" height="300" alt="button" src="https://github.com/user-attachments/assets/920e1aea-c5a5-487e-8832-5206cd0e92f9" />
+<img width="412" height="333" alt="button" src="https://github.com/user-attachments/assets/c1d54510-d5fb-4408-87cd-b63c48e08104" />
+
