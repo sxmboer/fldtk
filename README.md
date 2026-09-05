@@ -1,5 +1,6 @@
-This project is about 90% done. I am currently implementing the D version of fluid -- support full D syntax, new GUI interface for D, drop need for .h files, etc.
+This project is about 99% done. The library and fluid run stable. 
 The first commit will have the fully functional library with fluid integrated in the dub package.
+It will support Linux/X11. Linux/Wayland and Windows drivers will hopefully follow soon.
 
 Sneak peak:
 fldtk has the exact look and feel of FLTK. Everything is fully implemented in D syntax. Here is a simple example program.
