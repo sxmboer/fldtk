@@ -1,0 +1,2157 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+decl {int gCbCounter = 0;}
+  {
+    comment {Global callback event counter}
+    private
+    local
+  }
+Function {reasonAsName(CallbackReason reason)}
+  {
+    comment {Return a CallbackReason as a text string name}
+    return_type string
+  }
+  {
+    code {switch (reason)
+  \{
+  case CallbackReason.unknown:      return "none";
+  case CallbackReason.selected:     return "selected";
+  case CallbackReason.deselected:   return "deselected";
+  case CallbackReason.opened:       return "opened";
+  case CallbackReason.closed:       return "closed";
+  case CallbackReason.dragged:      return "dragged";
+  case CallbackReason.reselected:   return "reselected";
+  default:                          return "???";
+  \}}
+      {
+      }
+  }
+Function {buttonCB(Widget w)}
+  {
+    comment {Each push changes height so we can test 'Item h() from widget'.
+Cycle through larger sizes until 50, then wrap to normal size.
+
+In the case of 'ccc button', it is the child widget, so change
+its size.
+
+In the case of the 'D1' and 'D2' buttons, the parent's Group
+is the child, so change the size of that instead.}
+    return_type void
+    open
+  }
+  {
+    code {Widget cw = w.label() == "ccc button" ? w : w.parent();
+int height = cw.h();
+height += 10;
+if (height > 50) height = 20;
+cw.resize(cw.x(), cw.y(), cw.w(), height);
+tree.redraw(); // adjusted height
+tty.printf("'%s' button pushed (height=%d)\\n", w.label(), height);}
+      {
+      }
+  }
+Function assignUserIcons()
+  {
+    comment {Assign user icons to the items}
+    open
+  }
+  {
+    code {static immutable string[] folderXpm = [
+  "11 11 3 1",
+  ".  c None",
+  "x  c \#d8d833",
+  "@  c \#808011",
+  "...........",
+  ".....@@@@..",
+  "....@xxxx@.",
+  "@@@@@xxxx@@",
+  "@xxxxxxxxx@",
+  "@xxxxxxxxx@",
+  "@xxxxxxxxx@",
+  "@xxxxxxxxx@",
+  "@xxxxxxxxx@",
+  "@xxxxxxxxx@",
+  "@@@@@@@@@@@",
+];
+static immutable string[] documentXpm = [
+  "11 11 3 1",
+  ".  c None",
+  "x  c \#d8d8f8",
+  "@  c \#202060",
+  ".@@@@@@@@@.",
+  ".@xxxxxxx@.",
+  ".@xxxxxxx@.",
+  ".@xxxxxxx@.",
+  ".@xxxxxxx@.",
+  ".@xxxxxxx@.",
+  ".@xxxxxxx@.",
+  ".@xxxxxxx@.",
+  ".@xxxxxxx@.",
+  ".@xxxxxxx@.",
+  ".@@@@@@@@@.",
+];
+static Pixmap folderPixmap;
+static Pixmap documentPixmap;
+static Pixmap folderDeiconPixmap;
+static Pixmap documentDeiconPixmap;
+static bool first = true;
+if (first)
+  \{
+    folderPixmap = new Pixmap(folderXpm);
+    documentPixmap = new Pixmap(documentXpm);
+    folderDeiconPixmap = new Pixmap(folderXpm);
+    documentDeiconPixmap = new Pixmap(documentXpm);
+    folderDeiconPixmap.inactive();
+    documentDeiconPixmap.inactive();
+    first = false;
+  \}
+
+// Assign user icons to tree items
+for (auto item = tree.first(); item !is null; item = item.next())
+  \{
+    if (usericonRadio.value())
+      \{
+        // Assign custom icons
+        if (item.hasChildren())
+          \{
+            item.usericon(folderPixmap);
+            item.userdeicon(folderDeiconPixmap);
+          \}
+        else
+          \{
+            item.usericon(documentPixmap);
+            item.userdeicon(documentDeiconPixmap);
+          \}
+      \}
+    else
+      \{
+        // Don't assign custom icons
+        item.usericon(null);
+        item.userdeicon(null);
+      \}
+  \}
+tree.redraw();}
+      {
+      }
+  }
+Function rebuildTree()
+  {
+    comment {Rebuild the 'example tree' from scratch}
+    open
+  }
+  {
+    code {// REBUILD THE TREE TO MAKE CURRENT "DEFAULT" PREFS TAKE EFFECT
+tree.clear();
+tree.add("Aaa");
+tree.add("Bbb");
+tree.add("Ccc");
+tree.add("Ddd");
+tree.add("Bbb/child-01");
+tree.add("Bbb/child-01/111");
+tree.add("Bbb/child-01/222");
+tree.add("Bbb/child-01/333");
+tree.add("Bbb/child-02");
+tree.add("Bbb/child-03");
+tree.add("Bbb/child-04");
+
+\{
+  static Input bbbInput;
+  // Assign an FLTK input widget to one of the items with a label() of its own (STR\#2832)
+  auto item = tree.findItem("Bbb/child-02");
+  if (item !is null)
+    \{
+      if (bbbInput is null)
+        \{          // only do this once at program startup
+          tree.begin();
+          bbbInput = new Input(1, 1, 100, 1, "Input test");       // we control w() only
+          bbbInput.labelsize(10);
+          bbbInput.textsize(10);
+          bbbInput.alignment(alignRight);                        // show label to the right of the widget
+          bbbInput.tooltip("Input inside tree.\\n" ~
+              "The widget's label 'Input test' should appear to the widget's right.");
+        \}
+      bbbInput.show();
+      item.widget(bbbInput);
+      tree.end();
+    \}
+\}
+
+\{
+  static Button bbbButton;
+  // Assign an FLTK widget to one of the items
+  auto item = tree.findItem("Bbb/child-03");
+  if (item !is null)
+    \{
+      if (bbbButton is null)
+        \{           // only do this once at program startup
+          tree.begin();
+          bbbButton = new Button(1, 1, 140, 1, "ccc button");     // we control w() only
+          bbbButton.labelsize(10);
+          bbbButton.callback(buttonCB);
+          bbbButton.tooltip("Button inside tree.\\n" ~
+              "If 'Item h() from widget' enabled, " ~
+              "pressing button enlarges it.");
+        \}
+      bbbButton.show();
+      item.widget(bbbButton);
+      tree.end();
+    \}
+\}
+\{
+  // Assign an FLTK group to one of the items with widgets
+  string tipmsg = "A group of two buttons inside the tree.\\n" ~
+      "If 'Item h() from widget' enabled, " ~
+      "pressing either button enlarges the group " ~
+      "and both buttons together.";
+  auto item = tree.findItem("Bbb/child-04");
+  if (item !is null)
+    \{
+      static FlGroup bbbGroup;
+      if (bbbGroup is null)
+        \{           // only do this once at program startup
+          tree.begin();
+          bbbGroup = new FlGroup(100, 100, 140, 18); // build group.. tree handles position
+          bbbGroup.color(white);
+          bbbGroup.begin();
+          auto abut = new Button(bbbGroup.x() + 0, bbbGroup.y() + 2, 65, 15, "D1");
+          abut.labelsize(10);
+          abut.callback(buttonCB);
+          abut.tooltip(tipmsg);
+          auto bbut = new Button(bbbGroup.x() + 75, bbbGroup.y() + 2, 65, 15, "D2");
+          bbut.labelsize(10);
+          bbut.callback(buttonCB);
+          bbut.tooltip(tipmsg);
+
+          bbbGroup.end();
+          bbbGroup.resizable(bbbGroup);
+          tree.end();
+        \}
+      bbbGroup.show();
+      item.widget(bbbGroup);
+    \}
+\}
+
+// Add an 'Ascending' node, and create it sorted
+tree.sortorder(TreeSort.sortNone);
+tree.add("Ascending").close();
+tree.sortorder(TreeSort.sortAscending);
+tree.add("Ascending/Zzz");
+tree.add("Ascending/Xxx");
+tree.add("Ascending/Aaa");
+tree.add("Ascending/Bbb");
+tree.add("Ascending/Yyy");
+tree.add("Ascending/Ccc");
+
+// Add a 'Descending' node, and create it sorted
+tree.sortorder(TreeSort.sortNone);
+tree.add("Descending").close();
+tree.sortorder(TreeSort.sortDescending);
+tree.add("Descending/Zzz");
+tree.add("Descending/Xxx");
+tree.add("Descending/Aaa");
+tree.add("Descending/Bbb");
+tree.add("Descending/Yyy");
+tree.add("Descending/Ccc");
+
+// Add a long line to trigger horiz scrollbar
+tree.sortorder(TreeSort.sortNone);
+tree.add("Long Line").close();
+tree.add("Long Line/The quick brown fox jumped over the lazy dog. 0123456789");
+tree.add("Long Line/Longer Line").close();
+tree.add("Long Line/Longer Line/The quick brown fox jumped over the lazy dog. ---------------- 0123456789");
+
+// Add 500 items in numerical order
+foreach (t; 0 .. 500)
+  tree.add(format("500 Items/item %04d", t + 1));
+tree.close("500 Items");       // close the 500 items by default
+
+assignUserIcons();
+
+tree.redraw();
+FlGroup.current(null);}
+      {
+      }
+  }
+Function {editColor(ref Color val)}
+  {
+    comment {Prompt the user to change the specified color.
+Returns:
+    1 if color picked with new color in 'val'
+    0 if user hit 'Cancel'.}
+    return_type int
+  }
+  {
+    code {ubyte r, g, b;
+
+// Get the current color
+fl.core.getColor(val, r, g, b);
+
+// Bring up a color chooser to edit it
+int ret = colorChooser("Choose Color", r, g, b);
+
+val = rgbColor(r, g, b);
+
+return ret;}
+      {
+      }
+  }
+Function updateColorChips()
+  {
+    comment {Updates the color chips with current colors from widget}
+    return_type void
+    open
+  }
+  {
+    code {colorButton.color(tree.color());
+labelcolorButton.color(tree.labelcolor());
+selectionColorButton.color(tree.selectionColor());
+
+itemLabelfgcolorButton.color(tree.itemLabelfgcolor());
+itemLabelbgcolorButton.color(tree.itemLabelbgcolor());
+
+allLabelfgcolorButton.color(tree.itemLabelfgcolor());  // use default
+allLabelbgcolorButton.color(tree.itemLabelbgcolor());  // use default
+
+window.redraw();}
+      {
+      }
+  }
+Function getTreeMarginBottom()
+  {
+    comment {Get the current 'margin bottom' size.
+Handles this as an ABI feature..}
+    return_type int
+    open
+  }
+  {
+    code {return tree.marginbottom();}
+      {
+      }
+  }
+Function getTreeWidgetMarginLeft()
+  {
+    comment {Get the current 'margin bottom' size.
+Handles this as an ABI feature..}
+    return_type int
+    open
+  }
+  {
+    code {return tree.widgetmarginleft();}
+      {
+      }
+  }
+Function getSelectedItemFGColor()
+  {
+    comment {Return the selected item's fg color}
+    return_type Color
+    open
+  }
+  {
+    code {for (auto item = tree.first(); item !is null; item = tree.next(item))
+  \{
+    if (item.isSelected())
+      return item.labelfgcolor();
+  \}
+// No items selected? Use default
+return tree.itemLabelfgcolor();}
+      {
+      }
+  }
+Function getSelectedItemBGColor()
+  {
+    comment {Return the selected item's bg color}
+    return_type Color
+    open
+  }
+  {
+    code {for (auto item = tree.first(); item !is null; item = tree.next(item))
+  \{
+    if (item.isSelected())
+      return item.labelbgcolor();
+  \}
+// No items selected? Use default
+return tree.itemLabelbgcolor();}
+      {
+      }
+  }
+Function {}
+  {
+    open
+  }
+  {
+    Window window
+      {
+        label {tree}
+        xywh {456 262 1045 730}
+        type Double
+      }
+      {
+        Group tree
+          {
+            label {Tree}
+            callback {gCbCounter++; // Increment callback counter whenever tree callback is invoked
+auto item = tree.callbackItem();
+if (item !is null)
+  \{
+    tty.printf("TREE CALLBACK: label='%s' reason=%s, changed=%d",
+        item.label(),
+        reasonAsName(tree.callbackReason()),
+        tree.changed() ? 1 : 0);
+    // More than one click? show click count
+    //    Should only happen if reason==reselected.
+    //
+    if (fl.core.eventClicks() > 0)
+      tty.printf(", clicks=%d\\n", fl.core.eventClicks() + 1);
+    else
+      tty.printf("\\n");
+  \}
+else
+  \{
+    tty.printf("TREE CALLBACK: reason=%s, changed=%d, item=(no item -- probably multiple items were changed at once)\\n",
+        reasonAsName(tree.callbackReason()),
+        tree.changed() ? 1 : 0);
+  \}
+tree.clearChanged();}
+            xywh {15 22 320 539}
+            box DOWN_BOX
+            color 55
+            selection_color 15
+            class Tree
+            tooltip {Test tree}
+          }
+          {
+          }
+        Group {}
+          {
+            xywh {350 5 681 556}
+            setup {o.resizable(null);}
+            open
+          }
+          {
+            Group {}
+              {
+                label {Tree Globals}
+                xywh {350 23 330 389}
+                box GTK_DOWN_BOX
+                color 47
+                labelsize 12
+                tooltip {These controls only affect the selected items. If no items are selected, all existing items in tree are modified.}
+              }
+              {
+                ValueSlider margintopSlider
+                  {
+                    label {margintop()}
+                    callback {int val = cast(int) margintopSlider.value();
+tree.margintop(val);
+tree.redraw();}
+                    xywh {505 36 155 16}
+                    color 46
+                    selection_color 1
+                    labelsize 10
+                    textsize 9
+                    align 4
+                    type Horizontal
+                    setup {o.value(tree.margintop());
+o.range(0.0, 100.0);
+o.step(1.0);}
+                    tooltip {Changes the top margin for the tree widget}
+                  }
+                ValueSlider marginleftSlider
+                  {
+                    label {marginleft()}
+                    callback {int val = cast(int) marginleftSlider.value();
+tree.marginleft(val);
+tree.redraw();}
+                    xywh {505 56 155 16}
+                    color 46
+                    selection_color 1
+                    labelsize 10
+                    textsize 9
+                    align 4
+                    type Horizontal
+                    setup {o.value(tree.marginleft());
+o.range(0.0, 200.0);
+o.step(1.0);}
+                    tooltip {Changes the left margin for the tree widget}
+                  }
+                ValueSlider marginbottomSlider
+                  {
+                    label {marginbottom()}
+                    callback {int val = cast(int) marginbottomSlider.value();
+tree.marginbottom(val);
+tree.redraw();}
+                    xywh {505 76 155 16}
+                    color 46
+                    selection_color 1
+                    labelsize 10
+                    textsize 9
+                    align 4
+                    type Horizontal
+                    setup {o.value(getTreeMarginBottom()); // handle ABI feature
+o.range(0.0, 275.0);
+o.step(1.0);
+o.doCallback();}
+                    tooltip {Changes the bottom margin for the tree
+Sets how far beyond bottom of tree you can scroll}
+                  }
+                ValueSlider linespacingSlider
+                  {
+                    label {linespacing()}
+                    callback {int val = cast(int) linespacingSlider.value();
+tree.linespacing(val);
+tree.redraw();}
+                    xywh {505 96 155 16}
+                    color 46
+                    selection_color 1
+                    labelsize 10
+                    textsize 9
+                    align 4
+                    type Horizontal
+                    setup {o.value(tree.linespacing());
+o.range(0.0, 100.0);
+o.step(1.0);}
+                    tooltip {Changes the spacing between items in the tree}
+                  }
+                ValueSlider usericonmarginleftSlider
+                  {
+                    label {usericonmarginleft()}
+                    callback {int val = cast(int) usericonmarginleftSlider.value();
+tree.usericonmarginleft(val);
+tree.redraw();}
+                    xywh {505 116 155 16}
+                    color 46
+                    selection_color 1
+                    labelsize 10
+                    textsize 9
+                    align 4
+                    type Horizontal
+                    setup {o.value(tree.usericonmarginleft());
+o.range(0.0, 100.0);
+o.step(1.0);}
+                    tooltip {Changes the left margin for the user icons (if any)}
+                  }
+                ValueSlider labelmarginleftSlider
+                  {
+                    label {labelmarginleft()}
+                    callback {int val = cast(int) labelmarginleftSlider.value();
+tree.labelmarginleft(val);
+tree.redraw();}
+                    xywh {505 136 155 16}
+                    color 46
+                    selection_color 1
+                    labelsize 10
+                    textsize 9
+                    align 4
+                    type Horizontal
+                    setup {o.value(tree.labelmarginleft());
+o.range(0.0, 100.0);
+o.step(1.0);}
+                    tooltip {Changes the left margin for the item label}
+                  }
+                ValueSlider widgetmarginleftSlider
+                  {
+                    label {widgetmarginleft()}
+                    callback {int val = cast(int) widgetmarginleftSlider.value();
+tree.widgetmarginleft(val);
+tree.redraw();}
+                    xywh {505 156 155 16}
+                    color 46
+                    selection_color 1
+                    labelsize 10
+                    textsize 9
+                    align 4
+                    type Horizontal
+                    setup {o.value(getTreeWidgetMarginLeft());  // handle ABI feature
+o.range(0.0, 100.0);
+o.step(1.0);
+o.doCallback();}
+                    tooltip {Changes the margin to the left of child widget()
+"Show label + widget" must be 'on' for this to take effect, i.e.
+itemDrawMode(itemDrawLabelAndWidget)}
+                  }
+                ValueSlider openchildMarginbottomSlider
+                  {
+                    label {openchild_marginbottom()}
+                    callback {int val = cast(int) openchildMarginbottomSlider.value();
+tree.openchildMarginbottom(val);
+tree.redraw();}
+                    xywh {505 176 155 16}
+                    color 46
+                    selection_color 1
+                    labelsize 10
+                    textsize 9
+                    align 4
+                    type Horizontal
+                    setup {o.value(tree.openchildMarginbottom());
+o.range(0.0, 100.0);
+o.step(1.0);}
+                    tooltip {Changes the vertical space below an open child tree}
+                  }
+                ValueSlider connectorwidthSlider
+                  {
+                    label {connectorwidth()}
+                    callback {tree.connectorwidth(cast(int) connectorwidthSlider.value());}
+                    xywh {505 195 155 16}
+                    color 46
+                    selection_color 1
+                    labelsize 11
+                    textsize 9
+                    align 4
+                    type Horizontal
+                    setup {o.value(tree.connectorwidth());
+o.range(1.0, 100.0);
+o.step(1.0);
+o.color(46);
+o.selectionColor(red);}
+                    tooltip {Tests Tree.connectorwidth()}
+                  }
+                Choice collapseiconsChooser
+                  {
+                    label {Collapse icons}
+                    callback {static immutable string[] openXpm = [
+  "11 11 2 1",
+  ".  c None",
+  "@  c \#000000",
+  "...........",
+  "....@......",
+  "....@@.....",
+  "....@@@....",
+  "....@@@@...",
+  "....@@@@@..",
+  "....@@@@...",
+  "....@@@....",
+  "....@@.....",
+  "....@......",
+  "...........",
+];
+static immutable string[] closeXpm = [
+  "11 11 2 1",
+  ".  c None",
+  "@  c \#000000",
+  "...........",
+  "...........",
+  "...........",
+  "...........",
+  ".@@@@@@@@@.",
+  "..@@@@@@@..",
+  "...@@@@@...",
+  "....@@@....",
+  ".....@.....",
+  "...........",
+  "...........",
+];
+static Pixmap openPixmap;
+static Pixmap closePixmap;
+if (openPixmap is null)
+  \{
+    openPixmap = new Pixmap(openXpm);
+    closePixmap = new Pixmap(closeXpm);
+  \}
+
+switch (collapseiconsChooser.value())
+  \{
+  case 0:
+    tree.showcollapse(true);
+    tree.openicon(null);
+    tree.closeicon(null);
+    break;
+  case 1:
+    tree.showcollapse(true);
+    tree.openicon(openPixmap);
+    tree.closeicon(closePixmap);
+    break;
+  case 2:
+    tree.showcollapse(false);
+    break;
+  default:
+    break;
+  \}}
+                    xywh {520 221 140 21}
+                    down_box BORDER_BOX
+                    labelsize 12
+                    textsize 11
+                    tooltip {Tests Tree.openicon(), Tree.closeicon() and Tree.showcollapse().}
+                  }
+                  {
+                    MenuItem {}
+                      {
+                        label {Default}
+                      }
+                    MenuItem {}
+                      {
+                        label {Custom}
+                      }
+                    MenuItem {}
+                      {
+                        label {Off}
+                      }
+                  }
+                Choice connectorstyleChooser
+                  {
+                    label {Line style}
+                    callback {// CHANGE COLLAPSESTYLE
+switch (connectorstyleChooser.value())
+  \{
+  case 0: tree.connectorstyle(TreeConnector.connectorNone);   break;
+  case 1: tree.connectorstyle(TreeConnector.connectorDotted); break;
+  case 2: tree.connectorstyle(TreeConnector.connectorSolid);  break;
+  default: break;
+  \}}
+                    xywh {520 245 140 21}
+                    down_box BORDER_BOX
+                    labelsize 12
+                    textsize 11
+                    tooltip {Tests Tree.connectorstyle() bit flags}
+                  }
+                  {
+                    MenuItem {}
+                      {
+                        label {None}
+                      }
+                    MenuItem {}
+                      {
+                        label {Dotted}
+                      }
+                    MenuItem {}
+                      {
+                        label {Solid}
+                      }
+                  }
+                Choice selectmodeChooser
+                  {
+                    label {Selection Mode}
+                    callback {// Set selection mode
+switch (selectmodeChooser.value())
+  \{
+  case 0:  tree.selectmode(TreeSelect.selectNone);              break;
+  case 1:  tree.selectmode(TreeSelect.selectSingle);            break;
+  case 2:  tree.selectmode(TreeSelect.selectMulti);             break;
+  case 3:  tree.selectmode(TreeSelect.selectSingleDraggable);   break;
+  default: tree.selectmode(TreeSelect.selectSingle);            break;
+  \}}
+                    xywh {520 269 140 21}
+                    down_box BORDER_BOX
+                    labelsize 12
+                    textsize 11
+                    setup {selectmodeChooser.value(2);
+selectmodeChooser.doCallback();}
+                    tooltip {Tests Tree.selectmode()
+Sets how Tree handles mouse selection of tree items.
+    NONE        -- Not selectable by keyboard/mouse
+    SINGLE      -- Only one item at a time selectable by keyboard/mouse
+    MULTI       -- Multiple items selectable
+    SINGLE+DRAG -- Lets user drag items to different position in tree}
+                  }
+                  {
+                    MenuItem {}
+                      {
+                        label {None}
+                      }
+                    MenuItem {}
+                      {
+                        label {Single}
+                      }
+                    MenuItem {}
+                      {
+                        label {Multi}
+                      }
+                    MenuItem {}
+                      {
+                        label {Single + drag}
+                      }
+                  }
+                Choice reselectmodeChooser
+                  {
+                    label {Item Reselect Mode}
+                    callback {// Set reselection mode
+switch (reselectmodeChooser.value())
+  \{
+  case 0: tree.itemReselectMode(TreeItemReselectMode.selectableOnce);   break;
+  case 1: tree.itemReselectMode(TreeItemReselectMode.selectableAlways); break;
+  default: break;
+  \}}
+                    xywh {520 293 140 21}
+                    down_box BORDER_BOX
+                    labelsize 12
+                    textsize 11
+                    setup {reselectmodeChooser.value(1);
+reselectmodeChooser.doCallback();}
+                    tooltip {Tests Tree.itemReselectMode().
+Enables 'reselect' events.
+These happen when someone selects an item already selected
+(mouse drags or multi-clicks)}
+                  }
+                  {
+                    MenuItem {}
+                      {
+                        label {Selectable Once}
+                      }
+                    MenuItem {}
+                      {
+                        label {Selectable Always}
+                      }
+                  }
+                Choice whenmodeChooser
+                  {
+                    label {When}
+                    callback {// Set when mode
+switch (whenmodeChooser.value())
+  \{
+  case 0:  tree.when(whenRelease);   break;
+  case 1:  tree.when(whenChanged);   break;
+  case 2:  tree.when(whenNever);     break;
+  default: tree.when(whenRelease);   break;
+  \}}
+                    xywh {520 319 140 21}
+                    down_box BORDER_BOX
+                    labelsize 12
+                    textsize 11
+                    setup {whenmodeChooser.value(1);
+whenmodeChooser.doCallback();}
+                    tooltip {Sets when() the tree's callback is invoked}
+                  }
+                  {
+                    MenuItem {}
+                      {
+                        label {Changed}
+                      }
+                    MenuItem {}
+                      {
+                        label {Released}
+                      }
+                    MenuItem {}
+                      {
+                        label {Never}
+                      }
+                  }
+                CheckButton usericonRadio
+                  {
+                    label {Enable user icons?}
+                    callback {assignUserIcons();}
+                    xywh {485 351 20 16}
+                    down_box DOWN_BOX
+                    labelsize 11
+                    align 7
+                    setup {usericonRadio.value(true);}
+                    tooltip {Tests TreeItem.usericon()}
+                  }
+                CheckButton showrootRadio
+                  {
+                    label {Show root?}
+                    callback {bool onoff = showrootRadio.value();
+tree.showroot(onoff);}
+                    xywh {485 368 20 16}
+                    down_box DOWN_BOX
+                    labelsize 11
+                    align 7
+                    setup {showrootRadio.value(tree.showroot());}
+                    tooltip {Tests tree.showroot();}
+                  }
+                CheckButton visiblefocusCheckbox
+                  {
+                    label {Visible focus?}
+                    callback {bool onoff = visiblefocusCheckbox.value();
+tree.visibleFocus(onoff);}
+                    xywh {485 385 20 16}
+                    down_box DOWN_BOX
+                    labelsize 11
+                    align 7
+                    setup {visiblefocusCheckbox.value(tree.visibleFocus());}
+                    tooltip {Toggles the tree's visible_focus() box}
+                  }
+                CheckButton labelandwidgetRadio
+                  {
+                    label {Show label + widget}
+                    callback {auto flags = tree.itemDrawMode();
+if (labelandwidgetRadio.value())
+  flags |= itemDrawLabelAndWidget;
+else
+  flags &= ~itemDrawLabelAndWidget;
+tree.itemDrawMode(flags);
+tree.redraw();}
+                    xywh {645 351 20 16}
+                    down_box DOWN_BOX
+                    labelsize 11
+                    align 7
+                    setup {labelandwidgetRadio.value(false);
+labelandwidgetRadio.doCallback();}
+                    tooltip {Tests Tree.itemDrawMode(itemDrawLabelAndWidget)
+Enables both label and widget() for display.
+When enabled, widget should appear to the right of the item's label.
+By default, the widget() is shown in place of the item's label.}
+                  }
+                CheckButton itemheightfromwidgetRadio
+                  {
+                    label {Item h() from widget}
+                    callback {auto flags = tree.itemDrawMode();
+if (itemheightfromwidgetRadio.value())
+  flags |= itemHeightFromWidget;
+else
+  flags &= ~itemHeightFromWidget;
+tree.itemDrawMode(flags);
+tree.redraw();}
+                    xywh {645 368 20 16}
+                    down_box DOWN_BOX
+                    labelsize 11
+                    align 7
+                    setup {itemheightfromwidgetRadio.value(false);
+itemheightfromwidgetRadio.doCallback();}
+                    tooltip {Tests Tree.itemDrawMode(itemHeightFromWidget)
+If enabled, item's height will track the widget()'s height.
+When enabled, click 'ccc button' or 'D1/D2' buttons to test.}
+                  }
+                CheckButton globalvisiblefocusCheckbox
+                  {
+                    label {Global visible focus?}
+                    callback {bool onoff = globalvisiblefocusCheckbox.value();
+fl.core.visibleFocus(onoff);}
+                    xywh {645 385 20 16}
+                    down_box DOWN_BOX
+                    labelsize 11
+                    align 7
+                    setup {globalvisiblefocusCheckbox.value(fl.core.visibleFocus());}
+                    tooltip {Toggles the global visibleFocus()}
+                  }
+              }
+            Group {}
+              {
+                label {Test Operations}
+                xywh {350 435 330 125}
+                box GTK_DOWN_BOX
+                color 47
+                labelsize 12
+                tooltip {These controls only affect the defaults for new items that are created. These test the TreePrefs methods.}
+                open
+              }
+              {
+                Group showitemBox
+                  {
+                    label {show_item()
+}
+                    xywh {370 460 70 82}
+                    box GTK_DOWN_BOX
+                    labelsize 11
+                  }
+                  {
+                    Button {}
+                      {
+                        label {Show}
+                        callback {auto item = tree.nextSelectedItem(null);
+tree.showItem(item);}
+                        xywh {385 469 40 17}
+                        labelsize 11
+                        tooltip {Tests show_item() with no position specified.
+Makes the selected item visible IF it is off-screen.
+No change made if it is not off-screen.}
+                      }
+                    Button {}
+                      {
+                        label {Top}
+                        callback {auto item = tree.nextSelectedItem(null);
+tree.showItemTop(item);}
+                        xywh {385 486 40 16}
+                        labelsize 11
+                        tooltip {Test show_item_top().
+Scrolls selected item to the top of the display
+(only works if scrollbar showing)
+To use:
+1) open '500 items'
+2) select item 0010
+3) Hit Top/Mid/Bot}
+                      }
+                    Button {}
+                      {
+                        label {Mid}
+                        callback {auto item = tree.nextSelectedItem(null);
+tree.showItemMiddle(item);}
+                        xywh {385 502 40 16}
+                        labelsize 11
+                        tooltip {Tests show_item_middle().
+Scrolls the selected item to the middle of the display
+To use:
+  1) open '500 items'
+  2) select 'item 0010'
+  3) Hit Top/Mid/Bot}
+                      }
+                    Button {}
+                      {
+                        label {Bot}
+                        callback {auto item = tree.nextSelectedItem(null);
+tree.showItemBottom(item);}
+                        xywh {385 518 40 16}
+                        labelsize 11
+                        tooltip {Tests show_item_bottom().
+Scrolls the selected item to the bottom of the display
+To use:
+  1) open '500 items'
+  2) select 'item 0010'
+  3) Hit Top/Mid/Bot}
+                      }
+                  }
+                Button openallButton
+                  {
+                    label {Open All}
+                    callback {for (auto item = tree.first(); item !is null; item = tree.next(item))
+  if (item.hasChildren())
+    item.open();
+tree.redraw();}
+                    xywh {470 451 95 16}
+                    labelsize 9
+                    tooltip {Opens all nodes that have children}
+                  }
+                Button loaddbButton
+                  {
+                    label {Load Database...}
+                    callback {string filename = fileChooser("Select a Preferences style Database", "Preferences(*.prefs)", "");
+if (filename.length)
+  \{
+    tree.clear();
+    auto prefs = new Preferences(filename, null, null, rootCLocale);
+    tree.load(prefs);
+    tree.redraw();
+  \}}
+                    xywh {470 471 95 16}
+                    labelsize 9
+                    tooltip {Load the contents of a Preferences database into the tree view}
+                  }
+                Button insertaboveButton
+                  {
+                    label {Insert Above}
+                    callback {auto item = tree.first();
+while (item !is null)
+  \{
+    if (item.isSelected())
+      \{
+        tree.insertAbove(item, "AaaAaa");
+        tree.insertAbove(item, "BbbBbb");
+        tree.insertAbove(item, "CccCcc");
+      \}
+    item = item.next();
+  \}
+
+tree.redraw();}
+                    xywh {470 491 95 16}
+                    labelsize 9
+                    tooltip {Inserts three items above the selected items}
+                  }
+                Button rebuildtreeButton
+                  {
+                    label {Rebuild Tree}
+                    callback {rebuildTree();}
+                    xywh {470 511 95 16}
+                    labelsize 9
+                    tooltip {Rebuilds the tree with defaults}
+                  }
+                Button showpathnameButton
+                  {
+                    label {Show Pathname}
+                    callback {auto item = tree.firstSelectedItem();
+if (item is null)
+  \{
+    message("No item was selected");
+    return;
+  \}
+
+message(format("Pathname for '%s' is: \\"%s\\"", item.label().length ? item.label() : "???", tree.itemPathname(item)));}
+                    xywh {470 531 95 16}
+                    labelsize 9
+                    tooltip {Tests Tree.itemPathname()
+Show the pathname for the selected item.}
+                  }
+                Button closeallButton
+                  {
+                    label {Close All}
+                    callback {for (auto item = tree.first(); item !is null; item = tree.next(item))
+  if (!item.isRoot() && item.hasChildren())
+    item.close();
+tree.redraw();}
+                    xywh {570 451 95 16}
+                    labelsize 9
+                    tooltip {Closes all nodes that have children
+(doesn't affect 'root')}
+                  }
+                Button clearallButton
+                  {
+                    label {Clear All}
+                    callback {tree.clear();
+tree.redraw();}
+                    xywh {570 471 95 16}
+                    labelsize 9
+                    tooltip {Tests Tree.clear().
+Clears all items}
+                  }
+                Button testcallbackflagButton
+                  {
+                    label {Test Callback Flag}
+                    callback {auto root = tree.root();
+tty.printf("--- Checking docallback off\\n");
+if (root is null) return;
+
+//// "OFF" TEST
+
+// open/close: Make sure these methods don't trigger cb
+gCbCounter = 0; tree.close(root, false);      if (gCbCounter) alert("FAILED 'OFF' TEST\\n close(item) triggered cb!");
+gCbCounter = 0; tree.open(root, false);       if (gCbCounter) alert("FAILED 'OFF' TEST\\n open(item) triggered cb!");
+gCbCounter = 0; tree.openToggle(root, false); if (gCbCounter) alert("FAILED 'OFF' TEST\\n open_toggle(item) triggered cb!");
+gCbCounter = 0; tree.open("ROOT", false);     if (gCbCounter) alert("FAILED 'OFF' TEST\\n open(path) triggered cb!");
+gCbCounter = 0; tree.close("ROOT", false);    if (gCbCounter) alert("FAILED 'OFF' TEST\\n close(path) triggered cb!");
+tree.open(root, false);     // leave root open
+
+// select/deselect: Make sure these methods don't trigger cb
+gCbCounter = 0; tree.select(root, false);       if (gCbCounter) alert("FAILED 'OFF' TEST\\n select(item) triggered cb!");
+gCbCounter = 0; tree.deselect(root, false);     if (gCbCounter) alert("FAILED 'OFF' TEST\\n deselect(item) triggered cb!");
+gCbCounter = 0; tree.selectToggle(root, false); if (gCbCounter) alert("FAILED 'OFF' TEST\\n select_toggle(item) triggered cb!");
+gCbCounter = 0; tree.deselect("ROOT", false);   if (gCbCounter) alert("FAILED 'OFF' TEST\\n deselect(path) triggered cb!");
+gCbCounter = 0; tree.select("ROOT", false);     if (gCbCounter) alert("FAILED 'OFF' TEST\\n select(path) triggered cb!");
+tree.deselect("ROOT"); // leave deselected
+
+//// "ON" TEST
+
+// open/close: Make sure these methods don't trigger cb
+gCbCounter = 0; tree.close(root, true);      if (!gCbCounter) alert("FAILED 'ON' TEST\\n close(item) cb wasn't triggered!");
+gCbCounter = 0; tree.open(root, true);       if (!gCbCounter) alert("FAILED 'ON' TEST\\n open(item) cb wasn't triggered!");
+gCbCounter = 0; tree.openToggle(root, true); if (!gCbCounter) alert("FAILED 'ON' TEST\\n open_toggle(item) cb wasn't triggered!");
+gCbCounter = 0; tree.open(root, true);       if (!gCbCounter) alert("FAILED 'ON' TEST\\n open(item)[2] cb wasn't triggered!");
+gCbCounter = 0; tree.close(root, true);      if (!gCbCounter) alert("FAILED 'ON' TEST\\n close(item)[2] cb wasn't triggered!");
+gCbCounter = 0; tree.open("ROOT", true);     if (!gCbCounter) alert("FAILED 'ON' TEST\\n open(path) cb wasn't triggered!");
+gCbCounter = 0; tree.close("ROOT", true);    if (!gCbCounter) alert("FAILED 'ON' TEST\\n close(path) cb wasn't triggered!");
+tree.open(root, false);     // leave root open
+
+// select/deselect: Make sure these methods don't trigger cb
+gCbCounter = 0; tree.select(root, true);       if (!gCbCounter) alert("FAILED 'ON' TEST\\n select(item) cb wasn't triggered!");
+gCbCounter = 0; tree.deselect(root, true);     if (!gCbCounter) alert("FAILED 'ON' TEST\\n deselect(item) cb wasn't triggered!");
+gCbCounter = 0; tree.selectToggle(root, true); if (!gCbCounter) alert("FAILED 'ON' TEST\\n select_toggle(item) cb wasn't triggered!");
+gCbCounter = 0; tree.deselect("ROOT", true);   if (!gCbCounter) alert("FAILED 'ON' TEST\\n deselect(path) cb wasn't triggered!");
+gCbCounter = 0; tree.select("ROOT", true);     if (!gCbCounter) alert("FAILED 'ON' TEST\\n select(path) cb wasn't triggered!");
+tree.deselect("ROOT"); // leave deselected
+
+//// "default" TEST (should be same as 'on'
+
+// open/close: Make sure these methods don't trigger cb
+gCbCounter = 0; tree.close(root);      if (!gCbCounter) alert("FAILED 'DEFAULT' TEST: close(item) cb wasn't triggered!");
+gCbCounter = 0; tree.open(root);       if (!gCbCounter) alert("FAILED 'DEFAULT' TEST: open(item) cb wasn't triggered!");
+gCbCounter = 0; tree.openToggle(root); if (!gCbCounter) alert("FAILED 'DEFAULT' TEST: open_toggle(item) cb wasn't triggered!");
+gCbCounter = 0; tree.open("ROOT");     if (!gCbCounter) alert("FAILED 'DEFAULT' TEST: open(path) cb wasn't triggered!");
+gCbCounter = 0; tree.close("ROOT");    if (!gCbCounter) alert("FAILED 'DEFAULT' TEST: close(path) cb wasn't triggered!");
+tree.open(root, false);     // leave root open
+
+// select/deselect: Make sure these methods don't trigger cb
+gCbCounter = 0; tree.select(root);       if (!gCbCounter) alert("FAILED 'DEFAULT' TEST\\n select(item) cb wasn't triggered!");
+gCbCounter = 0; tree.deselect(root);     if (!gCbCounter) alert("FAILED 'DEFAULT' TEST\\n deselect(item) cb wasn't triggered!");
+gCbCounter = 0; tree.selectToggle(root); if (!gCbCounter) alert("FAILED 'DEFAULT' TEST\\n select_toggle(item) cb wasn't triggered!");
+gCbCounter = 0; tree.deselect("ROOT");   if (!gCbCounter) alert("FAILED 'DEFAULT' TEST\\n deselect(path) cb wasn't triggered!");
+gCbCounter = 0; tree.select("ROOT");     if (!gCbCounter) alert("FAILED 'DEFAULT' TEST\\n select(path) cb wasn't triggered!");
+tree.deselect("ROOT"); // leave deselected
+
+alert("TEST COMPLETED\\n If you didn't see any error dialogs, test PASSED.");}
+                    xywh {570 491 95 16}
+                    labelsize 9
+                    tooltip {Test the 'docallback' argument can disable callbacks.}
+                  }
+                Button testrootshowselfButton
+                  {
+                    label {Root Show Self}
+                    callback {auto root = tree.root();
+tty.printf("--- Show Tree\\n");
+if (root !is null) root.showSelf();}
+                    xywh {570 511 95 16}
+                    labelsize 9
+                    tooltip {Test the root's show_self() method to show the entire tree on stdout}
+                  }
+                Button add20kButton
+                  {
+                    label {Add 20,000}
+                    callback {static int itemId = 501;
+auto item = tree.first();
+while (item !is null)
+  \{
+    if (item.isSelected())
+      \{
+        auto parent = item.parent();
+        if (parent is null) parent = tree.root();
+        foreach (i; 0 .. 20000)
+          tree.add(parent, format("Item \#%d", itemId + i));
+        itemId += 20000;
+        break;
+      \}
+    item = item.next();
+  \}
+tree.redraw();}
+                    xywh {570 531 95 16}
+                    labelsize 9
+                    tooltip {Adds 20,000 items to the selected item's parent}
+                  }
+              }
+            Group {}
+              {
+                label {Selected Items}
+                xywh {696 23 335 246}
+                box GTK_DOWN_BOX
+                color 47
+                labelsize 12
+                tooltip {These controls only affect the selected items. If no items are selected, all existing items in tree are modified.}
+              }
+              {
+                Choice selectedLabelfontChoice
+                  {
+                    label {TreeItem.labelfont()}
+                    callback {// Find first item in tree
+if (tree.first() is null) return;
+
+// Get first item's font.
+Font val = cast(Font) selectedLabelfontChoice.value(); // Get font value
+
+// Do selected items
+int count = 0;
+for (auto item = tree.first(); item !is null; item = tree.next(item))
+  \{
+    if (item.isSelected())
+      \{
+        item.labelfont(val);
+        count++;
+      \}
+  \}
+
+// No items selected? Do all..
+if (!count)
+  for (auto item = tree.first(); item !is null; item = tree.next(item))
+    item.labelfont(val);
+
+tree.redraw();}
+                    xywh {863 31 140 21}
+                    down_box BORDER_BOX
+                    labelsize 11
+                    textsize 11
+                    setup {o.value(cast(int) tree.itemLabelfont());   // get tree's current font, assign to chooser}
+                    tooltip {Tests TreeItem.labelfont();
+Changes the font for the selected items's labels.
+If none selected, all are changed.}
+                  }
+                  {
+                    MenuItem {}
+                      {
+                        label {Helvetica}
+                      }
+                    MenuItem {}
+                      {
+                        label {Helvetica Bold}
+                      }
+                    MenuItem {}
+                      {
+                        label {Helvetica Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Helvetica Bold Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Courier}
+                      }
+                    MenuItem {}
+                      {
+                        label {Courier Bold}
+                      }
+                    MenuItem {}
+                      {
+                        label {Courier Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Courier Bold Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Times}
+                      }
+                    MenuItem {}
+                      {
+                        label {Times Bold}
+                      }
+                    MenuItem {}
+                      {
+                        label {Times Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Times Bold Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Symbol}
+                      }
+                    MenuItem {}
+                      {
+                        label {Screen}
+                      }
+                    MenuItem {}
+                      {
+                        label {Screen bold}
+                      }
+                    MenuItem {}
+                      {
+                        label {Zapf Dingbats}
+                      }
+                  }
+                ValueSlider selectedLabelsizeSlider
+                  {
+                    label {TreeItem.labelsize()}
+                    callback {int size = cast(int) selectedLabelsizeSlider.value();
+
+// DO SELECTED ITEMS
+int count = 0;
+for (auto item = tree.first(); item !is null; item = tree.next(item))
+  \{
+    if (item.isSelected())
+      \{
+        item.labelsize(size);
+        count++;
+      \}
+  \}
+
+// NO ITEMS SELECTED? DO ALL
+if (!count)
+  for (auto item = tree.first(); item !is null; item = tree.next(item))
+    item.labelsize(size);
+
+tree.redraw();}
+                    xywh {863 55 140 16}
+                    color 46
+                    selection_color 1
+                    labelsize 11
+                    textsize 12
+                    align 4
+                    type Horizontal
+                    setup {o.value(tree.itemLabelsize());
+o.range(5.0, 200.0);
+o.step(1.0);
+o.color(46);
+o.selectionColor(red);}
+                    tooltip {Tests TreeItem.labelsize();
+Changes the font size of the selected items's labels.
+If none selected, all are changed.}
+                  }
+                Button allLabelfgcolorButton
+                  {
+                    label {TreeItem.labelfgcolor()}
+                    callback {// Get first item's color
+Color val = getSelectedItemFGColor();                // Get color of first selected item
+if (editColor(val) == 0) return;                      // Let user edit color. (return if they hit 'Cancel')
+allLabelfgcolorButton.color(val);                     // update modified color to button
+
+// Do selected items
+int count = 0;
+for (auto item = tree.first(); item !is null; item = tree.next(item))
+  \{
+    if (item.isSelected())
+      \{
+        item.labelfgcolor(val);
+        count++;
+      \}
+  \}
+
+// No items selected? Do all..
+if (!count)
+  for (auto item = tree.first(); item !is null; item = tree.next(item))
+    item.labelfgcolor(val);
+
+tree.redraw();
+allLabelfgcolorButton.redraw();   // see colorButton's own doc comment for why}
+                    xywh {863 81 16 16}
+                    box DOWN_BOX
+                    labelsize 11
+                    align 7
+                    setup {o.color(getSelectedItemFGColor());}
+                    tooltip {Sets the TreeItem.labelfgcolor() for the selected items. If none selected, all are changed.}
+                  }
+                Button allLabelbgcolorButton
+                  {
+                    label {TreeItem.labelbgcolor()}
+                    callback {// Get first item's color
+Color val = getSelectedItemBGColor();                // Get color of first selected item
+if (editColor(val) == 0) return;                      // Let user edit color. (return if they hit 'Cancel')
+allLabelbgcolorButton.color(val);                     // update modified color to button
+
+// Do selected items
+int count = 0;
+for (auto item = tree.first(); item !is null; item = tree.next(item))
+  \{
+    if (item.isSelected())
+      \{
+        item.labelbgcolor(val);
+        count++;
+      \}
+  \}
+
+// No items selected? Do all..
+if (!count)
+  for (auto item = tree.first(); item !is null; item = tree.next(item))
+    item.labelbgcolor(val);
+
+tree.redraw();
+allLabelbgcolorButton.redraw();   // see colorButton's own doc comment for why}
+                    xywh {863 99 16 16}
+                    box DOWN_BOX
+                    labelsize 11
+                    align 7
+                    setup {o.color(getSelectedItemBGColor());}
+                    tooltip {Sets the TreeItem.labelbgcolor() for the selected items. If none selected, all are changed.}
+                  }
+                LightButton deactivateItemsToggle
+                  {
+                    label { Deactivate Items}
+                    callback {bool onoff = !deactivateItemsToggle.value();
+
+int count = 0;
+for (auto item = tree.first(); item !is null; item = tree.next(item))
+  \{
+    if (item.isSelected())
+      \{
+        item.activate(onoff);
+        ++count;
+      \}
+  \}
+
+if (count == 0)
+  for (auto item = tree.first(); item !is null; item = tree.next(item))
+    item.activate(onoff);
+
+tree.redraw();}
+                    xywh {758 134 100 16}
+                    selection_color 1
+                    labelsize 9
+                    tooltip {Toggle the deactivation state of the selected items.
+If none are selected, all are set.}
+                  }
+                LightButton deactivateTreeToggle
+                  {
+                    label { Deactivate Tree}
+                    callback {if (deactivateTreeToggle.value())
+  tree.deactivate();
+else
+  tree.activate();}
+                    xywh {758 154 100 16}
+                    selection_color 1
+                    labelsize 9
+                    tooltip {Deactivates the entire tree widget}
+                  }
+                LightButton boldToggle
+                  {
+                    label { Bold Font}
+                    callback {Font face = boldToggle.value() ? helveticaBold : helvetica;
+
+// DO SELECTED ITEMS
+int count = 0;
+for (auto item = tree.first(); item !is null; item = tree.next(item))
+  \{
+    if (item.isSelected())
+      \{
+        item.labelfont(face);
+        count++;
+      \}
+  \}
+
+// NO ITEMS SELECTED? DO ALL
+if (!count)
+  for (auto item = tree.first(); item !is null; item = tree.next(item))
+    item.labelfont(face);
+
+tree.redraw();}
+                    xywh {758 174 100 16}
+                    selection_color 1
+                    labelsize 9
+                    tooltip {Toggles bold font for selected items
+If nothing selected, all are changed}
+                  }
+                Button showselectedButton
+                  {
+                    label {Show Selected}
+                    callback {tty.printf("--- SELECTED ITEMS\\n");
+for (auto item = tree.firstSelectedItem(); item !is null; item = tree.nextSelectedItem(item))
+  tty.printf("\\t%s\\n", item.label().length ? item.label() : "???");}
+                    xywh {864 134 95 16}
+                    labelsize 9
+                    tooltip {Clears the selected items}
+                  }
+                Button clearselectedButton
+                  {
+                    label {Remove Selected}
+                    callback {auto item = tree.first();
+while (item !is null)
+  \{
+    if (item.isSelected())
+      \{
+        if (tree.remove(item) == -1) break;
+        item = tree.first();
+      \}
+    else
+      \{
+        item = item.next();
+      \}
+  \}
+
+tree.redraw();}
+                    xywh {864 154 95 16}
+                    labelsize 9
+                    tooltip {Removes the selected items}
+                  }
+                Button swapselectedButton
+                  {
+                    label {Swap Selected}
+                    callback {TreeItem a, b;
+for (auto item = tree.first(); item !is null; item = item.next())
+  \{
+    if (item.isSelected())
+      \{
+        if (a is null) a = item;
+        else if (b is null) b = item;
+        else
+          \{
+            alert("Too many items selected. (must select only two)");
+            return;
+          \}
+      \}
+  \}
+if (a is null || b is null)
+  \{
+    alert("Too few items selected. (you must select two)");
+    return;
+  \}
+auto pa = a.parent();
+auto pb = b.parent();
+if (pa !is pb)
+  \{
+    alert("The two selected items must be siblings");
+    return;
+  \}
+pa.swapChildren(a, b);
+tree.redraw();}
+                    xywh {864 174 95 16}
+                    labelsize 9
+                    tooltip {Tests the TreeItem.swap_children() method
+Swaps two selected items (items must be siblings)}
+                  }
+                Button selectallButton
+                  {
+                    label {Select All}
+                    callback {tree.selectAll(null, false);
+tree.redraw();}
+                    xywh {714 199 95 16}
+                    labelsize 9
+                    tooltip {Selects all items in the tree}
+                  }
+                Button deselectallButton
+                  {
+                    label {Deselect All}
+                    callback {tree.deselectAll(null, false);
+tree.redraw();}
+                    xywh {714 219 95 16}
+                    labelsize 9
+                    tooltip {Deselects all items in the tree}
+                  }
+                Button nextselectedButton
+                  {
+                    label {next_selected()}
+                    callback {tty.printf("--- TEST next_selected():\\n");
+tty.printf("    // Walk down the tree (forwards)\\n");
+for (auto i = tree.firstSelectedItem(); i !is null; i = tree.nextSelectedItem(i, down))
+  tty.printf("    Selected item: %s\\n", i.label().length ? i.label() : "<nolabel>");
+
+tty.printf("    // Walk up the tree (backwards)\\n");
+for (auto i = tree.lastSelectedItem(); i !is null; i = tree.nextSelectedItem(i, up))
+  tty.printf("    Selected item: %s\\n", i.label().length ? i.label() : "<nolabel>");}
+                    xywh {713 239 95 16}
+                    labelsize 9
+                    tooltip {Tests the Tree.next_selected() function}
+                  }
+                LightButton bbbselectToggle
+                  {
+                    label { Select Bbb}
+                    callback {// Toggle select of just the Bbb item (not children)
+auto bbb = tree.findItem("/Bbb");
+if (bbb is null)
+  \{
+    alert("FAIL: Couldn't find item '/Bbb'???");
+    return;
+  \}
+bool onoff = bbbselectToggle.value();
+if (onoff) tree.select(bbb);         // select /Bbb
+else       tree.deselect(bbb);       // deselect /Bbb}
+                    xywh {814 199 95 16}
+                    selection_color 1
+                    labelsize 9
+                    tooltip {Toggle selection of just the /Bbb item
+(Not children)}
+                  }
+                LightButton bbbselect2Toggle
+                  {
+                    label { Select Bbb+}
+                    callback {// Toggle select of just the Bbb item and its immediate children
+auto bbb = tree.findItem("/Bbb");
+if (bbb is null)
+  \{
+    alert("FAIL: Couldn't find item '/Bbb'???");
+    return;
+  \}
+bool onoff = bbbselect2Toggle.value();
+if (onoff) tree.selectAll(bbb);      // select /Bbb and its children
+else       tree.deselectAll(bbb);    // deselect /Bbb and its children}
+                    xywh {814 219 95 16}
+                    selection_color 1
+                    labelsize 9
+                    tooltip {Toggle selection of the /Bbb item and its children}
+                  }
+                LightButton bbbchild02selectToggle
+                  {
+                    label { Toggle child-02}
+                    callback {// Toggle select of just the /Bbb/child-02 item
+string pathname = "/Bbb/child-02";
+bool onoff = bbbchild02selectToggle.value();
+int err = onoff ? tree.select(pathname) : tree.deselect(pathname);
+
+if (err == -1)
+  alert(format("FAIL: Couldn't find item '%s'", pathname));}
+                    xywh {814 239 95 16}
+                    selection_color 1
+                    labelsize 9
+                    tooltip {Toggle the single item "/Bbb/child-02" using the item's "pathname".}
+                  }
+                LightButton rootselectToggle
+                  {
+                    label {Select ROOT}
+                    callback {// Toggle select of ROOT item and its children
+auto item = tree.findItem("/ROOT");
+if (item is null)
+  \{
+    alert("FAIL: Couldn't find item '/ROOT'???");
+    return;
+  \}
+bool onoff = rootselectToggle.value();
+if (onoff) tree.select(item);        // select /ROOT and its children
+else       tree.deselect(item);      // deselect /ROOT and its children}
+                    xywh {914 199 100 16}
+                    selection_color 1
+                    labelsize 9
+                    tooltip {Toggle selection of the ROOT item}
+                  }
+                LightButton rootselect2Toggle
+                  {
+                    label {Select ROOT+}
+                    callback {// Toggle select of ROOT item and its children
+auto item = tree.findItem("/ROOT");
+if (item is null)
+  \{
+    alert("FAIL: Couldn't find item '/ROOT'???");
+    return;
+  \}
+bool onoff = rootselect2Toggle.value();
+if (onoff) tree.selectAll(item);     // select /ROOT and its children
+else       tree.deselectAll(item);   // deselect /ROOT and its children}
+                    xywh {914 219 100 16}
+                    selection_color 1
+                    labelsize 9
+                    tooltip {Toggle selection of the ROOT item and all children}
+                  }
+              }
+            Group {}
+              {
+                label {Tree Fonts + Colors}
+                xywh {695 298 335 186}
+                box GTK_DOWN_BOX
+                color 47
+                labelsize 12
+                tooltip {These controls only affect the selected items. If no items are selected, all existing items in tree are modified.}
+              }
+              {
+                Choice labelfontChoice
+                  {
+                    label {labelfont()}
+                    callback {Font val = cast(Font) labelfontChoice.value();
+tree.labelfont(val);
+window.redraw();}
+                    xywh {848 314 140 21}
+                    down_box BORDER_BOX
+                    labelsize 12
+                    textsize 12
+                    setup {o.value(cast(int) tree.labelfont());   // get tree's current font, assign to chooser}
+                    tooltip {Sets the default font used for new items created. Does NOT affect existing items.}
+                  }
+                  {
+                    MenuItem {}
+                      {
+                        label {Helvetica}
+                      }
+                    MenuItem {}
+                      {
+                        label {Helvetica Bold}
+                      }
+                    MenuItem {}
+                      {
+                        label {Helvetica Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Helvetica Bold Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Courier}
+                      }
+                    MenuItem {}
+                      {
+                        label {Courier Bold}
+                      }
+                    MenuItem {}
+                      {
+                        label {Courier Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Courier Bold Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Times}
+                      }
+                    MenuItem {}
+                      {
+                        label {Times Bold}
+                      }
+                    MenuItem {}
+                      {
+                        label {Times Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Times Bold Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Symbol}
+                      }
+                    MenuItem {}
+                      {
+                        label {Screen}
+                      }
+                    MenuItem {}
+                      {
+                        label {Screen bold}
+                      }
+                    MenuItem {}
+                      {
+                        label {Zapf Dingbats}
+                      }
+                  }
+                ValueSlider labelsizeSlider
+                  {
+                    label {labelsize()}
+                    callback {tree.labelsize(cast(int) labelsizeSlider.value());
+window.redraw();}
+                    xywh {848 338 140 16}
+                    color 46
+                    selection_color 1
+                    labelsize 12
+                    textsize 12
+                    align 4
+                    type Horizontal
+                    setup {o.value(cast(int) tree.labelsize());
+o.range(1.0, 50.0);
+o.step(1.0);
+o.color(46);
+o.selectionColor(red);}
+                    tooltip {Sets the font size for the  tree's label().
+This is also the font size that will be used to draw the items IF their size hasn't been set with TreeItem.labelsize() or Tree.itemLabelsize()}
+                  }
+                Choice itemLabelfontChoice
+                  {
+                    label {Item_labelfont()}
+                    callback {Font val = cast(Font) itemLabelfontChoice.value();
+tree.itemLabelfont(val);
+tree.redraw();}
+                    xywh {848 358 140 21}
+                    down_box BORDER_BOX
+                    labelsize 12
+                    textsize 12
+                    setup {o.value(cast(int) tree.itemLabelfont());}
+                    tooltip {Sets the default font used for new items created.
+Also affects any items whose font has NOT specifically been set with item.labelfont().}
+                  }
+                  {
+                    MenuItem {}
+                      {
+                        label {Helvetica}
+                      }
+                    MenuItem {}
+                      {
+                        label {Helvetica Bold}
+                      }
+                    MenuItem {}
+                      {
+                        label {Helvetica Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Helvetica Bold Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Courier}
+                      }
+                    MenuItem {}
+                      {
+                        label {Courier Bold}
+                      }
+                    MenuItem {}
+                      {
+                        label {Courier Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Courier Bold Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Times}
+                      }
+                    MenuItem {}
+                      {
+                        label {Times Bold}
+                      }
+                    MenuItem {}
+                      {
+                        label {Times Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Times Bold Italic}
+                      }
+                    MenuItem {}
+                      {
+                        label {Symbol}
+                      }
+                    MenuItem {}
+                      {
+                        label {Screen}
+                      }
+                    MenuItem {}
+                      {
+                        label {Screen bold}
+                      }
+                    MenuItem {}
+                      {
+                        label {Zapf Dingbats}
+                      }
+                  }
+                ValueSlider itemLabelsizeSlider
+                  {
+                    label {item_labelsize()}
+                    callback {tree.itemLabelsize(cast(int) itemLabelsizeSlider.value());
+tree.redraw();}
+                    xywh {848 383 140 16}
+                    color 46
+                    selection_color 1
+                    labelsize 12
+                    textsize 12
+                    align 4
+                    type Horizontal
+                    setup {o.value(cast(int) tree.itemLabelsize());
+o.range(1.0, 50.0);
+o.step(1.0);
+o.color(46);
+o.selectionColor(red);}
+                    tooltip {Sets the default font size used for new items created.
+Also affects any items whose font size has NOT specifically been set with item.labelsize().}
+                  }
+                Button labelcolorButton
+                  {
+                    label {labelcolor()}
+                    callback {Color val = tree.labelcolor();
+if (editColor(val) == 0) return;                        // Let user edit color. (return if they hit 'Cancel')
+labelcolorButton.color(val);                            // update modified color to button
+tree.labelcolor(val);
+window.redraw();   // affects window (tree's label is outside tree's area)
+labelcolorButton.redraw();   // this button's own release-triggered redraw fired
+                             // (and got processed) while editColor()'s modal dialog's
+                             // own nested event loop was still running, painting the
+                             // *old* color -- window.redraw() above doesn't help since
+                             // it's scheduled *after* this point, but the widget-level
+                             // damage it sets doesn't retroactively force this specific
+                             // button to redraw either; an explicit self-redraw here is
+                             // the reliable fix (see colorButton's own doc comment for
+                             // the full mechanism).}
+                    xywh {813 414 16 16}
+                    box DOWN_BOX
+                    labelsize 11
+                    align 7
+                    setup {o.color(tree.labelcolor());}
+                    tooltip {Changes Tree.labelcolor().
+This affects the text color of the widget's label.}
+                  }
+                Button colorButton
+                  {
+                    label {color()}
+                    callback {Color val = tree.color();
+if (editColor(val) == 0) return;                        // Let user edit color. (return if they hit 'Cancel')
+colorButton.color(val);         // update modified color to button
+tree.color(val);
+updateColorChips();
+tree.redraw();
+// Explicit self-redraw needed on Windows: this button's own normal
+// FL_RELEASE-triggered redraw (the "back to up" visual state every
+// FLTK button does on release) gets queued via InvalidateRect() the
+// moment this button is clicked -- but editColor()'s modal color-
+// chooser dialog then runs its own *nested* event loop
+// (while (window.shown()) fl.core.wait();) that pumps *all* pending
+// Windows messages, including that queued repaint -- so it gets
+// processed, and this button gets painted with its *old*
+// color, before this callback ever resumes past editColor() to set
+// the new one. tree.redraw() above doesn't retroactively fix this --
+// it damages the tree's own bounds, not this sibling button's -- so
+// nothing repaints this button again afterward until some unrelated
+// later damage (e.g. hovering it) happens to cover its rectangle too.
+// An explicit redraw here, *after* the color actually changes, closes
+// that gap for real regardless of the nested-loop timing.
+colorButton.redraw();}
+                    xywh {813 433 16 16}
+                    box DOWN_BOX
+                    labelsize 11
+                    align 7
+                    setup {o.color(tree.color());}
+                    tooltip {Changes Tree.color().
+This affects the background color of the widget. It also affects the bg color of newly created  items *if*  Tree.itemLabelbgcolor() hasn't been changed.}
+                  }
+                Button selectionColorButton
+                  {
+                    label {selection_color()}
+                    callback {Color val = tree.selectionColor();
+if (editColor(val) == 0) return;                // Let user edit color. (return if they hit 'Cancel')
+selectionColorButton.color(val);                // update modified color to button
+tree.selectionColor(val);
+tree.redraw();
+selectionColorButton.redraw();   // see colorButton's own doc comment for why}
+                    xywh {813 452 16 16}
+                    box DOWN_BOX
+                    labelsize 11
+                    align 7
+                    setup {o.color(tree.selectionColor());}
+                    tooltip {Sets the Tree.selectionColor().
+This affects the item's colors when they're selected.}
+                  }
+                Button itemLabelfgcolorButton
+                  {
+                    label {item_labelfgcolor()}
+                    callback {Color val = tree.itemLabelfgcolor();
+if (editColor(val) == 0) return;                // Let user edit color. (return if they hit 'Cancel')
+tree.itemLabelfgcolor(val);                     // apply modified color to tree
+itemLabelfgcolorButton.color(val);              // update modified color to button
+tree.redraw();
+itemLabelfgcolorButton.redraw();   // see colorButton's own doc comment for why}
+                    xywh {973 414 16 16}
+                    box DOWN_BOX
+                    labelsize 12
+                    align 7
+                    setup {o.color(tree.itemLabelfgcolor());}
+                    tooltip {Sets the default label fg color for newly created  items.}
+                  }
+                Button itemLabelbgcolorButton
+                  {
+                    label {item_labelbgcolor()}
+                    callback {Color val = tree.itemLabelbgcolor();
+if (editColor(val) == 0) return;                // Let user edit color. (return if they hit 'Cancel')
+tree.itemLabelbgcolor(val);                     // apply modified color to tree
+itemLabelbgcolorButton.color(val);              // update modified color to button
+tree.redraw();
+itemLabelbgcolorButton.redraw();   // see colorButton's own doc comment for why}
+                    xywh {973 433 16 16}
+                    box DOWN_BOX
+                    labelsize 12
+                    align 7
+                    setup {itemLabelbgcolorButton.color(tree.itemLabelbgcolor());}
+                    tooltip {Sets the default label bg color for newly created items. When set, this overrides the default behavior of using Tree.color().}
+                  }
+                Button xItemLabelbgcolorButton
+                  {
+                    label {X}
+                    callback {tree.itemLabelbgcolor(cast(Color) 0xffffffff);
+updateColorChips();
+tree.redraw();}
+                    xywh {993 433 16 16}
+                    labelsize 10
+                    align 16
+                    tooltip {Make the bgcolor 'transparent' (0xffffffff)}
+                  }
+              }
+            ValueSlider treeScrollbarSizeSlider
+              {
+                label {Tree.scrollbar_size()}
+                callback {tree.scrollbarSize(cast(int) treeScrollbarSizeSlider.value());
+tree.redraw();}
+                xywh {835 499 180 16}
+                color 46
+                selection_color 1
+                labelsize 11
+                textsize 9
+                align 4
+                type Horizontal
+                setup {o.value(tree.scrollbarSize());
+o.range(0.0, 30.0);
+o.step(1.0);
+o.color(46);
+o.selectionColor(red);}
+                tooltip {Tests Tree.scrollbarSize() effects on tree clipping.
+The value is normally 0, which causes Tree to use the global scrollbarSize() instead.}
+              }
+            ValueSlider scrollbarSizeSlider
+              {
+                label {scrollbar_size()}
+                callback {fl.core.scrollbarSize(cast(int) scrollbarSizeSlider.value());
+tree.redraw();}
+                xywh {835 519 180 16}
+                color 46
+                selection_color 1
+                labelsize 11
+                textsize 9
+                align 4
+                type Horizontal
+                setup {o.value(fl.core.scrollbarSize());
+o.range(5.0, 30.0);
+o.step(1.0);
+o.color(46);
+o.selectionColor(red);}
+                tooltip {Tests the global scrollbarSize() effects on tree clipping}
+              }
+            Button testsuggsButton
+              {
+                label {Test Suggestions}
+                callback {string helpmsg =
+"CHILD WIDGET SIZING TESTS\\n" ~
+"=========================\\n" ~
+"   1) Start program\\n" ~
+"   2) Click the 'ccc button' and D1/D2 buttons.\\n" ~
+"      Their sizes should not change.\\n" ~
+"   3) Click the 'Item h() from widget' checkbox.\\n" ~
+"   4) Click the 'ccc button' and D1/D2 buttons.\\n" ~
+"      Their sizes should change, getting larger vertically.\\n" ~
+"      This validates that widget's size can affect the tree.\\n" ~
+"   5) Disable the checkbox, widgets should resize back to the\\n" ~
+"      size of the other items.\\n" ~
+"   6) Hit ^A to select all items\\n" ~
+"   7) Under 'Selected Items', drag the 'Label Size' slider around.\\n" ~
+"      All the item's height should change, as well as child widgets.\\n" ~
+"   8) Put Label Size' slider back to normal\\n" ~
+"\\n" ~
+"CHILD WIDGET + LABEL ITEM DRAWING TESTS\\n" ~
+"=======================================\\n" ~
+"   1) Start program\\n" ~
+"   2) Click 'Show label + widget'.\\n" ~
+"      The widgets should all show item labels to their left.\\n" ~
+"   3) Disable same, item labels should disappear,\\n" ~
+"      showing the widgets in their place.\\n" ~
+"\\n" ~
+"COLORS\\n" ~
+"======\\n" ~
+"   1) Start program\\n" ~
+"   2) Change 'Tree Fonts+Colors' -> color()\\n" ~
+"   3) Entire tree's background color will change, including items.\\n" ~
+"   4) Change the 'Tree Fonts + Colors -> item_labelbgcolor()'\\n" ~
+"   6) Click the '111' item to select it.\\n" ~
+"   7) Click 'Test Operations -> Insert Above'\\n" ~
+"      New items should appear above the selected item using the new color.\\n" ~
+"      This color will be different from the background color.\\n" ~
+"   8) Change the 'Tree Fonts+Colors' -> color()\\n" ~
+"      The entire tree's bg should change, except the new items.\\n" ~
+"   9) Click the Tree Fonts+Colors -> item_labelbgcolor() 'X' button.\\n" ~
+"      This resets item_labelbgcolor() to the default 'transparent' color (0xffffffff)\\n" ~
+"  10) Again, click the 'Insert Above' button.\\n" ~
+"      New items will be created in the background color, and changing the color()\\n" ~
+"      should affect the new items too.\\n" ~
+"\\n" ~
+"SCROLLING\\n" ~
+"=========\\n" ~
+"   1) Open '500 items' and 'Long Line' so that both scrollbars appear:\\n" ~
+"        * The 'focus box' for the selected item should not be clipped\\n" ~
+"          horizontally by the vertical scrollbar.\\n" ~
+"        * Resizing the window horizontally should resize the focus box\\n" ~
+"        * Scrolling vertically/horizontally should show reveal all\\n" ~
+"          edges of the tree. One *exception* is the widget label\\n" ~
+"          to the right of the 'ccc button'; labels aren't part\\n" ~
+"          of the widget, and therefore don't affect scroll tabs\\n" ~
+"   2) Scroll vertical scroller to the middle of the tree\\n" ~
+"   3) Left click and drag up/down to extend the selection:\\n" ~
+"        * Selection should autoscroll if you drag off the top/bottom\\n" ~
+"        * Selection should work *even* if you drag horizontally\\n" ~
+"          off the window edge; moving up/down outside the window\\n" ~
+"          should continue to autoscroll\\n" ~
+"   4) Click either of the the scrollbar tabs and drag:\\n" ~
+"        * Even if you drag off the scrollbar, the scrollbar\\n" ~
+"          tab should continue to move\\n" ~
+"        * Should continue to work if you drag off the window edge\\n" ~
+"          horizontally drag off the window.\\n" ~
+"   5) Click 'Bbb' and hit 'Add 20,000', then position the\\n" ~
+"      'ccc button' so it's partially obscured by a scrollbar tab:\\n" ~
+"        * Clicking the obscured button should work\\n" ~
+"        * Clicking on the tab over the button should not 'click through'\\n" ~
+"          to the button.\\n";
+
+static Window helpwin;
+static TextDisplay helpdisp;
+static TextBuffer helpbuff;
+if (helpwin is null)
+  \{
+    FlGroup.current(null);  // ensure we don't become child of other win
+    helpwin = new Window(600, 600, "Test Suggestions");
+    helpdisp = new TextDisplay(0, 0, helpwin.w(), helpwin.h());
+    helpbuff = new TextBuffer();
+    helpdisp.buffer(helpbuff);
+    helpdisp.textfont(courier);
+    helpdisp.textsize(12);
+    helpbuff.text(helpmsg);
+    helpwin.end();
+  \}
+helpwin.resizable(helpdisp);
+helpwin.show();}
+                xywh {935 545 95 16}
+                labelsize 9
+                tooltip {Suggestions on how to do tests}
+              }
+          }
+        Box resizerBox
+          {
+            xywh {0 263 15 14}
+          }
+        Terminal tty
+          {
+            xywh {16 571 1014 149}
+            selected
+          }
+      }
+    code {// Initialize Tree
+tree.rootLabel("ROOT");
+tree.itemReselectMode(TreeItemReselectMode.selectableAlways);
+rebuildTree();
+/*tree.root().showSelf();*/}
+      {
+      }
+    code {// FLTK stuff
+
+//scheme("gtk+");
+
+fl.tooltip.size(10);           // small font for tooltips
+
+window.resizable(tree);
+window.sizeRange(window.w(), window.h(), 0, 0);
+
+     if (tree.when() == whenChanged) whenmodeChooser.value(0);
+else if (tree.when() == whenRelease) whenmodeChooser.value(1);
+else if (tree.when() == whenNever)   whenmodeChooser.value(2);
+
+switch (tree.connectorstyle())
+  \{
+  case TreeConnector.connectorNone:   connectorstyleChooser.value(0); break;
+  case TreeConnector.connectorDotted: connectorstyleChooser.value(1); break;
+  case TreeConnector.connectorSolid:  connectorstyleChooser.value(2); break;
+  default: break;
+  \}}
+      {
+      }
+  }

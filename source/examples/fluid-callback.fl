@@ -1,0 +1,84 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+comment {README FIRST
+- - - - - - -
+This fluid (.fl) file demonstrates how to create a complete
+fldtk program with a button whose callback calls a real (virtual,
+by D default) instance method directly.
+
+Unlike FLTK's version of this demo, there is no
+static-trampoline-plus-void* method here: FLTK needed that shape
+because a C++ callback can't close over `this`. A D closure
+created inside a real method body (the constructor, here) already
+captures its enclosing instance, so the button's callback can just
+call cbBnVirtual(...) directly -- see CLAUDE.md's "Callbacks are D
+delegates" convention.
+
+Also demonstrates safe self-deletion from inside a widget's own
+callback -- see cbBnVirtual's own code comment and
+fl.core.deleteWidget()'s doc comment.
+
+Use fluid interactively to open this fluid (.fl) file and
+double-click on items to see how they are defined.
+}
+  {
+    in_source
+    in_header
+  }
+class App
+  {
+    : {Window}
+  }
+  {
+    Function {this(int x, int y, string l)}
+      {
+        comment {Constructor}
+        open
+      }
+      {
+        code {super(x, y, l);
+writefln("Creating new App");
+auto exitCb = new Button(20, 20, 260, 60, "Exit: invokes virtual callback");
+exitCb.callback((o) \{ cbBnVirtual(77); \});
+show();}
+          {
+          }
+      }
+    Function ~this()
+      {
+        comment {Virtual destructor}
+        open
+      }
+      {
+        code {writefln("Closing and deleting App");}
+          {
+          }
+      }
+    Function {cbBnVirtual(int v)}
+      {
+        comment {Virtual callback method}
+        return_type void
+        open
+      }
+      {
+        code {writefln("Executing virtual callback cbBnVirtual, value = %d", v);
+// NOT destroy(this) -- deleting from inside a widget's own callback
+// (this button's callback is still on the call stack) would recursively
+// destroy this window's own children (Group.~this() calls clear())
+// while one of them is still executing. fl.core.deleteWidget() defers
+// the real destroy() to the next wait()/check() iteration instead.
+fl.core.deleteWidget(this);}
+          {
+          }
+      }
+  }
+Function {}
+  {
+    open
+  }
+  {
+    code {new App(300, 100, "Virtual Callback Test");}
+      {
+        selected
+      }
+  }

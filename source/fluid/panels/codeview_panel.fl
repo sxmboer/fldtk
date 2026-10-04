@@ -1,0 +1,502 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+comment {A live preview of the D source (and, separately, the `.fl`
+project text) this project's own tree would currently generate, kept in
+sync with whatever node is currently selected in the widget editor or
+the project tree: selecting a node pans both text views to its own
+generated block and highlights it, matching FLTK's own Code
+View panel.
+
+Ported from FLTK's fluid/panels/codeview_panel.fl, with a few
+deliberate, disclosed scope adjustments rather than a full mechanical
+translation:
+
+ - No Header/Strings tabs. This dialect has no header/`.cxx` split (a
+   single generated `.d` file per project, matching every other
+   converted panel/sample so far) and no separate i18n *string-table
+   export* (a `.po`/`.msg` catalog file) -- both entire tabs FLTK
+   has simply don't apply here. Only Source (the generated D, via
+   `fluid.code_writer.Writer`) and Project (the `.fl` text, via the
+   already-real `fluid.project_writer.ProjectWriter`) remain. The
+   project's own i18n *settings* (`fluid.i18n.I18nSettings`) ARE
+   threaded through both remaining tabs though (`codeviewRefresh()`'s
+   `i18n` parameter, `cvI18n_`) -- so a project with GNU/POSIX
+   translation configured shows its real, wrapped `gettext(...)`/
+   `catgets(...)` label/tooltip calls in the Source tab, not the plain
+   unwrapped string literals a stale `i18n`-less call would show.
+ - Node<->text-position sync covers `fluid.code_writer.Writer`'s
+   widget-tree node kinds (window/group/widget, including a menu-owning
+   widget's own array-literal block) in the Source tab, and every node
+   kind in the Project tab (`fluid.project_writer.ProjectWriter.
+   writeNode()` walks the whole tree uniformly). A node kind the Source
+   tab doesn't track (Function, Class, decl, comment, ...) simply gets
+   no Source-tab highlight when selected -- the same graceful no-op
+   FLTK itself falls back to for any node with an untracked
+   position (`fluid.node.Node.setupSpan`/`finalizeSpan` default to
+   `TextSpan.init`, `start == -1`).
+ - The "code choice" dropdown has three entries (instantiate/setup/
+   finalize) rather than FLTK's five (prolog/static/instantiate/
+   setup/finalize): this dialect has no header (folding "prolog", which
+   FLTK itself just aliases to "instantiate", out) and no separate
+   per-node "static data" phase distinct from "setup" (a `.fl` node's
+   own declaration-shaped content -- e.g. a menu-owning widget's item
+   array -- is written inline as part of its own block here, not to a
+   separate pre-instantiation pass the way FLTK's menu/class
+   declarations are).
+ - The `Auto-Refresh` light button (`cvAutorefresh`) is real, gating
+   `codeviewAutoRefresh()` -- the single function `gui_main.d` calls
+   from every one of its own project-mutating entry points, in place of
+   FLTK's own single `codeview_defer_update()` call site inside
+   `Project::set_modflag()` (`fluid/Project.cxx`; this dialect has no
+   equivalent centralized "mark modified" function, so `gui_main.d`
+   calls `codeviewAutoRefresh()` directly at each of its own mutation
+   sites instead, so the light button's value genuinely gates the
+   refresh (a version that instead called
+   `codeviewRefresh()` directly, unconditionally, whenever the panel was
+   visible would make this light button decorative-only). One
+   deliberate simplification from FLTK's own mechanism: no debounce
+   timer (`Fl::add_timeout(0.5, ...)`) -- every call site already fires
+   at most once per discrete edit (not per drag-frame), so there's
+   nothing to coalesce; unchecking the button is a plain on/off gate on
+   `codeviewAutoRefresh()`, not a rate limiter. The plain "Refresh"
+   button stays unconditional either way. Every automatic refresh
+   re-applies the current selection's highlight too
+   (`codeviewUpdatePosition()`, called at the end of `codeviewRefresh()`),
+   so toggling Auto-Refresh back on never loses the pan/highlight state.
+ - `Fl_Text_Editor`-based `cv_source`/`cv_header` (FLTK) become
+   plain `TextDisplay`s here (matching FLTK's own choice for its
+   *other* two tabs, Strings/Project) -- nothing in this reduced scope
+   needs `Fl_Text_Editor`'s extra editing affordances over
+   `Fl_Text_Display`, since neither generated view is meant to be
+   edited in place. `cvSource`/`cvProject` use
+   `fluid.code_viewer.CodeViewer` (FLTK's `Code_Viewer`), which
+   swaps the global selection color for a light gray around each
+   `draw()` so the node highlight stays readable against the syntax
+   colors.
+ - Current-project state (`cvRoots_`) is a private module-level `Node[]`
+   updated by whichever of `codeviewRefresh()`/`codeviewToggleVisibility()`
+   the caller (`gui_main.d`) invokes with a fresh copy -- matching
+   FLTK's own reliance on a single global (`Fluid.proj`) for the
+   same purpose, just passed explicitly rather than read from a
+   project-wide singleton this port doesn't have. `cvCurrent_` mirrors
+   FLTK's own `Fluid.proj.tree.current` the same way, tracking
+   whichever node the pan/highlight logic last ran for so the Tabs
+   switch callback and the code-choice dropdown's own callback can
+   re-apply it without needing the caller to pass it again. The
+   "Reveal" button's reverse lookup (`findInText()`, text position ->
+   Node) reports back to `gui_main.d` via `cvOnReveal`, a module-level
+   delegate the caller assigns once during startup -- the same
+   cross-module callback shape `fluid.function_panel`'s own
+   `binButtonCb`/`codeButtonCb` already use, since `gui_main.d` already
+   imports this module and a reverse import would cycle.
+}
+  {
+    in_source
+    in_header
+  }
+decl {import fluid;}
+  {
+    private
+    local
+  }
+decl {Node[] cvRoots_;}
+  {
+    private
+    local
+  }
+decl {I18nSettings cvI18n_;}
+  {
+    private
+    local
+  }
+decl {bool cvDubHeader_;}
+  {
+    private
+    local
+  }
+decl {ProjectSettings cvSettings_;}
+  {
+    private
+    local
+  }
+decl {Node cvCurrent_;}
+  {
+    private
+    local
+  }
+decl {/// Set once by gui_main.d during startup; called by the "Reveal"
+/// button with the node found at the clicked text position and
+/// whether the click was a double-click (matching FLTK's own
+/// select_only(node); reveal_in_browser(node); if
+/// (Fl::event_clicks()==1) node->open(); sequence in cb_Reveal()).
+void delegate(Node, bool) cvOnReveal;}
+  {
+    public
+    global
+  }
+Function makeCodeviewPanel()
+  {
+  }
+  {
+    Window codeviewPanel
+      {
+        label {Code View}
+        callback {codeviewPanel.hide();}
+        xywh {518 271 520 515}
+        type Double
+        resizable
+      }
+      {
+        Tabs cvTab
+          {
+            callback {codeviewUpdatePosition(cvCurrent_);}
+            xywh {10 10 500 440}
+            selection_color 4
+            labelcolor 7
+            resizable
+          }
+          {
+            Group {}
+              {
+                label {Source}
+                xywh {10 35 500 415}
+                labelsize 13
+                resizable
+              }
+              {
+                TextDisplay cvSource
+                  {
+                    xywh {10 40 500 410}
+                    textsize 11
+                    textfont 4
+                    class CodeViewer
+                    setup {o.buffer(new TextBuffer());
+enableHighlighting(o);
+o.linenumberWidth(60);
+o.linenumberSize(11);}
+                    resizable
+                  }
+              }
+            Group {}
+              {
+                label {Project}
+                xywh {10 35 500 415}
+                labelsize 13
+                hide
+              }
+              {
+                TextDisplay cvProject
+                  {
+                    xywh {10 40 500 410}
+                    textsize 11
+                    textfont 4
+                    class CodeViewer
+                    setup {o.buffer(new TextBuffer());
+o.linenumberWidth(60);
+o.linenumberSize(11);}
+                    resizable
+                  }
+              }
+          }
+        Group {}
+          {
+            xywh {10 460 500 20}
+          }
+          {
+            Button cvFindTextCase
+              {
+                label {aA}
+                xywh {244 460 25 20}
+                labelsize 11
+                type Toggle
+              }
+            Input cvFindText
+              {
+                label {Find:}
+                callback {import std.string : toStringz;
+TextDisplay e = cvSource.visibleR() ? cvSource : cvProject;
+auto b = e.buffer();
+int pos = e.insertPosition();
+int found;
+bool ok = b.searchForward(pos, cvFindText.value(), found, cvFindTextCase.value() != 0);
+if (ok)
+\{
+    b.select(found, found + cast(int) cvFindText.value().length);
+    e.insertPosition(found);
+    e.showInsertPosition();
+\}}
+                xywh {40 460 200 20}
+                labelsize 11
+                textsize 11
+                when 15
+              }
+            Button {}
+              {
+                label {<<}
+                callback {TextDisplay e = cvSource.visibleR() ? cvSource : cvProject;
+auto b = e.buffer();
+string needle = cvFindText.value();
+int pos = e.insertPosition() - 1;
+if (pos < 0) pos = b.length() - 1;
+int found;
+bool ok = b.searchBackward(pos, needle, found, cvFindTextCase.value() != 0);
+if (!ok) ok = b.searchBackward(b.length() - 1, needle, found, cvFindTextCase.value() != 0);
+if (ok)
+\{
+    b.select(found, found + cast(int) needle.length);
+    e.insertPosition(found);
+    e.showInsertPosition();
+\}}
+                xywh {273 460 25 20}
+                labelsize 11
+              }
+            Button {}
+              {
+                label {>>}
+                callback {TextDisplay e = cvSource.visibleR() ? cvSource : cvProject;
+auto b = e.buffer();
+string needle = cvFindText.value();
+int pos = e.insertPosition() + 1;
+if (pos + 1 >= b.length()) pos = 0;
+int found;
+bool ok = b.searchForward(pos, needle, found, cvFindTextCase.value() != 0);
+if (!ok && pos > 0) ok = b.searchForward(0, needle, found, cvFindTextCase.value() != 0);
+if (ok)
+\{
+    b.select(found, found + cast(int) needle.length);
+    e.insertPosition(found);
+    e.showInsertPosition();
+\}}
+                xywh {298 460 25 20}
+                labelsize 11
+              }
+            Button cvReveal
+              {
+                label {Reveal}
+                callback {Node node;
+if (cvSource.visibleR())
+    node = findInText(0, cvSource.insertPosition());
+else if (cvProject.visibleR())
+    node = findInText(1, cvProject.insertPosition());
+if (node !is null && cvOnReveal !is null)
+    cvOnReveal(node, fl.core.eventClicks() == 1);}
+                xywh {327 460 61 20}
+                labelsize 11
+              }
+            Box {}
+              {
+                xywh {398 460 112 20}
+                resizable
+              }
+          }
+        Group {}
+          {
+            xywh {10 485 500 20}
+          }
+          {
+            Button {}
+              {
+                label {Refresh}
+                callback {codeviewRefresh(cvRoots_, cvI18n_, cvDubHeader_, cvSettings_);}
+                xywh {10 485 61 20}
+                labelsize 11
+              }
+            LightButton cvAutorefresh
+              {
+                label {Auto-Refresh}
+                callback {codeviewRefresh(cvRoots_, cvI18n_, cvDubHeader_, cvSettings_);}
+                xywh {78 485 91 20}
+                labelsize 11
+                value {1}
+              }
+            LightButton cvAutoposition
+              {
+                label {Auto-Position}
+                xywh {176 485 90 20}
+                labelsize 11
+                value {1}
+              }
+            Choice cvCodeChoice
+              {
+                callback {codeviewUpdatePosition(cvCurrent_);}
+                xywh {274 485 90 20}
+                down_box BORDER_BOX
+                labelsize 11
+                textsize 11
+              }
+              {
+                MenuItem {}
+                  {
+                    label {instantiate}
+                  }
+                MenuItem {}
+                  {
+                    label {setup}
+                  }
+                MenuItem {}
+                  {
+                    label {finalize}
+                  }
+              }
+            Box {}
+              {
+                xywh {374 485 76 20}
+                resizable
+              }
+            Button {}
+              {
+                label {Close}
+                callback {codeviewPanel.hide();}
+                xywh {460 485 50 20}
+                labelsize 11
+              }
+          }
+      }
+  }
+Function {codeviewRefresh(Node[] roots, I18nSettings i18n = I18nSettings.init, bool dubHeader = false, ProjectSettings settings = ProjectSettings.init)}
+  {
+    return_type void
+  }
+  {
+    code {cvRoots_ = roots;
+cvI18n_ = i18n;
+cvDubHeader_ = dubHeader;
+cvSettings_ = settings;
+// `Writer.generate()` throws on a `.fl` property this dialect's own
+// codegen doesn't recognize (an unknown boxtype/type/labeltype keyword
+// -- see code_writer.d's translateBoxtype()/translateTypeWord()/
+// translateLabeltype()) -- a real, expected case here specifically,
+// since this panel can be refreshed against a hand-edited or foreign
+// `.fl` file mid-session, not just a project this editor wrote itself.
+// Caught here, at the one place every caller already funnels through,
+// rather than at each of gui_main.d's own many call sites: shows the
+// failure directly in the Source pane instead of crashing the whole
+// editor over a single unrecognized keyword.
+try
+  \{
+    cvSource.buffer().text(new Writer().generate(roots, ".", i18n, dubHeader, settings));
+  \}
+catch (Exception e)
+  \{
+    cvSource.buffer().text("// fluid: could not generate D source:
+// " ~ e.msg);
+  \}
+cvSource.scroll(0, 0);
+cvProject.buffer().text(new ProjectWriter().generate(roots, i18n, [], "", null, false, dubHeader, settings));
+cvProject.scroll(0, 0);
+codeviewUpdatePosition(cvCurrent_);}
+      {
+      }
+  }
+Function codeviewAutoRefresh()
+  {
+    comment {Called after every real project edit -- refreshes the panel if it's
+open and Auto-Refresh is on. `gui_main.d` calls this instead of
+directly re-checking `codeviewPanel.shown()` at each of its own many
+edit call sites, so the Auto-Refresh light button (`cvAutorefresh`)
+actually gates something: unchecking it stops these calls from doing
+anything, while the "Refresh" button (unconditional) still works.}
+    return_type void
+    open
+  }
+  {
+    code {if (codeviewPanel is null || !codeviewPanel.shown()) return;
+if (cvAutorefresh.value() == 0) return;
+codeviewRefresh(cvRoots_, cvI18n_, cvDubHeader_, cvSettings_);}
+      {
+      }
+  }
+Function {codeviewToggleVisibility(Node[] roots, I18nSettings i18n = I18nSettings.init, bool dubHeader = false, ProjectSettings settings = ProjectSettings.init)}
+  {
+    return_type void
+  }
+  {
+    code {if (codeviewPanel is null)
+    makeCodeviewPanel();
+
+if (codeviewPanel.shown())
+\{
+    codeviewPanel.hide();
+\}
+else
+\{
+    codeviewPanel.show();
+    codeviewRefresh(roots, i18n, dubHeader, settings);
+\}}
+      {
+      }
+  }
+Function {codeviewUpdatePosition(Node current)}
+  {
+    return_type void
+  }
+  {
+    code {cvCurrent_ = current;
+if (codeviewPanel is null || !codeviewPanel.shown()) return;
+if (cvAutoposition.value() == 0) return;
+if (current is null) return;
+
+if (cvSource.visibleR())
+\{
+    int pos0 = -1, pos1 = -1;
+    switch (cvCodeChoice.value())
+    \{
+    case 0: pos0 = current.setupSpan.start; pos1 = current.finalizeSpan.end; break;
+    case 1: pos0 = current.setupSpan.start; pos1 = current.setupSpan.end; break;
+    case 2: pos0 = current.finalizeSpan.start; pos1 = current.finalizeSpan.end; break;
+    default: break;
+    \}
+    if (pos0 >= 0)
+    \{
+        auto b = cvSource.buffer();
+        if (pos1 < pos0) pos1 = b.lineEnd(pos0);
+        b.highlight(pos0, pos1);
+        cvSource.scroll(b.countLines(0, pos0), 0);
+    \}
+\}
+if (cvProject.visibleR())
+\{
+    int pos0 = -1, pos1 = -1;
+    switch (cvCodeChoice.value())
+    \{
+    case 0: pos0 = current.projSpan1.start; pos1 = current.projSpan2.end; break;
+    case 1: pos0 = current.projSpan1.start; pos1 = current.projSpan1.end; break;
+    case 2: pos0 = current.projSpan2.start; pos1 = current.projSpan2.end; break;
+    default: break;
+    \}
+    if (pos0 >= 0)
+    \{
+        auto b = cvProject.buffer();
+        if (pos1 < pos0) pos1 = b.lineEnd(pos0);
+        b.highlight(pos0, pos1);
+        cvProject.scroll(b.countLines(0, pos0), 0);
+    \}
+\}}
+      {
+      }
+  }
+Function {findInText(int textType, int pos)}
+  {
+    return_type Node
+  }
+  {
+    code {Node search(Node[] ns)
+\{
+    foreach (n; ns)
+    \{
+        bool hit;
+        if (textType == 0)
+            hit = (pos >= n.setupSpan.start && pos < n.setupSpan.end)
+                || (pos >= n.finalizeSpan.start && pos < n.finalizeSpan.end);
+        else
+            hit = (pos >= n.projSpan1.start && pos < n.projSpan1.end)
+                || (pos >= n.projSpan2.start && pos < n.projSpan2.end);
+        if (hit) return n;
+        if (auto found = search(n.children)) return found;
+    \}
+    return null;
+\}
+return search(cvRoots_);}
+      {
+      }
+  }

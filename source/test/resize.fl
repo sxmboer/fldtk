@@ -1,0 +1,71 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+Function {}
+  {
+    open
+  }
+  {
+    Window {}
+      {
+        xywh {479 310 366 261}
+        type Double
+        resizable
+        open
+        selected
+      }
+      {
+        Button {}
+          {
+            label {@<-}
+            callback {auto w = o.window();
+w.position(w.x()-50,w.y());}
+            xywh {20 40 40 40}
+          }
+        Button {}
+          {
+            label {@2->}
+            callback {auto w = o.window();
+w.position(w.x(),w.y()+50);}
+            xywh {60 80 40 40}
+          }
+        Button {}
+          {
+            label {@->}
+            callback {auto w = o.window();
+w.position(w.x()+50,w.y());}
+            xywh {100 40 40 40}
+          }
+        Button {}
+          {
+            label {@8->}
+            callback {auto w = o.window();
+w.position(w.x(),w.y()-50);}
+            xywh {60 0 40 40}
+          }
+        Button {}
+          {
+            label {grow}
+            callback {auto w = o.window();
+w.size(w.w()+20, w.h()+20);}
+            xywh {30 130 110 40}
+            labelfont 1
+            labelsize 18
+          }
+        Button {}
+          {
+            label {shrink}
+            callback {auto w = o.window();
+w.size(w.w()-20, w.h()-20);}
+            xywh {30 190 110 40}
+            labelfont 1
+            labelsize 18
+          }
+        Box {}
+          {
+            label {This is a test of program-generated resize() of a window.  The window should move or resize once when each button is clicked.  The program and window manager should not go into fits echoing resizes back and forth!}
+            xywh {150 10 160 220}
+            box BORDER_BOX
+            align 148
+          }
+      }
+  }

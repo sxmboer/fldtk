@@ -1,0 +1,143 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+comment {This is DrawingWindow's own widget-construction piece only --
+matching FLTK's real file split (mandelbrot_ui.fl generates just
+this; mandelbrot.cxx is a separate hand-written driver providing
+DrawingArea, main(), the idle-callback event loop, and updateLabel()'s
+real body -- see this class's own note on that below). DrawingWindow
+stays a real D class (not flattened the way CubeViewUI.fl's base-less
+class was) because the driver instantiates it twice -- one window for
+the Mandelbrot set, one for the zoomed-in Julia set -- so a single
+set of module-level globals wouldn't work here.
+
+updateLabel() itself (FLTK's forward-declared `decl \{void
+update_label();\}`) isn't declared here at all: D has no forward-
+declaration syntax, and no way to define a class's own method body in
+a separate file the way C++'s `ClassWindow::method() \{\}` can -- the
+driver instead defines it as a free function and calls it via UFCS
+(`dw.updateLabel()` resolves to `updateLabel(dw)` if such a function is
+in scope), D's own idiom for "add a method-shaped function to a class
+from outside its own definition."
+}
+  {
+    in_source
+    in_header
+  }
+class DrawingWindow
+  {
+  }
+  {
+    Function makeWindow()
+      {
+        return_type void
+        open
+      }
+      {
+        Window window
+          {
+            xywh {255 66 450 520}
+            type Single
+            setup {o.sizeRange(220,220);}
+            resizable
+            open
+          }
+          {
+            Box d
+              {
+                xywh {20 80 410 430}
+                box DOWN_BOX
+                color 0
+                selection_color 47
+                class DrawingArea
+                setup {o.owner = this;}
+                resizable
+              }
+            FloatInput xInput
+              {
+                label {x:}
+                callback {d.X = to!double(o.value());
+d.newDisplay();}
+                xywh {30 15 125 30}
+                box THIN_DOWN_BOX
+                color 48
+                selection_color 7
+                labelfont 11
+                labelsize 16
+                textsize 12
+                textfont 11
+                setup {o.when(whenEnterKey | whenRelease);}
+              }
+            FloatInput yInput
+              {
+                label {y:}
+                callback {d.Y = to!double(o.value());
+d.newDisplay();}
+                xywh {175 15 125 30}
+                box THIN_DOWN_BOX
+                color 48
+                selection_color 7
+                labelfont 11
+                labelsize 16
+                textsize 12
+                textfont 11
+                setup {o.when(whenEnterKey | whenRelease);}
+              }
+            FloatInput wInput
+              {
+                label {w:}
+                callback {d.scale = to!double(o.value());
+d.newDisplay();}
+                xywh {325 15 105 30}
+                box THIN_DOWN_BOX
+                color 48
+                selection_color 7
+                labelfont 11
+                labelsize 16
+                textsize 12
+                textfont 11
+                setup {o.when(whenEnterKey | whenRelease);}
+              }
+            Slider {}
+              {
+                label {brightness:}
+                callback {d.brightness = cast(int) o.value();
+d.newDisplay();}
+                xywh {80 50 160 15}
+                box THIN_DOWN_BOX
+                labelsize 10
+                step {1}
+                slider_size {0.1}
+                align 4
+                type Horizontal
+                setup {o.bounds(0, DrawingArea.maxBrightness);
+o.value(d.brightness);
+o.slider(Boxtype.upBox);}
+              }
+            Box {}
+              {
+                label {left click: zoom out, drag: zoom in
+right click: Julia set, ctrl-M: mode, ctrl-P: Print}
+                xywh {240 50 190 30}
+                labelsize 8
+                align 24
+                selected
+              }
+            Slider {}
+              {
+                label {iterations:}
+                callback {d.iterations = 1 << cast(int) o.value();
+d.newDisplay();}
+                xywh {80 65 160 15}
+                box THIN_DOWN_BOX
+                labelsize 10
+                step {1}
+                slider_size {0.1}
+                align 4
+                type Horizontal
+                setup {o.bounds(1, DrawingArea.maxIterations);
+o.value(DrawingArea.defaultIterations);
+o.slider(Boxtype.upBox);}
+              }
+          }
+      }
+  }

@@ -1,0 +1,121 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+comment {About dialog for the fldtk Fluid editor.
+
+Ported from FLTK's fluid/panels/about_panel.fl. Two real
+deviations from a mechanical translation, both explained at their own
+point of use below:
+
+ - FLTK embeds its animated GIF logo via the .fl dialect's own
+   `image \{path\} compress_image 1` widget property (a byte-embedding
+   mechanism FLTK gives every widget's `.image()`, separate from
+   its `data \{ filename \{...\} \}` node type). This dialect doesn't need
+   a second embedding mechanism for the same job -- a `data` node (see
+   `fluidAboutAnimData` below) plus a `setup \{\}` block that constructs
+   and assigns the image directly is the same real D code an author
+   would write by hand, matching this dialect's own "no magic property
+   auto-translation" philosophy (see code_writer.d's own top comment) and
+   already-proven by `checkers_pieces.fl`/`checkers.d`'s identical
+   pattern.
+ - The "View License..." button's callback (FLTK:
+   `Fluid.show_help("license.html");`) has no real analog here -- this
+   editor has no help-browser/HTML-viewer wired in yet, and porting one
+   just for this single button would be a large, separate feature for
+   a small payoff. Shows a short fldtk/FLTK license summary via a plain
+   `fl.message()` instead.
+}
+  {
+    in_source
+    in_header
+  }
+data fluidAboutAnimData
+  {
+    private
+    local
+    filename {pixmaps/fluid-about.gif}
+  }
+Function makeAboutPanel()
+  {
+  }
+  {
+    code {static string cbuf;
+if (cbuf.length == 0)
+\{
+    import std.datetime : Clock;
+    import std.format : format;
+    int year = Clock.currTime().year;
+    cbuf = format("fldtk (C) 2026 Steef Boerrigter\\nbased on FLTK (C) 1998 - %d\\nby Bill Spitzak and others", year);
+\}}
+      {
+      }
+    Window aboutPanel
+      {
+        label {About Fluid}
+        xywh {449 217 345 180}
+        color 50
+        selection_color 47
+        type Double
+        setup {o.hotspot(o);}
+        non_modal
+        open
+      }
+      {
+        Box {}
+          {
+            comment {FLTK's own box is 115x120, larger than the 96x96 GIF it
+holds (fluidAboutAnimData's own GIF header reports 96x96) -- kept at
+FLTK's literal size rather than shrunk to fit the image exactly,
+matching this dialog's own "identical coordinates" transliteration rule.}
+            xywh {10 10 115 120}
+            setup {
+auto anim = new AnimGifImage(null, fluidAboutAnimData, fluidAboutAnimData.length, o);
+anim.speed(0.5);
+}
+          }
+        Box {}
+          {
+            label {fldtk User
+Interface Designer
+Version x.x.x}
+            xywh {135 10 205 75}
+            color 12
+            selection_color 47
+            labelfont 1
+            labelsize 18
+            align 21
+            setup {
+import std.format : format;
+o.copyLabel(format("FLTK User\\nInterface Designer\\nVersion %d.%d.%d",
+    FL_MAJOR_VERSION, FL_MINOR_VERSION, FL_PATCH_VERSION));
+}
+            selected
+          }
+        Box {}
+          {
+            label {(Copyright)}
+            comment {Label edited dynamically:}
+            xywh {135 90 200 45}
+            align 148
+            labelsize 12
+            setup {o.label(cbuf);}
+          }
+        Button {}
+          {
+            label {View License...}
+            callback {fl.message("fldtk is distributed under the Boost Software License,\\n"
+    ~ "Version 1.0. See the file LICENSE_1_0.txt or:\\n\\n"
+    ~ "    https://www.boost.org/LICENSE_1_0.txt\\n\\n"
+    ~ "It is a D port of FLTK, Copyright 1998 - 2025 by Bill Spitzak\\n"
+    ~ "and others. FLTK is distributed under the license at:\\n\\n"
+    ~ "    https://www.fltk.org/COPYING.php");}
+            xywh {115 145 123 25}
+            labelcolor 136
+          }
+        ReturnButton {}
+          {
+            label {Close}
+            callback {o.window().hide();}
+            xywh {250 145 83 25}
+          }
+      }
+  }

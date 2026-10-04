@@ -1,0 +1,313 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+comment {Fluid's own "New from Template" picker dialog, plus the
+template install/load feature backing it.
+
+Ported from FLTK's fluid/panels/template_panel.fl. Several
+deliberate simplifications from a mechanical translation, each real
+and each explained at its own point of use below:
+
+ - Every FLTK callback manually releases its previously-held
+   Fl_Shared_Image preview (`if (img) img->release();`) before
+   assigning a new one -- pure C-era manual memory-management
+   bookkeeping with no reason to carry over under the GC (same
+   substitution CLAUDE.md documents elsewhere for Fl_Widget::label()'s
+   COPIED_LABEL flag): the old image is simply garbage-collected once
+   nothing references it, so every one of those release calls is
+   dropped here.
+ - `template_browser->data(item)`/FLTK's per-row `void*` (a
+   malloc()'d full path string, freed by hand in `template_clear()`)
+   is ported as the real thing, `fl.browser.Browser`'s own `data(int)`/
+   `add(string, Object)` (already real -- no new browser-layer work
+   needed), wrapping the path in a tiny `TemplatePathData` class since
+   `Object` needs a class, not a bare `string`; nothing to free by hand
+   under the GC either way.
+   A plain parallel
+   `string[] templatePaths_` array (indexed 1:1 alongside the
+   browser's own rows) would only work as long as every row the browser
+   ever holds corresponds to a real on-disk template, which isn't
+   true once `gui_main.d`'s `saveAsTemplate()`
+   prepends a rowless "New Template" entry the same way FLTK's own
+   `save_template()` does (`template_browser->add("New Template")`,
+   its own `data()` left `nullptr`). A parallel array has no way to
+   represent "this row has no path" except by position, and a plain
+   `item > array.length` check only ever tests for *extra
+   trailing* rows -- it would silently mismatch every real template by one
+   slot the instant a rowless entry got *prepended* instead. The real per-row `data()` slot
+   carries the right "has a path, or doesn't" semantics per row,
+   regardless of position -- matching FLTK's own mechanism exactly,
+   not a new one invented for this port.
+ - No zlib compression for the seed template (`../templates/
+   fldtkLicense.fl`) -- it is tiny (well under 1KB), so FLTK's
+   `compressed` `data` keyword (a real C++-code-size optimization) buys
+   nothing here worth the complexity of also porting `Data_Node`'s
+   compressed-format codegen path. A plain `data` node (already real)
+   is used instead. `fluid -c` reads the file when it generates this
+   panel and embeds its bytes, so `templates/fldtkLicense.fl` is a build
+   input of `panels/generated/template_panel.d`, not runtime data.
+ - FLTK's `template_load()` also writes a second, slightly
+   different, hardcoded-string copy of FLTK_License.fl's own content
+   directly via `fputs()`, *immediately* before calling
+   `template_install()` for the exact same destination path with the
+   (real) embedded copy -- the fputs() output is unconditionally
+   overwritten one line later by template_install()'s own write to the
+   identical path, so it's genuinely dead: no observable difference
+   with or without it. Not ported -- this is the redundant half of a
+   real FLTK quirk, not a functional gap.
+ - `Fl::event_key() == FL_Enter` -> `eventKey() == enter`
+   (`fl.enumerations`'s `Keysym.enter`, matching this port's own
+   `0xff0d` naming); `fl_choice()`/`fl_alert()` -> `fl.ask.choice()`/
+   `fl.ask.alert()` (both already real ports).
+}
+  {
+    in_source
+    in_header
+  }
+data tmplFldtkLicenseFl
+  {
+    private
+    local
+    filename {../templates/fldtkLicense.fl}
+  }
+decl {private final class TemplatePathData \{
+  string path;
+  this(string p) \{ path = p; \}
+\}}
+  {
+    private
+    local
+  }
+decl {import fluid;}
+  {
+    private
+    local
+  }
+Function makeTemplatePanel()
+  {
+  }
+  {
+    Window templatePanel
+      {
+        label {New/Save Template}
+        callback {templateBrowser.deselect();
+templateName.value("");
+templateInstance.value("");
+templatePanel.hide();}
+        xywh {478 284 460 355}
+        type Double
+        modal
+      }
+      {
+        Browser templateBrowser
+          {
+            label {Available Templates:}
+            callback {import std.path;
+if (fl.core.eventClicks())
+\{
+    templatePanel.hide();
+\} else \{
+templatePreview.image(null);
+templatePreview.redraw();
+
+int item = templateBrowser.value();
+
+if (item <= 1)
+    templateInstance.deactivate();
+else
+    templateInstance.activate();
+
+if (item < 1) \{
+    templateSubmit.deactivate();
+    templateDelete.deactivate();
+\} else \{
+    templateSubmit.activate();
+
+    auto d = cast(TemplatePathData) templateBrowser.data(item);
+    if (d is null) \{
+        templateDelete.deactivate();
+    \} else \{
+        string flfile = d.path;
+        templateName.value(templateBrowser.text(item).idup);
+        templateDelete.activate();
+
+        auto img = SharedImage.get(std.path.setExtension(flfile, "png"));
+        if (img !is null) \{
+            templatePreview.image(img);
+            templatePreview.redraw();
+        \}
+    \}
+\}
+\}}
+            xywh {10 28 180 250}
+            labelfont 1
+            align 5
+            when 3
+            type Hold
+          }
+        Box templatePreview
+          {
+            xywh {200 28 250 250}
+            box THIN_DOWN_BOX
+            align 80
+          }
+        Input templateName
+          {
+            label {Template Name:}
+            callback {if (templateName.value().length)
+\{
+    templateSubmit.activate();
+    if (fl.core.eventKey() == enter)
+        templatePanel.hide();
+\} else \{
+    templateSubmit.deactivate();
+\}}
+            xywh {198 288 252 25}
+            labelfont 1
+            textfont 4
+            when 3
+          }
+        Input templateInstance
+          {
+            label {Instance Name:}
+            xywh {198 288 252 25}
+            labelfont 1
+            textfont 4
+            hide
+          }
+        Group {}
+          {
+            xywh {10 323 440 25}
+          }
+          {
+            Button templateDelete
+              {
+                label {Delete Template}
+                callback {templateDeleteCB();}
+                xywh {10 323 143 25}
+              }
+            Box {}
+              {
+                xywh {153 323 126 25}
+              }
+            Button {}
+              {
+                label {Cancel}
+                callback {templateBrowser.deselect();
+templateName.value("");
+templateInstance.value("");
+templatePanel.hide();}
+                xywh {289 323 72 25}
+              }
+            ReturnButton templateSubmit
+              {
+                label {Save}
+                callback {templatePanel.hide();}
+                xywh {371 323 79 25}
+              }
+          }
+      }
+  }
+Function templateSelectedPath()
+  {
+    return_type string
+  }
+  {
+    code {int item = templateBrowser.value();
+if (item < 1) return "";
+auto d = cast(TemplatePathData) templateBrowser.data(item);
+return d is null ? "" : d.path;}
+      {
+      }
+  }
+Function templateClear()
+  {
+  }
+  {
+    code templateBrowser.clear();
+      {
+      }
+  }
+Function templateDeleteCB()
+  {
+  }
+  {
+    code {import std.path;
+import std.file;
+int item = templateBrowser.value();
+if (item < 1) return;
+auto d = cast(TemplatePathData) templateBrowser.data(item);
+if (d is null) return;
+
+string name = templateBrowser.text(item).idup;
+string flfile = d.path;
+
+if (fl.ask.choice(format("Are you sure you want to delete the template \\"%s\\"?", name),
+    "Cancel", "Delete", null) != 1) return;
+
+try
+\{
+    std.file.remove(flfile);
+\}
+catch (Exception e)
+\{
+    fl.ask.alert(format("Unable to delete template \\"%s\\":\\n%s", name, e.msg));
+    return;
+\}
+
+string pngfile = std.path.setExtension(flfile, "png");
+if (std.file.exists(pngfile))
+\{
+    try std.file.remove(pngfile); catch (Exception e) \{\}
+\}
+
+templateBrowser.remove(item);
+templateBrowser.doCallback();}
+      {
+      }
+  }
+Function {templateInstall(string path, string name, immutable(ubyte)[] data)}
+  {
+  }
+  {
+    code {import std.path;
+import std.file;
+try
+    std.file.write(std.path.buildPath(path, name), data);
+catch (Exception e) \{\}}
+      {
+      }
+  }
+Function templateLoad()
+  {
+  }
+  {
+    code {import std.path;
+import std.file;
+string path;
+appPrefs.getUserdataPath(path);
+path = std.path.buildPath(path, "templates");
+std.file.mkdirRecurse(path);
+
+int generated;
+appPrefs.get("sample_templates_generated", generated, 0);
+
+if (generated < 1)
+\{
+    templateInstall(path, "fldtkLicense.fl", tmplFldtkLicenseFl);
+    generated = 1;
+    appPrefs.set("sample_templates_generated", generated);
+    appPrefs.flush();
+\}
+
+foreach (entry; std.file.dirEntries(path, "*.fl", std.file.SpanMode.shallow))
+\{
+    string base = std.path.baseName(entry.name);
+    char[] nameBuf = base[0 .. $ - 3].dup; // strip ".fl"
+    foreach (ref c; nameBuf) if (c == '_') c = ' ';
+    string name = nameBuf.idup;
+
+    templateBrowser.add(name, new TemplatePathData(entry.name));
+\}}
+      {
+      }
+  }

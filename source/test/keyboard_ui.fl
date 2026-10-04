@@ -1,0 +1,1042 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+comment {This is make_window()'s own widget-construction piece only --
+matching FLTK's real file split (keyboard_ui.fl generates just
+this; test/keyboard.cxx is a separate hand-written driver providing
+MyWindow's handle() override -- mouse-wheel dispatch to rollerX/
+rollerY, referenced here via the "class MyWindow" property -- plus
+main() and the polling loop below).
+
+FLTK's own ~90 key buttons share one callback (key_cb) purely as a
+*marker* for a polling-introspection trick: the real driver's main
+loop scans every button, comparing Fl::event_key()/event_state()
+against each one's own registered code, and updates .value()
+accordingly -- not a normal fired callback at all (this port doesn't
+even set .callback() on these buttons). Ported here as a registration
+array instead, matching this port's own already-established
+KeyBtn/ShiftBtn redesign: each button's own setup block pushes itself into
+keyButtons_/shiftButtons_ via regKey()/regShift() (defined below,
+module-level, since Fluid's own widget-tree properties already build
+each button -- no addKey()/addShift() *constructor* wrapper needed,
+just a *registration* one). regKey()'s own second argument is
+optional, defaulting to the button's own label's first character when
+omitted (matching that same design's addKey() convenience) -- used for
+every plain letter/digit/punctuation key below; every other key passes
+its keysym explicitly.
+
+The driver's own polling loop (replacing fl.run() entirely) is:
+
+  while (fl.firstWindow())
+    \{
+      fl.wait();
+      foreach (kb; keyButtons_)
+        \{
+          bool state = fl.core.eventKey(kb.code);
+          if (kb.btn.value() != state) kb.btn.value(state);
+        \}
+      foreach (sb; shiftButtons_)
+        \{
+          bool state = fl.core.eventState(sb.bit) != 0;
+          if (sb.btn.value() != state) sb.btn.value(state);
+        \}
+      // ...then update keyOutput/textOutput from fl.core.eventKey()/
+      // eventText() -- see MyWindow.d's own main() for the full
+      // keyname-formatting logic, not reproduced here since it's
+      // driver code, not part of this .fl file's own scope.
+    \}
+}
+  {
+    in_source
+    in_header
+  }
+decl {struct KeyBtn
+  \{
+    Button btn;
+    Keysym code;
+  \}
+
+struct ShiftBtn
+  \{
+    Button btn;
+    EventState bit;
+  \}
+
+KeyBtn[] keyButtons_;
+ShiftBtn[] shiftButtons_;
+
+void regKey(Button b, Keysym code = 0)
+  \{
+    keyButtons_ ~= KeyBtn(b, code != 0 ? code : (b.label().length ? cast(Keysym) b.label()[0] : 0));
+  \}
+
+void regShift(Button b, EventState bit)
+  \{
+    shiftButtons_ ~= ShiftBtn(b, bit);
+  \}}
+  {
+    private
+    local
+  }
+Function make_window()
+  {
+    return_type void
+    open
+  }
+  {
+    Window myWindow
+      {
+        xywh {448 339 495 215}
+        class MyWindow
+        type Double
+        open
+      }
+      {
+        Output keyOutput
+          {
+            label {fl.core.eventKey():}
+            xywh {15 20 170 30}
+            labelsize 9
+            align 5
+          }
+        Output textOutput
+          {
+            label {fl.core.eventText():}
+            xywh {195 20 190 30}
+            labelsize 9
+            align 5
+          }
+        Button {}
+          {
+            label {Esc }
+            xywh {15 70 20 20}
+            labelsize 8
+            setup {regKey(o, escape);}
+          }
+        Button {}
+          {
+            label {F1}
+            xywh {50 70 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(f + 1));}
+          }
+        Button {}
+          {
+            label {F2}
+            xywh {70 70 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(f + 2));}
+          }
+        Button {}
+          {
+            label {F3}
+            xywh {90 70 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(f + 3));}
+          }
+        Button {}
+          {
+            label {F4}
+            xywh {110 70 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(f + 4));}
+          }
+        Button {}
+          {
+            label {F5}
+            xywh {140 70 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(f + 5));}
+          }
+        Button {}
+          {
+            label {F6}
+            xywh {160 70 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(f + 6));}
+          }
+        Button {}
+          {
+            label {F7}
+            xywh {180 70 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(f + 7));}
+          }
+        Button {}
+          {
+            label {F8}
+            xywh {200 70 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(f + 8));}
+          }
+        Button {}
+          {
+            label {F9}
+            xywh {230 70 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(f + 9));}
+          }
+        Button {}
+          {
+            label {F10}
+            xywh {250 70 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(f + 10));}
+          }
+        Button {}
+          {
+            label {F11}
+            xywh {270 70 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(f + 11));}
+          }
+        Button {}
+          {
+            label {F12}
+            xywh {290 70 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(f + 12));}
+          }
+        Button {}
+          {
+            label {Print }
+            xywh {325 70 20 20}
+            labelsize 8
+            setup {regKey(o, print);}
+          }
+        Button {}
+          {
+            label {Sclk }
+            xywh {345 70 20 20}
+            labelsize 8
+            setup {regKey(o, scrollLock);}
+          }
+        Button {}
+          {
+            label {Paus }
+            xywh {365 70 20 20}
+            labelsize 8
+            setup {regKey(o, pause);}
+          }
+        Button {}
+          {
+            label {Help}
+            xywh {400 70 20 20}
+            labelsize 8
+            setup {regKey(o, help);}
+          }
+        Button {}
+          {
+            label {=}
+            xywh {420 70 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '='));}
+          }
+        Dial {}
+          {
+            label {x:}
+            xywh {440 70 20 20}
+            box ROUND_UP_BOX
+            selection_color 49
+            labelsize 9
+            step {0.1}
+            align 5
+            setup {myWindow.rollerX = o;}
+          }
+        Dial {}
+          {
+            label {y:}
+            xywh {460 70 20 20}
+            box ROUND_UP_BOX
+            selection_color 49
+            labelsize 9
+            step {0.1}
+            align 5
+            setup {myWindow.rollerY = o;}
+          }
+        Button {}
+          {
+            label {`}
+            xywh {15 100 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {1}
+            xywh {35 100 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {2}
+            xywh {55 100 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {3}
+            xywh {75 100 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {4}
+            xywh {95 100 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {5}
+            xywh {115 100 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {6}
+            xywh {135 100 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {7}
+            xywh {155 100 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {8}
+            xywh {175 100 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {9}
+            xywh {195 100 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {0}
+            xywh {215 100 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {-}
+            xywh {235 100 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {=}
+            xywh {255 100 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {Bksp}
+            xywh {275 100 35 20}
+            labelsize 8
+            labeltype SHADOW_LABEL
+            align 20
+            setup {regKey(o, backSpace);}
+          }
+        Button {}
+          {
+            label {Ins }
+            xywh {325 100 20 20}
+            labelsize 8
+            setup {regKey(o, insert);}
+          }
+        Button {}
+          {
+            label {Home}
+            xywh {345 100 20 20}
+            labelsize 8
+            setup {regKey(o, home);}
+          }
+        Button {}
+          {
+            label {pgup }
+            xywh {365 100 20 20}
+            labelsize 8
+            setup {regKey(o, pageUp);}
+          }
+        Button {}
+          {
+            label {Num}
+            xywh {400 100 20 20}
+            labelsize 8
+            setup {regKey(o, numLock);}
+          }
+        Button {}
+          {
+            label {/}
+            xywh {420 100 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '/'));}
+          }
+        Button {}
+          {
+            label {*}
+            xywh {440 100 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '*'));}
+          }
+        Button {}
+          {
+            label {-}
+            xywh {460 100 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '-'));}
+          }
+        Button {}
+          {
+            label {Tab}
+            xywh {15 120 27 20}
+            labelsize 8
+            align 20
+            setup {regKey(o, tab);}
+          }
+        Button {}
+          {
+            label {Q}
+            xywh {42 120 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {W}
+            xywh {62 120 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {E}
+            xywh {82 120 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {R}
+            xywh {102 120 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {T}
+            xywh {122 120 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {Y}
+            xywh {142 120 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {U}
+            xywh {162 120 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {I}
+            xywh {182 120 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {O}
+            xywh {202 120 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {P}
+            xywh {222 120 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {[}
+            xywh {242 120 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {]}
+            xywh {262 120 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {\\}
+            xywh {282 120 28 20}
+            labelsize 10
+            align 20
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {Del }
+            xywh {325 120 20 20}
+            labelsize 8
+            setup {regKey(o, deleteKey);}
+          }
+        Button {}
+          {
+            label {End }
+            xywh {345 120 20 20}
+            labelsize 8
+            setup {regKey(o, end);}
+          }
+        Button {}
+          {
+            label {pgdn }
+            xywh {365 120 20 20}
+            labelsize 8
+            setup {regKey(o, pageDown);}
+          }
+        Button {}
+          {
+            label {7}
+            xywh {400 120 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '7'));}
+          }
+        Button {}
+          {
+            label {8}
+            xywh {420 120 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '8'));}
+          }
+        Button {}
+          {
+            label {9}
+            xywh {440 120 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '9'));}
+          }
+        Button {}
+          {
+            label {+}
+            xywh {460 120 20 40}
+            labelsize 10
+            align 17
+            setup {regKey(o, cast(Keysym)(kp + '+'));}
+          }
+        Button {}
+          {
+            label {Lock}
+            xywh {15 140 36 20}
+            labelsize 8
+            align 20
+            setup {regKey(o, capsLock);}
+          }
+        Button {}
+          {
+            label {A}
+            xywh {51 140 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {S}
+            xywh {71 140 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {D}
+            xywh {91 140 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {F}
+            xywh {111 140 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {G}
+            xywh {131 140 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {H}
+            xywh {151 140 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {J}
+            xywh {171 140 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {K}
+            xywh {191 140 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {L}
+            xywh {211 140 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {;}
+            xywh {231 140 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {'}
+            xywh {251 140 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {Enter}
+            xywh {271 140 39 20}
+            labelsize 8
+            align 20
+            setup {regKey(o, enter);}
+          }
+        Button {}
+          {
+            label {4}
+            xywh {400 140 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '4'));}
+          }
+        Button {}
+          {
+            label {5}
+            xywh {420 140 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '5'));}
+          }
+        Button {}
+          {
+            label {6}
+            xywh {440 140 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '6'));}
+          }
+        Button {}
+          {
+            label {Shift}
+            xywh {15 160 45 20}
+            labelsize 8
+            align 20
+            setup {regKey(o, shiftL);}
+          }
+        Button {}
+          {
+            label {Z}
+            xywh {60 160 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {X}
+            xywh {80 160 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {C}
+            xywh {100 160 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {V}
+            xywh {120 160 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {B}
+            xywh {140 160 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {N}
+            xywh {160 160 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {M}
+            xywh {180 160 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {,}
+            xywh {200 160 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {.}
+            xywh {220 160 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {/}
+            xywh {240 160 20 20}
+            labelsize 10
+            setup {regKey(o);}
+          }
+        Button {}
+          {
+            label {Shift}
+            xywh {260 160 50 20}
+            labelsize 8
+            align 20
+            setup {regKey(o, shiftR);}
+          }
+        Button {}
+          {
+            label {@8->}
+            xywh {345 160 20 20}
+            labelsize 10
+            labelcolor 47
+            labeltype SHADOW_LABEL
+            setup {regKey(o, up);}
+          }
+        Button {}
+          {
+            label {1}
+            xywh {400 160 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '1'));}
+          }
+        Button {}
+          {
+            label {2}
+            xywh {420 160 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '2'));}
+          }
+        Button {}
+          {
+            label {3}
+            xywh {440 160 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '3'));}
+          }
+        Button {}
+          {
+            xywh {460 160 20 40}
+            setup {regKey(o, kpEnter);}
+          }
+        Button {}
+          {
+            label {Ctrl}
+            xywh {15 180 30 20}
+            labelsize 8
+            align 20
+            setup {regKey(o, controlL);}
+          }
+        Button {}
+          {
+            label {Meta }
+            xywh {45 180 30 20}
+            labelsize 8
+            setup {regKey(o, metaL);}
+          }
+        Button {}
+          {
+            label {Alt }
+            xywh {75 180 30 20}
+            labelsize 8
+            setup {regKey(o, altL);}
+          }
+        Button {}
+          {
+            xywh {105 180 85 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym) ' ');}
+          }
+        Button {}
+          {
+            label {Alt }
+            xywh {190 180 30 20}
+            labelsize 8
+            setup {regKey(o, altR);}
+          }
+        Button {}
+          {
+            label {Meta }
+            xywh {220 180 30 20}
+            labelsize 8
+            setup {regKey(o, metaR);}
+          }
+        Button {}
+          {
+            label {Menu }
+            xywh {250 180 30 20}
+            labelsize 8
+            setup {regKey(o, menu);}
+          }
+        Button {}
+          {
+            label {Ctrl}
+            xywh {280 180 30 20}
+            labelsize 8
+            align 20
+            setup {regKey(o, controlR);}
+          }
+        Button {}
+          {
+            label {@4->}
+            xywh {325 180 20 20}
+            labelsize 10
+            labelcolor 47
+            labeltype SHADOW_LABEL
+            setup {regKey(o, left);}
+          }
+        Button {}
+          {
+            label {@2->}
+            xywh {345 180 20 20}
+            labelsize 10
+            labelcolor 47
+            labeltype SHADOW_LABEL
+            setup {regKey(o, down);}
+          }
+        Button {}
+          {
+            label {@6->}
+            xywh {365 180 20 20}
+            labelsize 10
+            labelcolor 47
+            labeltype SHADOW_LABEL
+            setup {regKey(o, right);}
+          }
+        Button {}
+          {
+            label {0}
+            xywh {400 180 40 20}
+            labelsize 10
+            align 20
+            setup {regKey(o, cast(Keysym)(kp + '0'));}
+          }
+        Button {}
+          {
+            label {.}
+            xywh {440 180 20 20}
+            labelsize 10
+            setup {regKey(o, cast(Keysym)(kp + '.'));}
+          }
+        Box {}
+          {
+            label {fl.core.eventState():}
+            xywh {400 15 80 0}
+            labelsize 9
+            align 5
+            selected
+          }
+        Button {}
+          {
+            label {shift }
+            xywh {400 15 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, stateShift);}
+          }
+        Button {}
+          {
+            label {lock }
+            xywh {420 15 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, stateCapsLock);}
+          }
+        Button {}
+          {
+            label {ctrl}
+            xywh {440 15 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, stateCtrl);}
+          }
+        Button {}
+          {
+            label {alt}
+            xywh {460 15 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, stateAlt);}
+          }
+        Button {}
+          {
+            label {num}
+            xywh {400 25 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, stateNumLock);}
+          }
+        Button {}
+          {
+            label {?}
+            xywh {420 25 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, cast(EventState) 0x20);}
+          }
+        Button {}
+          {
+            label {meta }
+            xywh {440 25 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, stateMeta);}
+          }
+        Button {}
+          {
+            label {sclk}
+            xywh {460 25 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, stateScrollLock);}
+          }
+        Button {}
+          {
+            label {b1}
+            xywh {400 35 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, stateButton1);}
+          }
+        Button {}
+          {
+            label {b2}
+            xywh {420 35 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, stateButton2);}
+          }
+        Button {}
+          {
+            label {b3}
+            xywh {440 35 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, stateButton3);}
+          }
+        Button {}
+          {
+            label {bck}
+            xywh {460 35 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, stateButton4);}
+          }
+        Button {}
+          {
+            label {fwd}
+            xywh {400 45 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, stateButton5);}
+          }
+        Button {}
+          {
+            label {?}
+            xywh {420 45 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, cast(EventState) 0x2000);}
+          }
+        Button {}
+          {
+            label {?}
+            xywh {440 45 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, cast(EventState) 0x4000);}
+          }
+        Button {}
+          {
+            label {?}
+            xywh {460 45 20 10}
+            box THIN_UP_BOX
+            selection_color 3
+            labelsize 8
+            setup {regShift(o, cast(EventState) 0x8000);}
+          }
+      }
+  }

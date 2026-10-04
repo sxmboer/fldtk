@@ -1,0 +1,33 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+comment {Assign the fldtk Fluid editor's own icon at runtime.
+
+Ported from FLTK's fluid/fluid_icon.fl -- see that file's own
+comment for the "run fluid on itself, pick a PNG, write code" authoring
+workflow this project doesn't need (the embedded pixmaps/fluid-icon.png
+below is a fixed, already-decided asset, re-encoded non-interlaced from
+FLTK's own fluid-128.png -- fl.png_image.PngImage doesn't support
+Adam7 interlacing yet, a documented gap; pixel content is identical,
+confirmed via a PIL byte-for-byte comparison during conversion).
+}
+  {
+    in_source
+    in_header
+  }
+data fluidIconData
+  {
+    private
+    local
+    filename {pixmaps/fluid-icon.png}
+  }
+Function {makeFluidIcon(Window win)}
+  {
+  }
+  {
+    code {auto icon = new PngImage(null, fluidIconData);
+if (!icon.fail()) \{
+    win.icon(icon);
+\}}
+      {
+      }
+  }

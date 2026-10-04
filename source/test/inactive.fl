@@ -1,0 +1,211 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+Function {}
+  {
+    open
+  }
+  {
+    Window {}
+      {
+        xywh {462 303 420 369}
+        type Double
+        resizable
+        open
+      }
+      {
+        Group theGroup
+          {
+            label {activate()/deactivate() called on this Group}
+            xywh {25 25 375 295}
+            box ENGRAVED_FRAME
+            align 17
+            resizable
+            open
+          }
+          {
+            Button {}
+              {
+                label {button}
+                xywh {50 50 105 20}
+              }
+            LightButton {}
+              {
+                label {light button}
+                xywh {50 75 105 20}
+                value {1}
+                align 16
+              }
+            Group {}
+              {
+                xywh {50 100 105 20}
+                open
+              }
+              {
+                Button {}
+                  {
+                    label {On}
+                    xywh {50 100 52 20}
+                    value {1}
+                    compact {1}
+                    type Radio
+                    selected
+                  }
+                Button {}
+                  {
+                    label {Off}
+                    xywh {102 100 53 20}
+                    compact {1}
+                    type Radio
+                    selected
+                  }
+              }
+            Group {}
+              {
+                label {Child group}
+                xywh {50 150 105 105}
+                box DOWN_FRAME
+                open
+              }
+              {
+                CheckButton {}
+                  {
+                    label {red}
+                    xywh {54 192 97 20}
+                    down_box DIAMOND_DOWN_BOX
+                    selection_color 1
+                    labelcolor 1
+                    type Radio
+                  }
+                CheckButton {}
+                  {
+                    label {green}
+                    xywh {54 212 97 20}
+                    down_box DIAMOND_DOWN_BOX
+                    selection_color 2
+                    labelcolor 2
+                    type Radio
+                  }
+                CheckButton {}
+                  {
+                    label {blue}
+                    xywh {54 232 97 20}
+                    down_box DIAMOND_DOWN_BOX
+                    selection_color 4
+                    labelcolor 4
+                    type Radio
+                  }
+                CheckButton {}
+                  {
+                    label {check}
+                    xywh {54 152 97 20}
+                    down_box DOWN_BOX
+                  }
+                RoundButton {}
+                  {
+                    label {round}
+                    xywh {54 172 97 20}
+                    down_box ROUND_DOWN_BOX
+                  }
+              }
+            Slider {}
+              {
+                label {Slider}
+                xywh {165 50 24 205}
+                value {0.5}
+              }
+            Input {}
+              {
+                xywh {195 50 195 30}
+                setup {o.staticValue("Input");}
+              }
+            MenuButton {}
+              {
+                label {menu}
+                xywh {245 90 130 30}
+                open
+              }
+              {
+                MenuItem {}
+                  {
+                    label {item}
+                    xywh {0 0 100 20}
+                  }
+                MenuItem {}
+                  {
+                    label {item}
+                    xywh {10 10 100 20}
+                  }
+                MenuItem {}
+                  {
+                    label {item}
+                    xywh {20 20 100 20}
+                  }
+                MenuItem {}
+                  {
+                    label {item}
+                    xywh {30 30 100 20}
+                  }
+                MenuItem {}
+                  {
+                    label {item}
+                    xywh {40 40 100 20}
+                  }
+              }
+            ValueOutput {}
+              {
+                label {value:}
+                xywh {245 130 130 30}
+                textsize 24
+                textfont 5
+                textcolor 4
+                maximum {10000}
+                step {1}
+              }
+            Box {}
+              {
+                label {Box}
+                xywh {245 170 140 50}
+                box EMBOSSED_FRAME
+                labelfont 3
+                labelsize 38
+                labeltype SHADOW_LABEL
+              }
+            Scrollbar {}
+              {
+                label {scrollbar}
+                xywh {40 274 180 20}
+                type Horizontal
+              }
+            Roller {}
+              {
+                label {roller}
+                xywh {235 230 25 65}
+              }
+            Dial {}
+              {
+                label {dial}
+                xywh {275 235 50 50}
+              }
+            Clock {}
+              {
+                label {clock}
+                xywh {335 235 50 50}
+              }
+          }
+        Button {}
+          {
+            label {active}
+            callback {theGroup.activate();}
+            xywh {25 330 185 25}
+            value {1}
+            type Radio
+          }
+        Button {}
+          {
+            label {inactive}
+            callback {theGroup.deactivate();}
+            xywh {220 330 180 25}
+            type Radio
+          }
+      }
+  }

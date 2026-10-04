@@ -1,0 +1,162 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+comment {FLTK wraps this whole UI in a class purely so its
+per-widget static callback trampolines can reach `cube` via a
+parent()-chain + user_data() walk (the Fl_Callback+void* pattern this
+port doesn't have -- see CLAUDE.md's "Callbacks are D delegates"
+convention) -- there is no real base-class relationship here (no ": X"
+after the class name FLTK either), so the class is just a
+namespacing convenience working around C++'s lack of closures. Flattened
+here into plain module-level widget globals + capturing closures
+instead, matching samples/test/CubeView.d's own established flattening
+of this exact FLTK shape. This also merges in what FLTK splits
+into a separate hand-written CubeMain.cxx driver (the fl.core.visual()
+call and the real main()), since this port doesn't preserve that
+generated-UI/hand-written-driver file split.
+}
+  {
+    in_source
+    in_header
+  }
+Function makeWindow()
+  {
+    open
+  }
+  {
+    Window mainWindow
+      {
+        label {CubeView}
+        xywh {494 321 415 405}
+        box UP_BOX
+        labelsize 12
+        type Double
+        resizable
+        open
+      }
+      {
+        Group {}
+          {
+            xywh {5 3 374 399}
+            open
+          }
+          {
+            Group vChange
+              {
+                xywh {5 100 37 192}
+                open
+              }
+              {
+                Roller vrot
+                  {
+                    label {V Rot}
+                    callback {cube.vAngle(o.value());
+cube.redraw();}
+                    xywh {5 100 17 186}
+                    labelsize 12
+                    labeltype NO_LABEL
+                    minimum {-180}
+                    maximum {180}
+                    step {1}
+                    align 128
+                  }
+                Slider ypan
+                  {
+                    label {V Pan}
+                    callback {cube.pany(o.value());
+cube.redraw();}
+                    xywh {25 100 17 186}
+                    selection_color 136
+                    labelsize 12
+                    labeltype NO_LABEL
+                    minimum {-25}
+                    maximum {25}
+                    step {0.1}
+                    align 0
+                    type {Vert Knob}
+                  }
+              }
+            Group hChange
+              {
+                xywh {120 362 190 40}
+                open
+              }
+              {
+                Slider xpan
+                  {
+                    label {H Pan}
+                    callback {cube.panx(o.value());
+cube.redraw();}
+                    xywh {122 364 186 17}
+                    selection_color 136
+                    labelsize 12
+                    labeltype NO_LABEL
+                    minimum {25}
+                    maximum {-25}
+                    step {0.1}
+                    align 16
+                    type {Horz Knob}
+                  }
+                Roller hrot
+                  {
+                    label {H Rotation}
+                    callback {cube.hAngle(o.value());
+cube.redraw();}
+                    xywh {122 383 186 17}
+                    labelsize 12
+                    labeltype NO_LABEL
+                    minimum {-180}
+                    maximum {180}
+                    step {1}
+                    align 8
+                    type Horizontal
+                    selected
+                  }
+              }
+            Group mainView
+              {
+                xywh {46 27 333 333}
+                box DOWN_BOX
+                resizable
+                open
+              }
+              {
+                Box cube
+                  {
+                    label {This is the cube_view}
+                    xywh {48 29 329 329}
+                    class CubeView
+                    align 16
+                    resizable
+                  }
+              }
+            ValueSlider zoom
+              {
+                label {Zoom}
+                callback {cube.size = o.value();
+cube.redraw();}
+                xywh {106 3 227 19}
+                selection_color 136
+                labelfont 1
+                labelsize 12
+                textfont 1
+                value {10}
+                minimum {1}
+                maximum {50}
+                step {0.1}
+                align 4
+                type {Horz Knob}
+              }
+          }
+      }
+  }
+Function {}
+  {
+    open
+  }
+  {
+    code {makeWindow();
+fl.core.visual(modeDouble | modeIndex);
+mainWindow.show(args);}
+      {
+      }
+  }

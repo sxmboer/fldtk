@@ -1,0 +1,106 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+comment {The interactive editor's shell-command output window.
+
+Ported from FLTK's fluid/panels/settings_panel.fl's own
+`make_shell_window()` (a separate top-level window defined in that
+same FLTK file, not its own file in FLTK either -- split out here
+since this port's own `settings_panel.fl` is a deliberately narrower
+subset of FLTK's, see that file's own top comment, and this
+window's real dependency is `fluid.shell_process` -- the runner --
+not the Settings dialog itself).
+
+A real `fl.terminal.Terminal` (already ported) streaming a running
+shell command's live output, wired to `fluid.shell_process.
+runShellCommand()`'s own `onOutputLine`/`onDone` delegates from
+`gui_main.d` -- this file only builds the window/widgets, exactly like
+every other panel here.
+
+`shellRunButton` ("Close") is the *only* button in this window --
+there is deliberately no "Run" button here, matching FLTK exactly:
+running a command is triggered from the `&Shell` menu / Settings
+dialog's own test-run button (`fluid.shell_command`'s `ShellCommand.
+run()`, `fluid/panels/shell_settings.d`'s `shellRunSelected()`), not
+from the output window itself. It gets deactivated while a command is
+running (`gui_main.d`'s job, matching FLTK's own
+`shell_run_button->deactivate()`) purely so the window can't be closed
+out from under a live process.
+}
+  {
+    in_source
+    in_header
+  }
+decl {import fluid;}
+  {
+    private
+    local
+  }
+Function makeShellRunWindow()
+  {
+  }
+  {
+    Window shellRunWindow
+      {
+        label {Shell Command Output}
+        xywh {0 0 555 430}
+        resizable
+      }
+      {
+        Terminal shellRunTerminal
+          {
+            xywh {10 10 535 375}
+            setup {o.ansi(true);
+o.historyLines(1000);}
+            resizable
+          }
+        Group {}
+          {
+            xywh {10 395 535 25}
+          }
+          {
+            Button {}
+              {
+                label {Clear}
+                callback {shellRunTerminal.append("\x1b[2J\x1b[3J\x1b[H");}
+                xywh {10 395 94 25}
+              }
+            Box {}
+              {
+                xywh {104 395 341 25}
+                hide
+                resizable
+              }
+            ReturnButton shellRunButton
+              {
+                label {Close}
+                callback {auto pos = new Preferences(appPrefs, "shell_run_Window_pos");
+pos.set("x", shellRunWindow.x());
+pos.set("y", shellRunWindow.y());
+pos.set("w", shellRunWindow.w());
+pos.set("h", shellRunWindow.h());
+shellRunWindow.hide();}
+                xywh {445 395 100 25}
+              }
+          }
+      }
+  }
+Function showShellRunWindow()
+  {
+    return_type void
+  }
+  {
+    code {if (shellRunWindow is null)
+    makeShellRunWindow();
+
+auto pos = new Preferences(appPrefs, "shell_run_Window_pos");
+int x, y, w, h;
+pos.get("x", x, -1);
+pos.get("y", y, 0);
+pos.get("w", w, 640);
+pos.get("h", h, 480);
+if (x != -1)
+    shellRunWindow.resize(x, y, w, h);
+shellRunWindow.show();}
+      {
+      }
+  }

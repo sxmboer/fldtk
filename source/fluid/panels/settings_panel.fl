@@ -1,0 +1,2269 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+comment {The interactive editor's own Settings dialog.
+
+Ported from FLTK's fluid/panels/settings_panel.fl. Every one of FLTK's six tabs (General/Project/Layout/Shell/
+Locale/User) is placed, at FLTK's own exact widget layout and
+coordinates (the dialog itself is 360x585, matching FLTK
+exactly). Project's header/code-file split
+(this port generates one D file with no such split at all) has no
+backing subsystem to wire to, so its widgets are placed, visible, and
+interactive in
+the sense that FLTK itself handles them (typing in an Input, clicking a
+CheckButton), but their callbacks are deliberately left unwired (no
+`callback`/`setup` property at all), matching this
+project's own established two-pass `widget_panel.fl` precedent.
+Layout and
+User are both wired for real -- Project is the one tab still in that
+placed-but-unwired state; each tab's own top comment below
+names exactly what it's still missing.
+
+What's genuinely wired to real, working subsystems: General's Scheme/
+Tooltips/External-Editor controls (unchanged from before), "Show
+Positioning Guides" (`gui_main.showGuides()`, applied to every open
+window's canvas at once -- a project-wide display preference, not any
+one window's own state, see that function's own doc comment), "Remember
+Window Positions" (`gui_main.positionWindow()` gates its saved-x/y
+restore on
+`appPrefs` key `prev_window_pos`, matching FLTK's own `Application
+::position_window()`'s `if (prevpos_button->value())` guard), "Open
+Previous File on Startup" (checked at the very top of `gui_main.d`'s
+startup sequence, matching FLTK's own `if (!c && openlast_button->
+value() && history.abspath[0][0] && ...)`), "Show Comments in Browser"
+(`fluid.node_browser.showComments`, consulted by the widget-tree
+browser's own row layout/drawing), "
+`fluid.project_history.History` already read this same `appPrefs` key;
+the spinner's callback now calls a new `gui_main.reloadRecentFiles()`
+to apply a change immediately), and "Show Completion Dialogs" (gates a
+success-only `fl.message()` popup at the tail of `gui_main.d`'s
+`writeCodeFile()`/`writeStringsFile()`, matching FLTK's own
+`completion_button->value()` check in `Fluid.write_code_files()`/
+`Project::write_strings()` -- failure alerts stay unconditional either
+way, matching FLTK), "Show Ghosted Group Outlines" (`gui_main.
+showGhostedOutline()`, drives `fl.draw.ghostFlatBox` plus a
+no-box-group tree-walk -- see `fluid.canvas.ProjectCanvas.draw()`'s
+own doc comment for the full mechanism), and "Show Restricted Areas"
+(`gui_main.showRestricted()`, drives out-of-bounds/overlap
+hatching from `ProjectCanvas.drawOverlay()` -- see that function's own
+doc comment). Locale is fully wired to
+`fluid.i18n.I18nSettings` (`gui_main.projectI18n()`), a real subsystem
+that predates this pass. Shell keeps its pre-existing real wiring
+(`fluid/panels/shell_settings.d`), just repositioned to fit the new
+narrower single-column dialog width -- every widget it names is
+unchanged, only `xywh` moved.
+
+Tab icons (`../icons/*_64.png` in FLTK) are real, copied into
+`fluid/panels/pixmaps/` and referenced the same way this project's own
+`about_panel.fl`/`fluid_icon.fl` already reference their own bundled
+pixmaps (relative to this very directory, not FLTK's sibling
+`icons/`, since this port's icons live under `panels/pixmaps/`
+alongside everything else `code_writer.d`'s `writeOneImage()` embeds).
+Not ported: FLTK's own custom Fluid-app `@fd_beaker`/`@fd_user`/
+`@fd_project`/`@fd_file` `fl_add_symbol()` glyphs (hand-drawn C++
+callback functions registered under those symbol names, `fluid/app/
+Snap_Action.cxx`) -- the Layout tab's storage-location menu items keep
+their FLTK text minus that leading symbol. `@fd_zoom` (`fluid/rsrcs
+/pixmaps.cxx`) is a real, ported `fl.symbols` glyph
+(`fluid.pixmaps`'s own `fdZoom()`) -- the Shell tab's
+"open the big code editor" button uses FLTK's real `@+1fd_zoom`
+label, which fits
+the button's real 22x22 size, unlike a plain `"Zoom..."` text label. A separate, simpler
+asset, not an `fl_add_symbol()` glyph at all: the Shell tab's own
+per-row list icons (`fd_user.png`/`fd_project.png`, plain bitmaps
+copied in alongside the tab icons above, held by the hidden
+`shellFdUserBox`/`shellFdProjectBox`) are wired to `fl.browser.
+Browser`'s real per-row `icon()`
+(`shell_settings.d`'s `shellRefreshList()`).
+}
+  {
+    in_source
+    in_header
+  }
+decl {import fluid;}
+  {
+    private
+    local
+  }
+decl {import shell_run_window : showShellRunWindow;}
+  {
+    private
+    local
+  }
+Function makeSettingsPanel()
+  {
+  }
+  {
+    Window settingsPanel
+      {
+        label {FLUID Settings}
+        xywh {0 0 360 585}
+        type Double
+        resizable
+      }
+      {
+        Tabs settingsTabs
+          {
+            xywh {10 10 340 530}
+            resizable
+          }
+          {
+            Group generalTab
+              {
+                label {General}
+                xywh {10 60 340 480}
+                scale_image {36 24}
+                image {pixmaps/general_64.png}
+                compress_image 1
+              }
+              {
+                Group {}
+                  {
+                    xywh {130 78 210 25}
+                  }
+                  {
+                    Choice schemeChoice
+                      {
+                        label {Scheme: }
+                        callback {fl.core.scheme(schemeChoice.text());
+appPrefs.set("scheme", schemeChoice.text());}
+                        xywh {130 78 120 25}
+                        down_box BORDER_BOX
+                        labelfont 1
+                        labelsize 12
+                        textsize 12
+                        setup {string s;
+appPrefs.get("scheme", s, "none");
+int idx = o.findIndex(s);
+if (idx >= 0) o.value(idx);
+fl.core.scheme(s == "none" ? null : s);}
+                      }
+                      {
+                        MenuItem {}
+                          {
+                            label {none}
+                          }
+                        MenuItem {}
+                          {
+                            label {gtk+}
+                          }
+                        MenuItem {}
+                          {
+                            label {gleam}
+                          }
+                        MenuItem {}
+                          {
+                            label {oxy}
+                          }
+                        MenuItem {}
+                          {
+                            label {plastic}
+                          }
+                      }
+                    Box {}
+                      {
+                        xywh {250 78 10 25}
+                        hide
+                        resizable
+                      }
+                  }
+                Box {}
+                  {
+                    label {Options: }
+                    xywh {130 115 0 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                CheckButton tooltipsButton
+                  {
+                    label {Show Tooltips}
+                    callback {fl.tooltip.enable(tooltipsButton.value() != 0);
+appPrefs.set("show_tooltips", tooltipsButton.value());}
+                    xywh {130 115 210 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {int b;
+appPrefs.get("show_tooltips", b, 1);
+o.value(b != 0);
+fl.tooltip.enable(b != 0);}
+                  }
+                CheckButton completionButton
+                  {
+                    label {Show Completion Dialogs}
+                    callback {appPrefs.set("show_completion_dialogs", completionButton.value());}
+                    xywh {130 135 210 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {int b;
+appPrefs.get("show_completion_dialogs", b, 1);
+o.value(b != 0);}
+                  }
+                CheckButton openlastButton
+                  {
+                    label {Open Previous File on Startup}
+                    callback {appPrefs.set("open_previous_file", openlastButton.value());}
+                    xywh {130 155 210 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {int b;
+appPrefs.get("open_previous_file", b, 0);
+o.value(b != 0);}
+                  }
+                CheckButton prevposButton
+                  {
+                    label {Remember Window Positions}
+                    callback {appPrefs.set("prev_window_pos", prevposButton.value());}
+                    xywh {130 175 210 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {int b;
+appPrefs.get("prev_window_pos", b, 1);
+o.value(b != 0);}
+                  }
+                CheckButton showCommentsButton
+                  {
+                    label {Show Comments in Browser}
+                    callback {showComments = showCommentsButton.value() != 0;
+appPrefs.set("show_comments", showCommentsButton.value());
+auto b = browser();
+if (b !is null) \{ b.recalcTree(); b.redraw(); \}}
+                    xywh {130 195 210 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {int b;
+appPrefs.get("show_comments", b, 1);
+o.value(b != 0);
+showComments = b != 0;}
+                  }
+                Group {}
+                  {
+                    xywh {130 225 210 20}
+                  }
+                  {
+                    Spinner recentSpinner
+                      {
+                        label {\# Recent Files:}
+                        callback {appPrefs.set("recent_files", recentSpinner.value());
+reloadRecentFiles();}
+                        xywh {130 225 40 20}
+                        labelfont 1
+                        labelsize 12
+                        textsize 12
+                        maximum {10}
+                        setup {int c;
+appPrefs.get("recent_files", c, 5);
+o.maximum(10);
+o.value(c);}
+                      }
+                    Box {}
+                      {
+                        xywh {170 225 10 20}
+                        hide
+                        resizable
+                      }
+                  }
+                Input editorCommandField
+                  {
+                    label {External Editor:}
+                    callback {appPrefs.set("external_editor_command", editorCommandField.value());}
+                    xywh {130 255 210 20}
+                    labelfont 1
+                    labelsize 12
+                    setup {string s;
+appPrefs.get("external_editor_command", s, "");
+o.value(s);}
+                    tooltip {The editor command to open your external text editor.
+Include any necessary flags to ensure your editor does not background itself.
+Examples:
+    gvim -f
+    gedit
+    emacs}
+                  }
+                CheckButton useExternalEditorButton
+                  {
+                    label {Use for Code Nodes}
+                    callback {appPrefs.set("use_external_editor", useExternalEditorButton.value());}
+                    xywh {130 278 210 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {int b;
+appPrefs.get("use_external_editor", b, 0);
+o.value(b != 0);}
+                  }
+                Box {}
+                  {
+                    label {Overlays: }
+                    xywh {130 306 0 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                CheckButton guidesButton
+                  {
+                    label {Show Positioning Guides}
+                    callback {showGuides(guidesButton.value() != 0);}
+                    xywh {130 306 210 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {o.value(showGuides());}
+                    tooltip {show guides that help to position and resize widgets and enable snapping}
+                  }
+                CheckButton restrictedButton
+                  {
+                    label {Show Restricted Areas}
+                    callback {showRestricted(restrictedButton.value() != 0);}
+                    xywh {130 326 210 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {o.value(showRestricted());}
+                    tooltip {show overlapping and out of bounds areas, show unfilled areas in Pack groups}
+                  }
+                CheckButton ghostedOutlineButton
+                  {
+                    label {Show Ghosted Group Outlines}
+                    callback {showGhostedOutline(ghostedOutlineButton.value() != 0);}
+                    xywh {130 346 210 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {o.value(showGhostedOutline());}
+                    tooltip {groups with no box type or flat boxtypes without contrast will be rendered with a dim outline in the editing window only}
+                  }
+              }
+            Group projectTab
+              {
+                label {Project}
+                comment {Header File, Include Header from Code, and Include Guard are
+dropped entirely (not just left unwired) -- all three are pure C/C++
+header-file concepts (a `.h` companion file, `\#include`-ing it from
+the `.cxx`, an `\#ifndef` guard macro against multiple inclusion) with
+no equivalent in this dialect's single-generated-`.d`-file model at
+all, unlike Project tab fields elsewhere that just lack a *backing
+subsystem* yet. The old "name.ext"/".ext"-shorthand instructional box
+went with them: that convention existed FLTK to keep a `.cxx`/`.h`
+pair's basenames in sync, which stops mattering with only one output
+file to name. Code File is real and wired now (`gui_main.codeFileName()`)
+-- the interactive equivalent of the headless `fluid -c -o` flag,
+letting the generated `.d` file's own name/path differ from the `.fl`
+project's, exactly the shape FLTK's own command-line tool already
+has (`fluid.app`'s own `-o` vs. this same `code_name` fallback).
+Simplified from FLTK's own three-case `codefile_name()` resolution
+down to two (see `gui_main.codeFileName_`'s own doc comment) -- this
+dialect always writes `.d` regardless of what's typed, so FLTK's
+"type just an extension" shorthand has no real use case with nothing
+else to keep in sync.
+
+Allow Unicode UTF-8 in source code / Avoid early include of Fl.H --
+both gate a mechanism that
+provably doesn't exist as a category in D, not just "no backing
+subsystem yet": `Code_Writer.cxx`'s own `write_string()` shows the
+UTF-8 checkbox only chooses between writing a non-ASCII byte raw or
+octal-escaping it for older-compiler safety -- `code_writer.d`'s own
+`dStringEscape()` already only escapes `"`/``/`
+` and passes every
+other byte (including UTF-8) through unconditionally, since D source
+is UTF-8 by spec; there's only one behavior, and it's already what
+"checked" means in FLTK. The early-include checkbox only controls
+*where in the generated header* `\#include <FL/Fl.H>` textually lands
+(`write_prologue()`'s unconditional top-of-file write vs. each node's
+own lazy `write_h_once()` call at first use) -- meaningful in C++
+because textual, order-sensitive `\#include` can have macro/
+conditional-compilation side effects; D's `import` has no textual
+substitution and no order-dependent semantics at all, so there is no
+scenario where moving `import fl;` earlier or later in a file changes
+anything. Menu shortcuts use stateCommand (a real, portable, cross-
+platform shortcut-generation behavior) is unaffected by this reasoning
+and is wired (`gui_main.projectSettings()`, round-tripped as the bare
+`use_FL_COMMAND` Option). Generate MergeBack data (FLTK's own
+experimental feature) is wired the same way (`mergeback 1`); see
+`fluid.mergeback`.}
+                xywh {10 60 340 480}
+                scale_image {36 24}
+                image {pixmaps/document_64.png}
+                compress_image 1
+                hide
+              }
+              {
+                Input codeFileField
+                  {
+                    label {Code File:}
+                    callback {*(codeFileName()) = codeFileField.value();}
+                    xywh {110 90 230 20}
+                    box THIN_DOWN_BOX
+                    labelfont 1
+                    labelsize 12
+                    textsize 12
+                    textfont 4
+                    setup {o.value(*(codeFileName()));}
+                    tooltip {Overrides the generated .d file's own name (and, if it contains a path, its output directory) independently of the .fl project file's own name. Leave blank to use the project's own basename.}
+                  }
+                Box {}
+                  {
+                    label {Options: }
+                    xywh {110 130 0 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                CheckButton useFlCommandButton
+                  {
+                    label {Menu shortcuts use stateCommand}
+                    callback {projectSettings().useFlCommand = useFlCommandButton.value() != 0;}
+                    xywh {110 130 230 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {o.value(projectSettings().useFlCommand);}
+                    tooltip {Write the Ctrl and Meta modifiers of every generated widget and menu shortcut as the platform-neutral stateCommand and stateControl names instead of stateCtrl and stateMeta, so shortcuts follow the platform's command key.}
+                  }
+                Box {}
+                  {
+                    label {Experimental: }
+                    xywh {110 150 0 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                CheckButton mergebackButton
+                  {
+                    label {Generate MergeBack data}
+                    callback {projectSettings().writeMergebackData = mergebackButton.value() != 0;
+updateMergebackMenu();}
+                    xywh {110 150 230 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {o.value(projectSettings().writeMergebackData);}
+                    tooltip {MergeBack is a feature under construction that allows changes in code files to be merged back into the project file. Checking this option will generate additional data in code and project files.}
+                  }
+                Box {}
+                  {
+                    label {Build: }
+                    xywh {110 170 0 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                CheckButton dubHeaderButton
+                  {
+                    label {Dub single-file-package header}
+                    callback {*(projectDubHeader()) = dubHeaderButton.value() != 0;}
+                    xywh {110 170 230 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {o.value(*(projectDubHeader()));}
+                    tooltip {Adds a leading dub single-file-package comment (dependency "fldtk" path="...") to the generated .d file, so it can be built directly with 'dub build --single' or 'dub run --single' -- no manually-typed linker flags needed. Same effect as fluid -c's --dub-header flag.}
+                  }
+              }
+            Group layoutTab
+              {
+                label {Layout}
+                comment {Wired for real: `fluid.layout_suite`'s `layoutList` (`LayoutList`/
+`LayoutSuite`/`LayoutPreset`, ported from FLTK's `Layout_List`/
+`Layout_Suite`/`Layout_Preset`) is a real, working
+subsystem backing drag-time snap guides and idealSizeFor(), with a real UI plus the storage-switching/`.fl`-project/`.fll`-file
+persistence FLTK has (see `layout_suite.d`'s own top comment for the full mechanism).
+Every control below reads/writes `layoutList.current()` (the active
+suite's active preset) for real and calls `layoutRefreshTab()` after any
+structural change (suite/preset/storage/add/rename/delete/load), the
+same "manually push model state back into every control" shape the User
+tab's own Reset button already established for this dialog (no generic
+`propagate_load()`-style LOAD-sentinel mechanism exists here). Persists
+immediately on every change (`layoutSaveUser()`), matching this
+project's own established convention (`fluid.node_browser`'s
+`savePrefs()`, `fluid.shell_command`'s `onShellListChanged`) rather than
+FLTK's own sparser "only at app exit or dialog Close" cadence -- a
+deliberate consistency choice, not a fidelity gap: FLTK's own real
+call sites are `Fluid.cxx`'s app-exit path and `cb_Close()`, both just
+batching writes that would otherwise happen this same way. One
+already-established simplification carried over from the User tab:
+the "FLUID Built-In"/"User Preference"/"Store in .fl Project File"/
+"Store in External File" storage menu items keep FLTK's text minus
+its leading `@fd_beaker`/`@fd_user`/`@fd_project`/`@fd_file` symbol
+(`fl_add_symbol()` glyphs, not ported -- the User tab omits them too).}
+                xywh {10 60 340 480}
+                scale_image {36 24}
+                image {pixmaps/layout_64.png}
+                compress_image 1
+                hide
+              }
+              {
+                Box {}
+                  {
+                    label {Layout:}
+                    xywh {20 78 75 24}
+                    labelfont 1
+                    labelsize 12
+                    align 24
+                  }
+                Choice layoutChoice
+                  {
+                    callback {layoutList.currentSuite(o.value());
+layoutSaveUser();
+layoutRefreshTab();
+rebuildLayoutMenu();}
+                    xywh {95 78 197 24}
+                    down_box BORDER_BOX
+                    labelsize 12
+                    textsize 12
+                  }
+                  {
+                    MenuItem {}
+                      {
+                        label {FLTK}
+                      }
+                    MenuItem {}
+                      {
+                        label {Grid}
+                      }
+                  }
+                Button {}
+                  {
+                    label {+}
+                    callback {string oldName = "Copy of " ~ layoutList[layoutList.currentSuiteIndex()].name;
+string newName = fl_input("Enter a name for the new layout:", oldName);
+if (newName is null) return;
+layoutList.add(newName);
+layoutSaveUser();
+layoutRefreshTab();
+rebuildLayoutMenu();}
+                    xywh {292 78 24 24}
+                    labelsize 12
+                    tooltip {Clone the current layout suite}
+                  }
+                MenuButton layoutMenuButton
+                  {
+                    xywh {316 78 24 24}
+                    labelsize 12
+                  }
+                  {
+                    MenuItem {}
+                      {
+                        label {Rename...}
+                        callback {string oldName = layoutList[layoutList.currentSuiteIndex()].name;
+string newName = fl_input("Enter a new name for the layout:", oldName);
+if (newName is null) return;
+layoutList.rename(newName);
+layoutSaveUser();
+layoutRefreshTab();
+rebuildLayoutMenu();}
+                        divider
+                      }
+                    MenuItem {}
+                      {
+                        label {FLUID Built-In}
+                        callback {layoutList[layoutList.currentSuiteIndex()].storage = ToolStore.internal;
+layoutSaveUser();
+layoutRefreshTab();
+rebuildLayoutMenu();}
+                        type Radio
+                        deactivate
+                      }
+                    MenuItem {}
+                      {
+                        label {User Preference}
+                        callback {layoutList[layoutList.currentSuiteIndex()].storage = ToolStore.user;
+layoutSaveUser();
+layoutRefreshTab();
+rebuildLayoutMenu();}
+                        type Radio
+                      }
+                    MenuItem {}
+                      {
+                        label {Store in .fl Project File}
+                        callback {layoutList[layoutList.currentSuiteIndex()].storage = ToolStore.project;
+layoutSaveUser();
+layoutRefreshTab();
+rebuildLayoutMenu();}
+                        type Radio
+                      }
+                    MenuItem {}
+                      {
+                        label {Store in External File}
+                        callback {layoutList[layoutList.currentSuiteIndex()].storage = ToolStore.file;
+layoutSaveUser();
+layoutRefreshTab();
+rebuildLayoutMenu();}
+                        type Radio
+                        divider
+                      }
+                    MenuItem {}
+                      {
+                        label {Load...}
+                        callback {if (layoutList.filename.length == 0) layoutList.filename = "layout.fll";
+string filename = fileChooser("Import Layout Settings", "*.fll", layoutList.filename);
+if (filename.length == 0) return;
+layoutList.load(filename);
+layoutSaveUser();
+layoutRefreshTab();
+rebuildLayoutMenu();}
+                      }
+                    MenuItem {}
+                      {
+                        label {Save...}
+                        callback {if (layoutList.filename.length == 0) layoutList.filename = "layout.fll";
+string filename = fileChooser("Export Layout Settings", "*.fll", layoutList.filename);
+if (filename.length == 0) return;
+layoutList.save(filename);}
+                        divider
+                      }
+                    MenuItem {}
+                      {
+                        label {Delete}
+                        callback {layoutList.remove(layoutList.currentSuiteIndex());
+layoutSaveUser();
+layoutRefreshTab();
+rebuildLayoutMenu();}
+                      }
+                  }
+                Box {}
+                  {
+                    label {Preset:}
+                    xywh {20 107 75 20}
+                    labelfont 1
+                    labelsize 12
+                    align 24
+                  }
+                Group {}
+                  {
+                    xywh {95 107 245 20}
+                  }
+                  {
+                    Button layoutPresetApplication
+                      {
+                        label {Application}
+                        callback {layoutList.currentPreset(0);
+layoutSaveUser();
+layoutRefreshTab();
+rebuildLayoutMenu();}
+                        xywh {95 107 81 20}
+                        selection_color 45
+                        labelsize 12
+                        value {1}
+                        compact {1}
+                        type Radio
+                      }
+                    Button layoutPresetDialog
+                      {
+                        label {Dialog}
+                        callback {layoutList.currentPreset(1);
+layoutSaveUser();
+layoutRefreshTab();
+rebuildLayoutMenu();}
+                        xywh {176 107 82 20}
+                        selection_color 45
+                        labelsize 12
+                        compact {1}
+                        type Radio
+                      }
+                    Button layoutPresetToolbox
+                      {
+                        label {Toolbox}
+                        callback {layoutList.currentPreset(2);
+layoutSaveUser();
+layoutRefreshTab();
+rebuildLayoutMenu();}
+                        xywh {258 107 82 20}
+                        selection_color 45
+                        labelsize 12
+                        compact {1}
+                        type Radio
+                      }
+                  }
+                Box {}
+                  {
+                    label {---- Window ----}
+                    xywh {95 132 235 20}
+                    labelfont 1
+                    labelsize 12
+                    align 20
+                  }
+                Box {}
+                  {
+                    label {Margins:}
+                    xywh {20 167 75 20}
+                    labelfont 1
+                    labelsize 12
+                    align 24
+                  }
+                ValueInput layoutWinLeft
+                  {
+                    label {Left:}
+                    callback {layoutList.current().leftWindowMargin = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {95 167 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                ValueInput layoutWinTop
+                  {
+                    label {Top:}
+                    callback {layoutList.current().topWindowMargin = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {155 167 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                ValueInput layoutWinRight
+                  {
+                    label {Right:}
+                    callback {layoutList.current().rightWindowMargin = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {215 167 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                ValueInput layoutWinBottom
+                  {
+                    label {Bottom:}
+                    callback {layoutList.current().bottomWindowMargin = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {275 167 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                Box {}
+                  {
+                    label {Grid:}
+                    xywh {20 201 75 20}
+                    labelfont 1
+                    labelsize 12
+                    align 24
+                  }
+                ValueInput layoutWinGridX
+                  {
+                    label {Horizontal:}
+                    callback {layoutList.current().windowGridX = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {95 201 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                ValueInput layoutWinGridY
+                  {
+                    label {Vertical:}
+                    callback {layoutList.current().windowGridY = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {155 201 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                Box {}
+                  {
+                    label {---- Group ----}
+                    xywh {95 226 235 20}
+                    labelfont 1
+                    labelsize 12
+                    align 20
+                  }
+                Box {}
+                  {
+                    label {Margins:}
+                    xywh {20 261 75 20}
+                    labelfont 1
+                    labelsize 12
+                    align 24
+                  }
+                ValueInput layoutGrpLeft
+                  {
+                    label {Left:}
+                    callback {layoutList.current().leftGroupMargin = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {95 261 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                ValueInput layoutGrpTop
+                  {
+                    label {Top:}
+                    callback {layoutList.current().topGroupMargin = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {155 261 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                ValueInput layoutGrpRight
+                  {
+                    label {Right:}
+                    callback {layoutList.current().rightGroupMargin = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {215 261 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                ValueInput layoutGrpBottom
+                  {
+                    label {Bottom:}
+                    callback {layoutList.current().bottomGroupMargin = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {275 261 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                Box {}
+                  {
+                    label {Grid:}
+                    xywh {20 295 75 20}
+                    labelfont 1
+                    labelsize 12
+                    align 24
+                  }
+                ValueInput layoutGrpGridX
+                  {
+                    label {Horizontal:}
+                    callback {layoutList.current().groupGridX = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {95 295 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                ValueInput layoutGrpGridY
+                  {
+                    label {Vertical:}
+                    callback {layoutList.current().groupGridY = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {155 295 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                Box {}
+                  {
+                    label {---- Tabs ----}
+                    xywh {95 320 235 20}
+                    labelfont 1
+                    labelsize 12
+                    align 20
+                  }
+                Box {}
+                  {
+                    label {Margins:}
+                    xywh {20 355 75 20}
+                    labelfont 1
+                    labelsize 12
+                    align 24
+                  }
+                ValueInput layoutTabsTop
+                  {
+                    label {Top:}
+                    callback {layoutList.current().topTabsMargin = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {95 355 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                ValueInput layoutTabsBottom
+                  {
+                    label {Bottom:}
+                    callback {layoutList.current().bottomTabsMargin = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {155 355 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                Box {}
+                  {
+                    label {---- Widget ----}
+                    xywh {95 380 235 20}
+                    labelfont 1
+                    labelsize 12
+                    align 20
+                  }
+                Box {}
+                  {
+                    label {Horizontal:}
+                    xywh {20 415 75 20}
+                    labelfont 1
+                    labelsize 12
+                    align 24
+                  }
+                ValueInput layoutWidgetMinW
+                  {
+                    label {Minimum:}
+                    callback {layoutList.current().widgetMinW = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {95 414 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                ValueInput layoutWidgetIncW
+                  {
+                    label {Increment:}
+                    callback {layoutList.current().widgetIncW = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {155 414 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                ValueInput layoutWidgetGapX
+                  {
+                    label {Gap:}
+                    callback {layoutList.current().widgetGapX = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {215 414 55 20}
+                    labelsize 11
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                Box {}
+                  {
+                    label {Vertical:}
+                    xywh {20 440 75 20}
+                    labelfont 1
+                    labelsize 12
+                    align 24
+                  }
+                ValueInput layoutWidgetMinH
+                  {
+                    callback {layoutList.current().widgetMinH = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {95 440 55 20}
+                    labelsize 12
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                  }
+                ValueInput layoutWidgetIncH
+                  {
+                    callback {layoutList.current().widgetIncH = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {155 440 55 20}
+                    labelsize 12
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                ValueInput layoutWidgetGapY
+                  {
+                    callback {layoutList.current().widgetGapY = cast(int) o.value();
+layoutSaveUser();}
+                    xywh {215 440 55 20}
+                    labelsize 12
+                    textsize 12
+                    maximum {32767}
+                    step {1}
+                    align 5
+                  }
+                Group {}
+                  {
+                    label {Label Font:}
+                    xywh {95 465 201 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                  {
+                    Choice layoutLabelFontChoice
+                      {
+                        callback {layoutList.current().labelfont = cast(int) o.value();
+layoutSaveUser();}
+                        xywh {95 465 150 20}
+                        box THIN_UP_BOX
+                        down_box BORDER_BOX
+                        labelfont 1
+                        labelsize 12
+                        textsize 12
+                        tooltip {The style of the label text.}
+                        resizable
+                        uses_font_menu
+                      }
+                      {
+                      }
+                    ValueInput layoutLabelSizeInput
+                      {
+                        callback {layoutList.current().labelsize = cast(int) o.value();
+layoutSaveUser();}
+                        xywh {245 465 50 20}
+                        labelsize 12
+                        textsize 12
+                        value {14}
+                        minimum {1}
+                        maximum {1000}
+                        step {1}
+                        tooltip {The size of the label text.}
+                      }
+                  }
+                Group {}
+                  {
+                    label {Text Font:}
+                    xywh {95 490 200 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                  {
+                    Choice layoutTextFontChoice
+                      {
+                        callback {layoutList.current().textfont = cast(int) o.value();
+layoutSaveUser();}
+                        xywh {95 490 150 20}
+                        box DOWN_BOX
+                        down_box BORDER_BOX
+                        labelfont 1
+                        labelsize 12
+                        textsize 12
+                        tooltip {The value text style.}
+                        resizable
+                        uses_font_menu
+                      }
+                      {
+                      }
+                    ValueInput layoutTextSizeInput
+                      {
+                        callback {layoutList.current().textsize = cast(int) o.value();
+layoutSaveUser();}
+                        xywh {245 490 50 20}
+                        labelsize 12
+                        textsize 12
+                        value {14}
+                        maximum {1000}
+                        step {1}
+                        tooltip {The value text size.}
+                      }
+                  }
+              }
+            Group shellTab
+              {
+                label {Shell}
+                xywh {10 60 340 480}
+                scale_image {36 24}
+                image {pixmaps/shell_64.png}
+                compress_image 1
+                hide
+              }
+              {
+                Group {}
+                  {
+                    xywh {20 90 320 132}
+                  }
+                  {
+                    Browser shellList
+                      {
+                        label {Shell
+command
+list:}
+                        callback {shellOnListSelect();}
+                        xywh {110 90 230 110}
+                        labelfont 1
+                        labelsize 12
+                        textsize 12
+                        align 4
+                        type Multi
+                        resizable
+                      }
+                    Group {}
+                      {
+                        xywh {110 200 230 22}
+                      }
+                      {
+                        Button {}
+                          {
+                            label {+}
+                            callback {shellAddCmd();}
+                            xywh {110 200 24 22}
+                            labelfont 1
+                            labelsize 12
+                            tooltip {insert a new shell command into the list after the selected command}
+                          }
+                        Button {}
+                          {
+                            label {++}
+                            callback {shellDupCmd();}
+                            xywh {134 200 24 22}
+                            labelfont 1
+                            labelsize 12
+                            tooltip {duplicate the selected shell command and insert it into the list}
+                          }
+                        Button {}
+                          {
+                            label {DEL}
+                            callback {shellRemoveCmd();}
+                            xywh {158 200 24 22}
+                            labelsize 12
+                            tooltip {remove the selected shell command - this can not be undone}
+                          }
+                        MenuButton {}
+                          {
+                            label {}
+                            xywh {182 200 24 22}
+                            labelsize 12
+                            textsize 12
+                          }
+                          {
+                            MenuItem {}
+                              {
+                                label {Import...}
+                                callback {shellImportFromFile();}
+                                labelsize 12
+                                tooltip {import shell commands from an external file}
+                              }
+                            MenuItem {}
+                              {
+                                label {Export selected...}
+                                callback {shellExportSelected();}
+                                labelsize 12
+                                tooltip {export selected shell commands to an external file}
+                              }
+                          }
+                        Box {}
+                          {
+                            xywh {243 200 13 22}
+                            hide
+                            resizable
+                          }
+                        Button {}
+                          {
+                            label {T}
+                            callback {showShellRunWindow();}
+                            xywh {256 200 24 22}
+                            labelfont 5
+                            labelsize 12
+                            tooltip {show terminal window}
+                          }
+                        Button shellPlayButton
+                          {
+                            label {Run}
+                            callback {shellRunSelected();}
+                            xywh {280 200 60 22}
+                            labelsize 12
+                            tooltip {run the selected shell command}
+                            deactivate
+                          }
+                      }
+                  }
+                Group shellCmdGroup
+                  {
+                    xywh {20 235 320 291}
+                    deactivate
+                  }
+                  {
+                    Input shellNameField
+                      {
+                        label {Name:}
+                        callback {shellApplyName();}
+                        xywh {110 246 230 20}
+                        labelfont 1
+                        labelsize 12
+                        textsize 12
+                        textfont 4
+                        tooltip {file the shell command under this name in the shell command list}
+                      }
+                    Input shellLabelField
+                      {
+                        label {Menu Label:}
+                        callback {shellApplyLabel();}
+                        xywh {110 272 230 20}
+                        labelfont 1
+                        labelsize 12
+                        textsize 12
+                        textfont 4
+                        tooltip {label text for the Shell menu in the main menu bar}
+                      }
+                    Group {}
+                      {
+                        xywh {110 297 230 71}
+                      }
+                      {
+                        ShortcutButton shellShortcutField
+                          {
+                            label {Shortcut}
+                            callback {shellApplyShortcut();}
+                            xywh {110 297 130 20}
+                            labelsize 12
+                            align 16
+                            tooltip {an optional keyboard shortcut to run this shell command}
+                          }
+                        Choice shellStoreField
+                          {
+                            label {Store:}
+                            callback {shellApplyStore();}
+                            xywh {110 322 130 20}
+                            down_box BORDER_BOX
+                            labelfont 1
+                            labelsize 12
+                            textsize 12
+                            tooltip {store this shell command as a user setting or save it with the .fl project file}
+                          }
+                          {
+                            MenuItem {}
+                              {
+                                label {User Setting}
+                                labelsize 12
+                              }
+                            MenuItem {}
+                              {
+                                label {Project File}
+                                labelsize 12
+                              }
+                          }
+                        Choice shellConditionField
+                          {
+                            label {Condition:}
+                            callback {shellApplyCondition();}
+                            xywh {110 348 130 20}
+                            down_box BORDER_BOX
+                            labelfont 1
+                            labelsize 12
+                            textsize 12
+                            tooltip {add this command to the main menu bar only if this condition is true}
+                          }
+                          {
+                            MenuItem {}
+                              {
+                                label {all platforms}
+                                labelsize 12
+                              }
+                            MenuItem {}
+                              {
+                                label {Windows only}
+                                labelsize 12
+                              }
+                            MenuItem {}
+                              {
+                                label {Linux only}
+                                labelsize 12
+                              }
+                            MenuItem {}
+                              {
+                                label {macOS only}
+                                labelsize 12
+                              }
+                            MenuItem {}
+                              {
+                                label {Linux and macOS}
+                                labelsize 12
+                              }
+                            MenuItem {}
+                              {
+                                label {don't use}
+                                labelsize 12
+                                divider
+                              }
+                            MenuItem {}
+                              {
+                                label {user only}
+                                labelsize 12
+                              }
+                            MenuItem {}
+                              {
+                                label {host only}
+                                labelsize 12
+                              }
+                            MenuItem {}
+                              {
+                                label {env var only}
+                                labelsize 12
+                              }
+                          }
+                        Input shellConditionDataField
+                          {
+                            callback {shellApplyConditionData();}
+                            xywh {240 348 99 20}
+                            labelfont 1
+                            labelsize 12
+                            textsize 12
+                            textfont 4
+                            tooltip {User/host/environment-variable name that the Condition above checks}
+                            hide
+                            resizable
+                          }
+                      }
+                    Group {}
+                      {
+                        xywh {110 373 230 80}
+                        resizable
+                      }
+                      {
+                        TextEditor shellCommandField
+                          {
+                            label {Shell script:}
+                            callback {shellApplyCommand();}
+                            xywh {110 373 208 80}
+                            box DOWN_BOX
+                            labelfont 1
+                            labelsize 12
+                            textsize 12
+                            textfont 4
+                            align 4
+                            setup {o.buffer(new TextBuffer());}
+                            resizable
+                          }
+                        Group {}
+                          {
+                            xywh {318 373 22 80}
+                          }
+                          {
+                            MenuButton {}
+                              {
+                                xywh {318 373 22 22}
+                                labelsize 12
+                                textsize 12
+                                tooltip {a list of text replacements available for the shell script}
+                              }
+                              {
+                                MenuItem {}
+                                  {
+                                    label {@@BASENAME@@}
+                                    callback {shellInsertMacro("@BASENAME@");}
+                                    labelfont 4
+                                    labelsize 12
+                                  }
+                                MenuItem {}
+                                  {
+                                    label {@@PROJECTFILE_PATH@@}
+                                    callback {shellInsertMacro("@PROJECTFILE_PATH@");}
+                                    labelfont 4
+                                    labelsize 12
+                                  }
+                                MenuItem {}
+                                  {
+                                    label {@@PROJECTFILE_NAME@@}
+                                    callback {shellInsertMacro("@PROJECTFILE_NAME@");}
+                                    labelfont 4
+                                    labelsize 12
+                                  }
+                                MenuItem {}
+                                  {
+                                    label {@@CODEFILE_PATH@@}
+                                    callback {shellInsertMacro("@CODEFILE_PATH@");}
+                                    labelfont 4
+                                    labelsize 12
+                                  }
+                                MenuItem {}
+                                  {
+                                    label {@@CODEFILE_NAME@@}
+                                    callback {shellInsertMacro("@CODEFILE_NAME@");}
+                                    labelfont 4
+                                    labelsize 12
+                                  }
+                                MenuItem {}
+                                  {
+                                    label {@@TEXTFILE_PATH@@}
+                                    callback {shellInsertMacro("@TEXTFILE_PATH@");}
+                                    labelfont 4
+                                    labelsize 12
+                                  }
+                                MenuItem {}
+                                  {
+                                    label {@@TEXTFILE_NAME@@}
+                                    callback {shellInsertMacro("@TEXTFILE_NAME@");}
+                                    labelfont 4
+                                    labelsize 12
+                                  }
+                                MenuItem {}
+                                  {
+                                    label {@@TMPDIR@@}
+                                    callback {shellInsertMacro("@TMPDIR@");}
+                                    labelfont 4
+                                    labelsize 12
+                                  }
+                              }
+                            Button {}
+                              {
+                                label {@+1fd_zoom}
+                                callback {shellOpenScriptEditor();}
+                                xywh {318 395 22 22}
+                                labelsize 12
+                                tooltip {open the big code editor}
+                              }
+                            Box {}
+                              {
+                                xywh {318 417 12 10}
+                                hide
+                                resizable
+                              }
+                          }
+                      }
+                    Group {}
+                      {
+                        xywh {110 458 230 60}
+                      }
+                      {
+                        CheckButton shellSaveProjectField
+                          {
+                            label {save .fl project file}
+                            callback {shellApplyFlags();}
+                            xywh {110 458 110 20}
+                            down_box DOWN_BOX
+                            labelsize 12
+                          }
+                        CheckButton shellSaveSourceField
+                          {
+                            label {save source code}
+                            callback {shellApplyFlags();}
+                            xywh {110 478 110 19}
+                            down_box DOWN_BOX
+                            labelsize 12
+                          }
+                        CheckButton shellSaveStringsField
+                          {
+                            label {save i18n strings}
+                            callback {shellApplyFlags();}
+                            xywh {110 498 110 20}
+                            down_box DOWN_BOX
+                            labelsize 12
+                          }
+                        CheckButton shellShowTerminalField
+                          {
+                            label {show terminal}
+                            callback {shellApplyFlags();}
+                            xywh {229 458 106 20}
+                            down_box DOWN_BOX
+                            labelsize 12
+                          }
+                        CheckButton shellClearTerminalField
+                          {
+                            label {clear terminal}
+                            callback {shellApplyFlags();}
+                            xywh {229 478 106 19}
+                            down_box DOWN_BOX
+                            labelsize 12
+                          }
+                        CheckButton shellClearHistoryField
+                          {
+                            label {clear term history}
+                            callback {shellApplyFlags();}
+                            xywh {229 498 106 19}
+                            down_box DOWN_BOX
+                            labelsize 12
+                          }
+                      }
+                  }
+                Box shellFdProjectBox
+                  {
+                    xywh {20 70 16 15}
+                    labelsize 11
+                    image {pixmaps/fd_project.png}
+                    compress_image 1
+                    hide
+                    deactivate
+                  }
+                Box shellFdUserBox
+                  {
+                    xywh {20 70 16 15}
+                    labelsize 11
+                    image {pixmaps/fd_user.png}
+                    compress_image 1
+                    hide
+                    deactivate
+                  }
+              }
+            Group localeTab
+              {
+                label {Locale}
+                xywh {10 60 340 480}
+                scale_image {36 24}
+                image {pixmaps/language_64.png}
+                compress_image 1
+                hide
+              }
+              {
+                Group {}
+                  {
+                    xywh {110 78 170 20}
+                  }
+                  {
+                    Choice i18nTypeChooser
+                      {
+                        label {i18n Library:}
+                        callback {auto s = projectI18n();
+final switch (cast(I18nType) i18nTypeChooser.value())
+\{
+case I18nType.none:
+    s.type = I18nType.none;
+    i18nGnuGroup.hide();
+    i18nPosixGroup.hide();
+    break;
+case I18nType.gnu:
+    s.type = I18nType.gnu;
+    i18nGnuGroup.show();
+    i18nPosixGroup.hide();
+    break;
+case I18nType.posix:
+    s.type = I18nType.posix;
+    i18nGnuGroup.hide();
+    i18nPosixGroup.show();
+    break;
+\}}
+                        xywh {110 78 160 20}
+                        box THIN_UP_BOX
+                        down_box BORDER_BOX
+                        labelfont 1
+                        labelsize 12
+                        textsize 12
+                        setup {o.value(cast(int) projectI18n().type);}
+                        tooltip {Type of internationalization to use.}
+                      }
+                      {
+                        MenuItem {}
+                          {
+                            label {None}
+                            labelsize 12
+                          }
+                        MenuItem {}
+                          {
+                            label {GNU gettext}
+                            labelsize 12
+                          }
+                        MenuItem {}
+                          {
+                            label {POSIX catgets}
+                            labelsize 12
+                          }
+                      }
+                    Box {}
+                      {
+                        xywh {270 78 10 20}
+                        hide
+                        resizable
+                      }
+                  }
+                Group i18nGnuGroup
+                  {
+                    xywh {110 103 230 95}
+                    labelsize 12
+                    setup {if (projectI18n().type == I18nType.gnu) o.show(); else o.hide();}
+                  }
+                  {
+                    Input {}
+                      {
+                        label {Import:}
+                        callback {projectI18n().gnuInclude = o.value();}
+                        xywh {110 103 230 20}
+                        box THIN_DOWN_BOX
+                        labelsize 12
+                        textsize 12
+                        textfont 4
+                        setup {o.value(projectI18n().gnuInclude);}
+                        tooltip {What to import for internationalization support, as a D import path such as fl.gettext. It must provide the translation function named below. Leave empty to import nothing and define the function yourself in a "decl" block.}
+                      }
+                    Input {}
+                      {
+                        label {Conditional:}
+                        callback {projectI18n().gnuConditional = o.value();}
+                        xywh {110 128 230 20}
+                        box THIN_DOWN_BOX
+                        labelsize 12
+                        textsize 12
+                        textfont 4
+                        setup {o.value(projectI18n().gnuConditional);}
+                        tooltip {Only import internationalization support if this D version identifier is defined, for example ENABLE_NLS. Otherwise the generated file defines pass-through functions that return the text untranslated. Leave empty to always import.}
+                      }
+                    Input {}
+                      {
+                        label {Function:}
+                        callback {projectI18n().gnuFunction = o.value();}
+                        xywh {110 153 230 20}
+                        box THIN_DOWN_BOX
+                        labelsize 12
+                        textsize 12
+                        textfont 4
+                        setup {o.value(projectI18n().gnuFunction);}
+                        tooltip {The function to call to translate labels and tooltips, usually "gettext" or "_"}
+                      }
+                    Input {}
+                      {
+                        label {Static Function:}
+                        callback {projectI18n().gnuStaticFunction = o.value();}
+                        xywh {110 178 230 20}
+                        box THIN_DOWN_BOX
+                        labelsize 12
+                        textsize 12
+                        textfont 4
+                        setup {o.value(projectI18n().gnuStaticFunction);}
+                        tooltip {function to call to internationalize labels and tooltips, usually "gettext_noop" or "N_"}
+                      }
+                  }
+                Group i18nPosixGroup
+                  {
+                    xywh {110 103 230 95}
+                    labelsize 12
+                    setup {if (projectI18n().type == I18nType.posix) o.show(); else o.hide();}
+                  }
+                  {
+                    Input {}
+                      {
+                        label {Import:}
+                        callback {projectI18n().posixInclude = o.value();}
+                        xywh {110 103 230 20}
+                        box THIN_DOWN_BOX
+                        labelsize 12
+                        textsize 12
+                        textfont 4
+                        setup {o.value(projectI18n().posixInclude);}
+                        tooltip {What to import for internationalization support, as a D import path. It must provide the catgets function and the message catalog type. Leave empty to import nothing and define them yourself in a "decl" block.}
+                      }
+                    Input {}
+                      {
+                        label {Conditional:}
+                        callback {projectI18n().posixConditional = o.value();}
+                        xywh {110 128 230 20}
+                        box THIN_DOWN_BOX
+                        labelsize 12
+                        textsize 12
+                        textfont 4
+                        setup {o.value(projectI18n().posixConditional);}
+                        tooltip {Only import internationalization support if this D version identifier is defined, for example ENABLE_NLS. Otherwise the generated file defines pass-through functions that return the text untranslated. Leave empty to always import.}
+                      }
+                    Input {}
+                      {
+                        label {Catalog:}
+                        callback {projectI18n().posixFile = o.value();}
+                        xywh {110 153 230 20}
+                        box THIN_DOWN_BOX
+                        labelsize 12
+                        textsize 12
+                        textfont 4
+                        setup {o.value(projectI18n().posixFile);}
+                        tooltip {The name of the message catalog.}
+                      }
+                    Group {}
+                      {
+                        xywh {110 178 90 20}
+                      }
+                      {
+                        IntInput {}
+                          {
+                            label {Set:}
+                            callback {projectI18n().posixSet = o.value();}
+                            xywh {110 178 80 20}
+                            box THIN_DOWN_BOX
+                            labelsize 12
+                            textsize 12
+                            textfont 4
+                            setup {o.value(projectI18n().posixSet);}
+                            tooltip {The message set number.}
+                          }
+                        Box {}
+                          {
+                            xywh {190 178 10 20}
+                            hide
+                            resizable
+                          }
+                      }
+                  }
+              }
+            Group userTab
+              {
+                label {User}
+                comment {Wired for real: `fluid.node_browser`'s own `labelColor`/`labelFont`/`classColor`/
+`classFont`/`funcColor`/`funcFont`/`nameColor`/`nameFont`/`codeColor`/
+`codeFont`/`commentColor`/`commentFont` are real module-level fields,
+with FLTK's real static defaults (not guessed -- traced from
+`Node_Browser.cxx` directly, including confirming `labelColor = 72`
+really is a deliberate dark-red accent color, not a placeholder
+number). Every row below edits its own field for real: font (a
+`Choice` over the same real 16-font list `widget_panel.d`'s own Style
+tab already uses) and color (a swatch `Button` opening `fl.show_
+colormap.showColormap()`, matching FLTK's own `cb_Color_Chip`).
+Label/Class/Name/Comments are genuinely consulted by `NodeBrowserItem.
+drawItemContent()` already and change the live tree's own rendering
+immediately; Function/Code are real, edited, persisted fields too, but
+`drawItemContent()` doesn't distinguish those two row *kinds* from an
+ordinary widget/class row yet (a separate, larger gap -- see `fluid.
+node_browser`'s own top comment), so editing them has no visible
+effect on the tree until that lands.
+
+The small `MenuButton` next to each swatch is wired too,
+matching FLTK's own
+`colormenu[]`/`cb_Color_Choice()` (`widget_panel_callbacks.cxx`/
+`settings_panel.cxx`): a 14-item quick-pick popup (Foreground/
+Background/Background 2/Selection/Inactive Color, Black, White, Gray
+0, Dark 3-1, Light 1-3 -- FLTK's exact list and divider placement)
+on each of the 6 rows, applying the chosen `Fl_Color` via the new
+`fluid.node_browser.applyPresetColor()` helper (updates the field, the
+swatch, persists via `savePrefs()`) plus the same conditional
+live-tree redraw each row's own swatch-button callback already does.}
+                xywh {10 60 340 480}
+                scale_image {36 24}
+                image {pixmaps/user_circle_64.png}
+                compress_image 1
+                hide
+              }
+              {
+                Box {}
+                  {
+                    label {---- Widget Browser ----}
+                    xywh {110 84 220 20}
+                    labelfont 1
+                    labelsize 12
+                    align 20
+                  }
+                Group {}
+                  {
+                    label {Label:}
+                    xywh {110 112 230 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                  {
+                    Choice userLabelFontChoice
+                      {
+                        callback {labelFont = cast(Font) userLabelFontChoice.value();
+auto b = browser(); if (b !is null) b.redraw();
+savePrefs();}
+                        xywh {110 112 161 20}
+                        box THIN_UP_BOX
+                        down_box BORDER_BOX
+                        labelfont 1
+                        labelsize 12
+                        textsize 11
+                        setup {o.value(cast(int) labelFont);}
+                        resizable
+                        uses_font_menu
+                      }
+                      {
+                      }
+                    Button userLabelColorButton
+                      {
+                        callback {pickColor(labelColor, userLabelColorButton);
+auto b = browser(); if (b !is null) b.redraw();}
+                        xywh {271 112 51 20}
+                        labelsize 12
+                        setup {o.color(labelColor);}
+                      }
+                    MenuButton {}
+                      {
+                        callback {int idx = o.value();
+if (idx < 0 || idx >= colorMenuValues.length) return;
+applyPresetColor(labelColor, colorMenuValues[idx], userLabelColorButton);
+auto b = browser(); if (b !is null) b.redraw();}
+                        xywh {322 112 18 20}
+                        labelsize 12
+                        uses_color_menu
+                      }
+                      {
+                      }
+                  }
+                Group {}
+                  {
+                    label {Class:}
+                    xywh {110 137 230 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                  {
+                    Choice userClassFontChoice
+                      {
+                        callback {classFont = cast(Font) userClassFontChoice.value();
+auto b = browser(); if (b !is null) b.redraw();
+savePrefs();}
+                        xywh {110 137 161 20}
+                        box THIN_UP_BOX
+                        down_box BORDER_BOX
+                        labelfont 1
+                        labelsize 12
+                        textsize 11
+                        setup {o.value(cast(int) classFont);}
+                        resizable
+                        uses_font_menu
+                      }
+                      {
+                      }
+                    Button userClassColorButton
+                      {
+                        callback {pickColor(classColor, userClassColorButton);
+auto b = browser(); if (b !is null) b.redraw();}
+                        xywh {271 137 51 20}
+                        labelsize 12
+                        setup {o.color(classColor);}
+                      }
+                    MenuButton {}
+                      {
+                        callback {int idx = o.value();
+if (idx < 0 || idx >= colorMenuValues.length) return;
+applyPresetColor(classColor, colorMenuValues[idx], userClassColorButton);
+auto b = browser(); if (b !is null) b.redraw();}
+                        xywh {322 137 18 20}
+                        labelsize 12
+                        uses_color_menu
+                      }
+                      {
+                      }
+                  }
+                Group {}
+                  {
+                    label {Function:}
+                    xywh {110 162 230 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                  {
+                    Choice userFuncFontChoice
+                      {
+                        callback {funcFont = cast(Font) userFuncFontChoice.value();
+auto b = browser(); if (b !is null) b.redraw();
+savePrefs();}
+                        xywh {110 162 161 20}
+                        box THIN_UP_BOX
+                        down_box BORDER_BOX
+                        labelfont 1
+                        labelsize 12
+                        textsize 11
+                        setup {o.value(cast(int) funcFont);}
+                        resizable
+                        uses_font_menu
+                      }
+                      {
+                      }
+                    Button userFuncColorButton
+                      {
+                        callback {pickColor(funcColor, userFuncColorButton);
+auto b = browser(); if (b !is null) b.redraw();}
+                        xywh {271 162 51 20}
+                        labelsize 12
+                        setup {o.color(funcColor);}
+                      }
+                    MenuButton {}
+                      {
+                        callback {int idx = o.value();
+if (idx < 0 || idx >= colorMenuValues.length) return;
+applyPresetColor(funcColor, colorMenuValues[idx], userFuncColorButton);
+auto b = browser(); if (b !is null) b.redraw();}
+                        xywh {322 162 18 20}
+                        labelsize 12
+                        uses_color_menu
+                      }
+                      {
+                      }
+                  }
+                Group {}
+                  {
+                    label {Name:}
+                    xywh {110 187 230 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                  {
+                    Choice userNameFontChoice
+                      {
+                        callback {nameFont = cast(Font) userNameFontChoice.value();
+auto b = browser(); if (b !is null) b.redraw();
+savePrefs();}
+                        xywh {110 187 161 20}
+                        box THIN_UP_BOX
+                        down_box BORDER_BOX
+                        labelfont 1
+                        labelsize 12
+                        textsize 11
+                        setup {o.value(cast(int) nameFont);}
+                        resizable
+                        uses_font_menu
+                      }
+                      {
+                      }
+                    Button userNameColorButton
+                      {
+                        callback {pickColor(nameColor, userNameColorButton);
+auto b = browser(); if (b !is null) b.redraw();}
+                        xywh {271 187 51 20}
+                        labelsize 12
+                        setup {o.color(nameColor);}
+                      }
+                    MenuButton {}
+                      {
+                        callback {int idx = o.value();
+if (idx < 0 || idx >= colorMenuValues.length) return;
+applyPresetColor(nameColor, colorMenuValues[idx], userNameColorButton);
+auto b = browser(); if (b !is null) b.redraw();}
+                        xywh {322 187 18 20}
+                        labelsize 12
+                        uses_color_menu
+                      }
+                      {
+                      }
+                  }
+                Group {}
+                  {
+                    label {Code:}
+                    xywh {110 212 230 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                  {
+                    Choice userCodeFontChoice
+                      {
+                        callback {codeFont = cast(Font) userCodeFontChoice.value();
+auto b = browser(); if (b !is null) b.redraw();
+savePrefs();}
+                        xywh {110 212 161 20}
+                        box THIN_UP_BOX
+                        down_box BORDER_BOX
+                        labelfont 1
+                        labelsize 12
+                        textsize 11
+                        setup {o.value(cast(int) codeFont);}
+                        resizable
+                        uses_font_menu
+                      }
+                      {
+                      }
+                    Button userCodeColorButton
+                      {
+                        callback {pickColor(codeColor, userCodeColorButton);
+auto b = browser(); if (b !is null) b.redraw();}
+                        xywh {271 212 51 20}
+                        labelsize 12
+                        setup {o.color(codeColor);}
+                      }
+                    MenuButton {}
+                      {
+                        callback {int idx = o.value();
+if (idx < 0 || idx >= colorMenuValues.length) return;
+applyPresetColor(codeColor, colorMenuValues[idx], userCodeColorButton);
+auto b = browser(); if (b !is null) b.redraw();}
+                        xywh {322 212 18 20}
+                        labelsize 12
+                        uses_color_menu
+                      }
+                      {
+                      }
+                  }
+                Group {}
+                  {
+                    label {Comments:}
+                    xywh {110 237 230 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                  {
+                    Choice userCommentFontChoice
+                      {
+                        callback {commentFont = cast(Font) userCommentFontChoice.value();
+auto b = browser(); if (b !is null) b.redraw();
+savePrefs();}
+                        xywh {110 237 161 20}
+                        box THIN_UP_BOX
+                        down_box BORDER_BOX
+                        labelfont 1
+                        labelsize 12
+                        textsize 11
+                        setup {o.value(cast(int) commentFont);}
+                        resizable
+                        uses_font_menu
+                      }
+                      {
+                      }
+                    Button userCommentColorButton
+                      {
+                        callback {pickColor(commentColor, userCommentColorButton);
+auto b = browser(); if (b !is null) b.redraw();}
+                        xywh {271 237 51 20}
+                        labelsize 12
+                        setup {o.color(commentColor);}
+                      }
+                    MenuButton {}
+                      {
+                        callback {int idx = o.value();
+if (idx < 0 || idx >= colorMenuValues.length) return;
+applyPresetColor(commentColor, colorMenuValues[idx], userCommentColorButton);
+auto b = browser(); if (b !is null) b.redraw();}
+                        xywh {322 237 18 20}
+                        labelsize 12
+                        uses_color_menu
+                      }
+                      {
+                      }
+                  }
+                Button userResetButton
+                  {
+                    label {Reset}
+                    callback {labelColor = cast(Color) 72; labelFont = helvetica;
+classColor = foregroundColor; classFont = helveticaBold;
+funcColor = foregroundColor; funcFont = helvetica;
+nameColor = foregroundColor; nameFont = helvetica;
+codeColor = foregroundColor; codeFont = helvetica;
+commentColor = darkGreen; commentFont = helvetica;
+userLabelFontChoice.value(cast(int) labelFont); userLabelColorButton.color(labelColor); userLabelColorButton.redraw();
+userClassFontChoice.value(cast(int) classFont); userClassColorButton.color(classColor); userClassColorButton.redraw();
+userFuncFontChoice.value(cast(int) funcFont); userFuncColorButton.color(funcColor); userFuncColorButton.redraw();
+userNameFontChoice.value(cast(int) nameFont); userNameColorButton.color(nameColor); userNameColorButton.redraw();
+userCodeFontChoice.value(cast(int) codeFont); userCodeColorButton.color(codeColor); userCodeColorButton.redraw();
+userCommentFontChoice.value(cast(int) commentFont); userCommentColorButton.color(commentColor); userCommentColorButton.redraw();
+auto b = browser(); if (b !is null) b.redraw();
+savePrefs();}
+                    xywh {251 269 77 22}
+                    labelsize 12
+                  }
+              }
+          }
+        Group {}
+          {
+            xywh {10 550 340 25}
+          }
+          {
+            Button {}
+              {
+                label {Close}
+                callback {settingsPanel.hide();}
+                xywh {230 550 120 25}
+                tooltip {Close this dialog.}
+              }
+            Box {}
+              {
+                xywh {220 550 10 25}
+                hide
+                resizable
+              }
+          }
+      }
+  }
+Function settingsToggleVisibility()
+  {
+    return_type void
+  }
+  {
+    code {if (settingsPanel is null)
+    makeSettingsPanel();
+
+if (settingsPanel.shown())
+    settingsPanel.hide();
+else \{
+    shellRefreshList();
+    layoutRefreshTab();
+    settingsPanel.show();
+\}}
+      {
+      }
+  }
+Function settingsShowShellTab()
+  {
+    return_type void
+  }
+  {
+    code {if (settingsPanel is null)
+    makeSettingsPanel();
+shellRefreshList();
+settingsTabs.value(shellTab);
+settingsPanel.show();}
+      {
+      }
+  }
+Function settingsShowLayoutTab()
+  {
+    comment {Ported from FLTK's `show_grid_cb()` (`Window_Node.cxx`) --
+the `&Layout/&Grid and Size Settings...` main-menu item's own callback
+(`gui_main.d`), same "jump straight to one tab" shape as
+`settingsShowShellTab()` just above.}
+    return_type void
+  }
+  {
+    code {if (settingsPanel is null)
+    makeSettingsPanel();
+layoutRefreshTab();
+settingsTabs.value(layoutTab);
+settingsPanel.show();}
+      {
+      }
+  }
+Function layoutSaveUser()
+  {
+    comment {Persists the current selection plus every `ToolStore.user`
+suite to `appPrefs` -- called from every Layout-tab mutating callback
+(`settings_panel.fl`) and from `gui_main.d`'s own main-menu Layout
+callbacks, matching this project's established "persist immediately"
+convention (see the Layout tab's own top comment for why that's a
+deliberate deviation from FLTK's sparser real save cadence, not a
+fidelity gap).}
+    return_type void
+  }
+  {
+    code {layoutList.writeToPrefs(appPrefs, ToolStore.user);}
+      {
+      }
+  }
+Function layoutRefreshTabIfOpen()
+  {
+    comment {Guarded wrapper for callers outside this module (`gui_main.d`'s
+own main-menu Layout callbacks) that don't know whether the Settings
+dialog has been constructed yet -- `layoutRefreshTab()` itself assumes
+every widget it touches already exists.}
+    return_type void
+  }
+  {
+    code {if (settingsPanel !is null) layoutRefreshTab();}
+      {
+      }
+  }
+Function layoutRefreshTab()
+  {
+    comment {Pushes `layoutList`'s current state into every Layout-tab
+control -- this dialog's own established "no generic LOAD-propagation
+mechanism, just manually re-set every control" convention (see the
+User tab's Reset button for the precedent). Called after any
+structural change (suite/preset/storage/add/rename/delete/load) and
+once before the dialog is ever shown (`settingsToggleVisibility()`/
+`settingsShowShellTab()`/`settingsShowLayoutTab()` above) or by
+`gui_main.d`'s own main-menu Layout callbacks via
+`layoutRefreshTabIfOpen()`.
+
+The storage MenuButton's own per-item enable/disable and radio-check
+state is set directly by index (`Menu_.mode(int, MenuFlags)`) rather
+than rebuilding the whole array -- matches `fl.file_chooser`'s own
+existing use of the same primitive (`favoritesButton.mode(...)`), and
+ported from FLTK's own `w_layout_menu`'s LOAD-callback (`
+settings_panel.cxx`): index 0 Rename.../1 FLUID Built-In/2 User
+Preference/3 Store in .fl Project File/4 Store in External File/5
+Load.../6 Save.../7 Delete, matching this tab's own placement order
+exactly. Rename/the 3 non-builtin storage options/Delete are active
+only when the current suite isn't itself `ToolStore.internal` --
+FLTK's own guard, since a built-in suite can be edited in place
+(its numeric fields are never gated) but not renamed, restored, or
+deleted.}
+    return_type void
+  }
+  {
+    code {auto suite = layoutList[layoutList.currentSuiteIndex()];
+bool builtin = suite.storage == ToolStore.internal;
+
+MenuItem[] suiteItems;
+foreach (i; 0 .. layoutList.size())
+    suiteItems ~= MenuItem(layoutList[i].name);
+suiteItems ~= MenuItem(null);
+layoutChoice.menu(suiteItems);
+layoutChoice.value(layoutList.currentSuiteIndex());
+
+layoutMenuButton.mode(0, builtin ? (menuDivider | menuInactive) : menuDivider);
+layoutMenuButton.mode(1, menuRadio | menuInactive | (suite.storage == ToolStore.internal ? menuValue : 0));
+layoutMenuButton.mode(2, menuRadio | (builtin ? menuInactive : 0) | (suite.storage == ToolStore.user ? menuValue : 0));
+layoutMenuButton.mode(3, menuRadio | (builtin ? menuInactive : 0) | (suite.storage == ToolStore.project ? menuValue : 0));
+layoutMenuButton.mode(4, menuRadio | menuDivider | (builtin ? menuInactive : 0) | (suite.storage == ToolStore.file ? menuValue : 0));
+layoutMenuButton.mode(5, 0);
+layoutMenuButton.mode(6, menuDivider);
+layoutMenuButton.mode(7, builtin ? menuInactive : 0);
+
+final switch (layoutList.currentPresetIndex())
+\{
+case 0: layoutPresetApplication.setonly(); break;
+case 1: layoutPresetDialog.setonly(); break;
+case 2: layoutPresetToolbox.setonly(); break;
+\}
+
+auto p = layoutList.current();
+layoutWinLeft.value(cast(double) p.leftWindowMargin);
+layoutWinTop.value(cast(double) p.topWindowMargin);
+layoutWinRight.value(cast(double) p.rightWindowMargin);
+layoutWinBottom.value(cast(double) p.bottomWindowMargin);
+layoutWinGridX.value(cast(double) p.windowGridX);
+layoutWinGridY.value(cast(double) p.windowGridY);
+
+layoutGrpLeft.value(cast(double) p.leftGroupMargin);
+layoutGrpTop.value(cast(double) p.topGroupMargin);
+layoutGrpRight.value(cast(double) p.rightGroupMargin);
+layoutGrpBottom.value(cast(double) p.bottomGroupMargin);
+layoutGrpGridX.value(cast(double) p.groupGridX);
+layoutGrpGridY.value(cast(double) p.groupGridY);
+
+layoutTabsTop.value(cast(double) p.topTabsMargin);
+layoutTabsBottom.value(cast(double) p.bottomTabsMargin);
+
+layoutWidgetMinW.value(cast(double) p.widgetMinW);
+layoutWidgetIncW.value(cast(double) p.widgetIncW);
+layoutWidgetGapX.value(cast(double) p.widgetGapX);
+layoutWidgetMinH.value(cast(double) p.widgetMinH);
+layoutWidgetIncH.value(cast(double) p.widgetIncH);
+layoutWidgetGapY.value(cast(double) p.widgetGapY);
+
+layoutLabelFontChoice.value(p.labelfont >= 0 ? p.labelfont : 0);
+layoutLabelSizeInput.value(cast(double) p.labelsize);
+layoutTextFontChoice.value(p.textfont >= 0 ? p.textfont : 0);
+layoutTextSizeInput.value(cast(double) p.textsize);
+
+layoutChoice.redraw();
+layoutMenuButton.redraw();}
+      {
+      }
+  }
+Function makeScriptPanel()
+  {
+  }
+  {
+    Window scriptPanel
+      {
+        label {Shell Script Editor}
+        xywh {0 0 540 184}
+        type Double
+        resizable
+        modal
+      }
+      {
+        TextEditor scriptInput
+          {
+            xywh {10 10 520 130}
+            box DOWN_BOX
+            setup {o.buffer(new TextBuffer());}
+            resizable
+          }
+        Group {}
+          {
+            xywh {10 150 520 24}
+          }
+          {
+            Button {}
+              {
+                label {Cancel}
+                callback {shellScriptCancel();}
+                xywh {348 150 88 24}
+              }
+            ReturnButton {}
+              {
+                label {OK}
+                callback {shellScriptOk();}
+                xywh {442 150 88 24}
+              }
+          }
+      }
+  }

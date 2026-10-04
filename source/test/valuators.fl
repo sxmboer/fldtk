@@ -1,0 +1,537 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+Function {}
+  {
+    open
+  }
+  {
+    Window {}
+      {
+        label {Valuator classes, showing values for type()}
+        comment {The plain "0" labels below aren't placeholders -- FL_VERTICAL,
+FL_NORMAL_COUNTER, and normalDial are all defined as 0, so the widget in
+each group with no type() set displays its own type() value directly.
+Every other widget in a group is labeled with the symbolic name of the
+non-default type() it demonstrates instead, since a bare number wouldn't
+mean anything on its own.}
+        xywh {454 295 620 640}
+        color 43
+        selection_color 43
+        type Double
+        open
+      }
+      {
+        Group {}
+          {
+            label {Slider}
+            xywh {10 10 320 210}
+            box ENGRAVED_BOX
+            labelfont 1
+            align 17
+            open
+          }
+          {
+            Slider {}
+              {
+                label {0}
+                xywh {30 70 20 140}
+                selection_color 1
+                labelsize 8
+                v_label_margin 2
+                align 1
+                setup {o.callback(valCb("Slider vertSlider"));}
+                tooltip {Vertical Slider}
+              }
+            Slider {}
+              {
+                label {vertFillSlider
+    |
+    |
+    |}
+                xywh {70 70 20 140}
+                selection_color 1
+                labelsize 8
+                align 5
+                type {Vert Fill}
+                setup {o.callback(valCb("Slider vertFillSlider"));}
+              }
+            Slider {}
+              {
+                label {vertNiceSlider
+    |
+    |}
+                xywh {105 70 20 140}
+                box FLAT_BOX
+                color 10
+                selection_color 1
+                labelsize 8
+                align 5
+                type {Vert Knob}
+                setup {o.callback(valCb("Slider vertNiceSlider"));}
+              }
+            Slider {}
+              {
+                label {ticksRight
+    |}
+                xywh {138 70 20 140}
+                box FLAT_BOX
+                selection_color 1
+                labelsize 8
+                align 5
+                type {Vert Knob}
+                setup {o.callback(valCb("Slider vertNiceSlider"));
+o.ticks(ticksRight);}
+              }
+            Slider {}
+              {
+                label {horizontalType}
+                xywh {190 75 130 20}
+                selection_color 1
+                labelsize 8
+                v_label_margin 2
+                type Horizontal
+                setup {o.callback(valCb("Slider horizontalType"));}
+              }
+            Slider {}
+              {
+                label {horFillSlider}
+                xywh {190 110 130 20}
+                selection_color 1
+                labelsize 8
+                v_label_margin 2
+                type {Horz Fill}
+                setup {o.callback(valCb("Slider horFillSlider"));}
+              }
+            Slider {}
+              {
+                label {horNiceSlider}
+                xywh {190 145 130 20}
+                box FLAT_BOX
+                color 10
+                selection_color 1
+                labelsize 8
+                v_label_margin 2
+                type {Horz Knob}
+                setup {o.callback(valCb("Slider horNiceSlider"));}
+              }
+            Slider {}
+              {
+                label {ticksAbove|ticksBelow}
+                xywh {190 180 130 20}
+                box FLAT_BOX
+                selection_color 1
+                labelsize 8
+                v_label_margin 2
+                type {Horz Knob}
+                setup {o.callback(valCb("Slider horNiceSlider"));
+o.ticks(cast(TickPosition)(ticksAbove | ticksBelow));}
+              }
+          }
+        Group {}
+          {
+            label {ValueSlider}
+            xywh {10 230 320 210}
+            box ENGRAVED_BOX
+            labelfont 1
+            align 17
+            open
+          }
+          {
+            ValueSlider {}
+              {
+                label {0}
+                xywh {30 290 30 140}
+                selection_color 1
+                labelsize 8
+                v_label_margin 2
+                align 1
+                setup {o.callback(valCb("vertSlider"));}
+                tooltip {Value Slider}
+              }
+            ValueSlider {}
+              {
+                label {vertFillSlider
+    |
+    |
+    |}
+                xywh {70 290 30 140}
+                selection_color 1
+                labelsize 8
+                align 5
+                type {Vert Fill}
+                setup {o.callback(valCb("ValueSlider vertFillSlider"));}
+                selected
+              }
+            ValueSlider {}
+              {
+                label {vertNiceSlider
+    |
+    |}
+                xywh {110 290 20 140}
+                box FLAT_BOX
+                color 10
+                selection_color 1
+                labelsize 8
+                align 5
+                type {Vert Knob}
+                setup {o.callback(valCb("ValueSlider vertNiceSlider"));}
+              }
+            ValueSlider {}
+              {
+                label {logScale
+    |}
+                xywh {142 290 20 140}
+                box FLAT_BOX
+                selection_color 1
+                labelsize 8
+                value {1}
+                minimum {100}
+                step {1}
+                align 5
+                type {Vert Knob}
+                setup {o.callback(valCb("ValueSlider vertNiceSlider"));
+o.scale(Slider.ScaleType.logScale);
+o.ticks(ticksRight);}
+              }
+            ValueSlider {}
+              {
+                label {horSlider}
+                xywh {190 295 130 20}
+                selection_color 1
+                labelsize 8
+                v_label_margin 2
+                type Horizontal
+                setup {o.callback(valCb("ValueSlider horSlider"));}
+              }
+            ValueSlider {}
+              {
+                label {horFillSlider}
+                xywh {190 330 130 20}
+                selection_color 1
+                labelsize 8
+                v_label_margin 2
+                type {Horz Fill}
+                setup {o.callback(valCb("ValueSlider horFillSlider"));}
+              }
+            ValueSlider {}
+              {
+                label {horNiceSlider}
+                xywh {190 365 130 20}
+                box FLAT_BOX
+                color 10
+                selection_color 1
+                labelsize 8
+                v_label_margin 2
+                type {Horz Knob}
+                setup {o.callback(valCb("ValueSlider horNiceSlider"));}
+              }
+            ValueSlider {}
+              {
+                label {logScale}
+                xywh {190 400 130 20}
+                box FLAT_BOX
+                selection_color 1
+                labelsize 8
+                v_label_margin 2
+                minimum {1}
+                maximum {100}
+                step {1}
+                type {Horz Knob}
+                setup {o.callback(valCb("ValueSlider horNiceSlider"));
+o.ticks(cast(TickPosition)(ticksAbove | ticksBelow));
+o.scale(Slider.ScaleType.logScale);}
+              }
+          }
+        Group {}
+          {
+            label {ValueInput}
+            xywh {10 450 155 50}
+            box ENGRAVED_BOX
+            labelfont 1
+            align 17
+          }
+          {
+            ValueInput {}
+              {
+                label {0}
+                xywh {30 470 125 25}
+                labelsize 8
+                maximum {100}
+                step {0.1}
+                setup {o.callback(valCb("ValueInput"));}
+                tooltip {Value Input}
+              }
+          }
+        Group {}
+          {
+            label {ValueOutput}
+            xywh {175 450 155 50}
+            box ENGRAVED_BOX
+            labelfont 1
+            align 17
+          }
+          {
+            ValueOutput {}
+              {
+                label {0}
+                xywh {190 470 125 25}
+                labelsize 8
+                maximum {100}
+                step {0.1}
+                setup {o.callback(valCb("ValueOutput"));}
+                tooltip {Value Output}
+              }
+          }
+        Group {}
+          {
+            label {   Scrollbar}
+            xywh {340 10 130 120}
+            box ENGRAVED_BOX
+            labelfont 1
+            align 21
+            open
+          }
+          {
+            Scrollbar {}
+              {
+                label {horizontalType}
+                xywh {345 55 95 20}
+                labelsize 8
+                v_label_margin 2
+                value {20}
+                maximum {100}
+                type Horizontal
+                setup {o.callback(valCb("Scrollbar horizontalType"));}
+                tooltip {Horizontal Scrollbar}
+              }
+            Scrollbar {}
+              {
+                label {verticalType (0) ->}
+                xywh {445 30 20 90}
+                labelsize 8
+                value {20}
+                maximum {100}
+                align 13
+                setup {o.callback(valCb("Scrollbar verticalType"));}
+                tooltip {Vertical Scrollbar}
+              }
+          }
+        Group {}
+          {
+            label {Adjuster}
+            xywh {480 10 130 120}
+            box ENGRAVED_BOX
+            labelfont 1
+            align 17
+          }
+          {
+            Adjuster {}
+              {
+                label {w()>h()}
+                xywh {490 60 75 25}
+                labelsize 8
+                v_label_margin 2
+                setup {o.callback(valCb("Adjuster w()>h()"));}
+                tooltip {Horizontal Adjuster}
+              }
+            Adjuster {}
+              {
+                label {w()<h()}
+                xywh {570 35 25 75}
+                labelsize 8
+                v_label_margin 2
+                setup {o.callback(valCb("Adjuster w()<h()"));}
+                tooltip {Vertical Adjuster}
+              }
+          }
+        Group {}
+          {
+            label {Counter}
+            xywh {340 140 130 120}
+            box ENGRAVED_BOX
+            labelfont 1
+            align 17
+          }
+          {
+            Counter {}
+              {
+                label {0}
+                xywh {350 175 110 25}
+                labelsize 8
+                v_label_margin 2
+                setup {o.callback(valCb("Counter"));}
+                tooltip {Standard Counter}
+              }
+            Counter {}
+              {
+                label {simpleCounter}
+                xywh {350 215 110 25}
+                labelsize 8
+                v_label_margin 2
+                type Simple
+                setup {o.callback(valCb("Counter simpleCounter"));}
+                tooltip {Simple Counter}
+              }
+          }
+        Group {}
+          {
+            label {Spinner}
+            xywh {480 140 130 120}
+            box ENGRAVED_BOX
+            labelfont 1
+            align 17
+          }
+          {
+            Spinner {}
+              {
+                label {inputInt}
+                xywh {505 176 80 24}
+                labelsize 8
+                v_label_margin 2
+                value {5}
+                minimum {-30}
+                maximum {30}
+                step {2}
+                align 2
+                setup {o.callback(spinnerCb("Spinner inputInt"));}
+              }
+            Spinner {}
+              {
+                label {inputFloat}
+                xywh {505 216 80 24}
+                labelsize 8
+                v_label_margin 2
+                value {0.05}
+                minimum {0}
+                maximum {1}
+                step {0.01}
+                align 2
+                type Float
+                setup {o.callback(spinnerCb("Spinner inputFloat"));
+o.wrap(false); // disable wrap mode}
+              }
+          }
+        Group {}
+          {
+            label {Dial}
+            xywh {340 270 270 105}
+            box ENGRAVED_BOX
+            labelfont 1
+            align 17
+          }
+          {
+            Dial {}
+              {
+                label {0}
+                xywh {360 295 65 65}
+                color 10
+                selection_color 1
+                labelsize 8
+                v_label_margin 2
+                value {0.5}
+                setup {o.callback(valCb("Dial"));
+o.angles(0,315);}
+                tooltip {Standard Dial}
+              }
+            Dial {}
+              {
+                label {lineDial}
+                xywh {440 295 65 65}
+                color 10
+                selection_color 1
+                labelsize 8
+                v_label_margin 2
+                value {0.5}
+                type Line
+                setup {o.callback(valCb("Dial lineDial"));}
+                tooltip {Line Dial}
+              }
+            Dial {}
+              {
+                label {fillDial}
+                xywh {520 295 65 65}
+                color 10
+                selection_color 1
+                labelsize 8
+                v_label_margin 2
+                value {1}
+                type Fill
+                setup {o.callback(valCb("Dial fillDial"));
+o.angles(0,360);}
+                tooltip {Fill Dial}
+              }
+          }
+        Group {}
+          {
+            label {Roller}
+            xywh {340 385 150 115}
+            box ENGRAVED_BOX
+            labelfont 1
+            align 17
+          }
+          {
+            Roller {}
+              {
+                label {0}
+                xywh {355 390 20 95}
+                labelsize 8
+                v_label_margin 2
+                setup {o.callback(valCb("Roller verticalType"));}
+                tooltip {Vertical Roller}
+              }
+            Roller {}
+              {
+                label {horizontalType}
+                xywh {385 430 90 20}
+                labelsize 8
+                v_label_margin 2
+                type Horizontal
+                setup {o.callback(valCb("Roller horizontalType"));}
+                tooltip {Horizontal Roller}
+              }
+          }
+        Box {}
+          {
+            label {Some widgets have color(green) and color2(red) to show the areas these effect.}
+            xywh {500 385 110 115}
+            box BORDER_FRAME
+            color 0
+            selection_color 0
+            labelsize 11
+            align 128
+          }
+        Terminal tty
+          {
+            xywh {10 513 600 117}
+            setup {o.ansi(true);}
+          }
+      }
+  }
+Function {valCb(string name)}
+  {
+    return_type {void delegate(Widget)}
+    open
+  }
+  {
+    code {return (o)
+    \{
+      auto v = cast(Valuator) o;
+      tty.printf("callback(): %s value() = \\033[1m%g\\033[0m\\n", name, v.value());
+    \};}
+      {
+      }
+  }
+Function {spinnerCb(string name)}
+  {
+    comment {Spinner doesn't derive from Fl_Valuator..}
+    return_type {void delegate(Widget)}
+  }
+  {
+    code {return (o)
+    \{
+      auto s = cast(Spinner) o;
+      tty.printf("callback(): %s value() = \\033[1m%g\\033[0m\\n", name, s.value());
+    \};}
+      {
+      }
+  }

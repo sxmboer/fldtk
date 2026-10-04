@@ -1,0 +1,15 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+comment {// @INSTANCE@ for fldtk (Full-D-tick), a D port of the Fast Light Tool Kit (FLTK).
+//
+// Copyright 2026 by Steef Boerrigter.
+//
+// Distributed under the Boost Software License, Version 1.0.
+// (See accompanying file LICENSE_1_0.txt or copy at
+// https://www.boost.org/LICENSE_1_0.txt)
+//
+}
+  {
+    in_source
+    in_header
+  }

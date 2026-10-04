@@ -1,0 +1,7 @@
+# Store text files with LF line endings in the repository, whatever the
+# committing machine's core.autocrlf setting. Checkouts get the
+# platform's native line endings.
+* text=auto
+
+# Already committed with CRLF; left exactly as stored.
+*.rc -text

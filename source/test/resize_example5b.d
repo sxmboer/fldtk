@@ -1,0 +1,107 @@
+// D transliteration of FLTK's test/resize-example5b.cxx (~/Repositories/fltk),
+// linked with resize-arrows.cxx (see resize_arrows.d).
+// Part of the samples/ contract -- see samples/README.md.
+// Check: ./samples/build.sh resize-example5b
+import fl;
+import resize_arrows;
+
+// window, simplex and arrow dimensions
+int TLx = 35, TRx = 320, TLw = 260, Ww = 620;
+int TLy = 35, LGy = 125, TLh = 90, LGh = 70, LAh = 35, Wh = 200;
+
+DoubleWindow window;
+
+class Simplex : FlGroup
+{
+    Box m_boxA, m_boxB, m_boxC, m_boxI;
+    FlGroup m_group, m_groupL, m_groupR;
+
+    this(int X, int Y, int W, int H, string T = null)
+    {
+        super(X, Y, W, H, T);
+        this.box(Boxtype.upBox);
+        m_group = new FlGroup(X + 10, Y + 10, 240, 70);
+        m_group.box(Boxtype.upBox);
+
+        m_groupL = new FlGroup(X + 10, Y + 15, 145, 35, "AB group");
+        m_groupL.alignment(alignBottomLeft);
+        m_groupL.box(Boxtype.upBox);
+        m_groupL.color(red);
+        m_groupL.labelcolor(red);
+        m_boxA = new Box(X + 20, Y + 20, 80, 25, "A");
+        m_boxA.box(Boxtype.upBox);
+        m_boxA.color(yellow);
+        m_boxB = new Box(X + 110, Y + 20, 40, 25, "B");
+        m_boxB.box(Boxtype.upBox);
+        m_groupL.resizable(m_boxA);
+        m_groupL.end();
+
+        m_groupR = new FlGroup(X + 155, Y + 15, 95, 35, "C group");
+        m_groupR.alignment(alignBottomRight);
+        m_groupR.box(Boxtype.upBox);
+        m_groupR.color(blue);
+        m_groupR.labelcolor(blue);
+        m_boxC = new Box(X + 160, Y + 20, 80, 25, "C");
+        m_boxC.box(Boxtype.upBox);
+        m_boxC.color(yellow);
+        m_groupR.resizable(m_boxC);
+        m_groupR.end();
+
+        int d = 20;
+        m_boxI = new Box(X + 155 - d, Y + 55, 2 * d, 10);
+        m_boxI.box(Boxtype.upBox);
+        m_boxI.color(yellow);
+
+        m_group.resizable(m_boxI);
+        m_group.end();
+
+        this.resizable(m_group);
+        this.end();
+    }
+}
+
+class Resizables : FlGroup
+{
+    Simplex TL, TR; // top left, top right
+    Harrow LA, RA;  // left arrow, right arrow
+
+    this(int X, int Y, int W, int H, string T = null)
+    {
+        super(X, Y, W, H, T);
+        TL = new Simplex(X + TLx, Y + TLy, TLw, TLh, "Original");
+        TL.alignment(alignTopLeft);
+
+        TR = new Simplex(X + TRx, Y + TLy, TLw, TLh, "Horizontally Resized");
+        TR.alignment(alignTopLeft);
+
+        FlGroup LG = new FlGroup(X + TLx, Y + LGy, TLw, LGh);
+        LG.box(Boxtype.noBox);
+        LG.color(white);
+        LA = new Harrow(TL.m_boxI.x(), LG.y(), TL.m_boxI.w(), LAh, "Initial\nwidth");
+        LG.resizable(LA);
+        LG.end();
+
+        FlGroup RG = new FlGroup(X + TRx, Y + LGy, TLw, LGh);
+        RG.box(Boxtype.noBox);
+        RG.color(white);
+        RA = new Harrow(TR.m_boxI.x(), RG.y(), TR.m_boxI.w(), LAh, "Resized\nwidth");
+        RG.resizable(RA);
+        RG.end();
+
+        this.resizable(TR);
+        this.end();
+    }
+}
+
+void main(string[] args)
+{
+    window = new DoubleWindow(Ww, Wh, "resize-example5b");
+    window.color(white);
+    auto resizables = new Resizables(0, 0, Ww, Wh);
+    window.end();
+    window.resizable(resizables);
+    window.sizeRange(Ww, Wh);
+    window.show();
+    window.size(Ww + 90, Wh);
+    fl.run();
+}

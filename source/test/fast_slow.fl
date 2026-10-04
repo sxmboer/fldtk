@@ -1,0 +1,54 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+Function {}
+  {
+    open
+  }
+  {
+    Window {}
+      {
+        xywh {397 202 318 443}
+        type Double
+        resizable
+        open
+        selected
+      }
+      {
+        Slider control
+          {
+            label {move
+this}
+            callback {fast.value(o.value());
+if (fl.core.pushed() is null) slow.value(o.value());}
+            xywh {90 200 30 200}
+            setup {o.when(whenChanged | whenRelease | whenNotChanged);}
+          }
+        Slider fast
+          {
+            label {fast
+redraw}
+            xywh {140 200 30 200}
+            setup {o.setOutput();}
+          }
+        Slider slow
+          {
+            label {slow
+redraw}
+            xywh {190 200 30 200}
+            setup {o.setOutput();}
+          }
+        Box {}
+          {
+            label {The left slider has changed(whenChanged | whenRelease | whenNotChanged) so it produces a callback on both drag and release mouse events.
+The middle slider (representing a widget with low overhead) is changed on every mouse movement.
+The right slider (representing a widget with high overhead) is only updated when the mouse is released, by checking if fl.core.pushed() is null.}
+            xywh {10 10 300 180}
+            box DOWN_BOX
+            color 53
+            selection_color 47
+            labelfont 4
+            labelsize 12
+            align 148
+          }
+      }
+  }

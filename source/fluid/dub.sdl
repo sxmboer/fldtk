@@ -1,0 +1,76 @@
+name "fluid"
+authors "Steef Boerrigter"
+copyright "Copyright 2026 Steef Boerrigter"
+license "BSL-1.0"
+description "Fluid, FLTK's UI designer, ported to emit D source files"
+dependency "fldtk" version="*" path="../../"
+
+// The fluid binary lands in the repo root, next to libfldtk.so -- the
+// library dub itself builds there, so an $ORIGIN rpath (no "/..") is
+// all it needs to find the .so at runtime from any working directory.
+targetPath "../.."
+lflags "-rpath=$$ORIGIN" platform="linux"
+
+// Default configuration: the real, full interactive `fluid` binary.
+// Requires `panels/generated/*.d` to already exist (generated from
+// `panels/*.fl`, not checked in -- see BUILDING), since `gui_main.d`
+// imports their real generated entry points directly.
+//
+// `sourcePaths "."` scans this whole directory (this file's own dir,
+// source/fluid/) recursively, so it alone picks up both the
+// hand-written *.d files here and panels/generated/*.d -- listing
+// "panels/generated" again would double-compile it. `importPaths` needs
+// TWO different entries because the two groups resolve their module
+// names against two different base directories, not because of any
+// double-compile risk:
+//   - "..": every hand-written file here (gui_main.d, canvas.d, ...)
+//     has no explicit `module` line, so D infers the module name from
+//     its path relative to an import path -- these need to resolve as
+//     `fluid.gui_main` etc. (matching every `import fluid.xxx;` site),
+//     which requires the import path to be the *parent* of this
+//     directory (source/), not this directory itself.
+//   - "panels/generated": panels/generated/*.d are imported flatly,
+//     with no "fluid."/"panels."/"generated." prefix at all (e.g.
+//     `import widget_panel;` in gui_main.d) -- that requires
+//     "panels/generated" itself as its own, separate import path.
+// `panels/*.fl` (the real source) and `templates/` both sit alongside
+// `panels/generated/` here but must NOT be compiled in -- `.fl` isn't D
+// source at all. `templates/fldtkLicense.fl` is embedded into
+// `panels/generated/template_panel.d` when that panel is generated.
+configuration "fluid" {
+    targetType "executable"
+    targetName "fluid"
+    sourcePaths "."
+    importPaths ".." "panels/generated"
+    mainSourceFile "app.d"
+}
+
+// `dub build fldtk:fluid --config=bootstrap`: a second, standalone
+// binary, `fluid-bootstrap`, built from this directory alone (no
+// `panels/generated/` at all) -- see `bootstrap.d`'s own top comment for
+// why it exists and how it's used to regenerate `panels/generated/*.d`
+// from `panels/*.fl` before the "fluid" configuration above can be
+// built for the first time.
+// Excluded: `app.d` (its own competing `main()`), `gui_main.d`/
+// `canvas.d` (the interactive editor's own live design surface, no
+// reason to exist outside it), `shell_settings.d` (interactive
+// Settings-dialog field wiring, called only from generated panel
+// callbacks -- imports `settings_panel`/`shell_run_window`, both under
+// `panels/generated/`), and `package.d` (the `import fluid;` aggregator
+// -- `public import`s all three of the above, so leaving it in would
+// drag every one of them back in via dub's own "compile every .d file
+// under sourcePaths regardless of what's excluded" behavior the
+// moment dmd resolves `fluid.package`'s own import list; nothing else
+// here needs the aggregator itself, only individual modules).
+// Nothing else here imports anything panels-generated, so
+// "panels/generated" doesn't need to be an import path here at all --
+// only "..", for the same `fluid.xxx` module-name reason as the "fluid"
+// configuration above.
+configuration "bootstrap" {
+    targetType "executable"
+    targetName "fluid-bootstrap"
+    sourcePaths "."
+    importPaths ".."
+    excludedSourceFiles "app.d" "gui_main.d" "canvas.d" "shell_settings.d" "package.d" "panels/generated/*.d"
+    mainSourceFile "bootstrap.d"
+}

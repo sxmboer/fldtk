@@ -1,0 +1,52 @@
+name "fldtk"
+authors "Steef Boerrigter"
+copyright "Copyright 2026 Steef Boerrigter"
+license "BSL-1.0"
+description "Full-D-tick: A complete D port of FLTK (Fast Light Toolkit), including Fluid support for exporting D source"
+
+// sourcePaths is the library's own code only (source/fl); importPaths is
+// its parent (source), since the modules there are named `fl.widget`,
+// `fl.group`, ... -- D resolves a module name against an import path, so
+// `import fl.widget;` needs source/ on the path, not source/fl/.
+sourcePaths "source/fl"
+importPaths "source"
+
+
+// Linux-specific configuration
+configuration "linux-default" {
+    platforms "linux"
+    targetType "dynamicLibrary"
+    libs "X11" "Xft" "Xinerama" "fontconfig" "Xcursor" "Xfixes" "Xext" "GL" "GLU" "GLEW" "z"
+}
+
+// Same library, built under another name and in another directory, so
+// `dub build --config=linux-release --build=release` (or `-b release-nobounds`,
+// `-b plain`, ...) can be tried without replacing the debug libfldtk.so in
+// the repo root that Fluid, the samples and the smoke tests are linked
+// against. The result is build/release/libfldtk-release.so. Release builds
+// are not supported yet; see BUILDING.md.
+configuration "linux-release" {
+    platforms "linux"
+    targetType "dynamicLibrary"
+    targetName "fldtk-release"
+    targetPath "build/release"
+    libs "X11" "Xft" "Xinerama" "fontconfig" "Xcursor" "Xfixes" "Xext" "GL" "GLU" "GLEW" "z"
+}
+
+// Windows-specific configuration.
+// Static library: a Windows DLL exports only symbols marked `export`, and no
+// fl.* module uses it. The library list is explicit because dmd only injects
+// its default runtime libraries (kernel32/msvcrt120/oldnames) when no
+// explicit .lib is given, and an explicit list also makes druntime's
+// `pragma(lib, ...)` directives (e.g. imm32) irrelevant. Every sample links the
+// whole set, since the static library pulls in the GL, GDI+, printing and COM
+// code regardless of use. These come from dmd's bundled import libraries, so
+// no Windows SDK or MSVC install is needed.
+configuration "windows-default" {
+    platforms "windows"
+    targetType "staticLibrary"
+    libs "gdi32" "user32" "kernel32" "msvcrt120" "oldnames" "ole32" "gdiplus" "opengl32" "glu32" "msimg32" "shell32" "comdlg32" "imm32"
+}
+
+// buildfluid needs fluid to be defined as a sub package
+subPackage "source/fluid"

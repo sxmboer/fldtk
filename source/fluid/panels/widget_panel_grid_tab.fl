@@ -1,0 +1,595 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+comment {The Grid sub-panel of widget_panel.fl's own widget_tabs -- shown in
+place of the ordinary GUI/Style/C++ tabs when the selected widget is a
+Fl_Grid (GridNode). Ported from FLTK's fluid/panels/
+widget_panel/Grid_Tab.fl.
+
+Named `widget_panel_grid_tab.fl` rather than `GridTab.fl` (the name
+its own `widget_class GridTab` would suggest) so this file groups with
+`widget_panel.fl` in a directory listing; `widget_panel.fl`'s own
+top-level `decl` block imports this file's class explicitly, since its
+file name doesn't match its class name.
+
+Unlike FLTK (which reaches into the live project tree itself via a
+static `Grid_Node::selected()` lookup, fully decoupled from
+widget_panel.cxx), this file has no live-canvas-widget access yet (the
+same standing simplification the rest of widget_panel.fl's own
+GUI/Style/C++ pass already established) -- `GridTab` instead exposes a
+real public `load(GridNode gn)` method that widget_panel.fl's own
+`propagateLoadWidget()` calls directly when the selection is a
+GridNode, matching the same `currentXNode_`/`propagateLoadX()` shape
+every other page in that file already uses, just scoped to this
+class's own field instead of a module-level global. Every field reads
+and writes `GridNode`'s own already-real data fields (`rows`/`cols`/
+`marginLeft`-`marginBottom`/`gapRow`/`gapCol`/`rowHeights`/
+`rowWeights`/`rowGaps`/`colWidths`/`colWeights`/`colGaps`) -- no live
+`Fl_Grid` query, matching that same simplification.}
+  {
+    in_source
+    in_header
+  }
+decl {import fluid;}
+  {
+    private
+    local
+  }
+widget_class GridTab
+  {
+    xywh {0 0 400 330}
+    labelsize 11
+    resizable
+    position_relative_rescale
+  }
+  {
+    decl {private GridNode gn_;}
+      {
+        private
+        local
+      }
+    Group {}
+      {
+        label {Grid Layout:}
+        xywh {85 30 315 20}
+        labelfont 1
+        labelsize 11
+        align 4
+      }
+      {
+        Input widgetGridRows
+          {
+            label {Rows:}
+            callback {if (gn_ is null) return;
+int m;
+try m = to!int(widgetGridRows.value()); catch (ConvException) m = 0;
+if (m < 1)
+  \{
+    m = 1;
+    widgetGridRows.value("1");
+  \}
+gn_.rows = m;
+gn_.hasDimensions = true;
+load(gn_);}
+            xywh {85 30 40 20}
+            labelsize 11
+            textsize 11
+            align 5
+            tooltip {Number of horizontal rows in the Grid group}
+          }
+        Group {}
+          {
+            xywh {125 30 30 20}
+          }
+          {
+            Button {}
+              {
+                label {−}
+                callback {int m;
+try m = to!int(widgetGridRows.value()); catch (ConvException) m = 0;
+widgetGridRows.value(to!string(m - 1));
+widgetGridRows.doCallback();}
+                xywh {125 30 15 20}
+                labelsize 11
+                compact {1}
+                setup {o.clearVisibleFocus();}
+              }
+            Button {}
+              {
+                label {+}
+                callback {int m;
+try m = to!int(widgetGridRows.value()); catch (ConvException) m = 0;
+widgetGridRows.value(to!string(m + 1));
+widgetGridRows.doCallback();}
+                xywh {140 30 15 20}
+                labelsize 11
+                compact {1}
+                setup {o.clearVisibleFocus();}
+              }
+          }
+        Input widgetGridCols
+          {
+            label {Columns:}
+            callback {if (gn_ is null) return;
+int m;
+try m = to!int(widgetGridCols.value()); catch (ConvException) m = 0;
+if (m < 1)
+  \{
+    m = 1;
+    widgetGridCols.value("1");
+  \}
+gn_.cols = m;
+gn_.hasDimensions = true;
+load(gn_);}
+            xywh {165 30 40 20}
+            labelsize 11
+            textsize 11
+            align 5
+            tooltip {Number of vertical columns in the Grid group}
+          }
+        Group {}
+          {
+            xywh {205 30 30 20}
+          }
+          {
+            Button {}
+              {
+                label {−}
+                callback {int m;
+try m = to!int(widgetGridCols.value()); catch (ConvException) m = 0;
+widgetGridCols.value(to!string(m - 1));
+widgetGridCols.doCallback();}
+                xywh {205 30 15 20}
+                labelsize 11
+                compact {1}
+                setup {o.clearVisibleFocus();}
+              }
+            Button {}
+              {
+                label {+}
+                callback {int m;
+try m = to!int(widgetGridCols.value()); catch (ConvException) m = 0;
+widgetGridCols.value(to!string(m + 1));
+widgetGridCols.doCallback();}
+                xywh {220 30 15 20}
+                labelsize 11
+                compact {1}
+                setup {o.clearVisibleFocus();}
+              }
+          }
+        Box {}
+          {
+            xywh {386 30 0 20}
+            resizable
+          }
+      }
+    Group {}
+      {
+        label {Margins:}
+        xywh {85 70 315 20}
+        labelfont 1
+        labelsize 11
+        align 4
+      }
+      {
+        ValueInput marginLeftInput
+          {
+            label {Left:}
+            callback {if (gn_ is null) return;
+gn_.marginLeft = cast(int) marginLeftInput.value();
+gn_.hasMargin = true;}
+            xywh {85 70 55 20}
+            labelsize 11
+            textsize 11
+            maximum {1000}
+            step {1}
+            align 5
+            tooltip {Left margin in group.}
+          }
+        ValueInput marginTopInput
+          {
+            label {Top:}
+            callback {if (gn_ is null) return;
+gn_.marginTop = cast(int) marginTopInput.value();
+gn_.hasMargin = true;}
+            xywh {145 70 55 20}
+            labelsize 11
+            textsize 11
+            maximum {1000}
+            step {1}
+            align 5
+            tooltip {Top margin in group.}
+            selected
+          }
+        ValueInput marginRightInput
+          {
+            label {Right:}
+            callback {if (gn_ is null) return;
+gn_.marginRight = cast(int) marginRightInput.value();
+gn_.hasMargin = true;}
+            xywh {205 70 55 20}
+            labelsize 11
+            textsize 11
+            maximum {1000}
+            step {1}
+            align 5
+            tooltip {Right margin in group.}
+          }
+        ValueInput marginBottomInput
+          {
+            label {Bottom:}
+            callback {if (gn_ is null) return;
+gn_.marginBottom = cast(int) marginBottomInput.value();
+gn_.hasMargin = true;}
+            xywh {265 70 55 20}
+            labelsize 11
+            textsize 11
+            maximum {1000}
+            step {1}
+            align 5
+            tooltip {Bottom margin in group.}
+          }
+        Box {}
+          {
+            xywh {386 70 0 20}
+            resizable
+          }
+      }
+    Group {}
+      {
+        label {Gaps:}
+        xywh {85 105 315 20}
+        labelfont 1
+        labelsize 11
+        align 4
+      }
+      {
+        ValueInput gapRowInput
+          {
+            label {Row:}
+            callback {if (gn_ is null) return;
+gn_.gapRow = cast(int) gapRowInput.value();
+gn_.hasGap = true;}
+            xywh {85 105 55 20}
+            labelsize 11
+            textsize 11
+            maximum {1000}
+            step {1}
+            align 5
+            tooltip {Gap between children.}
+          }
+        ValueInput gapColInput
+          {
+            label {Col:}
+            callback {if (gn_ is null) return;
+gn_.gapCol = cast(int) gapColInput.value();
+gn_.hasGap = true;}
+            xywh {145 105 55 20}
+            labelsize 11
+            textsize 11
+            maximum {1000}
+            step {1}
+            align 5
+            tooltip {Gap between children.}
+          }
+        Box {}
+          {
+            xywh {386 105 0 20}
+            resizable
+          }
+      }
+    Group {}
+      {
+        label {Row:}
+        xywh {85 145 315 20}
+        labelfont 1
+        labelsize 11
+        align 4
+      }
+      {
+        Input widgetGridCurrRow
+          {
+            label {Index}
+            callback {if (gn_ is null) return;
+int r;
+try r = to!int(widgetGridCurrRow.value()); catch (ConvException) r = 0;
+if (r < 0) r = 0;
+if (r >= gn_.rows) r = gn_.rows - 1;
+widgetGridCurrRow.value(to!string(r));
+loadRowAttrs();}
+            xywh {85 145 40 20}
+            labelsize 11
+            textsize 11
+            align 5
+          }
+        Group {}
+          {
+            xywh {125 145 30 20}
+          }
+          {
+            Button {}
+              {
+                label {−}
+                callback {int r;
+try r = to!int(widgetGridCurrRow.value()); catch (ConvException) r = 0;
+widgetGridCurrRow.value(to!string(r - 1));
+widgetGridCurrRow.doCallback();}
+                xywh {125 145 15 20}
+                labelsize 11
+                compact {1}
+                setup {o.clearVisibleFocus();}
+              }
+            Button {}
+              {
+                label {+}
+                callback {int r;
+try r = to!int(widgetGridCurrRow.value()); catch (ConvException) r = 0;
+widgetGridCurrRow.value(to!string(r + 1));
+widgetGridCurrRow.doCallback();}
+                xywh {140 145 15 20}
+                labelsize 11
+                compact {1}
+                setup {o.clearVisibleFocus();}
+              }
+          }
+        Box {}
+          {
+            label {:}
+            xywh {155 145 15 20}
+            labelsize 11
+          }
+        Group {}
+          {
+            xywh {170 145 175 20}
+          }
+          {
+            Input widgetGridCurrRowHeight
+              {
+                label {Height:}
+                callback {if (gn_ is null) return;
+int r, h;
+try r = to!int(widgetGridCurrRow.value()); catch (ConvException) r = 0;
+try h = to!int(widgetGridCurrRowHeight.value()); catch (ConvException) h = 0;
+if (h < 0) h = 0;
+gridIntSet(gn_.rowHeights, r, h, 0);}
+                xywh {170 145 55 20}
+                labelsize 11
+                textsize 11
+                align 5
+              }
+            Input widgetGridCurrRowWeight
+              {
+                label {Weight:}
+                callback {if (gn_ is null) return;
+int r, h;
+try r = to!int(widgetGridCurrRow.value()); catch (ConvException) r = 0;
+try h = to!int(widgetGridCurrRowWeight.value()); catch (ConvException) h = 0;
+if (h < 0) h = 0;
+gridIntSet(gn_.rowWeights, r, h, 0);}
+                xywh {230 145 55 20}
+                labelsize 11
+                textsize 11
+                align 5
+              }
+            Input widgetGridCurrRowGap
+              {
+                label {Gap:}
+                callback {if (gn_ is null) return;
+int r, h;
+try r = to!int(widgetGridCurrRow.value()); catch (ConvException) r = 0;
+try h = to!int(widgetGridCurrRowGap.value()); catch (ConvException) h = -1;
+if (h < -1) h = -1;
+gridIntSet(gn_.rowGaps, r, h, -1);}
+                xywh {290 145 55 20}
+                labelsize 11
+                textsize 11
+                align 5
+              }
+          }
+        Box {}
+          {
+            xywh {390 145 1 20}
+            hide
+            resizable
+          }
+      }
+    Group {}
+      {
+        label {Column:}
+        xywh {85 180 315 20}
+        labelfont 1
+        labelsize 11
+        align 4
+      }
+      {
+        Input widgetGridCurrCol
+          {
+            label {Index}
+            callback {if (gn_ is null) return;
+int c;
+try c = to!int(widgetGridCurrCol.value()); catch (ConvException) c = 0;
+if (c < 0) c = 0;
+if (c >= gn_.cols) c = gn_.cols - 1;
+widgetGridCurrCol.value(to!string(c));
+loadColAttrs();}
+            xywh {85 180 40 20}
+            labelsize 11
+            textsize 11
+            align 5
+          }
+        Group {}
+          {
+            xywh {125 180 30 20}
+          }
+          {
+            Button {}
+              {
+                label {−}
+                callback {int c;
+try c = to!int(widgetGridCurrCol.value()); catch (ConvException) c = 0;
+widgetGridCurrCol.value(to!string(c - 1));
+widgetGridCurrCol.doCallback();}
+                xywh {125 180 15 20}
+                labelsize 11
+                compact {1}
+                setup {o.clearVisibleFocus();}
+              }
+            Button {}
+              {
+                label {+}
+                callback {int c;
+try c = to!int(widgetGridCurrCol.value()); catch (ConvException) c = 0;
+widgetGridCurrCol.value(to!string(c + 1));
+widgetGridCurrCol.doCallback();}
+                xywh {140 180 15 20}
+                labelsize 11
+                compact {1}
+                setup {o.clearVisibleFocus();}
+              }
+          }
+        Box {}
+          {
+            label {:}
+            xywh {155 180 15 20}
+            labelsize 11
+          }
+        Group {}
+          {
+            xywh {170 180 175 20}
+          }
+          {
+            Input widgetGridCurrColWidth
+              {
+                label {Width:}
+                callback {if (gn_ is null) return;
+int c, h;
+try c = to!int(widgetGridCurrCol.value()); catch (ConvException) c = 0;
+try h = to!int(widgetGridCurrColWidth.value()); catch (ConvException) h = 0;
+if (h < 0) h = 0;
+gridIntSet(gn_.colWidths, c, h, 0);}
+                xywh {170 180 55 20}
+                labelsize 11
+                textsize 11
+                align 5
+              }
+            Input widgetGridCurrColWeight
+              {
+                label {Weight:}
+                callback {if (gn_ is null) return;
+int c, h;
+try c = to!int(widgetGridCurrCol.value()); catch (ConvException) c = 0;
+try h = to!int(widgetGridCurrColWeight.value()); catch (ConvException) h = 0;
+if (h < 0) h = 0;
+gridIntSet(gn_.colWeights, c, h, 0);}
+                xywh {230 180 55 20}
+                labelsize 11
+                textsize 11
+                align 5
+              }
+            Input widgetGridCurrColGap
+              {
+                label {Gap:}
+                callback {if (gn_ is null) return;
+int c, h;
+try c = to!int(widgetGridCurrCol.value()); catch (ConvException) c = 0;
+try h = to!int(widgetGridCurrColGap.value()); catch (ConvException) h = -1;
+if (h < -1) h = -1;
+gridIntSet(gn_.colGaps, c, h, -1);}
+                xywh {290 180 55 20}
+                labelsize 11
+                textsize 11
+                align 5
+              }
+          }
+        Box {}
+          {
+            xywh {390 180 1 20}
+            hide
+            resizable
+          }
+      }
+    Box {}
+      {
+        xywh {85 320 300 5}
+        labelsize 11
+        hide
+        resizable
+      }
+    Function {load(GridNode gn)}
+      {
+        return_type void
+      }
+      {
+        code {gn_ = gn;
+if (gn_ is null) return;
+widgetGridRows.value(to!string(gn_.rows));
+widgetGridCols.value(to!string(gn_.cols));
+marginLeftInput.value(gn_.marginLeft);
+marginTopInput.value(gn_.marginTop);
+marginRightInput.value(gn_.marginRight);
+marginBottomInput.value(gn_.marginBottom);
+gapRowInput.value(gn_.gapRow);
+gapColInput.value(gn_.gapCol);
+// widgetGridCurrRow/Col start out empty (never explicitly initialized);
+// loadRowAttrs()/loadColAttrs() below already default an empty or
+// unparseable value to 0 on their own, so no pre-seeding is needed here.
+loadRowAttrs();
+loadColAttrs();}
+          {
+          }
+      }
+    Function loadRowAttrs()
+      {
+        return_type void
+      }
+      {
+        code {if (gn_ is null) return;
+int r;
+try r = to!int(widgetGridCurrRow.value()); catch (ConvException) r = 0;
+if (r < 0) r = 0;
+if (gn_.rows > 0 && r >= gn_.rows) r = gn_.rows - 1;
+widgetGridCurrRow.value(to!string(r));
+widgetGridCurrRowHeight.value(to!string(gridIntAt(gn_.rowHeights, r, 0)));
+widgetGridCurrRowWeight.value(to!string(gridIntAt(gn_.rowWeights, r, 0)));
+widgetGridCurrRowGap.value(to!string(gridIntAt(gn_.rowGaps, r, -1)));}
+          {
+          }
+      }
+    Function loadColAttrs()
+      {
+        return_type void
+      }
+      {
+        code {if (gn_ is null) return;
+int c;
+try c = to!int(widgetGridCurrCol.value()); catch (ConvException) c = 0;
+if (c < 0) c = 0;
+if (gn_.cols > 0 && c >= gn_.cols) c = gn_.cols - 1;
+widgetGridCurrCol.value(to!string(c));
+widgetGridCurrColWidth.value(to!string(gridIntAt(gn_.colWidths, c, 0)));
+widgetGridCurrColWeight.value(to!string(gridIntAt(gn_.colWeights, c, 0)));
+widgetGridCurrColGap.value(to!string(gridIntAt(gn_.colGaps, c, -1)));}
+          {
+          }
+      }
+    Function {gridIntAt(int[] arr, int idx, int dflt)}
+      {
+        return_type int
+      }
+      {
+        code {return (idx >= 0 && idx < arr.length) ? arr[idx] : dflt;}
+          {
+          }
+      }
+    Function {gridIntSet(ref int[] arr, int idx, int val, int dflt)}
+      {
+        return_type void
+      }
+      {
+        code {if (idx < 0) return;
+while (arr.length <= idx)
+  arr ~= dflt;
+arr[idx] = val;}
+          {
+          }
+      }
+  }

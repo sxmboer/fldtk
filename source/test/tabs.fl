@@ -1,0 +1,527 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+Function {closeTabCB(Widget o)}
+  {
+    comment {Shared by every closeable tab page (Fl_Tabs' own "x" close
+button) -- FLTK hoists this as one shared static function too,
+just via Fluid's own duplicate-callback-text dedup, not a named
+Function. Also reused directly (as a bare delegate) by the "add tab"
+button below for tabs it creates at runtime.}
+    return_type void
+    open
+  }
+  {
+    code {if (fl.core.callbackReason() == CallbackReason.closed)
+  (cast(FlGroup) o.parent()).remove(o);}
+      {
+      }
+  }
+Function {}
+  {
+    open
+  }
+  {
+    Window fooWindow
+      {
+        label {Comparison of Tabs (left) vs. Wizard (right)}
+        xywh {330 402 660 400}
+        type Double
+        resizable
+      }
+      {
+        Box {}
+          {
+            label {class Tabs}
+            xywh {95 0 130 35}
+            labelfont 1
+            labeltype ENGRAVED_LABEL
+          }
+        Tabs tabsGroup
+          {
+            callback {auto selTab = o.value();
+if (selTab)
+  writefln("Callback called for tab \\"%s\\"", selTab.label());
+else
+  writeln("Callback called");}
+            xywh {10 35 315 260}
+            selection_color 4
+            labelcolor 7
+            tooltip {the various index cards test different aspects of the Tabs widget}
+            resizable
+          }
+          {
+            Group {}
+              {
+                label {Label&1}
+                callback {closeTabCB}
+                xywh {10 60 315 235}
+                selection_color 1
+                when 16
+                tooltip {this tab tests correct keyboard navigation between text input fields}
+                resizable
+              }
+              {
+                Input {}
+                  {
+                    label {input:}
+                    xywh {70 80 240 40}
+                    tooltip {This is the first input field}
+                  }
+                Input {}
+                  {
+                    label {input2:}
+                    xywh {70 120 240 30}
+                    setup {o.tooltip("");}
+                  }
+                Input {}
+                  {
+                    label {input3:}
+                    xywh {70 150 240 80}
+                  }
+              }
+            Group {}
+              {
+                label {tab&2}
+                callback {closeTabCB}
+                xywh {10 60 315 235}
+                selection_color 2
+                when 16
+                tooltip {tab2 tests among other things the cooperation of modal windows and tabs}
+                hide
+              }
+              {
+                Button {}
+                  {
+                    label {button1}
+                    callback {import fl.ask : message;
+message("Test to see if this modal window prevents you from changing the tabs. It should.");}
+                    xywh {20 85 100 30}
+                  }
+                Input {}
+                  {
+                    label {input in box2}
+                    xywh {130 130 175 30}
+                  }
+                Button {}
+                  {
+                    label {This is stuff inside the Group "tab2"}
+                    xywh {25 170 280 30}
+                  }
+                Button {}
+                  {
+                    label {Test event blocking by modal window}
+                    callback {import fl.ask : message;
+message("Make sure you cannot change the tabs while this modal window is up");}
+                    xywh {25 200 280 30}
+                  }
+              }
+            Group {}
+              {
+                label {tab&3}
+                callback {closeTabCB}
+                xywh {10 60 315 235}
+                selection_color 3
+                when 16
+                tooltip {tab3 checks for correct keyboard navigation}
+                hide
+              }
+              {
+                Button {}
+                  {
+                    label {button2}
+                    xywh {20 80 60 80}
+                  }
+                Button {}
+                  {
+                    label {button}
+                    xywh {80 80 60 80}
+                  }
+                Button {}
+                  {
+                    label {button}
+                    xywh {140 80 60 80}
+                  }
+              }
+            Group {}
+              {
+                label {&tab4}
+                callback {closeTabCB}
+                xywh {10 60 315 235}
+                selection_color 5
+                labelfont 2
+                labeltype ENGRAVED_LABEL
+                when 16
+                tooltip {this tab shows the issue of indicating a selected tab if the tab layouts are very similar}
+                hide
+              }
+              {
+                Button {}
+                  {
+                    label {button2}
+                    xywh {20 80 60 120}
+                  }
+                Button {}
+                  {
+                    label {button}
+                    xywh {80 80 60 120}
+                  }
+                Button {}
+                  {
+                    label {button}
+                    xywh {140 80 60 120}
+                  }
+              }
+            Group {}
+              {
+                label {@fileprint  &print}
+                xywh {10 60 315 235}
+                tooltip {tab5 verifies if visibility requests are handled correctly}
+                hide
+              }
+              {
+                Button {}
+                  {
+                    label {button2}
+                    xywh {20 80 60 80}
+                    tooltip {button2 has a different tooltip than tab5}
+                  }
+                Button {}
+                  {
+                    label {button}
+                    xywh {90 80 60 80}
+                  }
+                Clock {}
+                  {
+                    label {Make sure this clock does not use processor time when this tab is hidden or window is iconized}
+                    xywh {185 80 120 120}
+                    box OSHADOW_BOX
+                    color 238
+                    selection_color 0
+                    labelfont 8
+                    labelsize 10
+                    align 130
+                  }
+                Group {}
+                  {
+                    xywh {20 190 40 55}
+                    box THIN_DOWN_BOX
+                    color 173
+                    class Window
+                    align 16
+                  }
+                  {
+                  }
+                Group {}
+                  {
+                    label {subwindows:}
+                    xywh {65 190 40 55}
+                    box THIN_DOWN_BOX
+                    color 167
+                    class Window
+                  }
+                  {
+                  }
+                Group {}
+                  {
+                    xywh {110 190 40 55}
+                    box THIN_DOWN_BOX
+                    color 239
+                    class Window
+                    align 16
+                  }
+                  {
+                  }
+              }
+          }
+        Box {}
+          {
+            label {class Wizard}
+            xywh {410 0 130 35}
+            labelfont 1
+            labeltype ENGRAVED_LABEL
+          }
+        Wizard wWizard
+          {
+            xywh {330 35 320 260}
+          }
+          {
+            Group {}
+              {
+                label {Label1}
+                xywh {330 60 320 235}
+                selection_color 1
+                tooltip {this tab tests correct keyboard navigation between text input fields}
+                hide
+                resizable
+              }
+              {
+                Input {}
+                  {
+                    label {input:}
+                    xywh {390 80 240 40}
+                    tooltip {This is the first input field}
+                  }
+                Input {}
+                  {
+                    label {input2:}
+                    xywh {390 120 240 30}
+                    setup {o.tooltip("");}
+                  }
+                Input {}
+                  {
+                    label {input3:}
+                    xywh {390 150 240 80}
+                  }
+              }
+            Group {}
+              {
+                label {tab2}
+                xywh {330 60 320 235}
+                selection_color 2
+                tooltip {tab2 tests among other things the cooperation of modal windows and tabs}
+              }
+              {
+                Button {}
+                  {
+                    label {button1}
+                    callback {import fl.ask : message;
+message("Test to see if this modal window prevents you from changing the tabs. It should.");}
+                    xywh {350 85 100 30}
+                  }
+                Input {}
+                  {
+                    label {input in box2}
+                    xywh {455 130 175 30}
+                  }
+                Button {}
+                  {
+                    label {This is stuff inside the Group "tab2"}
+                    xywh {350 170 280 30}
+                  }
+                Button {}
+                  {
+                    label {Test event blocking by modal window}
+                    callback {import fl.ask : message;
+message("Make sure you cannot change the tabs while this modal window is up");}
+                    xywh {350 200 280 30}
+                  }
+              }
+            Group {}
+              {
+                label {tab3}
+                xywh {330 60 320 235}
+                selection_color 3
+                tooltip {tab3 checks for correct keyboard navigation}
+                hide
+              }
+              {
+                Button {}
+                  {
+                    label {button2}
+                    xywh {350 80 60 80}
+                  }
+                Button {}
+                  {
+                    label {button}
+                    xywh {410 80 60 80}
+                  }
+                Button {}
+                  {
+                    label {button}
+                    xywh {470 80 60 80}
+                  }
+              }
+            Group {}
+              {
+                label {tab4}
+                xywh {330 60 320 235}
+                selection_color 5
+                labelfont 2
+                tooltip {this tab shows the issue of indicating a selected tab if the tab layouts are very similar}
+                hide
+              }
+              {
+                Button {}
+                  {
+                    label {button2}
+                    xywh {350 80 60 120}
+                  }
+                Button {}
+                  {
+                    label {button}
+                    xywh {410 80 60 120}
+                  }
+                Button {}
+                  {
+                    label {button}
+                    xywh {470 80 60 120}
+                  }
+              }
+            Group {}
+              {
+                label {     tab5      }
+                xywh {330 60 320 235}
+                labeltype ENGRAVED_LABEL
+                tooltip {tab5 verifies if visibility requests are handled correctly}
+                hide
+              }
+              {
+                Button {}
+                  {
+                    label {button2}
+                    xywh {350 80 60 80}
+                    tooltip {button2 has a different tooltip than tab5}
+                  }
+                Button {}
+                  {
+                    label {button}
+                    xywh {420 80 60 80}
+                  }
+                Clock {}
+                  {
+                    label {Make sure this clock does not use processor time when this tab is hidden or window is iconized}
+                    xywh {510 80 120 120}
+                    box OSHADOW_BOX
+                    color 238
+                    selection_color 0
+                    labelfont 8
+                    labelsize 10
+                    align 130
+                  }
+                Group {}
+                  {
+                    xywh {350 190 40 55}
+                    box THIN_DOWN_BOX
+                    color 173
+                    class Window
+                    align 16
+                  }
+                  {
+                  }
+                Group {}
+                  {
+                    label {subwindows:}
+                    xywh {395 190 40 55}
+                    box THIN_DOWN_BOX
+                    color 167
+                    class Window
+                  }
+                  {
+                  }
+                Group {}
+                  {
+                    xywh {440 190 40 55}
+                    box THIN_DOWN_BOX
+                    color 239
+                    class Window
+                    align 16
+                  }
+                  {
+                  }
+              }
+          }
+        Group {}
+          {
+            xywh {410 305 130 25}
+          }
+          {
+            Button {}
+              {
+                label {@|<}
+                callback {wWizard.value(wWizard.child(0));}
+                xywh {410 305 30 25}
+                shortcut {0xff50}
+                tooltip {go to first page [Home]}
+              }
+            Button {}
+              {
+                label {@<}
+                callback {wWizard.prev();}
+                xywh {440 305 30 25}
+                shortcut {0xff51}
+                tooltip {go to previous page [left arrow]}
+              }
+            Button {}
+              {
+                label {@>}
+                callback {wWizard.next();}
+                xywh {480 305 30 25}
+                shortcut {0xff53}
+                tooltip {go to next page in wizard [right arrow]}
+              }
+            Button {}
+              {
+                label {@>|}
+                callback {wWizard.value(wWizard.child(wWizard.children() - 1));}
+                xywh {510 305 30 25}
+                shortcut {0xff57}
+                tooltip {go to last page [End]}
+              }
+          }
+        Button {}
+          {
+            label {add tab}
+            callback {static int n = 6;
+int X = tabsGroup.x(), Y = tabsGroup.y() + 25;
+int W = tabsGroup.w(), H = tabsGroup.h() - 25;
+FlGroup.current(null);
+auto newTab = new FlGroup(X, Y, W, H, format("tab%d", n));
+newTab.when(whenClosed);
+newTab.callback(closeTabCB);
+auto box = new Box(X + 5, Y + 5, W - 10, H - 10, format("Empty tab %d.", n));
+box.alignment(alignCenter | alignInside);
+tabsGroup.add(newTab);
+n++;}
+            xywh {60 309 70 25}
+            tooltip {Add more tabs to check overflow handling.}
+          }
+        Choice {}
+          {
+            label {overflow:}
+            xywh {212 309 95 25}
+            down_box BORDER_BOX
+            tooltip {Change how Tabs handles more tabs than fit into the tabs space.}
+          }
+          {
+            MenuItem {}
+              {
+                label {compress}
+                callback {tabsGroup.handleOverflow(overflowCompress);}
+              }
+            MenuItem {}
+              {
+                label {clip}
+                callback {tabsGroup.handleOverflow(overflowClip);}
+              }
+            MenuItem {}
+              {
+                label {pulldown}
+                callback {tabsGroup.handleOverflow(overflowPulldown);}
+              }
+            MenuItem {}
+              {
+                label {drag}
+                callback {tabsGroup.handleOverflow(overflowDrag);}
+              }
+          }
+        Input {}
+          {
+            label {input:}
+            xywh {60 345 250 25}
+          }
+        Button {}
+          {
+            label {cancel}
+            callback {import core.stdc.stdlib : exit;
+exit(1);}
+            xywh {490 345 70 30}
+          }
+        ReturnButton {}
+          {
+            label {OK}
+            callback {import core.stdc.stdlib : exit;
+exit(0);}
+            xywh {570 345 70 30}
+          }
+      }
+  }
