@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/overlay.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh overlay
+// D transliteration of FLTK's test/overlay.cxx.
+// Build: rdmd buildsamples.d test overlay
 import fl;
 import std.conv : to;
 

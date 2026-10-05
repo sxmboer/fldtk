@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Paged_Device.H + src/Fl_Paged_Device.cxx
- * (FLTK 1.5.0, ~/Repositories/fltk).
+ * (FLTK 1.5.0).
  *
  * Much thinner than its size in `PORTING.md`'s dependency notes might
  * suggest: `Fl_Paged_Device` itself is just `Fl_Widget_Surface` plus
@@ -28,7 +28,7 @@
  *
  * `Page_Format`/`Page_Layout` are ported as `alias`-plus-manifest-
  * constants (not real D `enum`s), matching this port's own convention
- * for open sets combined with `|` (see `CLAUDE.md`'s "Porting
+ * for open sets combined with `|` (see `CONVENTIONS.md`'s "Porting
  * conventions" -- same treatment as `Align`/`Color`/`Font`/`When`/
  * `Damage`): FLTK itself ORs a `Page_Format` value together with a
  * `Page_Layout` value (`Fl_PostScript_File_Device::begin_job()`:

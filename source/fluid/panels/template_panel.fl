@@ -11,7 +11,7 @@ and each explained at its own point of use below:
    Fl_Shared_Image preview (`if (img) img->release();`) before
    assigning a new one -- pure C-era manual memory-management
    bookkeeping with no reason to carry over under the GC (same
-   substitution CLAUDE.md documents elsewhere for Fl_Widget::label()'s
+   substitution CONVENTIONS.md documents elsewhere for Fl_Widget::label()'s
    COPIED_LABEL flag): the old image is simply garbage-collected once
    nothing references it, so every one of those release calls is
    dropped here.

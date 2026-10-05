@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/group.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh group
+// D transliteration of FLTK's test/group.cxx.
+// Build: rdmd buildsamples.d test group
 import fl;
 
 // Globals for easier testing

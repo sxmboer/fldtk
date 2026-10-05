@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Widget.H + src/Fl_Widget.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). Fl_Widget is the base class of every widget in
+ * Ported from FL/Fl_Widget.H + src/Fl_Widget.cxx (FLTK 1.5.0). Fl_Widget is the base class of every widget in
  * FLTK; this is the first class ported in this project.
  *
  * Porting conventions used here (and going forward):
@@ -1147,7 +1146,7 @@ abstract class Widget
         // (Fl_System_Driver::need_test_shortcut_extra(), overridden only
         // by the Darwin driver) that re-derives c from event_key() when
         // Alt is down, so underline shortcuts behave like Windows/Linux.
-        // macOS is out of scope for this port (see CLAUDE.md), and the
+        // macOS is out of scope for this port (see CONVENTIONS.md), and the
         // default -- what X11/Wayland/Windows use too -- is a no-op, so
         // it's skipped rather than faked.
         if (c == 0) return false;

@@ -1,6 +1,6 @@
 /*
  * Minimal X11 platform glue for FLTK 1.5.0's window-creation/event-loop
- * layer (~/Repositories/fltk). Not a 1:1 port of a single FLTK
+ * layer. Not a 1:1 port of a single FLTK
  * file -- FLTK spreads this across src/Fl_x.cxx (3246 lines,
  * itself free functions + globals, not classes -- the same
  * "namespace Fl as free functions" shape fl.core already uses),
@@ -12,7 +12,7 @@
  * multiple platforms polymorphically. With only X11 targeted so far,
  * that abstraction has no second implementation to justify it yet, so
  * this is a concrete, non-virtual module instead -- matching the
- * structural-fidelity reasoning CLAUDE.md already uses for `fl.core`
+ * structural-fidelity reasoning CONVENTIONS.md already uses for `fl.core`
  * (free functions + module state is a closer match for a single
  * implementation than a wrapper class). If/when a Wayland or Windows
  * driver is added, factor out a real driver interface *then* -- don't
@@ -319,7 +319,7 @@ private
     /// public bool eventIsClick() contract) and holds the keysym here
     /// instead, privately, since nothing outside this X11-specific
     /// algorithm ever needs it -- same "prefer the stronger D-side type
-    /// when nothing is lost by it" reasoning CLAUDE.md documents
+    /// when nothing is lost by it" reasoning CONVENTIONS.md documents
     /// elsewhere in this port.
     int px_, py_;
     Time ptime_;
@@ -378,7 +378,7 @@ private
  * ported from FLTK's `fl_visual`/`fl_colormap` (`FL/x11.H`), plain
  * process-global state there too, hence `__gshared` here (D module
  * variables are thread-local by default, unlike a C++ global -- see
- * CLAUDE.md's "D module-level variables are thread-local by default"
+ * CONVENTIONS.md's "D module-level variables are thread-local by default"
  * note). Populated to match the display's default visual/colormap as
  * soon as `openDisplay()` runs (mirroring FLTK's own `open_display_
  * ()`, `Fl_x.cxx`), and updated in place by `setVisual()` below on the
@@ -386,7 +386,7 @@ private
  * already satisfy.
  *
  * A caller may also reassign these directly, matching FLTK's
- * plain-global architecture exactly -- `samples/test/image.d`/
+ * plain-global architecture exactly -- `source/test/image.d`/
  * `tiled_image.d`'s `-v <visid>` diagnostic flag does exactly this, the
  * same way `test/image.cxx`'s original does with its own raw
  * `fl_visual = XGetVisualInfo(...)` assignment.
@@ -807,7 +807,7 @@ private bool visualFigured_;
  * its first window -- and, matching FLTK's own lazy-first-use
  * design exactly, it also transparently picks up a raw direct
  * `fl_visual = XGetVisualInfo(...)` reassignment (the pattern
- * `samples/test/image.d`/`tiled_image.d`'s `-v <visid>` diagnostic
+ * `source/test/image.d`/`tiled_image.d`'s `-v <visid>` diagnostic
  * flag uses, bypassing `setVisual()` entirely) with no special-casing
  * needed for that path either -- both routes update the same
  * `fl_visual`/`fl_colormap` globals this function reads.
@@ -1318,7 +1318,7 @@ package(fl) bool clipboardContains(string type)
 //
 // Two genuinely different paths, matching FLTK exactly:
 //  - **Same-process** (dragging between two windows this app itself
-//    created, `samples/examples/howto_drag_and_drop.d`'s own Sender/
+//    created, `source/examples/howto_drag_and_drop.d`'s own Sender/
 //    Receiver): no X protocol at all -- dnd()'s own loop finds the
 //    target via find() (this port's window registry) and dispatches
 //    Event.dndEnter/dndDrag/dndLeave/dndRelease directly, via
@@ -2118,7 +2118,7 @@ void createWindow(FlWindow win, XVisualInfo* visual = null, Colormap colormap = 
         // understands), but declared as `Atom` (`c_ulong`, 8 bytes on
         // 64-bit) rather than `int`/`uint` specifically so it matches
         // the storage width a `format 32` `XChangeProperty()` call
-        // actually writes -- the exact bug class CLAUDE.md's
+        // actually writes -- the exact bug class CONVENTIONS.md's
         // `project_xchangeproperty_format32_clong_bug` note warns
         // about (a `uint` here would undersize the property by half and
         // risk corrupting whatever happens to sit right after it).
@@ -2668,7 +2668,7 @@ private void sendMotifWmHints(Window xid)
  * malformed enough to bring down the window manager/compositor reading
  * it back. This module's own *other* `format=32` `XChangeProperty()`
  * calls follow the same convention (`c_long pid` for `_NET_WM_PID`,
- * `c_long[5] prop` for `_MOTIF_WM_HINTS`); see CLAUDE.md's
+ * `c_long[5] prop` for `_MOTIF_WM_HINTS`); see CONVENTIONS.md's
  * `project_xchangeproperty_format32_clong_bug` note for the general
  * bug class this avoids.
  */

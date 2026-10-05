@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/howto-simple-svg.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh howto-simple-svg
+// D transliteration of FLTK's examples/howto-simple-svg.cxx.
+// Build: rdmd buildsamples.d examples howto_simple_svg
 import fl;
 
 /* svg logo */

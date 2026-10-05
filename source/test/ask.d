@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/ask.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh ask
+// D transliteration of FLTK's test/ask.cxx.
+// Build: rdmd buildsamples.d test ask
 import fl;
 import std.conv : to;
 

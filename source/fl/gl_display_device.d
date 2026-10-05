@@ -1,6 +1,6 @@
 /*
  * Port of `FL/Fl_OpenGL_Display_Device.H` + `src/drivers/OpenGL/
- * Fl_OpenGL_Display_Device.cxx` (FLTK 1.5.0, ~/Repositories/fltk).
+ * Fl_OpenGL_Display_Device.cxx` (FLTK 1.5.0).
  *
  * The `SurfaceDevice` that redirects `fl.draw`'s leaf primitives to
  * `fl.gl_graphics_driver.GlGraphicsDriver` -- see

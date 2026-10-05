@@ -1,10 +1,9 @@
-// D transliteration of FLTK's test/unittest_schemes.cxx
-// (~/Repositories/fltk). Part of the samples/ contract -- see
-// samples/README.md. One tab of the "unittests" bundle; see
-// samples/test/unittests.d for the registry.
+// D transliteration of FLTK's test/unittest_schemes.cxx.
+// One tab of the "unittests" bundle; see
+// source/test/unittests.d for the registry.
 //
 // Nods to Edmanuel Torres for the widget layout (STR#2672).
-// Check: ./samples/build.sh unittests
+// Build: rdmd buildsamples.d test unittest_schemes
 module unittest_schemes;
 
 import fl;

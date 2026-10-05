@@ -1130,7 +1130,7 @@ class Window : FlGroup
     /// child whose parent's `x()`/`y()` didn't shift) would never get its own
     /// `resize()` called at all -- silently skipping the device-pixel
     /// `XMoveResizeWindow()` a nested subwindow (a `GlWindow` embedded
-    /// in a `FlGroup`, e.g. `samples/test/CubeViewUI.fl`'s own `cube`)
+    /// in a `FlGroup`, e.g. `source/test/CubeViewUI.fl`'s own `cube`)
     /// needs to actually move/resize its real X11 resource.
     static bool isARescale() { return isARescale_; }
 
@@ -2315,7 +2315,7 @@ class Window : FlGroup
     /// window). Ported from `Fl_Window::menu_window()` (`FL/
     /// Fl_Window.H`) -- the flag itself (`Widget.Flag.menuWindow`) was
     /// already set by both real callers; this query accessor was the
-    /// missing piece, found via `samples/test/pixmap_browser.d`, which
+    /// missing piece, found via `source/test/pixmap_browser.d`, which
     /// uses it to skip forcing a redraw on popups while walking every
     /// shown window.
     bool menuWindow() const
@@ -2639,7 +2639,7 @@ unittest
 unittest
 {
     // xclass()/defaultXclass(): the process-wide default state is
-    // reset around this test (see CLAUDE.md's "shared static state
+    // reset around this test (see CONVENTIONS.md's "shared static state
     // needs hermetic tests" convention) since Window.defaultXclass_ is
     // exactly that kind of state, same category as FlGroup.current_.
     Window.defaultXclass_ = null;

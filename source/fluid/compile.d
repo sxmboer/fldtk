@@ -7,7 +7,7 @@
  * binary -- see that module's own top comment for why it exists: it
  * lets `fluid/panels/*.d` be regenerated from `fluid/panels/*.fl`
  * *before* a working `fluid` binary exists at all, breaking the
- * circular dependency `CLAUDE.md`'s own "Fluid's own primary source"
+ * circular dependency `CONVENTIONS.md`'s own "Fluid's own primary source"
  * note describes).
  *
  * This module -- like `fluid.node`/`fluid.project_reader`/

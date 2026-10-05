@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/table-with-right-click-menu.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh table-with-right-click-menu
+// D transliteration of FLTK's examples/table-with-right-click-menu.cxx.
+// Build: rdmd buildsamples.d examples table_with_right_click_menu
 import fl;
 import std.format : format;
 import std.stdio : writefln;

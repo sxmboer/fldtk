@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Tiled_Image.H + src/Fl_Tiled_Image.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk): Fl_Tiled_Image, a thin wrapper that repeats a
+ * Ported from FL/Fl_Tiled_Image.H + src/Fl_Tiled_Image.cxx (FLTK 1.5.0): Fl_Tiled_Image, a thin wrapper that repeats a
  * source image across a given area. Genuinely self-contained -- draws
  * by calling the wrapped image's own already-real draw() repeatedly
  * within a clip rectangle, no new drawing primitive needed at all.

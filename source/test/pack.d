@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/pack.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh pack
+// D transliteration of FLTK's test/pack.cxx.
+// Build: rdmd buildsamples.d test pack
 //
 // FLTK guards this file with two #define's (USE_FLEX, USE_SCROLL) that
 // pick between Fl_Pack/Fl_Flex and whether to nest inside Fl_Scroll. The

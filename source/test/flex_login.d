@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/flex_login.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh flex_login
+// D transliteration of FLTK's test/flex_login.cxx.
+// Build: rdmd buildsamples.d test flex_login
 import fl;
 
 Button createButton(string caption)

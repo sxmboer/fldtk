@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/line_style.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh line_style
+// D transliteration of FLTK's test/line_style.cxx.
+// Build: rdmd buildsamples.d test line_style
 import fl;
 
 DoubleWindow form;
@@ -76,7 +75,7 @@ immutable int[] joinValues = [0, joinMiter, joinRound, joinBevel];
 // Labels use fldtk's own bare D constant spelling (matching
 // styleValues/capValues/joinValues just above -- what a D programmer
 // actually types), not FLTK's C `FL_*` macro name -- see
-// CLAUDE.md's memory notes on this standing rule for GUI text that
+// CONVENTIONS.md's convention on this standing rule for GUI text that
 // names a constant.
 MenuItem[] styleMenu = [
     MenuItem("lineSolid"),

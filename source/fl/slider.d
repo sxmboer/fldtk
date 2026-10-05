@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Slider.H + src/Fl_Slider.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Slider.H + src/Fl_Slider.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port of the numeric logic: handle()'s drag/keyboard
  * math (value_to_position()/position_to_value(), the linear and
@@ -565,7 +564,7 @@ unittest
 
     // Also drains fl.core's shared default callback queue -- see
     // resetForTest()'s doc comment and the hermetic-tests note in
-    // CLAUDE.md.
+    // CONVENTIONS.md.
     fl.core.resetForTest();
     FlGroup.current(null);
 }

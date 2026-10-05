@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Line_Dial.H + the Fl_Line_Dial constructor in
- * src/Fl_Dial.cxx (FLTK 1.5.0, ~/Repositories/fltk).
+ * src/Fl_Dial.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port. Trivial subclass: sets type() to
  * fl.dial.lineDial, which makes fl.dial.Dial's draw() render a line

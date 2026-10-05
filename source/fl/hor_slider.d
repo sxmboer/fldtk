@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Hor_Slider.H + the Fl_Hor_Slider constructor in
- * src/Fl_Slider.cxx (FLTK 1.5.0, ~/Repositories/fltk).
+ * src/Fl_Slider.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port. Trivial subclass: sets type() to
  * fl.slider.horSlider, which makes fl.slider.Slider's horizontal()

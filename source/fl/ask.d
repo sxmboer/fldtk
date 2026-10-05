@@ -72,7 +72,7 @@
  * `string` rather than a printf-style `const char*, ...` format string
  * -- same substitution this port makes everywhere else a C varargs API
  * meets a GC-owned `string` (see `fl.widget`'s `label()`/`tooltip()`
- * in CLAUDE.md); callers who want formatting use `std.format`/string
+ * in CONVENTIONS.md); callers who want formatting use `std.format`/string
  * interpolation themselves, e.g. `alert(format("%d messages", n))`.
  */
 module fl.ask;

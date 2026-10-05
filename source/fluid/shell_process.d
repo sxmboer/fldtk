@@ -22,7 +22,7 @@
  * spawning through the platform's own shell, one call, no `version
  * (Windows)` branch needed anywhere in this module. Exactly the
  * "check for a cleaner D stdlib alternative before transliterating a
- * raw C library call" case CLAUDE.md's own porting conventions call
+ * raw C library call" case CONVENTIONS.md's own porting conventions call
  * out.
  *
  * **`@HEADERFILE_PATH@`/`@HEADERFILE_NAME@` are deliberately not
@@ -55,7 +55,7 @@ import fl;
 /// around, since `runShellCommand()` already needs to interpret them
 /// and predates that module). An open,
 /// combinable bitmask, not a closed tag set -- `alias`+manifest
-/// constants, matching CLAUDE.md's own porting convention for exactly
+/// constants, matching CONVENTIONS.md's own porting convention for exactly
 /// this shape (a real D `enum` would need an explicit `cast()` back on
 /// every `|=`).
 alias ShellFlags = int;

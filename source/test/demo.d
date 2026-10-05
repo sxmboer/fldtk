@@ -1,22 +1,21 @@
-// D transliteration of FLTK's test/demo.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh demo
+// D transliteration of FLTK's test/demo.cxx.
+// Build: rdmd buildsamples.d test demo
 //
 // Notes on this transliteration:
 //  - Only the Unix/Linux path-handling and process-launch branches are
-//    transliterated (this project's primary target -- see CLAUDE.md);
+//    transliterated (this project's primary target -- see CONVENTIONS.md);
 //    FLTK's _WIN32 CreateProcess() branch and the macOS
 //    "open '/path/app.app'" bundle branch are dropped entirely, the same
-//    way samples/test/sudoku.d keeps only the ALSA branch of its sound
+//    way source/test/sudoku.d keeps only the ALSA branch of its sound
 //    backend. The CMAKE_INTDIR (Visual Studio/Xcode multi-config build
 //    type subdirectory) handling is dropped too -- this project builds
 //    with dub, which has no equivalent concept.
 //  - Fl_Terminal, Fl_Menu_Button, Fl_Scheme_Choice have no fldtk
 //    equivalent yet (no menu subsystem, no terminal widget -- see
 //    PORTING.md); Terminal/MenuButton/SchemeChoice below reuse the
-//    names already established by samples/examples/simple_terminal.d,
-//    samples/examples/howto_menu_with_images.d, and
-//    samples/test/boxtype.d respectively. Terminal.historyLines()/
+//    names already established by source/examples/simple_terminal.d,
+//    source/examples/howto_menu_with_images.d, and
+//    source/test/boxtype.d respectively. Terminal.historyLines()/
 //    displayRows()/displayColumns()/textsize() are new invented methods
 //    (camelCase of FLTK's history_lines()/display_rows()/
 //    display_columns()/textsize()) following the same convention.
@@ -24,15 +23,15 @@
 //    wrappers, not FLTK widget/drawing API, so they're written directly
 //    against Phobos (std.file.chdir/getcwd, std.process.environment,
 //    fl.stdc.stdlib.exit) rather than invented as fldtk calls -- the
-//    same reasoning samples/examples/table_sort.d (std.process) and
-//    samples/examples/nativefilechooser_simple_app.d (std.process/
+//    same reasoning source/examples/table_sort.d (std.process) and
+//    source/examples/nativefilechooser_simple_app.d (std.process/
 //    std.path) already apply, and fl.filename's own source imports
 //    std.file's getcwd() for the same reason. fl_filename_absolute()/
 //    fl_filename_name()/fl_filename_setext() DO have a real fldtk
 //    equivalent (fl.filename, D-`string`-returning, not the C
 //    buffer+length API) and are used as such below.
 //  - FLTK's dobut()/popup_menu_cb() callbacks take a `long`/`void*`
-//    argument for the button/menu index; per CLAUDE.md's callback
+//    argument for the button/menu index; per CONVENTIONS.md's callback
 //    convention these become delegates that capture the index directly,
 //    with no void*/long round-trip.
 //  - FLTK's system()-based process launch (a shell command string,

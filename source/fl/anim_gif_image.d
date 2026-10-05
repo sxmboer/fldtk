@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Anim_GIF_Image.H + src/Fl_Anim_GIF_Image.cxx
- * (FLTK 1.5.0, ~/Repositories/fltk): Fl_Anim_GIF_Image, animated-GIF
+ * (FLTK 1.5.0): Fl_Anim_GIF_Image, animated-GIF
  * loading/playback. No external library needed, same as fl.gif_image
  * (see that module's own top comment).
  *
@@ -43,7 +43,7 @@
  *    correctly.
  *
  * Faithfully ported, not fixed, despite looking questionable on a
- * close read (matching CLAUDE.md's "port faithfully, note the
+ * close read (matching CONVENTIONS.md's "port faithfully, note the
  * quirk, don't silently correct it" policy):
  *  - `onFrameData()`'s `transparentColorIndex` uses a *truthy* check on
  *    the raw transparent-pixel index (`gf.trans != 0 && ...`), not
@@ -171,7 +171,7 @@ class AnimGifImage : GifImage
         // queue -- other-object work that's only safe when this
         // destructor runs deterministically (explicit destroy()).
         // During GC-driven finalization the collection order is
-        // undefined, so skip it there -- matches CLAUDE.md's own
+        // undefined, so skip it there -- matches CONVENTIONS.md's own
         // documented GC-finalizer-hazard pattern (a real SIGSEGV
         // during rt_finalizeFromGC was hit once elsewhere in this
         // port from the exact same shape of bug).
@@ -564,7 +564,7 @@ class AnimGifImage : GifImage
         // collection order is guaranteed (deterministic destroy()), not
         // during GC-driven finalization at program exit. Pixmap.~this()
         // calls uncache() and D does not unwind the vtable during
-        // destruction (see CLAUDE.md), so this override is reachable
+        // destruction (see CONVENTIONS.md), so this override is reachable
         // from finalization even though the guard lives one level up.
         import core.memory : GC;
 

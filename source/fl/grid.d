@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Grid.H + src/Fl_Grid.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Grid.H + src/Fl_Grid.cxx (FLTK 1.5.0).
  *
  * A FlGroup that lays out its children in a grid of rows/columns, each
  * with its own minimum size, weight (how extra space is distributed

@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/editor.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh editor
+// D transliteration of FLTK's test/editor.cxx.
+// Build: rdmd buildsamples.d test editor
 //
 // FLTK is written as a progressive "FLTK Programmer's Guide" tutorial:
 // ten `#if TUTORIAL_CHAPTER >= N` blocks that each layer more of the app on
@@ -24,7 +23,7 @@
 //
 // A few notes on this transliteration:
 //  - `findIndex(Callback)` mirrors FLTK's `find_index(Fl_Callback*)`
-//    overload; since fldtk callbacks are delegates (per CLAUDE.md)
+//    overload; since fldtk callbacks are delegates (per CONVENTIONS.md)
 //    rather than plain function pointers, each menu callback below is
 //    given a named module-level `Callback` value (not an inline
 //    literal) specifically so `findIndex()` has a stable delegate

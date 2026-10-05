@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/scroll.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh scroll
+// D transliteration of FLTK's test/scroll.cxx.
+// Build: rdmd buildsamples.d test scroll
 import fl;
 import std.math : PI, cos, sin;
 

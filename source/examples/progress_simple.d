@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/progress-simple.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh progress-simple
+// D transliteration of FLTK's examples/progress-simple.cxx.
+// Build: rdmd buildsamples.d examples progress_simple
 import fl;
 import core.thread : Thread;
 import core.time : dur;

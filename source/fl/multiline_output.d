@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Multiline_Output.H (FLTK 1.5.0,
- * ~/Repositories/fltk). Trivial `type(outputMultiline)` subclass of
+ * Ported from FL/Fl_Multiline_Output.H (FLTK 1.5.0). Trivial `type(outputMultiline)` subclass of
  * fl.output's Output -- the constructor body is ported from
  * Fl_Multiline_Output::Fl_Multiline_Output() (src/Fl_Input.cxx), not
  * the (empty) header.

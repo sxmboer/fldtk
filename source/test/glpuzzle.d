@@ -1,7 +1,5 @@
-// D transliteration of FLTK's test/glpuzzle.cxx and test/trackball.c/.h
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh glpuzzle
+// D transliteration of FLTK's test/glpuzzle.cxx and test/trackball.c/.h.
+// Build: rdmd buildsamples.d test glpuzzle
 //
 // A GLUT demo program exercising fltk's GLUT emulation (FL/glut.H) to
 // render a 3D sliding-block puzzle. fldtk has no GL/GLUT support at all
@@ -30,7 +28,7 @@
 //    propagate back to the caller exactly like the C pointer semantics
 //    they replace). add_quats()'s function-local `static int count`
 //    (renormalizing every RENORMCOUNT calls) is kept as a genuine D
-//    function-local static, the same pattern CLAUDE.md documents for
+//    function-local static, the same pattern CONVENTIONS.md documents for
 //    fl.slider's `offcenter`/fl.roller's `ipos`.
 //  - multMatrices()/makeIdentity()/invertMatrix() are likewise plain
 //    matrix numerics (not FLTK API) and are ported faithfully the same
@@ -41,7 +39,7 @@
 //    lists/hashtable buckets in C) become GC-managed D classes `Puzzle`/
 //    `PuzzleList`; freeSolutions() drops the root references instead of
 //    walking every node to call free() on it, matching the malloc/free
-//    -> GC substitution CLAUDE.md documents for Fl_Widget::label()'s
+//    -> GC substitution CONVENTIONS.md documents for Fl_Widget::label()'s
 //    COPIED_LABEL bookkeeping.
 //  - `goto nomatch`/`goto found_piece` (addConfig()/continueSolving())
 //    are re-expressed as labeled `break` out of the equivalent nested

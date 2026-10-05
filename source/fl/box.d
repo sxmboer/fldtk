@@ -1,5 +1,5 @@
 /*
- * Ported from FL/Fl_Box.H + src/Fl_Box.cxx (FLTK 1.5.0, ~/Repositories/fltk).
+ * Ported from FL/Fl_Box.H + src/Fl_Box.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port. Fl_Box is FLTK's simplest widget: it
  * just draws its box and label, and eats FL_ENTER/FL_LEAVE so hovering

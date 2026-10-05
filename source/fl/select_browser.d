@@ -1,5 +1,5 @@
 /*
- * Ported from FL/Fl_Select_Browser.H (FLTK 1.5.0, ~/Repositories/fltk).
+ * Ported from FL/Fl_Select_Browser.H (FLTK 1.5.0).
  *
  * Trivial type(selectBrowser) subclass of Fl_Browser: clicking selects
  * a line and invokes the callback, but the selection is not "sticky"

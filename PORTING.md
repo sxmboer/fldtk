@@ -5,12 +5,11 @@ This document tracks, module by module, how each piece of FLTK maps onto this
 port: what's done, what's partial (and why), and what's deliberately left out.
 
 Comments and docs sometimes cite a "core-roadmap item N" (1-11). These are
-the eleven foundational gaps closed before the widget-level work; their full
-write-ups are in git history (`git show fd65196:CORE_ROADMAP.md`).
+the eleven foundational gaps closed before the widget-level work.
 
 Source links point at FLTK's GitHub mirror
 (`https://github.com/fltk/fltk/blob/master/...`). fldtk tracks FLTK 1.5.0 (per
-`fltk_version.dat` in the reference checkout) — see `CLAUDE.md`'s version note
+`fltk_version.dat` in the reference checkout) — see `CONVENTIONS.md`'s version note
 for caveats about that checkout's own changelog lagging its code.
 
 ## Status legend
@@ -23,12 +22,12 @@ for caveats about that checkout's own changelog lagging its code.
 - **Not applicable** — no D port makes sense: pure C/C++-language scaffolding
   (macros, export-visibility annotations), or FLTK's XForms/Forms-compatibility
   layer, which has no reason to exist in a from-scratch D project (see
-  `CLAUDE.md`'s "Out of scope" section).
+  `CONVENTIONS.md`'s "Out of scope" section).
 - **Not started** — no D module yet, no decision made either way.
 
 Every row also lists **differences from FLTK**: D-specific idioms
 (delegates instead of function-pointer+`void*`, `string` instead of `char*`,
-etc. — the general conventions are catalogued once in `CLAUDE.md`'s "Porting
+etc. — the general conventions are catalogued once in `CONVENTIONS.md`'s "Porting
 conventions" and not repeated per module unless a module deviates from them
 specifically) and any deliberate simplifications or scope cuts.
 
@@ -77,14 +76,14 @@ complete**, confirmed working correctly and consistently on both Linux
 and Windows, including real multi-monitor hardware:
 `screenScale(int)`/`screenScale(int, float)`/`screenScalingSupported()`
 are a genuine per-screen array (`screenScalingSupported() == 2` on
-Linux/Windows, matching upstream's own X11/Windows drivers' real
+Linux/Windows, matching FLTK's own X11/Windows drivers' real
 `PER_SCREEN_APP_SCALING` report), each screen keeping its own
-independent factor exactly like upstream. `fl.draw`'s primitives, and
+independent factor exactly like FLTK. `fl.draw`'s primitives, and
 every other module that draws (`fl.image`/`fl.pixmap`/`fl.bitmap`/
 `fl.svg_image`/`fl.gdi_graphics_driver`/`fl.gdiplus_graphics_driver`),
 read a separate live "current window's own scale" cache
 (`fl.core.currentScale()`) instead of that table directly — refreshed at
-every `make_current()`-equivalent call site, mirroring upstream's own
+every `make_current()`-equivalent call site, mirroring FLTK's own
 split between `Fl_Screen_Driver::scale(n)` (the persisted table) and
 `Fl_Graphics_Driver::scale()` (the live per-surface value). Real window
 creation/resize (both application- and window-manager-initiated) with
@@ -134,7 +133,7 @@ Missing:
 - Callbacks throughout are D delegates, not function-pointer+`void*` pairs
   (`Fl_Awake_Handler`, `Fl_Args_Handler`, `Fl_Idle_Handler`, `Fl_Timeout_
   Handler`, `Fl_FD_Handler`, ...) — this port's usual substitution, see
-  `CLAUDE.md`.
+  `CONVENTIONS.md`.
 - The X11 clipboard's `paste()` uses a real async `XConvertSelection()`
   round trip rather than FLTK's `mkstemp()`-plus-`Fl_Shared_Image`
   temp-file dance for image data (this port's `BMPImage`/`PngImage` already
@@ -185,7 +184,7 @@ system-wide/per-user `Fl_Preferences`-backed persistence (`fl.preferences`
 is a complete port — see that row). `visibleFocus()`/`dndTextOps()` are
 thin wrappers over it, matching FLTK's own named convenience functions.
 The setter (`option(Option, bool)`) forces the lazy preferences read
-first (calling the getter for its side effect, matching upstream's own
+first (calling the getter for its side effect, matching FLTK's own
 `if (!Private::options_read_) { option(opt); }`) before applying the
 override — calling the setter as the very first touch of the options
 system (the normal usage pattern: `fl.option(Fl.Option.arrowFocus,
@@ -214,7 +213,7 @@ dispatch, see `FL/Fl.H`'s row).
 ([header](https://github.com/fltk/fltk/blob/master/FL/core/pen_events.H))
 
 Pen/tablet events. FLTK itself has no X11 implementation of this either
-(only Wayland and Windows) — see `CLAUDE.md`'s "Where this port
+(only Wayland and Windows) — see `CONVENTIONS.md`'s "Where this port
 intentionally exceeds FLTK" for the plan to eventually add X11 pen
 support (via XInput2) once fldtk's Wayland driver exists to validate the
 event model first.
@@ -230,7 +229,7 @@ event model first.
 **Status:** Not applicable — n/a
 
 XForms/Forms-compatibility alias (`#define Fl_Object Fl_Widget`) — see
-`CLAUDE.md`'s "Out of scope" section.
+`CONVENTIONS.md`'s "Out of scope" section.
 
 ### `FL/Fl_Rect.H`
 
@@ -361,7 +360,7 @@ Missing:
 - Image drawing dispatch (`draw_rgb()`/`draw_pixmap()`/`draw_bitmap()`/
   `draw_image()`) beyond the two leaves (`drawImage()`/`drawBitmap()`)
   added for `PostscriptGraphicsDriver` — blocked on `fl.image`'s remaining
-  codec gaps either way (see `CLAUDE.md`).
+  codec gaps either way (see `CONVENTIONS.md`).
 
 ### `FL/Fl_Paged_Device.H`
 
@@ -537,7 +536,7 @@ Differences from FLTK:
 - Font matching goes through `XftFontOpenName()`'s simple name-string
   matching rather than FLTK's hand-built `XftPattern`/`XftFontMatch`/core-
   font-fallback pipeline for the common, unrotated case — see
-  `CLAUDE.md`'s note on the planned Pango rewrite. Rotated text
+  `CONVENTIONS.md`'s note on the planned Pango rewrite. Rotated text
   (`fl_draw(int angle,...)`) is the one exception: it does build a real
   `XftPattern`/`XftFontMatch`/`XftFontOpenPattern` chain (`fl.xft`'s
   `xftFontForAngled()`), since `XftFontOpenName()`'s name-string
@@ -652,9 +651,9 @@ Differences from FLTK:
   `WidgetSurface` while the screen's own scale is != 1 likely has the
   same latent issue (screenshot/thumbnail capture, printer output, SVG
   export), a real, deliberately-deferred follow-up.
-- The non-integer-scale fractional-pen-width adjustment upstream's
+- The non-integer-scale fractional-pen-width adjustment FLTK's
   `xyline()`/`yxline()` make when the active line width doesn't evenly
-  divide the scale factor, and the active-line-width term upstream's
+  divide the scale factor, and the active-line-width term FLTK's
   real `arc()`/`pie()` factor in, are deliberately not ported —
   documented simplifications.
 
@@ -696,7 +695,7 @@ Old-name `#include "fl_ask.H"` compatibility header; no separate content.
 **Status:** Not applicable — n/a
 
 The whole XForms/Forms-Library compatibility layer, plus
-`fl_show_file_selector()` — see `CLAUDE.md`'s "Out of scope" section.
+`fl_show_file_selector()` — see `CONVENTIONS.md`'s "Out of scope" section.
 
 ### `FL/gl_draw.H`
 
@@ -960,7 +959,7 @@ exists or is needed.
 support: `createWindow()`'s `WS_CHILD` branch creates
 a real child `HWND` for any `win.parent() !is null`, and destruction
 recurses through nested subwindows at the OS level too (matching
-upstream's `Fl_win32.cxx`, including skipping WM negotiation entirely
+FLTK's `Fl_win32.cxx`, including skipping WM negotiation entirely
 for a subwindow, the same precedent `fl.platform_x11`'s own subwindow
 support already established). A
 `MsgWaitForMultipleObjects()`-based message pump integrated with
@@ -969,8 +968,8 @@ close/focus translation into `fl.core`'s existing event-state fields,
 dispatched via the same `fl.core.dispatch()` mechanism `fl.platform_x11`
 uses. A real `fake_X_wm()` port (`fakeXWm()`) — `AdjustWindowRectEx()`-
 based border/title-bar geometry, falling back to `GetSystemMetrics()`
-estimates exactly as upstream's own fallback branch does — feeds both
-initial window creation (real style-flag computation matching upstream's
+estimates exactly as FLTK's own fallback branch does — feeds both
+initial window creation (real style-flag computation matching FLTK's
 `wintype` switch: `WS_POPUP`/`WS_DLGFRAME|WS_CAPTION`/`WS_THICKFRAME|
 WS_CAPTION` depending on `border()`/`isResizable()`/`modal()`) and
 application-initiated resize (`resizeWindow()`, border-compensated
@@ -1028,11 +1027,11 @@ font scaling below) apply to both drivers.
 
 **Fonts/text**: a real per-`(face,size,angle)` `HFONT` cache
 (`CreateFontW()`/`GetTextMetricsW()`), family names resolved from
-`fl.draw.getFont()` to real Windows font names (upstream's own
+`fl.draw.getFont()` to real Windows font names (FLTK's own
 per-platform `built_in_table[]` choice — "Microsoft Sans Serif"/
 "Courier New"/"Times New Roman"/"Symbol"/"Terminal"/"Wingdings",
 distinct from Xft's generic Fontconfig aliases), a real per-codepoint
-width cache with upstream's genuine multi-vs-single-codepoint
+width cache with FLTK's genuine multi-vs-single-codepoint
 measurement split, tight `GetGlyphIndicesW()`/`GetGlyphOutlineW()`
 glyph-ink `textExtents()` (falling back to `GetCharacterPlacementW()`
 for UTF-16 surrogate pairs, and only to a typographical approximation if
@@ -1040,7 +1039,7 @@ neither succeeds), real rotated text via the angle-keyed font cache
 (`draw(int angle, ...)` — matching this port's own X11/Xft path, which
 rotates on-screen text too now, see `FL/fl_draw.H`'s row), and real
 font/size enumeration (`setFonts()`/`getFontSizes()` via
-`EnumFontFamiliesW()`, including upstream's own "only synthesize
+`EnumFontFamiliesW()`, including FLTK's own "only synthesize
 bold/bold-italic variants from a face's regular weight" quirk).
 `nonspacing()` is ported (`fl.nonspacing`, mechanically generated from
 FLTK's `spacing.h` range tables rather than hand-typed, with each table's
@@ -1073,7 +1072,7 @@ per-platform leaves get their own `version (Windows) {} else {}` split
 (see `FL/fl_draw.H`'s row).
 
 **Cursors**: the full `Fl_WinAPI_Window_Driver::set_cursor(Fl_Cursor)`
-switch (every stock `IDC_*` mapping, including upstream's own N/S->NS
+switch (every stock `IDC_*` mapping, including FLTK's own N/S->NS
 etc. aliasing and the real `Cursor.default_`-has-no-case gap, faithfully
 reproduced rather than fixed), `WM_SETCURSOR` handling that keeps
 re-asserting the stored per-window cursor (seeded with the real arrow
@@ -1085,7 +1084,7 @@ custom RGBA cursors.
 
 **Multi-monitor/DPI**: real `EnumDisplayMonitors()`/`GetMonitorInfoW()`
 screen enumeration (a dynamic array, matching
-`fl.platform_x11.ScreenInfo[]`'s own precedent rather than upstream's
+`fl.platform_x11.ScreenInfo[]`'s own precedent rather than FLTK's
 fixed `MAX_SCREENS`), real per-monitor work areas, and a scaled/unscaled
 split throughout (`screenXYWH()`/`screenWorkArea()`/`screenNum()`/
 `getMouse()`, matching `fl.platform_x11`'s identical convention) so
@@ -1096,7 +1095,7 @@ resolved via `GetProcAddress()`/`LoadLibrary()` since these Shcore.dll-
 era APIs aren't declared in this project's druntime version) seeds
 `fl.core.screenScale()`'s real per-screen array from each monitor's own
 independent DPI (`GetDpiForMonitor()` via `MonitorFromRect()` per
-screen), matching upstream's genuine independent per-monitor
+screen), matching FLTK's genuine independent per-monitor
 `Fl_WinAPI_Screen_Driver::desktop_scale_factor()` loop exactly.
 `WM_DPICHANGED` resizes only the window it fired for, and a
 cross-screen move correctly relocates a shown window's own screen
@@ -1127,11 +1126,11 @@ window created without an explicit position opens via
 
 **Clipboard**: real, fully synchronous `OpenClipboard()`/
 `SetClipboardData(CF_UNICODETEXT, ...)` for `copy()` and
-`GetClipboardData()` for `paste()` (upstream's Windows clipboard never
+`GetClipboardData()` for `paste()` (FLTK's Windows clipboard never
 uses delayed `WM_RENDERFORMAT` rendering at all) — text always, image
 for the common direct-`CF_DIB` case (`BI_RGB`, 24/32bpp, no color
 table). Windows has no real PRIMARY selection: `copy(..., 0)`/
-`paste(..., 0)` stay this-process-local, matching upstream's own
+`paste(..., 0)` stay this-process-local, matching FLTK's own
 unconditional `!clipboard` branch. `Fl::add_clipboard_notify()` uses the
 `SetClipboardViewer()`/`WM_DRAWCLIPBOARD`/`ChangeClipboardChain()`
 viewer-chain mechanism, ported verbatim from `Fl_win32.cxx`'s file-scope
@@ -1167,7 +1166,7 @@ closest available size to `GetSystemMetrics(SM_CXICON)`/`SM_CXSMICON`).
 One deliberate simplification: no shared process-wide default-icon
 cache (a fresh `HICON` is built on every call instead, since there's no
 shared mutable state to worry about corrupting). One deliberately-
-unported piece: upstream's manual resize-to-work-area fallback for
+unported piece: FLTK's manual resize-to-work-area fallback for
 maximizing a borderless window, since this port's Linux side doesn't
 implement that fallback either.
 
@@ -1184,14 +1183,14 @@ truly blocking on it. `fdWrite`/`fdExcept` aren't backed (no
 `PeekNamedPipe()`-equivalent non-blocking check exists for those on an
 anonymous pipe, and nothing in this project registers for them).
 
-**Drag-and-drop**: the genuine upstream COM mechanism (`fl_dnd_win32.
+**Drag-and-drop**: the genuine FLTK COM mechanism (`fl_dnd_win32.
 cxx`'s `FLDropTarget`/`FLDropSource`/`FLDataObject`, `IDropTarget`/
 `IDropSource`/`IDataObject`, `DoDragDrop()`/`RegisterDragDrop()`), not
 the simpler `WM_DROPFILES` shell mechanism a first guess might reach for
 — this project's first COM interop of any kind, with every interface
 signature cross-checked against the real
 `core.sys.windows.{oleidl,objidl,unknwn,uuid}` headers. A single
-process-wide `FLDropTarget` (matching upstream's own single static
+process-wide `FLDropTarget` (matching FLTK's own single static
 instance) receives real drops, dispatching into the same platform-
 independent `fl.core.handle()`/`deliverPaste()` machinery X11's own XDND
 already uses; the drag-source half is a single blocking `DoDragDrop()`
@@ -1201,13 +1200,13 @@ scope (see `FL/x.H`'s row) — but `fillCurrentDragData()` covers all
 three of FLTK's own source formats: `CF_UNICODETEXT`
 (preferred), legacy `CF_TEXT`/CP1252 (decoded via `MultiByteToWideChar
 (CP_ACP, ...)`, the standard Win32 idiom, rather than transliterating
-upstream's own `fl_utf8decode()`/`fl_utf8encode()` byte-reinterpretation
+FLTK's own `fl_utf8decode()`/`fl_utf8encode()` byte-reinterpretation
 trick, which this port has no equivalent of to reuse), and `CF_HDROP`
 (a file-manager's dropped-file list, delivered as the same `\n`-joined
-path-list `Event.paste` text upstream sends). `FLEnum`/`IEnumFORMATETC`
-is still skipped entirely since upstream's own `EnumFormatEtc()` is
+path-list `Event.paste` text FLTK sends). `FLEnum`/`IEnumFORMATETC`
+is still skipped entirely since FLTK's own `EnumFormatEtc()` is
 unconditional `E_NOTIMPL` with `FLEnum` itself commented out in the real
-source — genuinely dead code upstream never executes, not a port gap.
+source — genuinely dead code FLTK never executes, not a port gap.
 `source/examples/howto_drag_and_drop.d` confirms dragging one or more
 files from Explorer onto an fldtk window lists their names. The legacy
 `CF_TEXT`/CP1252 branch is unconfirmed on real hardware (no legacy
@@ -1223,12 +1222,12 @@ GdiGraphicsDriver`, overriding only the antialiasing-relevant subset
 (`color()`, `line()`, `polygon()`, `arcUnscaled()`/`pieUnscaled()`,
 `lineStyle()`, the vertex-path `end*()` family) and reusing everything
 else (text, images, clipping, `rect()`/`rectf()`/`xyline()`/`yxline()`)
-from the plain GDI driver unchanged, mirroring upstream's own
+from the plain GDI driver unchanged, mirroring FLTK's own
 `Fl_GDIplus_Graphics_Driver` inheritance shape exactly.
 `fl.platform_win32.ensureGraphicsDriver()` creates this driver by
 default, falling back to plain GDI only if `GdiplusStartup()` itself
-fails — matching upstream's own `FLTK_GRAPHICS_GDIPLUS` CMake option,
-which defaults **ON** for a real upstream Windows build, not a
+fails — matching FLTK's own `FLTK_GRAPHICS_GDIPLUS` CMake option,
+which defaults **ON** for a real FLTK Windows build, not a
 fldtk-only embellishment. `circle()`/`vertex()`/`loop()` don't exist as
 driver-level methods in this port at all (both `fl.draw.circle()`'s
 32-gon decomposition and `fl.draw.loop()`'s multi-segment `line()`
@@ -1236,14 +1235,14 @@ decomposition predate this driver), so neither needed a GDI+ override —
 both still gain real antialiasing for free through the driver methods
 they already funnel through, with one narrow, documented cosmetic
 difference: a loop's shared vertices get N separately end-capped
-antialiased segments meeting at a point instead of upstream's one
-continuously joined path. One confirmed real upstream bug (`line_
+antialiased segments meeting at a point instead of FLTK's one
+continuously joined path. One confirmed real FLTK bug (`line_
 style()`'s cap/join dispatch tests overlapping raw bits, silently
 turning any `FL_CAP_SQUARE`/`FL_JOIN_BEVEL` request into round-cap/
 miter-join) is deviated from rather than faithfully reproduced (see
 `FLTK_ISSUES.md`); one real representational adaptation was needed
 for arc/pie pen width, since this port's `lineWidth_` is already the
-scaled value upstream's own same-named formula assumes is still raw at
+scaled value FLTK's own same-named formula assumes is still raw at
 that point. No `GdiplusShutdown()` exit hook — this port has never had
 an equivalent process-exit cleanup hook for any Windows GDI resource, so
 GDI+ doesn't get a new one either; the OS reclaims the token on process
@@ -1272,14 +1271,14 @@ opaque case and real per-pixel `AlphaBlend()` compositing (`msimg32.dll`,
 via `CreateDIBSection()` + a premultiplied BGRA DIB) for `d==2`/`4` when
 available, falling back to a fixed-white-background blend otherwise —
 ported from `Fl_GDI_Graphics_Driver::draw_rgb()`'s own `alpha_blend_()`
-call, but rebuilding the DIB fresh per call rather than upstream's
+call, but rebuilding the DIB fresh per call rather than FLTK's
 persistent per-`Fl_RGB_Image` cache (this port has no image-object cache
 anywhere, matching the Linux side's own established scope). `drawBitmap()`
 uses the classic two-pass masked `StretchBlt()` technique (`SRCAND` then
 `SRCPAINT` against a real monochrome `HBITMAP`, GDI's own documented
 mono-to-color "color expansion" rule) rather than `MaskBlt()`/
 `TransparentBlt()` (`msimg32.lib`-only) — and, unlike `fl.postscript.
-PostscriptGraphicsDriver.drawBitmap()`'s faithfully-preserved upstream
+PostscriptGraphicsDriver.drawBitmap()`'s faithfully-preserved FLTK
 quirk of ignoring `cx`/`cy`, this one honors them for real (a genuine
 sub-rectangle crop before scaling), since `GraphicsDriver.drawBitmap()`'s
 own doc comment leaves that choice to each concrete driver and honoring
@@ -1563,7 +1562,7 @@ Missing (Windows half):
 - `Fl_PDF_GDI_File_Surface` (FLTK's own `Fl_PDF_File_Surface` backing
   implementation, via Windows' "Microsoft Print to PDF" virtual printer)
   — `fl.pdf_file_surface` itself is `Deferred` project-wide (see
-  `CLAUDE.md`'s Pango note), so there's no PDF surface class for this to
+  `CONVENTIONS.md`'s Pango note), so there's no PDF surface class for this to
   back yet. Revisit together with that decision.
 
 ### `FL/Fl_PDF_File_Surface.H`
@@ -1575,7 +1574,7 @@ FLTK's own implementation is unconditionally gated on Pango on Linux
 (`new_platform_pdf_surface_()` returns a hard error without it, confirmed
 by reading the real source, not just the doc comment) — genuinely blocked
 on the same Pango decision already deferred project-wide (see
-`CLAUDE.md`'s "Where this port intentionally exceeds FLTK"), not a
+`CONVENTIONS.md`'s "Where this port intentionally exceeds FLTK"), not a
 fresh gap.
 
 ### `FL/Fl_PostScript.H`
@@ -1668,7 +1667,7 @@ Missing:
 **Status:** Deferred (Cairo) — *(planned: `fl.cairo`)*
 ([header](https://github.com/fltk/fltk/blob/master/FL/Fl_Cairo.H))
 
-Matches `CLAUDE.md`'s "Deferred: external-library-backed features" list —
+Matches `CONVENTIONS.md`'s "Deferred: external-library-backed features" list —
 the Cairo rendering-backend decision hasn't been made project-wide.
 
 ### `FL/Fl_Cairo_Window.H`
@@ -1763,7 +1762,7 @@ layout algorithm, `clipChildren()` (real clipping), `current()`/
   every one of `Group`'s own internal call sites. The public overloads
   stay virtual for legitimate external-caller overriding (e.g.
   `fl.table.Table`), matching FLTK's own C++ name-hiding intent.
-- **Known, reproducible gap, matching upstream's own real behavior**
+- **Known, reproducible gap, matching FLTK's own real behavior**
   (reproduces via Fluid's Settings dialog — General tab's "Scheme:"/
   "# Recent Files:" and Shell tab's "Store:"/"Condition:"/"Shell
   script:" labels going permanently blank after another window is
@@ -1773,14 +1772,14 @@ layout algorithm, `clipChildren()` (real clipping), `current()`/
   misses the case where one of *its own* direct children has an
   outside label (`drawOutsideLabel()`) extending past the parent
   `Group`'s own box, exactly the shape `settings_panel.fl`'s real
-  upstream layout uses for several rows (a `Fl_Choice`/`Fl_Spinner`/
+  FLTK layout uses for several rows (a `Fl_Choice`/`Fl_Spinner`/
   etc. wrapped in an invisible helper `Group` positioned at the *same*
   x as the widget itself, purely so Fluid's live-resize "filler box"
   trick has somewhere to live). A narrow `Expose`-driven repaint whose
   damage rectangle happens to land on just the label (not the widget
   it's attached to) skips the whole wrapper `Group`'s subtree —
   including the label — leaving it stale until the next full repaint.
-  This matches real upstream FLTK's own code shape exactly
+  This matches real FLTK's own code shape exactly
   (`Fl_Group::draw_child()`'s own `fl_not_clipped()` guard is exactly
   this narrow, unmodified). Special-casing `drawChild()` to also test
   descendants' outside-label extents is not a viable fix on its own: it
@@ -1788,7 +1787,7 @@ layout algorithm, `clipChildren()` (real clipping), `current()`/
   visible redraw lag trailing a dragged window) that a caching layer does
   not resolve. A
   real fix needs a real multi-rectangle clip region (matching
-  upstream's actual `Fl_X::region`/`XUnionRectWithRegion()` mechanism,
+  FLTK's actual `Fl_X::region`/`XUnionRectWithRegion()` mechanism,
   a bigger architectural change to `fl.draw`'s clip stack) rather than
   patching `FlGroup.drawChild()` directly.
 
@@ -1829,7 +1828,7 @@ Differences from FLTK:
 - `hotspot()` is single-monitor and skips FLTK's decoration-size query
   (`Fl::screen_work_area()`/driver `decoration_sizes()` aren't ported).
 - `decoratedW()`/`decoratedH()` divide by `fl.core.screenScale(int)`,
-  matching upstream's own `w = attributes.width / s`.
+  matching FLTK's own `w = attributes.width / s`.
 
 `resizeAfterScaleChange()` (backing the
 Ctrl-+/-/0 live rescale tracked under `FL/Fl.H`'s row) is real: a
@@ -1903,7 +1902,7 @@ the top-level window, not the root, landing it at the wrong position
 
 `forcePosition()`/`forcePosition(bool)` are real: `fl.platform_x11.
 sendSizeHints()` consults `Flag.forcePosition` to add `USPosition`
-(plus scaled `x`/`y`) to `WM_NORMAL_HINTS`, matching upstream's own
+(plus scaled `x`/`y`) to `WM_NORMAL_HINTS`, matching FLTK's own
 `sendxjunk()` exactly — used by the Ctrl-+/-/0 scale
 indicator to center itself on screen rather than being placed
 wherever the window manager chooses.
@@ -1912,7 +1911,7 @@ wherever the window manager chooses.
 resizes the `XShapeCombineMask` mask to `w()*scale`/`h()*scale` (an X11
 shape mask is inherently device-pixel-sized, unlike FLTK-unit
 geometry), with change-detection compared against that scaled size
-too, matching upstream's own `Fl_X11_Window_Driver::combine_mask()`/
+too, matching FLTK's own `Fl_X11_Window_Driver::combine_mask()`/
 `draw_begin()` exactly (`shape_data_->lw_ = w()*s;`, `lw_ != int(s*w())`).
 `fl.pixmap.Pixmap`'s own 1-bit clip mask follows the identical
 scaling rule — see that row's own writeup.
@@ -2006,7 +2005,7 @@ a subwindow, or nested inside a plain `Window`.
   rectangle` only — no legacy `glXUseXFont()`-display-list or
   `glutStrokeString()` fallback (a silent no-op on hardware without that
   extension, vanishingly rare in practice).
-- Linux/X11 (GLX) and Windows (WGL) — see `CLAUDE.md`'s own "Platform
+- Linux/X11 (GLX) and Windows (WGL) — see `CONVENTIONS.md`'s own "Platform
   scope" section for why Wayland (EGL) is a genuinely separate
   undertaking. `GlWindow`/`fl.gl_graphics_driver`/`fl.gl_display_device`/
   `fl.gl` themselves needed zero platform-specific code to support
@@ -2265,7 +2264,7 @@ The flat-array `MenuItem` struct: array walking (`next()`/`first()`/
 selection, including per-scheme color variants), and images. `draw()`'s
 non-title selection box now applies `fl.core.menuLinespacing()`'s own
 vertical adjustment (`y-(linespacing-2)/2`, `h+(linespacing-2)`) exactly
-like upstream's `fl_draw_box()` call, rather than the plain `(x+1,y,w-2,h)`
+like FLTK's `fl_draw_box()` call, rather than the plain `(x+1,y,w-2,h)`
 box it drew before — `menuLinespacing()` itself already existed, this call
 site just never used it.
 
@@ -2874,7 +2873,7 @@ with `value()` in both directions.
 
 - The embedded `Input`'s parent is a real `this` (`input_.parent(this)`),
   made possible once `Widget.parent_` was generally widened from `Group`
-  to plain `Widget` (see `CLAUDE.md`'s porting conventions) — FLTK itself
+  to plain `Widget` (see `CONVENTIONS.md`'s porting conventions) — FLTK itself
   needs an unsafe cast here (`Fl_Value_Input` extends `Fl_Valuator`, not
   `Fl_Group`, yet embeds a real `Fl_Input` child; FLTK's own source
   comment calls this "a kludge"), which D's type system correctly
@@ -3100,7 +3099,7 @@ alternative "native" backends, but there is no single native look on
 Linux the way there is on Windows/macOS — correctly detecting "which
 desktop environment is native here" at runtime would mean depending on
 both GTK and Qt/KDE to cover the common cases, conflicting with this
-project's minimal-dependency stance (the same reasoning `CLAUDE.md`'s
+project's minimal-dependency stance (the same reasoning `CONVENTIONS.md`'s
 external-library-decision section applies elsewhere). The FLTK-styled
 dialog already ported *is* the intended, final Linux behavior — GTK/Kdialog/Zenity are out of scope on
 Linux permanently, not "not yet decided."
@@ -3201,7 +3200,7 @@ Differences from FLTK:
   `calcItemHeight()` overrides, e.g. a project-tree row that draws a
   bold class name plus a plain instance name instead of one flat
   string).
-- `recalcTree()` is public, matching upstream's own `Fl_Tree::recalc_
+- `recalcTree()` is public, matching FLTK's own `Fl_Tree::recalc_
   tree()` (`FL/Fl_Tree.H`, public there too) — needed since
   `NodeBrowserItem`'s row content depends on mutable data the tree
   doesn't own (a `Node`'s `comment`/`instanceName`, edited live from a
@@ -3236,12 +3235,12 @@ Differences from FLTK:
   overrides (forwarding to its nested `Scroll`, matching FLTK's own thin
   forwarders) can be reached before that `Scroll` exists. Every such
   override guards on the nested container being non-null, falling back
-  to plain `Group` behavior during that window — see `CLAUDE.md`'s "D
+  to plain `Group` behavior during that window — see `CONVENTIONS.md`'s "D
   also does not build up the vtable progressively during construction"
   note for the general lesson. The same class of problem applies at a
   second, separate call site: `Table`'s own constructor
   calls `tableResized()` → `tableScrolled()`, which unconditionally
-  calls the user-overridable `drawCell()` — safe in upstream C++ only
+  calls the user-overridable `drawCell()` — safe in FLTK C++ only
   because its vtable still points at `Fl_Table`'s own empty
   `draw_cell()` base implementation during `Fl_Table`'s own
   constructor, never reaching a subclass's real override until that
@@ -3311,7 +3310,7 @@ Differences from FLTK:
   second copy of the same protection in both `clear()` and the destructor
   — because C++ unwinds an object's vtable as each destructor in the
   chain runs, while D keeps the same vtable for an object's entire
-  lifetime including through its own destructor chain (see `CLAUDE.md`'s
+  lifetime including through its own destructor chain (see `CONVENTIONS.md`'s
   "D does not unwind the vtable during destruction" note).
 
 ### `FL/Fl_Tabs.H`
@@ -3679,13 +3678,13 @@ and in active use (`fl.core.addTimeout()`/`repeatTimeout()`/etc.). `Fl_
 Timer` itself is a distinct, separate XForms/Forms-Library compatibility
 widget — FLTK's own doc comment calls it "provided only to emulate the
 Forms Timer widget... you should directly call `Fl::add_timeout()`
-instead" — see `CLAUDE.md`'s "Out of scope" section.
+instead" — see `CONVENTIONS.md`'s "Out of scope" section.
 
 ### `FL/Fl_Free.H`
 
 **Status:** Not applicable — n/a
 
-XForms/Forms-Library "free" widget compatibility shim — see `CLAUDE.md`'s
+XForms/Forms-Library "free" widget compatibility shim — see `CONVENTIONS.md`'s
 "Out of scope" section.
 
 ### `FL/Fl_FormsBitmap.H`
@@ -3693,13 +3692,13 @@ XForms/Forms-Library "free" widget compatibility shim — see `CLAUDE.md`'s
 **Status:** Not applicable — n/a
 
 XForms/Forms-Library image-loading compatibility shim, superseded by
-`Fl_Image`'s modern subclasses — see `CLAUDE.md`'s "Out of scope" section.
+`Fl_Image`'s modern subclasses — see `CONVENTIONS.md`'s "Out of scope" section.
 
 ### `FL/Fl_FormsPixmap.H`
 
 **Status:** Not applicable — n/a
 
-Same as `FL/Fl_FormsBitmap.H` — see `CLAUDE.md`'s "Out of scope" section.
+Same as `FL/Fl_FormsBitmap.H` — see `CONVENTIONS.md`'s "Out of scope" section.
 
 ## Images
 
@@ -3756,7 +3755,7 @@ Differences from FLTK:
   `Fl_RGB_Image` — see `FLTK_ISSUES.md`.
 - **No remaining external-codec gap** — GIF/SVG/PNG/JPEG (below) are all
   real; none of the four needed the from-scratch-vs-bind-to-a-C-library
-  decision `CLAUDE.md`'s "Deferred" section covers for the codecs that
+  decision `CONVENTIONS.md`'s "Deferred" section covers for the codecs that
   still do.
 
 ### `FL/Fl_Pixmap.H`
@@ -4077,7 +4076,7 @@ own escape decoder.
 
 FLTK has no `FL/*.H` headers for these — they're internal to `src/`, and
 this port doesn't mirror FLTK's own abstract driver-class hierarchy for
-them at all (see `CLAUDE.md`'s "Porting conventions": a concrete module
+them at all (see `CONVENTIONS.md`'s "Porting conventions": a concrete module
 per target, not a polymorphic base/derived split, until a second real
 implementation actually needs one). Where real functionality exists, it
 lives in the concrete module named below, tracked on that module's own
@@ -4164,7 +4163,7 @@ throughout every node/writer below:
 - **No callback-trampoline-plus-cast machinery** — FLTK's generated code
   needs `static void cb_x(Fl_Widget*, void*)` free-function trampolines
   purely because C++ callbacks are plain function pointers; this port's
-  writer emits a plain delegate literal inline instead, per `CLAUDE.md`'s
+  writer emits a plain delegate literal inline instead, per `CONVENTIONS.md`'s
   callback convention.
 - **A real tree** (`Node.children`, a plain array with real `parent`/
   `children` links) instead of FLTK's flat doubly-linked list plus an
@@ -4192,7 +4191,7 @@ throughout every node/writer below:
   ProjectSettings`, `Reader.settings`, written back by `ProjectWriter`):
   generated widget and menu-item shortcuts are written symbolically
   (`stateCtrl|'s'`), with `stateCommand`/`stateControl` names when the
-  flag is set (a deliberate fix of upstream's Ctrl/Meta swap on non-macOS
+  flag is set (a deliberate fix of FLTK's Ctrl/Meta swap on non-macOS
   platforms, see `FLTK_ISSUES.md`). The other bare header-file flags
   (`do_not_include_H_from_C`, `utf8_in_src`, `avoid_early_includes`) are
   parsed and dropped.
@@ -4235,7 +4234,7 @@ i18n/layout-preset/external-editor state as one object) — `app.d` is the
 headless `.fl → .d` driver; `gui_main.d`'s `runEditor()` is a
 Phase-1-scoped equivalent of the interactive shell: one menu-bar+browser
 "shelf" window, matching FLTK's real proportions, not FLTK's fuller
-`Application` object model. Several of upstream `Fluid.cxx`'s pieces are
+`Application` object model. Several of FLTK `Fluid.cxx`'s pieces are
 covered under a different name: `confirmDiscardChanges()` ≈
 `confirm_project_clear()`, ad-hoc per-panel `Preferences`-based position
 saves ≈ `position_window()`/`save_position()`, immediate-apply property-
@@ -4245,7 +4244,7 @@ header/`.cxx`-split settings (no such split in this dialect). The
 `&Edit` menu's Cut/Copy/Paste/Duplicate/Select All/Select None entries
 are all real (`cutSelected()`/`copySelected()`/`pasteFromClipboard()`/
 `duplicateSelected()`/`selectAll()`/`selectNone()`), via an in-memory
-`clipboardText_` (real `.fl` text) rather than upstream's own `cutfname()`
+`clipboardText_` (real `.fl` text) rather than FLTK's own `cutfname()`
 temp file. **Sort/Earlier/Later/Group/Ungroup and `show_help()`** are real —
 `sortSelectedCmd()`/`earlierSelectedCmd()`/
 `laterSelectedCmd()` (`fluid.node_order`, ported from `Widget_Node.cxx`'s
@@ -4297,7 +4296,7 @@ content). Prints one page per currently-*shown* design window
 Node-to-live-canvas mapping `saveAsTemplate()` above already uses),
 each scaled down — never up — to fit the page and centered, with a
 date/time, page-count, and project-basename header line, matching
-upstream's own layout exactly.
+FLTK's own layout exactly.
 
 ### `fluid/Project.cxx` / `.h`
 
@@ -4333,7 +4332,7 @@ asset fragments), `CodeBlockNode`/`DeclBlockNode` (wrap their own
 children — a widget tree/`code {}` mix for the former, `decl {}`/`data
 {}`/another nested `declblock {}` for the latter — in a "before"/"after"
 pair of literal D text; see `fluid.decl_block_node.DeclBlockNode`'s own
-doc comment for one deliberate divergence: unlike upstream's own
+doc comment for one deliberate divergence: unlike FLTK's own
 `DeclBlock_Node`, which emits its before/after text completely raw
 since its own default content is a bare `#if`/`#endif` pair needing no
 braces, this port's version injects real braces and indents its
@@ -4345,7 +4344,7 @@ requirement makes impossible for the `.fl` author to supply directly),
 a class's own constructor/destructor/methods), and `CommentNode` (a
 standalone project-tree comment entry — `in_h_`/`in_c_` real fields,
 round-tripped through `project_writer.d` — distinct from every node
-type's own generic `comment` property, matching upstream's own
+type's own generic `comment` property, matching FLTK's own
 `Comment_Node : Node` — the generic `Node` fallback `fluid.factory`
 wires every other unrecognized node kind to does not represent this
 one correctly, which is why it has its own real class).
@@ -4360,13 +4359,13 @@ Windows (Single/Double picks `Window` or `DoubleWindow`, and the
 Radio is the node kind `MenuItem`/`CheckMenuItem`/`RadioMenuItem`) and
 menu bars (`type Fl_Sys_Menu_Bar` picks `SysMenuBar`) have tables too,
 but keep the choice in the class or node kind instead of a `type()`
-value; `widget_class` has none, as upstream. `WidgetNode.access`
-is upstream's `public_`: the bare flags `private`/`protected` in the `.fl`
+value; `widget_class` has none, as FLTK. `WidgetNode.access`
+is FLTK's `public_`: the bare flags `private`/`protected` in the `.fl`
 file, emitted as a protection attribute on a class field and as `private`
 on a module-level variable. `FunctionNode` has the same `access` plus
 `declareC` (the `.fl` flags `private`/`protected`/`C`): a method gets a
-protection attribute, a plain function `private` (upstream's `static`)
-and, with `declare "C"`, `extern (C)`. `ClassNode.prefix` is upstream's
+protection attribute, a plain function `private` (FLTK's `static`)
+and, with `declare "C"`, `extern (C)`. `ClassNode.prefix` is FLTK's
 `Class_Node::prefix()`, the extra word before a class's name in the `.fl`
 file (`class final Foo {`); C++ puts it after `class`, D puts attributes
 before it, so it is emitted as `final class Foo`, and the panel's
@@ -4374,17 +4373,17 @@ Attribute field edits it.
 
 Differences from FLTK:
 - `DataNode`'s storage format is two independent flags (`asString`,
-  `compressedFlag`) instead of upstream's 6-value `output_format_`
-  enum — the raw-array-vs-`std::vector` axis upstream's own choice
+  `compressedFlag`) instead of FLTK's 6-value `output_format_`
+  enum — the raw-array-vs-`std::vector` axis FLTK's own choice
   bundles in has no D equivalent (a `ubyte[]`/`string` already is what
   `std::vector` reaches for) and collapses away entirely; text-vs-binary
   and compressed-vs-not are both real, ported, and freely combinable
-  (unlike upstream's own menu, which has no "compressed text" entry at
+  (unlike FLTK's own menu, which has no "compressed text" entry at
   all). `.fl`-text round-trips via FLTK's own `textmode`/`compressed`
   bare-flag spellings, which are not mutually exclusive; `std_binary`/
   `std_textmode`/`std_compressed` are still accepted on read (for a
-  real upstream-authored file) but never written. The property panel's
-  "Storage Format:" group (renamed from upstream's "Output:") exposes
+  real FLTK-authored file) but never written. The property panel's
+  "Storage Format:" group (renamed from FLTK's "Output:") exposes
   both.
 - Grid child-cell placement (`location`/`colspan`/`rowspan`/`align`/
   `minsize`) needed a genuinely new mechanism, `parent_properties`: the
@@ -4471,7 +4470,7 @@ embedded sub-panels, `source/fluid/panels/widget_panel_grid_tab.fl`/
 `widget_panel_grid_child_tab.fl` — each defines a `widget_class`
 [`GridTab`/`GridChildTab`] under a different name than its own file;
 `widget_panel.fl` imports each one explicitly by its real file name)
-is upstream's own real widget-
+is FLTK's own real widget-
 properties panel, converted in full to this project's own flat,
 `Function`-based D dialect — the same shape every other converted panel
 in this project uses, no class at all. All three files generate via
@@ -4487,16 +4486,16 @@ resizable duplicate of the selected widget-tree node, verifying real
 never reflows during editing) is real too, via `fluid.instantiate.
 instantiateStandalone()`; `overlayCb` forwards to the already-real
 `toggleOverlays()`; `okCb` is a plain close (every field in this
-dialog already applies its own edit live, unlike upstream's own
+dialog already applies its own edit live, unlike FLTK's own
 "apply everything on OK" sweep).
 `rdmd buildfluid.d` regenerates all three files like every other panel,
-no exclusions. The one remaining difference from upstream's dialog is that
+no exclusions. The one remaining difference from FLTK's dialog is that
 the design canvas always shows a plain window and menu bar whichever
 Single/Double or `Fl_Sys_Menu_Bar` choice is made. The conversion needed a
 real `code_writer.d` addition for the Grid sub-panels (`widget_class` support
 for `decl {}` fields and `Function {}` methods, alongside the
 constructor-body widget tree it already supported). Edits made in the
-dialog apply to every selected node, as upstream's do.
+dialog apply to every selected node, as FLTK's do.
 
 FLTK's generic `propagate_load()`-with-sentinel-pointer callback
 convention isn't ported: the panel refreshes itself through `load()`,
@@ -4514,7 +4513,7 @@ template action, `save_template()`, is a real, tracked, unimplemented
 gap), `codeview_panel.fl` (Source/Project tabs, Find, and node↔text-
 position sync all work — selecting a node in the widget editor or the
 project tree pans both text views to that node's own generated block
-and highlights it, matching upstream's click-a-widget behavior; the
+and highlights it, matching FLTK's click-a-widget behavior; the
 Auto-Position toggle, the reduced 3-entry code-choice dropdown
 (instantiate/setup/finalize — no "prolog"/"static", neither of which
 applies to this dialect's single-file, no-separate-declaration-phase
@@ -4523,20 +4522,20 @@ into `gui_main.d` via the `cvOnReveal` delegate) are all real too. No
 Header/Strings tabs, since neither applies to this dialect. The
 Auto-Refresh light button is real: `gui_main.d` calls a shared
 `codeviewAutoRefresh()` from every one of its own project-mutating
-entry points (in place of upstream's single `codeview_defer_update()`
+entry points (in place of FLTK's single `codeview_defer_update()`
 call site inside `Project::set_modflag()`, which this dialect has no
 equivalent centralized hook for), and unchecking it stops those
 calls from refreshing (with the button on, each call site refreshes
-whenever the panel is visible). No debounce timer, unlike upstream: each call
+whenever the panel is visible). No debounce timer, unlike FLTK: each call
 site already fires at most once per discrete edit, not once per drag
 frame, so there's nothing to coalesce. The plain "Refresh" button stays
 unconditional either way, and re-applies the current selection's
-highlight on every refresh so it's never lost), and `settings_panel.fl` (all six of upstream's
-tabs are placed at upstream's own exact 360x585 dialog size and per-
+highlight on every refresh so it's never lost), and `settings_panel.fl` (all six of FLTK's
+tabs are placed at FLTK's own exact 360x585 dialog size and per-
 widget coordinates, including real tab icons in `source/fluid/panels/
 pixmaps/`). General and Locale tabs are fully functional; Shell
 keeps its pre-existing real wiring (`source/fluid/shell_settings.d`),
-repositioned into upstream's narrower single-column layout; Project's
+repositioned into FLTK's narrower single-column layout; Project's
 Code File field is wired (`gui_main.codeFileName()`, round-tripped
 through the `.fl` file as a real `code_name` Option, the interactive
 equivalent of `fluid -c -o`) while Header File/Include Header from
@@ -4553,7 +4552,7 @@ persistence; User drives all 12 of `fluid.node_browser`'s per-role
 tree-row color/font fields, including the row-kind-specific ones
 (`func`/`code`) that only became visible once `NodeBrowserItem`'s own
 row-shape dispatch existed (see the `fluid/widgets/` row further down).
-Not ported: upstream's custom
+Not ported: FLTK's custom
 Fluid-app `@fd_beaker`/`@fd_user`/`@fd_project`/`@fd_file`/`@fd_zoom`
 `fl_add_symbol()` glyphs (their menu items keep the rest of their text
 minus the leading symbol), and per-row shell-list storage icons
@@ -4571,11 +4570,11 @@ minus the leading symbol), and per-row shell-list storage icons
   mechanism, its own doc comment names a continuous window-resize drag
   as the intended use) has no equivalent here — and, confirmed by
   grepping FLTK's own tree, no caller anywhere in FLTK itself actually
-  passes it a non-`ALWAYS` type either, so there's no working upstream
+  passes it a non-`ALWAYS` type either, so there's no working FLTK
   behavior to match yet for the drag-resize case specifically. The
   *Code* text editor's own equivalent problem (`panels/widget_panel.fl`'s
   `TextBuffer` modify callback firing per keystroke) has a real,
-  working, non-upstream-derived coalescing mechanism instead (a
+  working, non-FLTK-derived coalescing mechanism instead (a
   checkpoint-then-debounce-timer scheme).
 - **`align_widget.h`/`.cxx`** — ported faithfully (Align/Space Evenly/
   Make Same Size/Center in Group). Two FLTK quirks are faithfully
@@ -4593,7 +4592,7 @@ minus the leading symbol), and per-row shell-list storage icons
   with pass-through fallback functions in the `else` branch when a
   conditional is set (D has no text-substitution macros, so FLTK's
   `#ifndef gettext #define gettext(text) text` becomes an ordinary
-  identity function). A C-style include from an upstream `.fl` file is
+  identity function). A C-style include from an FLTK `.fl` file is
   reported in a comment, not emitted. **Deferred: `fl.gettext`.** The
   default GNU include is `import fl.gettext;`, but no such module exists
   and the project has no D binding to `libintl` anywhere (`source/`,
@@ -4628,16 +4627,16 @@ minus the leading symbol), and per-row shell-list storage icons
   only while the flag is on; interactive dialog with merge/cancel),
   merge-on-project-open and merge-on-app-activate
   (`Event.appActivate`, which no current platform driver delivers, so
-  it never fires on X11 — upstream's X11 driver does not deliver it
+  it never fires on X11 — FLTK's X11 driver does not deliver it
   either) are all wired in `gui_main.d`; the last code file written for
   a project is remembered (`rememberCodePath()`, also from `fluid -c`)
-  so a build-step-generated file is found. Differences from upstream:
+  so a build-step-generated file is found. Differences from FLTK:
   blocks keep their own indentation and are un-indented by the tag
   line's indentation rather than a fixed two spaces; menu-item
-  callbacks merge back (upstream's `is_true_widget()` lookup rejects
+  callbacks merge back (FLTK's `is_true_widget()` lookup rejects
   them, see `FLTK_ISSUES.md`). The headless entry points are
   `-mb`/`--merge-back` and `-mbs`/`--merge-back-if-safe`
-  (`compile.d`'s `mergeBackProject()`; upstream only has a TODO for
+  (`compile.d`'s `mergeBackProject()`; FLTK only has a TODO for
   them): they merge into the `.fl` file and save it, exit status 1 on
   an unreadable tag or an unsafe `-mbs` merge, and combine with `-c` to
   fold edits in before regenerating.
@@ -4666,7 +4665,7 @@ minus the leading symbol), and per-row shell-list storage icons
   directory, writes the project via `ProjectWriter`, and captures a PNG
   preview via `fl.core.captureWindow()`/`fl.png_image.writePng()`).
   `template_panel.fl`'s row-to-file association uses `fl.browser.
-  Browser`'s real per-row `data()`, matching upstream's own
+  Browser`'s real per-row `data()`, matching FLTK's own
   `template_browser->data(item)` exactly.
 - **`Menu.cxx`/`.h`** — not ported as a literal file; superseded
   piecemeal by `gui_main.d`'s own menu-building code, matching FLTK's
@@ -4678,7 +4677,7 @@ minus the leading symbol), and per-row shell-list storage icons
 
   **Top level**: File, Edit, New, Layout, Shell, Help — no separate
   top-level View menu; the widget-bin/code-view toggles nest inside
-  &Edit, matching upstream's own placement.
+  &Edit, matching FLTK's own placement.
 
   **&File**: order/shortcuts/dividers match exactly. Real: New, Open,
   Save, Save As, New From Template, Save As Template, Write Code
@@ -4712,19 +4711,19 @@ minus the leading symbol), and per-row shell-list storage icons
   under &Layout, not nested inside it. Also real: "Grid and Size
   Settings..." opens the Settings dialog straight to the (fully
   wired) Layout tab,
-  matching upstream's own `show_grid_cb()`. **Synchronized Resize**
+  matching FLTK's own `show_grid_cb()`. **Synchronized Resize**
   is real (`fluid.canvas.ProjectCanvas.allowLayout` -- FLTK's own
   `tree.allow_layout` flag, gated per-canvas the same
   "one shared preference, every open canvas carries its own mirrored
   copy" way `showGuides`/etc. already work): interactively resizing a
   `Group`/`Window`-family widget only resizes/repositions its
   unselected children to match real runtime behavior when the toggle
-  is on, matching upstream's own default-off `Fl_Group_Proxy::resize()`
+  is on, matching FLTK's own default-off `Fl_Group_Proxy::resize()`
   gate. A plain move always drags children along regardless (matching
-  upstream's own separate, unconditional per-descendant translation),
+  FLTK's own separate, unconditional per-descendant translation),
   and `Flex`/`Grid` always self-layout on resize regardless too
-  (matching upstream's own forced bracket around exactly those two
-  node kinds) -- both disclosed simplifications from upstream's own,
+  (matching FLTK's own forced bracket around exactly those two
+  node kinds) -- both disclosed simplifications from FLTK's own,
   more involved `moveallchildren()` mechanism, documented on
   `allowLayout`'s own doc comment.
 
@@ -4735,7 +4734,7 @@ minus the leading symbol), and per-row shell-list storage icons
   `fluid.factory`'s registry has `"MenuItem"`/`"CheckMenuItem"`/
   `"RadioMenuItem"` (all plain `fluid.menu_item_node.MenuItemNode`s --
   see that class's own doc comment for why `CheckMenuItem`/
-  `RadioMenuItem` don't need dedicated D subclasses the way upstream's
+  `RadioMenuItem` don't need dedicated D subclasses the way FLTK's
   C++ factory dispatch requires; `mi.typeName` alone tells them apart)
   and `"Submenu"` (a real `SubmenuNode`, `canHaveChildren() == true` so
   its own nested `MenuItem`/`Submenu`/... children parse and can
@@ -4760,7 +4759,7 @@ minus the leading symbol), and per-row shell-list storage icons
   Every real *and* deactivated leaf item carries the same 16x16 icon the widget
   palette's own buttons use (`fluid.pixmaps.pixmapFor()`, via
   `fl.menu_.Menu_.multiLabel(int, MultiLabel)` — an accessor needed since
-  this port builds its menus through `add()` rather than upstream's
+  this port builds its menus through `add()` rather than FLTK's
   direct `Fl_Menu_Item` array indexing), matching FLTK's own
   `fill_in_New_Menu()`/`make_iconlabel()` exactly, including the
   leading-space-plus-"..." text suffix (every real item already opens
@@ -4769,21 +4768,21 @@ minus the leading symbol), and per-row shell-list storage icons
   `Menu_.image(int, Image)` (a real accessor too, kept for general use,
   but the wrong one for this): an `Fl_Menu_Item`'s own `image()` field
   falls back to `fl.widget.Label`'s default "image above text"
-  stacking with no `alignImageNextToText` bit set, matching upstream's
+  stacking with no `alignImageNextToText` bit set, matching FLTK's
   own `fl_normal_measure()`/`fl_normal_label()` exactly — which is
-  *why* upstream's own `make_iconlabel()` reaches for an
+  *why* FLTK's own `make_iconlabel()` reaches for an
   `Fl_Multi_Label` here instead of `Fl_Menu_Item::image()`:
   `Fl_Multi_Label`'s own `draw()`/`measure()` always lay their two
   parts out left-to-right. One remaining, deliberate text deviation:
   ordinary widget leaf labels use spaced words plus `&`-mnemonics
-  ("Return Button") rather than upstream's own literal auto-derived
+  ("Return Button") rather than FLTK's own literal auto-derived
   text (`fill_in_New_Menu()` strips `Fl_` off `type_name()` and uses
   what's left as-is — underscored, e.g. "Return_Button" — and
-  upstream's own `New_Menu[]` has no mnemonics at all, a flat ~50-item
+  FLTK's own `New_Menu[]` has no mnemonics at all, a flat ~50-item
   list where single-letter mnemonics would collide). Kept deliberately:
   it matches the mnemonic convention every other menu in `gui_main.d`
   already uses. Category *names* are not part of this exception — they
-  match upstream's own `New_Menu[]` strings exactly.
+  match FLTK's own `New_Menu[]` strings exactly.
 
   **&Shell**: see `fluid/app/`'s own `shell_command.h`/`.cxx` row.
 
@@ -4805,7 +4804,7 @@ minus the leading symbol), and per-row shell-list storage icons
 - **`Snap_Action.h`/`.cxx`** — real mouse-driven move/resize exists
   (drag-to-move, 8-direction drag-to-resize, undo-checkpointed), and
   the drag-time guide/alignment/grid-snapping rule engine is real too
-  (`fluid.snap_action`): 28 of upstream's 33 concrete `Fd_Snap_*` classes — window
+  (`fluid.snap_action`): 28 of FLTK's 33 concrete `Fd_Snap_*` classes — window
   edge/margin, group edge/margin, sibling alignment, widget-ideal-size
   resize feedback, and window/group grid snapping (including the real
   grid-dot overlay drawn during a drag, `drawGrid()`) all snap and draw
@@ -4817,7 +4816,7 @@ minus the leading symbol), and per-row shell-list storage icons
   typo in the edge-clamping math is faithfully reproduced — see
   `FLTK_ISSUES.md`.
 - **`shell_command.h`/`.cxx`** — ported in two pieces, matching the two
-  distinct concerns the upstream file itself mixes together. The
+  distinct concerns the FLTK file itself mixes together. The
   process-spawning/output-streaming half (`Fl_Process`/
   `run_shell_command()`/`expand_macros()`/the `Fl::add_fd()`/
   `Fl::add_timeout()` wiring) is `fluid.shell_process` — `Fl_Process`
@@ -4841,7 +4840,7 @@ minus the leading symbol), and per-row shell-list storage icons
   et al.), reimplemented over Unicode codepoints rather than FLTK's
   manual byte-offset pointer arithmetic. `fluid.project_history.History`
   calls `filenameShortened(path, 48)` at exactly the two call sites
-  upstream's own `history.cxx` does (loading persisted recent-file paths
+  FLTK's own `history.cxx` does (loading persisted recent-file paths
   and adding a newly-opened one), populating `History.relpath[]`, which
   `gui_main.d`'s own Recent Files menu-building code reads directly to
   label each entry. Two real FLTK edge-case bugs here are not reproduced —
@@ -4898,7 +4897,7 @@ pixmaps_xpm`), wired into both `function_panel.fl`'s real buttons and
 **`Node_Browser::item_draw()`/`item_height()`'s own row format is
 real** — a `NodeBrowserItem : TreeItem` (`node_browser.d`) overrides
 `calcItemHeight()`/`drawItemContent()` (both real, documented
-`TreeItem` extension points) to match upstream's row layout: bold
+`TreeItem` extension points) to match FLTK's row layout: bold
 class name (`Fl_` prefix stripped) followed by a plain instance name,
 falling back to a quoted `label` with no instance name, an optional
 dark-green comment sub-line above the row, and a thin separator along
@@ -4907,7 +4906,7 @@ Tree` API addition: `add(TreeItem parentItem, string name, TreeItem
 item)`, so a caller can insert a pre-built custom `TreeItem` subclass
 instead of only the plain-label-only 2-arg overload. **The function/
 comment/code "code block" row variants** are real
-(`rowKind()`/`nodeTitle()`, ported from upstream's own `item_draw()`
+(`rowKind()`/`nodeTitle()`, ported from FLTK's own `item_draw()`
 else-branch dispatch: `is_code_block() && (level == 0 || parent->
 is_class())` for `Function`/top-level-or-in-class `CodeBlock`, else
 `Comment_Node`, else everything else -- `Code`/`Decl`/`DeclBlock`/
@@ -4917,7 +4916,7 @@ code_color` row instead of falling through to the class-name-plus-
 instance-name format. Still not ported: the lock/protected/invisible
 overlay icons. `syncSelection()` (the canvas → browser
 direction) scrolls the tree to bring the primary selection into view
-when it's currently scrolled off-screen — upstream has no equivalent:
+when it's currently scrolled off-screen — FLTK has no equivalent:
 clicking a widget in its own editor window highlights the matching
 `Node_Browser` row but never scrolls to it, so a selection outside the
 browser's current scroll position stays silently invisible there.
@@ -4938,12 +4937,12 @@ and `gui_main.d`'s `&New` menu has matching entries (a dedicated
 is also registered for `settings_panel.fl`'s own Shell-tab editor;
 its palette button uses the same registration.
 `Tree`/`HelpView`/`Table` are `Fl_Group` subclasses in C++ but, matching
-upstream's own `Table_Node`/comments in `factory.cxx` ("FLUID does not
+FLTK's own `Table_Node`/comments in `factory.cxx` ("FLUID does not
 support extended Fl_Tree", "supporting children is not useful"), are
 registered as leaf `WidgetNode`s here too — their `fl.*` constructors
 already call `end()` internally (the same pattern `fl.text_display`/
 `fl.terminal` already relied on), so no live-tree children are exposed
-for them, and `Table` in particular is leaf-only even though upstream's
+for them, and `Table` in particular is leaf-only even though FLTK's
 own `Table_Node` supports real widget-in-cell children via a bigger,
 separate `add_child()`/`move_child()` override mechanism this port
 doesn't have. **The Code group (9: `Function`/`Class`/`comment`/`Code`/
@@ -4962,7 +4961,7 @@ doc comment).
 dedicated path, `createWindowNode()`, ported from `Window_Node::make()`
 (not `addWidget()`'s canvas-only insertion path — still genuinely
 inapplicable, no nested-window canvas rendering exists): walks up from
-the current selection for a `FunctionNode` ancestor (upstream's own
+the current selection for a `FunctionNode` ancestor (FLTK's own
 broader "code block, not a widget_class" check, narrowed to what this
 port actually has a container for), and either nests the new
 `WindowNode` there or shows `fl_message()`'s real "Please select a
@@ -4970,15 +4969,15 @@ function" if none exists. "Current selection" (`gui_main.d`'s
 `currentSelection()`, shared by `createWindowNode()`/`addNode()`/
 `addWidget()`) checks `canvas_`'s own selection first, falling back to
 the node browser's (`NodeBrowser.selectedNodes()`) when no canvas
-exists yet — needed because, unlike upstream's single project-wide
+exists yet — needed because, unlike FLTK's single project-wide
 `Fluid.proj.tree.current` pointer, this port splits selection tracking
 across two separate UI elements that don't both exist at every point in
 a project's life (`canvas_` only exists once a `WindowNode` does).
-`addWidget()` shows upstream's own matching real message ("Please
+`addWidget()` shows FLTK's own matching real message ("Please
 select a group widget or window", `Widget_Node::make()`) under the same
 condition, instead of a silent no-op.
 
-**Startup and `&File/&New` now match upstream's real "no project is
+**Startup and `&File/&New` now match FLTK's real "no project is
 ever truly absent" model.** `Application::new_project()` (`Fluid.cxx`)
 just calls `Project::reset()`, which deletes every node and nothing
 else — a brand-new project has *zero* top-level nodes, not an
@@ -5009,15 +5008,15 @@ for the current per-category reasoning.
 
 Every widget-bin button works both by dragging onto the canvas and by
 a plain click (both add a widget); the 9 Code-group buttons are
-click-only, matching upstream exactly (only 49 of `function_panel.fl`'s
-57 buttons are drag-capable `Bin_Button`s upstream too).
+click-only, matching FLTK exactly (only 49 of `function_panel.fl`'s
+57 buttons are drag-capable `Bin_Button`s FLTK too).
 `gui_main.d`'s `openNode(Node n)` (load into the property panel +
-show/raise) matches upstream's `Node::open()` ("what happens when you
+show/raise) matches FLTK's `Node::open()` ("what happens when you
 double-click"); called from `insertWidget()`/`addNode()` (matching
-upstream's own `add_new_widget_from_user()`'s `and_open=true` default)
+FLTK's own `add_new_widget_from_user()`'s `and_open=true` default)
 and from `NodeBrowser.onOpen` on a real double-click.
 
-The widget-creation path (`gui_main.d`'s equivalent of upstream's
+The widget-creation path (`gui_main.d`'s equivalent of FLTK's
 `add_new_widget_from_user()`, the function that runs for every newly
 created widget) has real per-type default geometry
 (`fluid.instantiate.idealSizeFor()`, backed by the real `fluid.
@@ -5025,23 +5024,23 @@ layout_suite` preset values — see below — rather than a flat `90x25`),
 Grid/Flex position-aware placement on drop (`gui_main.d`'s
 `insertIntoGroup()`: Flex gets the real closest-neighbor-to-drop-point
 insert, Grid gets a simpler insert-at-next-free-cell variant, not
-upstream's own more complex click-position-to-cell math), and
+FLTK's own more complex click-position-to-cell math), and
 Menu_Bar-as-first-child-of-window auto-full-width. Not ported: `&Edit/
 &Insert...` (importing another `.fl` file's nodes into the current
 project) has no fldtk equivalent anywhere. Not yet resolved either
 way: whether `Node::layout_widget()`'s re-layout-on-child-change role
 is actually needed here at all, given `fl.grid.Grid`/`fl.flex.Flex`
 are real *live* widgets with their own runtime layout logic (unlike
-upstream's own mostly-non-live editing model).
+FLTK's own mostly-non-live editing model).
 
 The `Snap_Action` drag-time guide/alignment system is real:
-`fluid.snap_action` ports 26 of upstream's 33 concrete `Fd_Snap_*`
+`fluid.snap_action` ports 26 of FLTK's 33 concrete `Fd_Snap_*`
 classes (window/group edge+margin, sibling alignment, widget-ideal-
 size resize feedback — deferring grid and Tabs-margin snapping, 5
 classes), wired into `fluid.canvas.ProjectCanvas`'s own drag/draw
-pipeline at the same two call sites upstream's `Window_Node::newdx()`/
+pipeline at the same two call sites FLTK's `Window_Node::newdx()`/
 `draw_overlay()` use. `fluid.layout_suite` (`Layout_Preset`/
-`Layout_Suite`/`Layout_List` — both of upstream's real built-in
+`Layout_Suite`/`Layout_List` — both of FLTK's real built-in
 suites, "FLTK" and "Grid", ported verbatim) backs `idealSizeFor()`
 with the real preset values. Custom-suite persistence and a Settings-
 dialog editing UI are both real too: the Settings dialog's Layout tab

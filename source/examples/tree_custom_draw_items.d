@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/tree-custom-draw-items.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh tree-custom-draw-items
+// D transliteration of FLTK's examples/tree-custom-draw-items.cxx.
+// Build: rdmd buildsamples.d examples tree_custom_draw_items
 import fl;
 import std.format : format;
 import std.algorithm : max;

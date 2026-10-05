@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Tooltip.H + src/Fl_Tooltip.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). FLTK is "only static methods" on a class
+ * Ported from FL/Fl_Tooltip.H + src/Fl_Tooltip.cxx (FLTK 1.5.0). FLTK is "only static methods" on a class
  * that's never instantiated -- the same "namespace as free functions"
  * shape fl.core/fl.enumerations already use for exactly this reason,
  * so this port is free functions + module state, not a class with
@@ -190,7 +189,7 @@ void wrapWidth(int v) { wrapWidth_ = v; }
  * destruction: registering once means a destroyed target widget can
  * never leave a dangling reference here, matching this port's general
  * "external watch-list, not a self-reported flag" approach to this
- * class of problem (see CLAUDE.md's WidgetTracker note). exit()
+ * class of problem (see CONVENTIONS.md's WidgetTracker note). exit()
  * (called from fl.core.clearWidgetPointer(), see that function's own
  * doc comment) is still needed on top of the automatic nulling,
  * though: the watch-list only clears the *reference*, it doesn't hide
@@ -279,7 +278,7 @@ private final class TooltipBox : MenuWindow
         // overload -- that one draws at the widget's own x_/y_, which
         // for a top-level window like this holds *screen* position, not
         // window-local (0,0). Same bug class as fl.window.Window.draw()
-        // already had to guard against; see CLAUDE.md/memory on that
+        // already had to guard against; see CONVENTIONS.md on that
         // fix for the full story.
         drawBox(Boxtype.borderBox, 0, 0, w(), h(), color_);
         fldraw.fl_color(textcolor_);
@@ -450,7 +449,7 @@ private void tooltipTimeout_()
  * a bare `enter()` collides with `fl.enumerations.enter` (the
  * `Keysym.enter`-equivalent constant), both reachable unqualified
  * under a single `import fl;` -- a real ambiguity error
- * (`samples/test/handle_keys.d`, which legitimately wants
+ * (`source/test/handle_keys.d`, which legitimately wants
  * the keysym). No other module in this port names anything bare
  * `enter`, so renaming this one, less commonly referenced, symbol
  * resolves the collision without displacing the keysym constant.
@@ -582,7 +581,7 @@ int overrideText(string newText)
 /// global timer queue (`fl.core.add/removeTimeout()`) whenever a tooltip
 /// happened to be active at that moment -- exactly the "touching other
 /// GC-managed objects during undefined finalization order" hazard
-/// CLAUDE.md's own GC-finalizer note describes.
+/// CONVENTIONS.md's own GC-finalizer note describes.
 /// `window_.hide()` in particular can synchronously destroy a
 /// native window, and Windows' own message-delivery for that can
 /// reenter `WndProc` -- any GC allocation made from *there*, while the

@@ -1,16 +1,12 @@
-// D transliteration of FLTK's test/fractals.cxx (~/Repositories/fltk),
+// D transliteration of FLTK's test/fractals.cxx,
 // linked with fracviewer.cxx/.h (see fracviewer.d).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh fractals
+// Build: rdmd buildsamples.d test fractals
 //
-// See fracviewer.d's header comment for an important note: despite
-// MANIFEST.json listing test/mandelbrot.h among this program's FLTK
-// sources, FLTK's actual test/fractals.cxx is a GLUT fractal-mountain /
-// fractal-tree / fractal-island demo (a homework assignment by Philip
-// Winston, adapted to run its GLUT window as a child of an FLTK
-// window) that shares camera-control code with fracviewer.cxx/.h. It
-// has nothing to do with Mandelbrot/Julia sets. This port follows the
-// real source.
+// FLTK's test/fractals.cxx is a GLUT fractal-mountain / fractal-tree /
+// fractal-island demo (a homework assignment by Philip Winston,
+// adapted to run its GLUT window as a child of an FLTK window) that
+// shares camera-control code with fracviewer.cxx/.h. It has nothing to
+// do with Mandelbrot/Julia sets.
 //
 // fldtk has real OpenGL/GLU/GLUT bindings (`fl.opengl`/`fl.glu`/
 // `fl.glut`) -- every gl*/glu*/glut* call and type below resolves to
@@ -20,7 +16,7 @@
 //
 // Invented/adjusted vs. a byte-for-byte transliteration:
 //  - DisplayLists (glNewList/glCallList indices) and MenuChoices are
-//    closed tag sets (`typedef enum`s FLTK), so per CLAUDE.md they
+//    closed tag sets (`typedef enum`s FLTK), so per CONVENTIONS.md they
 //    become real D enums rather than a `#define`-style int list.
 //    `fractal`/`Rebuild`/`Level`/`DrawAxes` stay plain `int` globals
 //    (matching FLTK) since `fractal` in particular is compared
@@ -30,7 +26,7 @@
 //    (`setlevel(Fl_Widget*, void*)` etc., which just unwrapped the
 //    `void*` back into an int and called the GLUT-style `setlevel(int)`
 //    /`choosefract(int)`/`handlemenu(int)`) are dropped entirely, per
-//    CLAUDE.md's callback convention: a D delegate closes over its
+//    CONVENTIONS.md's callback convention: a D delegate closes over its
 //    data directly, so every `Fl_Button` callback below is a small
 //    lambda capturing the int literal it needs
 //    (`b.callback((w) { setlevel(0); });`) instead of stashing it in a
@@ -43,7 +39,7 @@
 //    survive that lowercasing).
 //  - `snprintf`+`char buf[255]` for the on-screen FPS string becomes a
 //    plain `std.format.format` call returning a D `string`, matching
-//    CLAUDE.md's `label()`/`tooltip()` precedent of preferring GC
+//    CONVENTIONS.md's `label()`/`tooltip()` precedent of preferring GC
 //    strings over manual C buffers.
 import fl;
 import fracviewer;

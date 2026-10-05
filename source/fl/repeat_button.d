@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Repeat_Button.H + src/Fl_Repeat_Button.cxx (FLTK
- * 1.5.0, ~/Repositories/fltk). A Button that repeats its callback while
+ * 1.5.0). A Button that repeats its callback while
  * held down, using fl.core's timer subsystem (addTimeout()/
  * repeatTimeout()/removeTimeout()) -- previously blocked entirely on
  * that not existing (see PORTING.md's history for this row).
@@ -16,7 +16,7 @@
  * instead -- same control flow, no goto. `repeat_callback` (FLTK:
  * a `static void(*)(void*)` needing the button passed as `void*` data,
  * since a plain C function pointer can't close over it) becomes a
- * private bound method instead, per CLAUDE.md's callback-porting
+ * private bound method instead, per CONVENTIONS.md's callback-porting
  * convention -- also why removeTimeout()/addTimeout() below only pass
  * one argument where FLTK passes two (cb, data): a D delegate's
  * context pointer already carries what `data` exists to carry.

@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/tiled_image.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh tiled_image
+// D transliteration of FLTK's test/tiled_image.cxx.
+// Build: rdmd buildsamples.d test tiled_image
 import fl;
 import xlib = fl.xlib;
 import platformX11 = fl.platform_x11;
@@ -8,7 +7,7 @@ import fldraw = fl.draw;
 
 // FLTK includes "pixmaps/tile.xpm", a bundled test asset (100x100,
 // 17 shades of gray). Same data already transliterated verbatim for
-// `samples/examples/shapedwindow.d` (see that file's own row in
+// `source/examples/shapedwindow.d` (see that file's own row in
 // PORTING.md/`smoke-tests/tiled_backdrop.d`'s copy) -- reused here
 // rather than a synthetic placeholder, so this sample actually shows
 // the real mottled-gray tile FLTK's own test/tiled_image.cxx does.
@@ -191,7 +190,7 @@ void main(string[] args)
             if (!platformX11.fl_visual)
             {
                 import std.stdio : stderr;
-                // Each samples/test/*.d program is its own standalone
+                // Each source/test/*.d program is its own standalone
                 // binary (unlike FLTK's `#include "list_visuals.cxx"`
                 // textual inlining, which has no D equivalent via
                 // `import`), so this points at the separate `list_visuals`

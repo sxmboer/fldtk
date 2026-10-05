@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_File_Browser.H + src/Fl_File_Browser.cxx
- * (FLTK 1.5.0, ~/Repositories/fltk).
+ * (FLTK 1.5.0).
  *
  * A fl.browser.Browser subclass specialized for displaying filenames:
  * multi-line item height (each embedded `'\n'` adds a text line),
@@ -42,7 +42,7 @@
  *    pointer type) has no D equivalent shape to port either, since
  *    nothing here touches a raw `dirent`; the sort parameter is a
  *    plain `string`-comparing delegate instead (delegate-over-
- *    function-pointer, the usual substitution -- see CLAUDE.md),
+ *    function-pointer, the usual substitution -- see CONVENTIONS.md),
  *    defaulting to a small natural/numeric-aware comparator in place
  *    of FLTK's unported `fl_numericsort()`.
  *

@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/howto-add_fd-and-popen.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh howto-add_fd-and-popen
+// D transliteration of FLTK's examples/howto-add_fd-and-popen.cxx.
+// Build: rdmd buildsamples.d examples howto_add_fd_and_popen
 //
 // FLTK reaches for raw C `popen()`/`pclose()`/`fileno()`/`fgets()`
 // since C++ has nothing better. `std.process.pipeShell()` is the clean

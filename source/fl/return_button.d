@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Return_Button.H + src/Fl_Return_Button.cxx (FLTK
- * 1.5.0, ~/Repositories/fltk).
+ * 1.5.0).
  *
  * Faithful, complete port: draw()/handle()/the constructor all match
  * FLTK, including fl_return_arrow() -- FLTK defines that as a

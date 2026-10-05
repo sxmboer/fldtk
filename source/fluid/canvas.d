@@ -94,7 +94,7 @@ import fluid.snap_action : SnapData, checkAll, drawAll, getMoveStepsize, getResi
 /// `FD_BOTTOM` bitmask exactly (`FD_BOX` isn't ported, see this
 /// module's own top comment). An open, combinable bitmask, not a
 /// closed tag set -- an `alias`+manifest-constants pair, matching
-/// CLAUDE.md's own porting convention for exactly this shape (a real D
+/// CONVENTIONS.md's own porting convention for exactly this shape (a real D
 /// `enum` would need an explicit `cast()` back on every `|=`).
 private alias DragFlag = int;
 private enum DragFlag dragNone = 0;

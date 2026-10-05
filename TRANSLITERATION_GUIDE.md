@@ -46,19 +46,19 @@ sounding name** — this project has been burned by that before (see the
 project's own "Verify names against real FLTK source" convention).
 Instead:
 
-1. Check `PORTING.md`'s file-by-file table for the upstream header
+1. Check `PORTING.md`'s file-by-file table for the FLTK header
    (`FL/Fl_Whatever.H`) to find which `fl.*` module ported it, and
    whether that port is `Done`/`Partial`/`Deferred`.
 2. Read that module's actual D source (`source/fl/whatever.d`) — the
    real signature, not a remembered one. Method names are camelCase
-   versions of the upstream method (`label_image_spacing()` ->
+   versions of the FLTK method (`label_image_spacing()` ->
    `labelImageSpacing()`); type names are PascalCase without the `Fl_`
    prefix (`Fl_Widget` -> `Widget`, `Fl_Group` -> `Group`).
 3. For the old monolithic `Fl::` static surface specifically: most of
    it now lives in `fl.core` (event state, `run()`/`wait()`, timers,
-   `grab()`/`modal()`, clipboard, `add_fd()`, schemes — see CLAUDE.md's
+   `grab()`/`modal()`, clipboard, `add_fd()`, schemes — see CONVENTIONS.md's
    "Namespace mapping" section). But plenty of `fl_something()` free
-   functions upstream never were `Fl::` members at all, and live in
+   functions FLTK never were `Fl::` members at all, and live in
    their own dedicated module instead — `fl_alert()`/`fl_message()` in
    `fl.ask`, `fl_color()`/`fl_rect()`/`fl_font()` in `fl.draw`,
    `fl_filename_name()` in `fl.filename`, and so on. `PORTING.md` is
@@ -87,7 +87,7 @@ involved:
 | `nullptr` / `NULL` | `null` |
 | `dynamic_cast<Foo*>(x)` | `cast(Foo) x` |
 | `static_cast<Foo*>(x)` / `(Foo*)x` (C-style cast) | `cast(Foo) x` |
-| `const char*` | `string` (see CLAUDE.md's `label()`/`tooltip()` note — D `string` is GC-owned/immutable, no manual copy/free bookkeeping needed) |
+| `const char*` | `string` (see CONVENTIONS.md's `label()`/`tooltip()` note — D `string` is GC-owned/immutable, no manual copy/free bookkeeping needed) |
 | `std::string` | `string` |
 | `std::vector<T>` | `T[]` |
 | `std::map<K, V>` | `V[K]` |
@@ -100,7 +100,7 @@ involved:
 | `delete x;` | usually nothing at all (GC) — see "GC, not manual delete" below for the one real exception |
 | `this->foo()` | `this.foo()`, or just `foo()` (D doesn't require `this->`) |
 | `ClassName::staticMember` | `ClassName.staticMember` |
-| `namespace Foo { ... }` | usually a D module (`fl.core`, not a wrapper class — see CLAUDE.md's namespace-mapping note) |
+| `namespace Foo { ... }` | usually a D module (`fl.core`, not a wrapper class — see CONVENTIONS.md's namespace-mapping note) |
 | `Fl_Widget*`, `Fl_Group*`, ... | `Widget`, `Group`, ... — D classes are always reference types, so there is no pointer/value distinction to carry over; drop the `*` entirely |
 | `virtual`/override without a keyword | D requires an explicit `override` on the overriding method |
 | `T& ref` / `T* ptr` out-parameters | usually `ref T` in D, or just return a value — check the already-ported signature rather than guessing |
@@ -118,17 +118,17 @@ would leave the callback that's still executing running on a destroyed
 object; `fl.core.deleteWidget()` (ported faithfully from
 `Fl::delete_widget()`) defers the actual destruction to the next safe
 point (the start of the next `wait()`/`check()`), exactly matching
-upstream's own reason for existing. This is also why real FLTK's own
+FLTK's own reason for existing. This is also why real FLTK's own
 `Fl_Widget_Tracker` pattern exists (watching whether a widget got
 deleted out from under a callback mid-execution) — ported here as
-`fl.widget_tracker.WidgetTracker`; reach for it wherever upstream's own
+`fl.widget_tracker.WidgetTracker`; reach for it wherever FLTK's own
 callback code constructs an `Fl_Widget_Tracker` to guard against this.
 
 ### Truthiness: a `Widget`-returning accessor is never implicitly bool
 
 C's/C++'s pointer truthiness (`if (!Fl::pushed())`, `if (Fl::focus())`)
 does not carry over — D does not implicitly convert a class reference
-to `bool`. Any upstream accessor that returns a widget pointer for
+to `bool`. Any FLTK accessor that returns a widget pointer for
 "unset" purposes (`Fl::pushed()`, `Fl::focus()`, `Fl::belowmouse()`,
 `Widget::window()`, ...) needs an explicit `is null`/`!is null` check
 in D: `!Fl::pushed()` becomes `fl.core.pushed() is null`, not
@@ -241,7 +241,7 @@ A property like `code {BODY} {FLAGS}` has a second, usually-near-empty
 trailing brace group for Fluid's own per-node editor state (`selected`,
 `open`, ...). Even when `BODY` is multi-line, write the trailing group
 on one line if its own content is short: `...} {selected}`, not
-`...} {selected\n  }`. Real upstream Fluid's own writer does split it
+`...} {selected\n  }`. Real FLTK's Fluid's own writer does split it
 onto its own line, but there's no reason to inherit that habit here —
 see `FLUID_DIALECT.md`'s "Don't split a trailing flags group onto its
 own line" section for the full reasoning.
@@ -265,10 +265,10 @@ page: every widget you *name* (which is most of them, in practice —
 this project's dialect prefers real names, see "Verbatim naming for
 named widgets" below) sidesteps this entirely, so it's easy to go
 several pages without ever hitting it, then hit it hard on the first
-page with upstream's own decorative anonymous `Box`/`Group` elements.
+page with FLTK's own decorative anonymous `Box`/`Group` elements.
 **Given a name for every widget avoids this class of bug entirely** —
-worth doing even where upstream itself left something anonymous,
-unless preserving the exact "which widgets does upstream name" shape
+worth doing even where FLTK itself left something anonymous,
+unless preserving the exact "which widgets does FLTK name" shape
 specifically matters for what you're converting.
 
 ### A literal `#` needs `\#`, anywhere, not just `#include` lines
@@ -285,7 +285,7 @@ consuming text looking for a closing quote/brace in the wrong place,
 surfacing as a confusing D syntax error far downstream in the
 *generated* file instead of a clean `.fl`-level one. A `tooltip {...}`
 value with a literal `` ` `` and `\#` together (`` tooltip {`\#ifdef` or
-similar} ``) is real, existing, working upstream text — confirms the
+similar} ``) is real, existing, working FLTK text — confirms the
 escaping rule is about the raw character appearing anywhere in a
 value, not about which property it's in.
 
@@ -307,10 +307,10 @@ disambiguated by `isCallbackShape()` in `code_writer.d`:
   an ordinary top-level D function, signature and body emitted
   verbatim.
 
-Upstream's `Fl_Callback*`-cast-and-`user_data`-trampoline machinery
+FLTK's `Fl_Callback*`-cast-and-`user_data`-trampoline machinery
 (needed in C++ purely because a plain function pointer can't close over
-state) has no D equivalent to port at all — see CLAUDE.md's
-"Callbacks are D delegates" porting convention. Where upstream code
+state) has no D equivalent to port at all — see CONVENTIONS.md's
+"Callbacks are D delegates" porting convention. Where FLTK code
 uses `user_data()` to smuggle context through a trampoline, the D
 version just captures that context directly in a closure.
 
@@ -318,16 +318,16 @@ version just captures that context directly in a closure.
 
 - `class Name : Base { ... }` (a genuine base-class relationship, e.g.
   a window subclass overriding a virtual method) always becomes a
-  real D class. The biggest simplification lands here too: upstream
+  real D class. The biggest simplification lands here too: FLTK
   needs a `static` trampoline method forwarding to a real virtual
   method purely because a C++ callback can't close over `this`; a D
   closure created inside a real method body (typically the
   constructor) already captures its enclosing instance, so the
   trampoline is simply gone.
 - A base-less `class Name { ... }` is not automatic just because
-  upstream wrote a class. **The real rule is "does the driver need
+  FLTK wrote a class. **The real rule is "does the driver need
   more than one instance," not whether it has a base class.** If
-  something upstream wrapped in a class purely as a C++ workaround
+  something FLTK wrapped in a class purely as a C++ workaround
   (e.g. so several small static+inline trampoline functions could
   reach a shared sibling widget) is only ever instantiated once, it
   flattens cleanly into plain module-level widget globals plus a named
@@ -400,7 +400,7 @@ differently-named module, that assumption needs revisiting.
 
 This one is specific to converting a **property-editing dialog** —
 exactly what `widget_panel.fl` is, and the main reason this section
-exists. Upstream Fluid's own property-panel fields (and its own
+exists. FLTK's Fluid's own property-panel fields (and its own
 `widget_panel.fl`) share one callback per field, gated on the C++
 `void*` parameter being the sentinel `LOAD` or not:
 
@@ -419,51 +419,51 @@ void label_cb(Fl_Input* i, void* v) {
 }
 ```
 
-**The target for `widget_panel.fl` is upstream's own flat structure**
+**The target for `widget_panel.fl` is FLTK's own flat structure**
 — a plain `Function {makeWidgetPanel()}` returning `thePanel`, module-
 level globals for every named field (`Fl_Input* wp_gui_label;` becomes
 `Input wpGuiLabel;` at module scope), and one module-level named
-`Function` per upstream callback (`label_cb` -> `Function {labelCb
+`Function` per FLTK callback (`label_cb` -> `Function {labelCb
 (Widget o)} {...}`) — the same shape every other already-converted
 panel in this project already uses (`about_panel.fl`, `settings_panel.
 fl`, `function_panel.fl`, ...). **`fluid/panels/widget_panel.d` (the
 current hand-written dialog) is reference material only — what fields
 exist and roughly what they do — not the architecture to target.** It
 is a `class WidgetPanelDialog : Window`, a design invented during an
-earlier "restart" session that departed from upstream's own structure
+earlier "restart" session that departed from FLTK's own structure
 without that being a deliberate, agreed decision; treating it as the
 porting target would mean re-introducing that same departure on
-purpose. Port upstream's literal structure instead, and treat anything
+purpose. Port FLTK's literal structure instead, and treat anything
 `widget_panel.d` added on its own authority (an "External Editor"
-button with no upstream counterpart, a one-off `xywh` shift to make
+button with no FLTK counterpart, a one-off `xywh` shift to make
 room for it, an ambient `normalSize` override standing in for
-upstream's own per-widget `labelsize 11`) as exactly that: something
+FLTK's own per-widget `labelsize 11`) as exactly that: something
 `widget_panel.d` invented, not something to carry forward. If one of
 those turns out to genuinely be worth keeping, raise it rather than
 silently inheriting it.
 
 **A plain `void delegate(Widget)` callback can't carry the `void*`
-sentinel** (see CLAUDE.md's "Callbacks are D delegates" convention —
+sentinel** (see CONVENTIONS.md's "Callbacks are D delegates" convention —
 no `user_data`/second-argument slot exists in this port at all), so the
 sentinel dispatch itself doesn't transliterate literally. It splits
-into two pieces, matching upstream's own two branches:
+into two pieces, matching FLTK's own two branches:
 
 1. **A shared `propagateLoadX(Node n)`-style function** (named after
-   upstream's own `propagate_load()`, the cascading-LOAD mechanism it
-   replaces) populates the field(s) directly — matching upstream's own
+   FLTK's own `propagate_load()`, the cascading-LOAD mechanism it
+   replaces) populates the field(s) directly — matching FLTK's own
    `if (v == LOAD)` branch, called once per selection change rather
    than dispatched as a fake callback invocation.
 2. **Each field's own real `.callback()` property**, containing *only*
-   upstream's `else` branch (the store-side logic) — matching upstream's
+   FLTK's `else` branch (the store-side logic) — matching FLTK's
    *own* callback function, minus the `if (v == LOAD) {...} else {`
    wrapper and its closing brace.
 
 **No re-entrancy guard is needed, and this isn't a simplification —
-it's what upstream itself relies on too.** A plain value setter
+it's what FLTK itself relies on too.** A plain value setter
 (`i->value(x)`, `.buffer().text(x)`) does not itself invoke the
 widget's own `.callback()`/`do_callback()` in FLTK; only a real
 interactive event (gated by the widget's own `when()` flags) does.
-Upstream's `propagate_load()` only reaches each field's `else` branch
+FLTK's `propagate_load()` only reaches each field's `else` branch
 by *directly calling the callback function itself* with the `LOAD`
 sentinel — an explicit, deliberate dispatch, not a side effect of
 setting a value — so nothing in the D translation needs a `loading_`-
@@ -496,7 +496,7 @@ currentNode_.label = o.value();}
 }
 ```
 
-(Multi-selection apply — upstream's own `for (Node* o = Fluid.proj.
+(Multi-selection apply — FLTK's own `for (Node* o = Fluid.proj.
 tree.first; ...) if (o->selected...)` loop — and undo/dirty-flag
 bookkeeping both still need a real connection to `gui_main.d`'s own
 state once this is wired in for real, not just piloted in isolation:
@@ -508,7 +508,7 @@ indirection needed, unlike `widget_panel.d`'s own `onBeforeEdit`/
 `onEdited` design.)
 
 **When converting a field, still check whether `widget_panel.d`
-already implements it** (grep its own extensive `// upstream: <cxx
+already implements it** (grep its own extensive `// FLTK: <cxx
 function name>` comments — 254 of them at last count) for what the
 field is *for* and what edge cases it handles — genuinely useful
 research even though its own method-per-field, class-scoped shape
@@ -516,7 +516,7 @@ isn't what you're writing.
 
 ## Casting between sibling ancestor types (`dynamic_cast` walks)
 
-Upstream Fluid code frequently walks a node's ancestor chain checking
+FLTK's Fluid code frequently walks a node's ancestor chain checking
 each level's dynamic type, e.g. `check_redraw_corresponding_parent()`
 (deciding whether a selected node sits inside a `Tabs`'s or `Wizard`'s
 hidden page):
@@ -561,7 +561,7 @@ editor's own selection-change handling, not `widget_panel.fl` itself.)
 
 ## Other porting conventions that still apply
 
-Everything in CLAUDE.md's "Porting conventions" section applies to
+Everything in CONVENTIONS.md's "Porting conventions" section applies to
 transliterated code exactly as it applies to hand-written `fl.*`
 modules — this guide doesn't repeat all of it, just flags where it's
 most likely to come up while converting a Fluid panel:
@@ -584,7 +584,7 @@ most likely to come up while converting a Fluid panel:
 
 When converting one field/callback/decl block:
 
-1. Read the real upstream C++ (`~/Repositories/fltk/fluid/...`), not
+1. Read the real FLTK C++ (FLTK's `fluid/...`), not
    this project's already-copied reference `.fl` — the copy is only
    there so you don't have to keep the two checkouts open side by
    side, but the checked-out FLTK source is the ground truth for the
@@ -593,7 +593,7 @@ When converting one field/callback/decl block:
    panel/dialog) already implements the same field — useful research
    for what it's for and what edge cases it handles, but not the D
    reference to transliterate from; for `widget_panel.fl` specifically,
-   its own class-based architecture is a known departure from upstream
+   its own class-based architecture is a known departure from FLTK
    this conversion is deliberately not repeating (see "The property-
    panel LOAD/CHANGED pattern" above).
 3. For every FLTK symbol involved, look up its real fldtk name/
@@ -607,6 +607,6 @@ When converting one field/callback/decl block:
    it compiles — `code_writer.d`'s guards will loudly reject anything
    still containing raw C++, which is a useful sanity check on its own.
 6. Update `PORTING.md`'s own status for
-   whatever just got converted, per CLAUDE.md's "closing the loop"
-   convention — don't leave a stale "not yet converted" note next to
+   whatever just got converted, so that—per `CONVENTIONS.md`—nothing is left stale:
+   don't leave a stale "not yet converted" note next to
    code that now is.

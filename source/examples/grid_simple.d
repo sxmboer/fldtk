@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/grid-simple.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh grid-simple
+// D transliteration of FLTK's examples/grid-simple.cxx.
+// Build: rdmd buildsamples.d examples grid_simple
 import fl;
 
 void main(string[] args)

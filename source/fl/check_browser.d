@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Check_Browser.H + src/Fl_Check_Browser.cxx
- * (FLTK 1.5.0, ~/Repositories/fltk).
+ * (FLTK 1.5.0).
  *
  * A scrolling list of text lines that can each be checked/unchecked
  * (a checkbox per row), plus one line at a time can be the "current"

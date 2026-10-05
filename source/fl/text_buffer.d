@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Text_Buffer.H + src/Fl_Text_Buffer.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). Scope: the data model only (Fl_Text_Selection ->
+ * Ported from FL/Fl_Text_Buffer.H + src/Fl_Text_Buffer.cxx (FLTK 1.5.0). Scope: the data model only (Fl_Text_Selection ->
  * TextSelection, Fl_Text_Buffer -> TextBuffer, and the two undo-support
  * classes defined only in the .cxx, Fl_Text_Undo_Action/
  * Fl_Text_Undo_Action_List -> TextUndoAction/TextUndoActionList, ported
@@ -65,7 +64,7 @@
  *   malloc'd-`char*`-returning `text()`, added purely because C++ needs
  *   two shapes to give callers a choice) collapses into the single
  *   `text()` below, since it already returns a GC-owned D `string` --
- *   same substitution CLAUDE.md documents for `Widget.label()`/
+ *   same substitution CONVENTIONS.md documents for `Widget.label()`/
  *   `tooltip()`.
  * - `Fl_Text_Buffer::copy()`'s three `memcpy()` calls become `memmove()`
  *   here. FLTK's own doc comment says `fromBuf` "may be the same as
@@ -77,7 +76,7 @@
  *   isn't a behavior change for any call that wasn't already relying on
  *   UB.
  *
- * No GC-finalizer hazard applies here (see CLAUDE.md's note on
+ * No GC-finalizer hazard applies here (see CONVENTIONS.md's note on
  * `Widget.~this()`): `TextBuffer` never reaches into another *live*
  * GC-managed object from a destructor, because it doesn't need a
  * destructor at all -- `buf_`, the undo/redo lists, and the callback
@@ -458,7 +457,7 @@ struct TextSelection
     /// Returns selected(), and (via out params) start()/end() -- both 0
     /// if not selected. FLTK returns int (0/1) through the same
     /// method name (`selected(int*, int*)`); D's bool return + out
-    /// params is the natural fit (see CLAUDE.md's preference for real
+    /// params is the natural fit (see CONVENTIONS.md's preference for real
     /// types over C's int-as-bool).
     bool selected(out int startpos, out int endpos) const
     {
@@ -477,7 +476,7 @@ struct TextSelection
  * Called after the buffer is modified (insert/delete/replace, or a
  * selection boundary redisplay -- see redisplaySelection()'s callers).
  * Matches Fl_Text_Modify_Cb's parameter order verbatim, minus the `void*
- * cbArg` slot: per CLAUDE.md's delegate-over-function-pointer
+ * cbArg` slot: per CONVENTIONS.md's delegate-over-function-pointer
  * convention, callers just capture whatever context they need instead.
  */
 alias TextModifyCb = void delegate(int pos, int nInserted, int nDeleted, int nRestyled, const(char)[] deletedText);

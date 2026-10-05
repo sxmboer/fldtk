@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/handle_keys.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh handle_keys
+// D transliteration of FLTK's test/handle_keys.cxx.
+// Build: rdmd buildsamples.d test handle_keys
 import fl;
 import flterminal = fl.terminal;
 import std.format : format;
@@ -34,7 +33,7 @@ struct KeycodeTable
 }
 
 // Display names use fldtk's own bare D constant spelling (matching the
-// convention CLAUDE.md's memory notes established for cursor.d/browser.d/
+// convention CONVENTIONS.md's convention established for cursor.d/browser.d/
 // chart_simple.d), not FLTK's C `FL_*` macro name -- these strings
 // exist specifically to teach a D programmer which constant a given key
 // maps to, and `Keysym` (fl.enumerations) is an open manifest-constant

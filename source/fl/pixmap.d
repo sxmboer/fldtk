@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Pixmap.H + src/Fl_Pixmap.cxx + src/fl_draw_pixmap.cxx
- * (FLTK 1.5.0, ~/Repositories/fltk): Fl_Pixmap, a color-table-indexed
+ * (FLTK 1.5.0): Fl_Pixmap, a color-table-indexed
  * (XPM-style) image with transparency. Milestone 2 of the fl.image
  * port -- see fl.image's own top comment for the overall staging.
  *
@@ -901,7 +901,7 @@ unittest
 {
     // A real 100-wide, 17-color, cpp=1 excerpt of the actual FLTK
     // test/pixmaps/tile.xpm data embedded in
-    // samples/examples/shapedwindow.d -- 3 real pixel rows instead of
+    // source/examples/shapedwindow.d -- 3 real pixel rows instead of
     // the full 100, everything else byte-for-byte identical (header H
     // changed to match). Checks that convertPixmap() decodes this real
     // data correctly, headless and independent of any drawing/masking/

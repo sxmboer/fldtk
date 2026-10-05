@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Shared_Image.H + src/Fl_Shared_Image.cxx (FLTK
- * 1.5.0, ~/Repositories/fltk): Fl_Shared_Image, a filename-keyed,
+ * 1.5.0): Fl_Shared_Image, a filename-keyed,
  * reference-counted image cache. Loading the same file (e.g. a
  * toolbar icon used by a dozen buttons) through `get()` returns the
  * *same* in-memory image after the first load, only actually
@@ -38,7 +38,7 @@
  *    the sorted/binary-search machinery exists FLTK purely as a
  *    C-era performance optimization this port doesn't need, same
  *    "simpler, exactly as capable for every case this port exercises"
- *    reasoning CLAUDE.md documents elsewhere (e.g. `fl.tabs`'s storage
+ *    reasoning CONVENTIONS.md documents elsewhere (e.g. `fl.tabs`'s storage
  *    simplification).
  *  - **No generic `data()`/`count()` aliasing** in `update()` --
  *    FLTK's `update()` also calls `data(image_->data(),
@@ -76,7 +76,7 @@ import fl.pnm_image : PNMImage;
 /// 64 bytes of its content, either returns a loaded Image or null (if
 /// this handler doesn't recognize the format). Ported from
 /// `Fl_Shared_Handler` -- a D delegate instead of a C function
-/// pointer, matching CLAUDE.md's usual callback-porting convention
+/// pointer, matching CONVENTIONS.md's usual callback-porting convention
 /// (nothing here needs a separate `void*` user-data slot the way
 /// FLTK's plain function pointer would, since a delegate already
 /// closes over whatever state it needs).
@@ -395,7 +395,7 @@ class SharedImage : Image
     }
 
     /// package(fl): test-only reset of every bit of shared static
-    /// state this module tracks, matching CLAUDE.md's "shared static
+    /// state this module tracks, matching CONVENTIONS.md's "shared static
     /// state needs hermetic tests" convention (same reasoning as
     /// fl.core.resetForTest()/fl.group's FlGroup.current(null) advice) --
     /// every test in this module leaves the pool/handler-chain empty
@@ -414,7 +414,7 @@ class SharedImage : Image
 /// same pluggable `add_handler()` chain rather than hardcoding them too
 /// (`fl_images_core.cxx`'s own `fl_check_images()`, which this is a
 /// ported reduction of). None of GIF/SVG/PNG/JPEG link an
-/// external codec in this port (see CLAUDE.md's "Correction
+/// external codec in this port (see CONVENTIONS.md's "Correction
 /// (2026-08-12)" note for GIF/SVG; `fl.png_image`'s/`fl.jpeg_image`'s
 /// own module comments for PNG/JPEG -- both adapted from already-D
 /// `arsd.png`/`arsd.jpeg` rather than bound to libpng/libjpeg).
@@ -503,7 +503,7 @@ private Image checkNativeFormats(string name, const(ubyte)[] header)
  * FLTK's own `mkstemp()` + `Fl_Shared_Image::get()` approach for
  * the same step). Calling this is still worth doing for API fidelity
  * (matching every real FLTK program's own `fl_register_images()`
- * call, e.g. `samples/test/clipboard.d`'s), and for its *other* real
+ * call, e.g. `source/test/clipboard.d`'s), and for its *other* real
  * effect -- any plain `SharedImage.get("some.gif")`/`get("some.bmp")`/
  * `get("some.ico")`/`get("some.svg")` call elsewhere in an app now
  * actually finds those files -- just don't assume it's on the

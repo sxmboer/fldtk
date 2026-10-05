@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Input.H + src/Fl_Input.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). The concrete text-input widget -- everything
+ * Ported from FL/Fl_Input.H + src/Fl_Input.cxx (FLTK 1.5.0). The concrete text-input widget -- everything
  * Fl_Input_ (fl.input_.d) doesn't provide: draw(), handle(), and the
  * keybinding logic (kf_*() methods) that turns raw key events into
  * calls against Fl_Input_'s editing primitives.

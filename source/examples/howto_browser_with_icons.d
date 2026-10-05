@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/howto-browser-with-icons.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh howto-browser-with-icons
+// D transliteration of FLTK's examples/howto-browser-with-icons.cxx.
+// Build: rdmd buildsamples.d examples howto_browser_with_icons
 import fl;
 
 immutable string[] big = [ // XPM

@@ -192,9 +192,6 @@ What differs from Linux:
   and has no Windows equivalent.
 - **Release builds** (`--config=linux-release`, `buildsamples.d
   --release`) are Linux-only; see the release section below.
-- **The smoke-tests/ Makefile is Linux-only.** Build a smoke test with
-  the dmd command line below instead (from smoke-tests/, with
-  `-I../source` and `../fldtk.lib`).
 
 **Building your own program.** With fldtk.lib built, compile from the
 repo root, naming fldtk.lib and the system libraries it needs:
@@ -246,7 +243,7 @@ whether a release build was even possible:
   worse than one that fails to compile at all.
 
 To try a release build without replacing the debug libfldtk.so (which
-Fluid, the samples and the smoke tests are linked against), use the
+Fluid and the samples are linked against), use the
 separate `linux-release` configuration:
 
     dub build --config=linux-release --build=release                  # dmd
@@ -278,7 +275,7 @@ optimizer ever gets fixed, since it widens which toolchains fldtk can be
 built with.
 
 **If you have a local, not-yet-released DMD fix for the crash above**
-(e.g. a compiler patch accepted upstream but not in any tagged DMD
+(e.g. a compiler patch accepted FLTK but not in any tagged DMD
 release yet): building the one file that fails to compile as
 unoptimized/no-bounds-checks and linking it into an otherwise-optimized
 library is a normal, standard workaround -- neither dub.sdl's
@@ -299,15 +296,3 @@ ship debug only**, until DMD's optimizer is fixed enough to trust. If
 you're reading this later and DMD has released a fix, it's worth
 re-testing this whole section from scratch rather than assuming
 anything above still holds.
-
-
-Manual/smoke tests
--------------------
-
-smoke-tests/ (things that need a live X server, so aren't part of
-`dub test`) build with a plain Makefile:
-
-    cd smoke-tests && make       # or `make <name>` for one test
-
-See smoke-tests/window.d (or any other file there) for that test's own
-run instructions.

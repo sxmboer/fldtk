@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/shapedwindow.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh shapedwindow
+// D transliteration of FLTK's examples/shapedwindow.cxx.
+// Build: rdmd buildsamples.d examples shapedwindow
 import fl;
 
 // Transliterated verbatim from FLTK's `test/pixmaps/tile.xpm` (a

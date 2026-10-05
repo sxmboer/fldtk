@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Clock.H + src/Fl_Clock.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). Two classes, both in the one FLTK header:
+ * Ported from FL/Fl_Clock.H + src/Fl_Clock.cxx (FLTK 1.5.0). Two classes, both in the one FLTK header:
  * `Fl_Clock_Output` (a program-driven analog clock face, no
  * interactivity) and `Fl_Clock` (adds a 1-second auto-refresh via
  * `Fl::add_timeout()`).
@@ -16,10 +15,10 @@
  *
  * `Fl_Clock` is ported as `FlClock`, not `Clock` -- the one deliberate
  * exception to this port's usual "drop the `Fl_`/`Fl` prefix" naming
- * convention (see `CLAUDE.md`'s "Porting conventions" section), because
+ * convention (see `CONVENTIONS.md`'s "Porting conventions" section), because
  * a bare `Clock` collides with `std.datetime.systime.Clock` the moment
  * generated code (which does a wildcard `import fl; import std;`) names
- * one -- confirmed as a real regression (`samples/test/tabs.fl`'s own
+ * one -- confirmed as a real regression (`source/test/tabs.fl`'s own
  * clock widget failing to compile) before the rename. `fl.group.FlGroup`
  * got the same treatment for the same reason (`std.algorithm.iteration.
  * FlGroup`) -- see that module's own doc comment.
@@ -145,7 +144,7 @@ class ClockOutput : Widget
         // FLTK reaches for the C library's localtime() here, whose
         // returned struct tm* points into non-reentrant static storage
         // -- std.datetime's SysTime has no such hazard and reads just
-        // as directly (CLAUDE.md: prefer a real D stdlib alternative
+        // as directly (CONVENTIONS.md: prefer a real D stdlib alternative
         // over a transliterated raw C call).
         auto local = SysTime.fromUnixTime(cast(long) v).toLocalTime();
         value(local.hour, local.minute, local.second);
@@ -259,7 +258,7 @@ class FlClock : ClockOutput
         // Safe unconditionally, even during GC-driven finalization --
         // this only compares delegate identity and mutates fl.core's
         // own module-level timer queue, it doesn't reach into another
-        // GC object's fields (see the GC-finalizer note in CLAUDE.md
+        // GC object's fields (see the GC-finalizer note in CONVENTIONS.md
         // and fl.widget's own destructor for the pattern this follows).
         fl.core.removeTimeout(&tick);
     }

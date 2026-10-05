@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/howto-drag-and-drop.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh howto-drag-and-drop
+// D transliteration of FLTK's examples/howto-drag-and-drop.cxx.
+// Build: rdmd buildsamples.d examples howto_drag_and_drop
 import fl;
 import std.stdio : stderr;
 

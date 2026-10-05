@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/textdisplay-with-colors.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh textdisplay-with-colors
+// D transliteration of FLTK's examples/textdisplay-with-colors.cxx.
+// Build: rdmd buildsamples.d examples textdisplay_with_colors
 import fl;
 
 void main()

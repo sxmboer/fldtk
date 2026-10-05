@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/chart-simple.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh chart-simple
+// D transliteration of FLTK's examples/chart-simple.cxx.
+// Build: rdmd buildsamples.d examples chart_simple
 import fl;
 import std.math : sin;
 import std.format : format;
@@ -13,7 +12,7 @@ Choice gChoice;
 // Choice callback for changing chart type(), one per menu item -- each
 // delegate below captures its own chart-type constant directly rather
 // than stashing it in the menu item's void* user_data and reading it
-// back via item->argument() (see CLAUDE.md's callback-delegate note,
+// back via item->argument() (see CONVENTIONS.md's callback-delegate note,
 // which calls out menu item callbacks by name).
 void chartTypeCb(ubyte t)
 {

@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Bitmap.H + src/Fl_Bitmap.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk): Fl_Bitmap, a mono-color (1-bit) image drawn
+ * Ported from FL/Fl_Bitmap.H + src/Fl_Bitmap.cxx (FLTK 1.5.0): Fl_Bitmap, a mono-color (1-bit) image drawn
  * stippled in the current color. Part of fl.image's Milestone 1 (see
  * that module's own top comment for the overall port's scope/staging).
  *
@@ -78,7 +77,7 @@ class Bitmap : Image
 
     /**
      * Frees the cached bitmask Pixmap, if any. No `GC.inFinalizer()`
-     * guard needed here (unlike e.g. `Widget.~this()`, see CLAUDE.md's
+     * guard needed here (unlike e.g. `Widget.~this()`, see CONVENTIONS.md's
      * GC-finalizer note) -- `fl.draw.freeBitmask()` only ever touches
      * `fl.draw`'s own module-level Display/GC state and calls a plain
      * C library function (`XFreePixmap()`), never another GC-managed

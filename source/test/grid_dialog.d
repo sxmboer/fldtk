@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/grid_dialog.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh grid_dialog
+// D transliteration of FLTK's test/grid_dialog.cxx.
+// Build: rdmd buildsamples.d test grid_dialog
 
 // This demo program builds a flexible layout of a dialog similar
 // to fl_ask(), fl_choice(), and others.

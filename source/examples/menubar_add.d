@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/menubar-add.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh menubar-add
+// D transliteration of FLTK's examples/menubar-add.cxx.
+// Build: rdmd buildsamples.d examples menubar_add
 import fl;
 import std.stdio : stderr;
 

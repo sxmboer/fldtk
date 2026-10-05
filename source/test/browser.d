@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/browser.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh browser
+// D transliteration of FLTK's test/browser.cxx.
+// Build: rdmd buildsamples.d test browser
 import fl;
 import std.format : format;
 import std.conv : to, ConvException;
@@ -116,7 +115,7 @@ void main()
 {
     // FLTK parses argc/argv here (Fl::args_to_utf8/Fl::args) to pick an
     // optional filename to load into the browser, falling back to its own
-    // source file; dropped along with argc/argv (see samples/README.md and
+    // source file; dropped along with argc/argv (see source/test/README.md and
     // test/button.cxx's precedent), keeping just the fallback filename.
     // ".d", not FLTK's ".cxx" -- this port's own source file, not
     // FLTK's.

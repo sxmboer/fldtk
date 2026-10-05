@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/file_chooser.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh file_chooser
+// D transliteration of FLTK's test/file_chooser.cxx.
+// Build: rdmd buildsamples.d test file_chooser
 import fl;
 import std.format : format;
 import std.process : environment, executeShell;
@@ -11,7 +10,7 @@ enum TERMINAL_GREEN = "\033[32m";
 enum TERMINAL_NORMAL = "\033[0m";
 
 // FLTK's Fl_Menu_::add(const char*) '|'-separated multi-item form is
-// the Forms-compatible shim CLAUDE.md marks out of scope; split locally
+// the Forms-compatible shim CONVENTIONS.md marks out of scope; split locally
 // and add each item via the real 4-arg add() instead.
 void addPipeItems(Menu_ m, string items)
 {
@@ -85,7 +84,7 @@ void main()
     {
         filter = new Input(50, 10, 315, 25, "Filter:");
         // FLTK scans argc/argv here for an optional filter argument;
-        // dropped along with argc/argv (see samples/README.md and
+        // dropped along with argc/argv (see source/test/README.md and
         // test/button.cxx's precedent), keeping just the default filter.
         filter.value("PDF Files (*.pdf)\t"
             ~ "PostScript Files (*.ps)\t"

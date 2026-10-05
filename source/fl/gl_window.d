@@ -1,6 +1,5 @@
 /*
- * Port of `FL/Fl_Gl_Window.H` + `src/Fl_Gl_Window.cxx` (FLTK 1.5.0,
- * ~/Repositories/fltk). See `PORTING.md`'s own row for current status.
+ * Port of `FL/Fl_Gl_Window.H` + `src/Fl_Gl_Window.cxx` (FLTK 1.5.0). See `PORTING.md`'s own row for current status.
  *
  * A `GlWindow` subclass that overrides `draw()` with plain immediate-
  * mode GL calls and never calls `super.draw()` -- the common case,
@@ -219,7 +218,7 @@ public:
     /// above, real GL-context setup) hides the base class's whole
     /// `show` overload set by name -- both in C++ and in D -- so a
     /// `GlWindow` used directly as a top-level window (not nested inside
-    /// a plain `Window`, e.g. `samples/test/gl_image.d`'s
+    /// a plain `Window`, e.g. `source/test/gl_image.d`'s
     /// `GlImageWindow`) needs its own forwarder to reach
     /// `Window.show(string[])`'s args-parsing/system-colors setup at
     /// all. `super.show(args)` still ends by virtually dispatching to

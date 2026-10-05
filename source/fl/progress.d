@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Progress.H + src/Fl_Progress.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). A simple progress bar: a plain `Fl_Widget`
+ * Ported from FL/Fl_Progress.H + src/Fl_Progress.cxx (FLTK 1.5.0). A simple progress bar: a plain `Fl_Widget`
  * subclass (not `Fl_Valuator`-based) holding a `float` value/minimum/
  * maximum, drawn as two clipped regions -- the "filled" portion in
  * selectionColor(), the rest in color() -- so the label (if any) reads

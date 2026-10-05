@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/flex_demo.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh flex_demo
+// D transliteration of FLTK's test/flex_demo.cxx.
+// Build: rdmd buildsamples.d test flex_demo
 import fl;
 import std.stdio : writefln;
 

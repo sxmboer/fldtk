@@ -1,5 +1,5 @@
 /*
- * Ported from FL/names.h (FLTK 1.5.0, ~/Repositories/fltk): a small,
+ * Ported from FL/names.h (FLTK 1.5.0): a small,
  * self-contained set of human-readable name lookup tables for three
  * enums, purely for debug/introspection use in *application* code
  * (nothing inside this port itself consumes these) -- e.g.
@@ -8,7 +8,7 @@
  *
  * `eventNames` skips FLTK's 11 trailing `Fl::Pen::*` entries: pen
  * events are a deferred, not-yet-ported subsystem in this port (see
- * CLAUDE.md's "Where this port intentionally exceeds FLTK" section
+ * CONVENTIONS.md's "Where this port intentionally exceeds FLTK" section
  * -- X11 pen support is planned but not built yet), so `fl.enumerations
  * .Event` has no corresponding values to map names from. Every other
  * FLTK entry is ported (all real `Event` values in this port).

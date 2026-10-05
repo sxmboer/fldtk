@@ -10,7 +10,7 @@
  * FLTK's own `Formula_Input_Vars` (a name plus a per-name C function
  * pointer plus one `void*` shared across the whole table) collapses to
  * `FormulaVar` (a name plus a D delegate) -- the direct equivalent
- * matching `CLAUDE.md`'s "callbacks are D delegates" convention: each
+ * matching `CONVENTIONS.md`'s "callbacks are D delegates" convention: each
  * delegate closes over whatever context it needs directly, so there's
  * no shared user-data slot to thread through at all.
  *

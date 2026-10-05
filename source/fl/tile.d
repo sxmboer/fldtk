@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Tile.H + src/Fl_Tile.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Tile.H + src/Fl_Tile.cxx (FLTK 1.5.0).
  *
  * A FlGroup whose children can be resized by dragging the borders where
  * they touch. Has no draw() of its own (relies entirely on
@@ -24,7 +23,7 @@
  *    FLTK's NULL-pointer check). `onInsert()`/`onMove()`/
  *    `onRemove()` splice it with slicing/concatenation instead of
  *    `memmove()` + manual capacity bookkeeping -- same rationale as
- *    fl.text_buffer's memcpy-vs-memmove note in CLAUDE.md: the
+ *    fl.text_buffer's memcpy-vs-memmove note in CONVENTIONS.md: the
  *    observable behavior (grow/shrink/reorder one slot) is identical,
  *    only the storage-management technique changes.
  *  - `request_grow_{l,r,t,b}`'s C++ signature takes `new_l`/etc. by
@@ -101,7 +100,7 @@ class Tile : FlGroup
      * *before* adding any children -- the documented, common usage this
      * class's own doc comment recommends, and exactly what both
      * FLTK's `test/tile.cxx` and this port's own
-     * `samples/test/tile.d` do) produces a zero-length array, and a
+     * `source/test/tile.d` do) produces a zero-length array, and a
      * zero-length D dynamic array `is null` **evaluates to `true`**
      * (`new SizeRange[0] is null` -> `true`).
      * Every subsequent `sizeRange_ !is null` check anywhere in this
@@ -1110,7 +1109,7 @@ unittest
     // full story):
     // initSizeRange() called *before* any children exist (the
     // documented, common usage -- matching FLTK's own test/tile.cxx
-    // and this port's samples/test/tile.d) would otherwise leave
+    // and this port's source/test/tile.d) would otherwise leave
     // size_range mode silently "off" everywhere else in this class,
     // because `sizeRange_ = new SizeRange[0]` -- a zero-length D array
     // -- `is null` in D, the same as an uninitialized one. Every other

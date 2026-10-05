@@ -1,11 +1,10 @@
-// D transliteration of FLTK's test/fullscreen.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh fullscreen
+// D transliteration of FLTK's test/fullscreen.cxx.
+// Build: rdmd buildsamples.d test fullscreen
 //
 // Fullscreen test program. FLTK conditionally builds a GL-drawn
 // shape_window when HAVE_GL, or a plain 2D-drawn one otherwise; this
 // port takes the real `#if HAVE_GL` branch, using the same plain
-// immediate-mode GL draw() override samples/test/shape.d already uses.
+// immediate-mode GL draw() override source/test/shape.d already uses.
 import fl;
 import std.math : PI, cos, sin;
 import std.format : format;

@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/texteditor-simple.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh texteditor-simple
+// D transliteration of FLTK's examples/texteditor-simple.cxx.
+// Build: rdmd buildsamples.d examples texteditor_simple
 import fl;
 
 void main()

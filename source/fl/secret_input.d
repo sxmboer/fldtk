@@ -1,5 +1,5 @@
 /*
- * Ported from FL/Fl_Secret_Input.H (FLTK 1.5.0, ~/Repositories/fltk).
+ * Ported from FL/Fl_Secret_Input.H (FLTK 1.5.0).
  * Trivial `type(inputSecret)` subclass of fl.input's Input -- masks
  * every character with a bullet glyph on display (fl.input_'s expand(),
  * see its module comment for `secretInputCharacter`). The constructor

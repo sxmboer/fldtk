@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Scroll.H + src/Fl_Scroll.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Scroll.H + src/Fl_Scroll.cxx (FLTK 1.5.0).
  *
  * A FlGroup that lets its children be larger than its own bounds,
  * showing scrollbars to pan around them. Faithful port of the layout
@@ -41,7 +40,7 @@
  * do this -- an object keeps the same vtable for its whole lifetime,
  * including throughout its own destruction -- so `deleteChild()`
  * alone is sufficient here; no `clear()` or `~this()` override needed.
- * See CLAUDE.md's "D does not unwind the vtable during destruction"
+ * See CONVENTIONS.md's "D does not unwind the vtable during destruction"
  * note for the general principle (this module is where it was first
  * worked out) -- worth checking before porting any other FLTK
  * class that leans on the same C++-only defensive-copy pattern.

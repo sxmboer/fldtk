@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/line_style_docs.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh line_style_docs
+// D transliteration of FLTK's test/line_style_docs.cxx.
+// Build: rdmd buildsamples.d test line_style_docs
 //
 // Notes to devs (and users):
 //
@@ -50,7 +49,7 @@ class StyleBox : Box
 
     // Display names use fldtk's own bare D constant spelling (matching
     // each case label exactly -- what a D programmer actually types),
-    // not FLTK's C `FL_*` macro name -- see CLAUDE.md's memory notes
+    // not FLTK's C `FL_*` macro name -- see CONVENTIONS.md's convention
     // on this standing rule for GUI text that names a constant.
     string styleStr(int style)
     {

@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/OpenGL3-glut-test.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh OpenGL3-glut-test
+// D transliteration of FLTK's examples/OpenGL3-glut-test.cxx.
+// Build: rdmd buildsamples.d examples OpenGL3_glut_test
 //
 // Tiny OpenGL v3 + glut demo program for FLTK.
 //

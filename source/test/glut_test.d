@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/glut_test.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh glut_test
+// D transliteration of FLTK's test/glut_test.cxx.
+// Build: rdmd buildsamples.d test glut_test
 //
 // GLUT compatibility test. fldtk has no GL/GLUT support at all yet (no
 // FL/glut.H port) -- the glut*() calls below keep their FLTK C

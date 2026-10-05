@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/rotated_text.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh rotated_text
+// D transliteration of FLTK's test/rotated_text.cxx.
+// Build: rdmd buildsamples.d test rotated_text
 import fl;
 import std.math : PI, sin, cos;
 
@@ -171,7 +170,7 @@ void engravedCb(Widget)
 
 // Labels use fldtk's own D spelling -- `Labeltype` is a closed enum, so
 // shown qualified (`Labeltype.normalLabel`), matching what a D programmer
-// actually types -- not FLTK's C `FL_*` macro name. See CLAUDE.md's
+// actually types -- not FLTK's C `FL_*` macro name. See CONVENTIONS.md's
 // memory notes on this standing rule for GUI text that names a constant.
 MenuItem[] choices = [
     MenuItem("Labeltype.normalLabel", 0, (w) { normalCb(w); }),

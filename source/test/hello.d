@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/hello.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh hello
+// D transliteration of FLTK's test/hello.cxx.
+// Build: rdmd buildsamples.d test hello
 import fl;
 
 void main(string[] args)

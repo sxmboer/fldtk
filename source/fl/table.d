@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Table.H + src/Fl_Table.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). Base class for table widgets: draws a grid of
+ * Ported from FL/Fl_Table.H + src/Fl_Table.cxx (FLTK 1.5.0). Base class for table widgets: draws a grid of
  * cells (via the virtual drawCell() hook a subclass overrides), with
  * optional row/column headers, interactive row/column resizing,
  * scrolling, and a rectangular cell-selection cursor. Can also be used
@@ -28,7 +27,7 @@
  *    turn silent C++ UB into a guaranteed `RangeError` crash on the
  *    very first row ever added to a table -- the same category of
  *    "faithful replication would be actively harmful in a memory-safe
- *    language" case `CLAUDE.md`'s `Fl_Text_Buffer::copy()` note
+ *    language" case `CONVENTIONS.md`'s `Fl_Text_Buffer::copy()` note
  *    documents. Fixed here (`row+1`, matching `col_width()`'s own
  *    correct pattern exactly) and logged as an `FLTK_ISSUES.md`
  *    candidate rather than silently worked around.
@@ -36,7 +35,7 @@
  *    `enum` -- FLTK declares it as a plain C `enum` but real call
  *    sites combine values with `&` (`context & (CONTEXT_ROW_HEADER|
  *    CONTEXT_COL_HEADER|CONTEXT_CELL)` in `handle()`'s `FL_DRAG` case),
- *    matching `CLAUDE.md`'s "open bitmask expressed as a plain C enum"
+ *    matching `CONVENTIONS.md`'s "open bitmask expressed as a plain C enum"
  *    rule (same treatment as `fl.tree_prefs`'s `TreeItemDrawMode`).
  *    `ResizeFlag` stays a closed `enum` -- genuinely
  *    mutually-exclusive, never combined.
@@ -134,7 +133,7 @@ class Table : FlGroup
     /// True once this constructor's own body has finished. Guards the
     /// `drawCell()` call in `tableScrolled()` (see that method) against
     /// firing during construction -- see the "D also does not build up
-    /// the vtable progressively" note in CLAUDE.md: `table_ !is null`
+    /// the vtable progressively" note in CONVENTIONS.md: `table_ !is null`
     /// (guarding every other override below) doesn't help here, since
     /// `table_` is already assigned by the time `tableResized()` runs.
     private bool constructed_;
@@ -512,7 +511,7 @@ class Table : FlGroup
     // EVERY override below is guarded on `table_ !is null`, falling
     // back to the plain `super.xxx()` (real `FlGroup`) behavior
     // otherwise. This works around a real D
-    // vs. C++ construction-order hazard -- see CLAUDE.md's own
+    // vs. C++ construction-order hazard -- see CONVENTIONS.md's own
     // "D resolves virtual dispatch to the most-derived override from
     // the start of construction" note for the general story (the
     // mirror image of the already-documented destructor case). The
@@ -959,7 +958,7 @@ class Table : FlGroup
         // so the identical call here would reach a subclass's real
         // drawCell() override before that subclass has initialized
         // any of its own fields -- a real
-        // SIGSEGV in samples/examples/table_spreadsheet.d's own
+        // SIGSEGV in source/examples/table_spreadsheet.d's own
         // Spreadsheet.drawCell(), called via this exact path from
         // Table's own constructor before Spreadsheet's had a chance
         // to run. See `constructed_`'s own doc comment.

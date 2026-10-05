@@ -11,7 +11,7 @@ static-trampoline-plus-void* method here: FLTK needed that shape
 because a C++ callback can't close over `this`. A D closure
 created inside a real method body (the constructor, here) already
 captures its enclosing instance, so the button's callback can just
-call cbBnVirtual(...) directly -- see CLAUDE.md's "Callbacks are D
+call cbBnVirtual(...) directly -- see CONVENTIONS.md's "Callbacks are D
 delegates" convention.
 
 Also demonstrates safe self-deletion from inside a widget's own

@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Counter.H + src/Fl_Counter.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). "A numerical value with up/down step buttons.
+ * Ported from FL/Fl_Counter.H + src/Fl_Counter.cxx (FLTK 1.5.0). "A numerical value with up/down step buttons.
  * From Forms" (FLTK's own comment): a text readout flanked by two
  * (simpleCounter type()) or four (normalCounter, the default) arrow
  * buttons -- the outer pair steps by lstep(), the inner pair by

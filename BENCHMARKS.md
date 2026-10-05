@@ -1,25 +1,24 @@
-# Performance benchmarks: fldtk vs. upstream FLTK
+# Performance benchmarks: fldtk vs. FLTK
 
-Informal, reproducible timing comparisons between this port and real upstream
-FLTK, built from the reference checkout at `~/Repositories/fltk`. These are
+Informal, reproducible timing comparisons between this port and real FLTK
+FLTK, built from a local FLTK checkout. These are
 not a rigorous benchmark suite -- just concrete numbers gathered while
 investigating specific, observed behavior, kept here so they're not lost and
 can be redone later (see "Future work" below).
 
 **Current build config for every number below**: `dmd`, no `-O`, no
 `-release` -- a plain debug build of `libfldtk.so` (array bounds checks,
-contracts, and asserts all still enabled) linked against upstream's own
+contracts, and asserts all still enabled) linked against FLTK's own
 default CMake `Release`-configured build. This is *not* an apples-to-apples
 optimization-level comparison yet; see "Future work."
 
 ## Methodology
 
 Every timing here was taken against a headless `Xvfb` virtual display (`Xvfb
-:99 -screen 0 1024x768x24`), not the real desktop session -- see
-`CLAUDE.md`'s "No autonomous X11 input" convention: this project never drives
-real mouse/keyboard input unsupervised, but launching a program against a
-fully isolated headless display with zero interaction, purely to observe its
-own timing/exit behavior, is a narrow, accepted exception to that rule.
+:99 -screen 0 1024x768x24`), not the real desktop session: a program is
+launched against a fully isolated headless display with zero interaction,
+purely to observe its own timing/exit behavior, so nothing ever drives the
+real mouse or keyboard.
 
 Two different measurement techniques were needed:
 
@@ -42,12 +41,12 @@ Two different measurement techniques were needed:
   is not committed anywhere -- it exists only to get real profiler numbers
   and was discarded after use.
 
-## `tree-as-container` (`samples/examples/tree_as_container.d`, upstream
+## `tree-as-container` (`source/examples/tree_as_container.d`, FLTK
 `examples/tree-as-container.cxx`)
 
 Builds an `Fl_Tree`/`Tree` containing 20,000 rows x 5 `Fl_Input`/`Input`
 fields each (100,000 input widgets total, `MAX_ROWS`/`MAX_FIELDS` in the
-upstream source) -- a single large, allocation-heavy burst of long-lived
+FLTK source) -- a single large, allocation-heavy burst of long-lived
 widget construction, all before the window is ever shown.
 
 ### Time to first window appearance
@@ -110,7 +109,7 @@ continuously-allocating app.
   `rdmd buildsamples.d --release` links every sample against it. The
   only numbers gathered against it so far are informal: on
   `tree_as_container`, the GDC release build ran slightly faster than
-  real upstream FLTK's own binary, and this file's plain dmd debug
+  real FLTK's own binary, and this file's plain dmd debug
   baseline above ran about twice as slow -- consistent with debug
   bounds-checks/contracts/asserts still being on for the debug build,
   but not yet a real measurement by this file's own methodology (Xvfb,
@@ -128,7 +127,7 @@ continuously-allocating app.
   identically to its plain dmd debug build, so its own (still informal)
   `tree_as_container` timing above is trustworthy in a way the old
   partial DMD build's numbers never were.
-- Extend this file with more `samples/` programs as they come up naturally
+- Extend this file with more sample programs as they come up naturally
   (don't go benchmark every program speculatively -- add an entry when a
   real investigation like this one produces numbers worth keeping, the same
   way this first entry came from a user-noticed timing anomaly, not a
@@ -138,9 +137,9 @@ continuously-allocating app.
 
 Kept here verbatim so the whole investigation can be rerun identically later
 -- none of this is committed anywhere else in the repo (the two `.d`
-variants are throwaway scratch copies of `samples/examples/tree_as_container.d`,
+variants are throwaway scratch copies of `source/examples/tree_as_container.d`,
 never meant to be tracked; the `.sh` wrapper is a standalone diagnostic tool,
-not part of `samples/build.sh`).
+not part of `buildsamples.d`).
 
 ### `timewin.sh` -- wall-clock/CPU-time-to-window measurement
 
@@ -205,14 +204,13 @@ printf 'cpu at kill-time: user %.3fs, sys %.3fs\n' "$(echo "$UTIME/$CLKTCK" | bc
 
 ### `tree_as_container_gcdisabled.d` -- scratch copy with `GC.disable()`
 
-Identical to `samples/examples/tree_as_container.d` except for the added
+Identical to `source/examples/tree_as_container.d` except for the added
 `import core.memory : GC;` and the `GC.disable();` as the first line of
 `main()`:
 
 ```d
-// D transliteration of FLTK's examples/tree-as-container.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh tree-as-container
+// D transliteration of FLTK's examples/tree-as-container.cxx.
+// Build: rdmd buildsamples.d examples tree_as_container
 import fl;
 import std.format : format;
 import core.memory : GC;
@@ -288,7 +286,7 @@ void main()
 
 ### `tree_as_container_profiled.d` -- scratch copy for `--DRT-gcopt=profile:1`
 
-Identical to `samples/examples/tree_as_container.d` except for one added
+Identical to `source/examples/tree_as_container.d` except for one added
 line right after `win.show();`, so the program drives its own ordinary
 shutdown path (`Window.hide()`) instead of being `SIGTERM`ed -- required
 for druntime's GC profile summary to print at all, since both `SIGTERM`
@@ -307,7 +305,7 @@ and `core.stdc.exit()` skip its termination hook:
 ### Commands, start to finish
 
 ```bash
-cd /home/steef/fldtk
+cd /path/to/fldtk
 SCRATCH=/path/to/some/scratch/dir   # anywhere outside the repo is fine
 
 # 1. Headless display
@@ -319,8 +317,8 @@ dub build
 
 # 3. Wall-clock/CPU comparison (timewin.sh from above, made executable)
 chmod +x "$SCRATCH/timewin.sh"
-"$SCRATCH/timewin.sh" samples/bin/examples/tree-as-container "Tree As FLTK Widget Container"
-"$SCRATCH/timewin.sh" ~/Repositories/fltk/build/bin/examples/tree-as-container "Tree As FLTK Widget Container"
+"$SCRATCH/timewin.sh" build/tree_as_container "Tree As FLTK Widget Container"
+"$SCRATCH/timewin.sh" /path/to/fltk/build/bin/examples/tree-as-container "Tree As FLTK Widget Container"
 
 # GC.disable() variant: compile the scratch copy above, then:
 dmd -Isource -od="$SCRATCH" -of="$SCRATCH/tree-as-container-gcdisabled" \
@@ -330,7 +328,7 @@ dmd -Isource -od="$SCRATCH" -of="$SCRATCH/tree-as-container-gcdisabled" \
 
 # parallel:0 variant: no separate binary needed, just pass the flag through
 # timewin.sh's "$@" pass-through:
-"$SCRATCH/timewin.sh" samples/bin/examples/tree-as-container "Tree As FLTK Widget Container" \
+"$SCRATCH/timewin.sh" build/tree_as_container "Tree As FLTK Widget Container" \
     --DRT-gcopt=parallel:0
 
 # 4. GC profiler numbers (profiled variant from above)

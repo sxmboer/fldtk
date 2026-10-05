@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/animgifimage.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh animgifimage
+// D transliteration of FLTK's examples/animgifimage.cxx.
+// Build: rdmd buildsamples.d examples animgifimage
 //
 //  Test program for displaying animated GIF files using the
 //  Fl_Anim_GIF_Image class.
@@ -14,12 +12,12 @@ import core.stdc.stdlib : exit;
 int gGoodCount = 0, gBadCount = 0, gFrameCount = 0;
 
 // Widget.userData()/argument() has no equivalent in this port (see
-// CLAUDE.md's callback convention -- callbacks are D delegates that
+// CONVENTIONS.md's callback convention -- callbacks are D delegates that
 // capture their own state directly). This sample uses it purely to
 // stash the AnimGifImage pointer alongside the window it's decorating
 // so main() can destroy it before the window; a plain AA keyed on the
 // window stands in, same fix already established in
-// samples/test/symbols.d for the same gap.
+// source/test/symbols.d for the same gap.
 AnimGifImage[Window] windowAnim;
 
 immutable Color backGroundColor = gray; // use e.g. Color.red to see

@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/table-spreadsheet-with-keyboard-nav.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh table-spreadsheet-with-keyboard-nav
+// D transliteration of FLTK's examples/table-spreadsheet-with-keyboard-nav.cxx.
+// Build: rdmd buildsamples.d examples table_spreadsheet_with_keyboard_nav
 import fl;
 import std.format : format;
 import std.conv : to, ConvException;

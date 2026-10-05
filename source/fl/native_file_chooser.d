@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Native_File_Chooser.H + src/Fl_Native_File_Chooser.cxx
- * + src/Fl_Native_File_Chooser_FLTK.cxx (FLTK 1.5.0, ~/Repositories/fltk).
+ * + src/Fl_Native_File_Chooser_FLTK.cxx (FLTK 1.5.0).
  *
  * Deliberate deviations:
  *
@@ -61,7 +61,7 @@ import fl.core : wait;
 import fl.ask : choice, fl_cancel, ok;
 
 /// `Fl_Native_File_Chooser::Type` -- a closed, non-combinable tag set,
-/// so a real D `enum`, matching CLAUDE.md's convention.
+/// so a real D `enum`, matching CONVENTIONS.md's convention.
 enum BrowseType
 {
     browseFile = 0,

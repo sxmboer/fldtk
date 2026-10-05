@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Round_Clock.H + the Fl_Round_Clock constructor in
- * src/Fl_Clock.cxx (FLTK 1.5.0, ~/Repositories/fltk).
+ * src/Fl_Clock.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port. Trivial subclass: sets type() to
  * fl.clock.roundClock and box() to noBox -- FLTK's own doc

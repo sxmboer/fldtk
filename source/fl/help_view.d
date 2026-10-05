@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Help_View.H + src/Fl_Help_View.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). A ~4600-line mini HTML-subset layout/rendering
+ * Ported from FL/Fl_Help_View.H + src/Fl_Help_View.cxx (FLTK 1.5.0). A ~4600-line mini HTML-subset layout/rendering
  * engine -- the largest single port attempted in this project so far.
  * Staged across multiple milestones; see PORTING.md's row for current
  * scope.
@@ -3859,7 +3858,7 @@ unittest
     // format(): structural sanity check via value(). Not asserting on
     // exact pixel positions -- headless width() falls back to a
     // fake fixed-width estimate (see this project's testing
-    // convention note in CLAUDE.md), so only layout-independent facts
+    // convention note in CONVENTIONS.md), so only layout-independent facts
     // are checked: title parsing, that formatting doesn't crash on a
     // representative mix of tags (headings, lists, links, bold/
     // italic, an unresolvable <IMG>), that it produces more than one

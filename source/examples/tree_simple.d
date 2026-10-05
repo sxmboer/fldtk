@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/tree-simple.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh tree-simple
+// D transliteration of FLTK's examples/tree-simple.cxx.
+// Build: rdmd buildsamples.d examples tree_simple
 import fl;
 import std.stdio : stderr;
 

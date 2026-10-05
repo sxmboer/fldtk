@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Simple_Counter.H + the Fl_Simple_Counter constructor
- * in src/Fl_Counter.cxx (FLTK 1.5.0, ~/Repositories/fltk).
+ * in src/Fl_Counter.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port. Trivial subclass: sets type() to
  * fl.counter.simpleCounter, which makes fl.counter.Counter's

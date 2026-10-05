@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Tree_Item.H + src/Fl_Tree_Item.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). A single tree node: label, font/color
+ * Ported from FL/Fl_Tree_Item.H + src/Fl_Tree_Item.cxx (FLTK 1.5.0). A single tree node: label, font/color
  * overrides, icons, an optional child Widget, and its own children
  * (recursively, more TreeItems). Fl_Tree_Item is a plain class, not a
  * Widget subclass -- ported the same way here.

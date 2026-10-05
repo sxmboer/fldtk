@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Light_Button.H + src/Fl_Light_Button.cxx (FLTK
- * 1.5.0, ~/Repositories/fltk). Also includes Fl_Radio_Light_Button,
+ * 1.5.0). Also includes Fl_Radio_Light_Button,
  * which FLTK defines inline at the bottom of Fl_Light_Button.cxx
  * (fl.radio_light_button -- a complete, tested trivial subclass).
  *

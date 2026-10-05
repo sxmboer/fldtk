@@ -564,7 +564,7 @@ void runEditor(string[] args)
     // `.add()` call below. Present as deactivated placeholders
     // anyway: these are
     // real, planned features (not permanent exclusions like the
-    // Forms-compat items CLAUDE.md documents), so the
+    // Forms-compat items CONVENTIONS.md documents), so the
     // position/shortcut/divider is locked in
     // via `menuInactive` (grays the item out and makes it
     // unselectable/non-shortcut-reachable, matching FLTK's own
@@ -862,7 +862,7 @@ void runEditor(string[] args)
     // Nothing here currently constructs another shelf_ child after
     // this point, so this specific leak has no visible effect today --
     // reset anyway, on the same "don't leave FlGroup.current() wrong"
-    // principle CLAUDE.md calls out repeatedly, so it doesn't bite a
+    // principle CONVENTIONS.md calls out repeatedly, so it doesn't bite a
     // future addition to this function.
     FlGroup.current(shelf_);
     browser_.onSelect = (n) { selectFromBrowser(n); };
@@ -1694,7 +1694,7 @@ private void loadProject(string path, bool asTemplate = false)
     if (windowRoots.length == 0)
     {
         // A real, expected case, not an error: this project's own
-        // samples/examples/fluid-callback.fl has no WindowNode at all
+        // source/examples/fluid-callback.fl has no WindowNode at all
         // (its window is built entirely from `code {}` text at runtime,
         // e.g. `super(x,y,l);` inside a hand-written constructor) --
         // structurally outside what this editor can render at all (it
@@ -2166,7 +2166,7 @@ private void closeProject()
 
 /// Deterministic cleanup (not left to the GC finalizer -- see
 /// `Widget.~this()`'s own established GC-finalizer-hazard note,
-/// CLAUDE.md): `closeEditor()` prompts the user if a process is still
+/// CONVENTIONS.md): `closeEditor()` prompts the user if a process is still
 /// running, the same experience switching projects with a live shell
 /// command running would already give via a different path. Shared by
 /// `closeProject()` and `restoreFromText()` -- an undo/redo step
@@ -2869,7 +2869,7 @@ private bool panelPositionAdjusted_;
 /// `Node.children` (`Node.removeChild()`, the new inverse of
 /// `addChild()`) and destroys its live widget via the already-
 /// established `fl.core.deleteWidget()` (not a direct `destroy()` --
-/// see CLAUDE.md's own note on why calling `destroy()` isn't safe from
+/// see CONVENTIONS.md's own note on why calling `destroy()` isn't safe from
 /// every call context; this one's a menu/keyboard callback, not a
 /// widget's own callback, but there's no reason to reach for the
 /// riskier path when the safe one already exists and works). A
@@ -4582,7 +4582,7 @@ private void layoutMenuChanged()
 /// twice either (it would just construct a second window and reassign
 /// the module-level `aboutPanel` variable out from under the first) --
 /// same `if (window is null) { make...(); }` guard-then-show shape
-/// `samples/test/checkers.d`'s own `copyright_cb()`/`intel_cb()` already
+/// `source/test/checkers.d`'s own `copyright_cb()`/`intel_cb()` already
 /// establish for this exact pattern.
 private void showAboutPanel()
 {
@@ -4605,7 +4605,7 @@ private HelpDialog helpDialog_;
 /// own per-name special cases otherwise: a small canned page for
 /// "fluid.html" (adapted to describe this port's own single-`.d`-file
 /// output instead of FLTK's `.cxx`/`.h` pair -- see the Build
-/// commands section of CLAUDE.md; FLTK's own embedded flow-chart
+/// commands section of CONVENTIONS.md; FLTK's own embedded flow-chart
 /// image is skipped, since no PNG asset for it has been ported into
 /// this project -- a real, narrow, separate gap, not silently dropped),
 /// and `fl.openUri()` to the real fltk.org docs page for everything

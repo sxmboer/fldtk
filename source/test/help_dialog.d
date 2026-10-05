@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/help_dialog.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh help_dialog
+// D transliteration of FLTK's test/help_dialog.cxx.
+// Build: rdmd buildsamples.d test help_dialog
 //
 // Notes on this transliteration:
 //  - Fl_Help_Dialog (fl.help_dialog.HelpDialog) is real, ported fldtk
@@ -13,7 +12,7 @@
 //    instead of using it.
 //  - FLTK's cb_refresh() timeout callback takes a void* d (the help
 //    dialog pointer) purely so the C function pointer has something to
-//    close over; per CLAUDE.md's callback convention this becomes a D
+//    close over; per CONVENTIONS.md's callback convention this becomes a D
 //    closure that captures `help` directly, dropping the void* entirely.
 import fl;
 

@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/pixmap_browser.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh pixmap_browser
+// D transliteration of FLTK's test/pixmap_browser.cxx.
+// Build: rdmd buildsamples.d test pixmap_browser
 import fl;
 import filename = fl.filename;
 import std.stdio : writeln, stdout, File;

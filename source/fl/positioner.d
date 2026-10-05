@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Positioner.H + src/Fl_Positioner.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). "Provided for Forms compatibility. It provides
+ * Ported from FL/Fl_Positioner.H + src/Fl_Positioner.cxx (FLTK 1.5.0). "Provided for Forms compatibility. It provides
  * 2D input" (FLTK's own doc comment): a crosshair the user can drag
  * anywhere inside the box, with independent min/max/step/value ranges
  * for X and Y -- not an `Fl_Valuator` subclass at all (unlike every

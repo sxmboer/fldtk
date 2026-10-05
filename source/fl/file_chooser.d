@@ -1,7 +1,6 @@
 /*
  * Ported from FL/Fl_File_Chooser.H + src/Fl_File_Chooser.cxx +
- * src/Fl_File_Chooser2.cxx + src/fl_file_dir.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * src/Fl_File_Chooser2.cxx + src/fl_file_dir.cxx (FLTK 1.5.0).
  *
  * A full file-selection dialog: a directory-listing FileBrowser, a
  * filename input field, a "Show:" filter dropdown, a favorites menu +
@@ -22,7 +21,7 @@
  *    `Fl_File_Chooser*` and forwards to a real `cb_xxx_i` instance
  *    method. A D delegate already closes over `this` directly, so
  *    every one of those ~20 trampoline pairs collapses into a single
- *    closure passed straight to `callback()` -- matching CLAUDE.md's
+ *    closure passed straight to `callback()` -- matching CONVENTIONS.md's
  *    established "Callbacks are D delegates, not function-pointer +
  *    `void*`" convention. This is *not* a hand-simplification of the
  *    logic itself, every callback body is still a faithful port --
@@ -197,7 +196,7 @@ private string normalizeSlashes(string s)
 
 /// Fl_File_Chooser::Type -- an open, combinable bitmask (CREATE can be
 /// combined with DIRECTORY), so a D `alias` + manifest constants,
-/// matching CLAUDE.md's convention for this shape (same treatment as
+/// matching CONVENTIONS.md's convention for this shape (same treatment as
 /// `Align`/`When`/`Damage`). `directoryType`, not `directory` --
 /// `FileChooser` already has a `directory()`/`directory(string)`
 /// method pair, and D resolves an unqualified name inside the class

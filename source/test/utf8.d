@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/utf8.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh utf8
+// D transliteration of FLTK's test/utf8.cxx.
+// Build: rdmd buildsamples.d test utf8
 import fl;
 import std.string : fromStringz;
 import std.conv : to, parse, ConvException;
@@ -755,7 +754,7 @@ void main(string[] args)
     // Unicode case-folding tables are this port's stand-in for
     // fl_utf_tolower()/fl_utf_toupper() (FL/fl_utf8.h, not ported as
     // its own module): a cleaner D-native equivalent for the same
-    // job, per CLAUDE.md's "check for a cleaner D stdlib alternative"
+    // job, per CONVENTIONS.md's "check for a cleaner D stdlib alternative"
     // porting convention -- not a gap, a substitution.
     import std.uni : toLower, toUpper;
     string utf8Lc = utf8Str.toLower;

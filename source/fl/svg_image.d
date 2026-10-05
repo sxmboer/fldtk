@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_SVG_Image.H + src/Fl_SVG_Image.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk): Fl_SVG_Image, an Fl_RGB_Image subclass that
+ * Ported from FL/Fl_SVG_Image.H + src/Fl_SVG_Image.cxx (FLTK 1.5.0): Fl_SVG_Image, an Fl_RGB_Image subclass that
  * renders an SVG document (`fl.nanosvg`'s parser + `fl.nanosvg_rast`'s
  * rasterizer -- see those two modules' own top comments for why porting
  * nanosvg itself, rather than a "which external library" decision, was
@@ -28,7 +27,7 @@
  *    binding, already linked (`dub.sdl`'s `"z"` `libs` entry) once
  *    `fl.png_image` started needing it for real PNG decode/encode.
  *    FLTK's own gate here is `HAVE_LIBZ`; this port's equivalent
- *    gate (CLAUDE.md's "Deferred: external-library-backed features"
+ *    gate (CONVENTIONS.md's "Deferred: external-library-backed features"
  *    zlib-or-not question) was resolved the same day PNG landed, so
  *    this was just a matter of wiring it up. Ported from FLTK's own
  *    `svg_inflate()` (`src/Fl_SVG_Image.cxx`) in spirit, not letter --

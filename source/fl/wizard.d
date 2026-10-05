@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Wizard.H + src/Fl_Wizard.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). FLTK's own doc comment: "based off the
+ * Ported from FL/Fl_Wizard.H + src/Fl_Wizard.cxx (FLTK 1.5.0). FLTK's own doc comment: "based off the
  * Fl_Tabs widget, but instead of displaying tabs it only changes
  * 'tabs' under program control" -- shows exactly one child at a time,
  * switched via next()/prev()/value(). Navigation buttons are the

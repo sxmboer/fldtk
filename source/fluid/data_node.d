@@ -11,7 +11,7 @@
  * anything, so the whole FLTK "Visibility:" choice built on top of
  * them stays deliberately un-placed in the property panel).
  *
- * Needed by `checkers_pieces.fl` (`samples/test/`), whose entire root
+ * Needed by `checkers_pieces.fl` (`source/test/`), whose entire root
  * node list is four sibling `data` nodes with no enclosing `Function`/
  * `class` at all -- see `code_writer.d`'s `generate()` for how a bare
  * `data` root is handled alongside `decl`/`class`/`Function` roots.

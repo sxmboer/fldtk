@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_XPM_Image.H + src/Fl_XPM_Image.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk): Fl_XPM_Image, an X Pixmap (XPM) file reader.
+ * Ported from FL/Fl_XPM_Image.H + src/Fl_XPM_Image.cxx (FLTK 1.5.0): Fl_XPM_Image, an X Pixmap (XPM) file reader.
  * Milestone 3 of the fl.image port -- see fl.image's own top comment
  * for the overall staging.
  *

@@ -150,7 +150,7 @@ WidgetNode groupSelected(WidgetNode q, LiveTree live, string projectDir)
         // calls `begin()`, which leaves `FlGroup.current()` pointing at
         // `newGroupWidget` -- nothing here ever calls a matching
         // `end()` the way an ordinary `.fl`-parse tree walk would, so
-        // this must reset it explicitly (see CLAUDE.md's own
+        // this must reset it explicitly (see CONVENTIONS.md's own
         // "Shared static state needs hermetic tests" note on exactly
         // this class of bug: a stray `FlGroup.current()` silently
         // auto-parenting whatever gets constructed next).

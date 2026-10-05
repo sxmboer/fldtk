@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/animgifimage-play.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh animgifimage-play
+// D transliteration of FLTK's examples/animgifimage-play.cxx.
+// Build: rdmd buildsamples.d examples animgifimage_play
 //
 //  Demonstrates how to play an animated GIF file under application
 //  control frame by frame if this is needed. Also demonstrates how to

@@ -1,11 +1,10 @@
-// D transliteration of FLTK's test/icon.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh icon
+// D transliteration of FLTK's test/icon.cxx.
+// Build: rdmd buildsamples.d test icon
 //
 // Notes on this transliteration:
 //  - FLTK keys every Fl_Menu_Item off a single shared choice_cb()
 //    plus a void* user_data holding the Fl_Color to apply (fl_voidptr()/
-//    fl_uint() round-trip a color through a void*). Per CLAUDE.md's
+//    fl_uint() round-trip a color through a void*). Per CONVENTIONS.md's
 //    callback convention this becomes plain D delegates that each just
 //    capture the color value directly -- no void* round-trip needed.
 //  - Choice/MenuItem, Fl_RGB_Image::color_average() (fl.image.RGBImage.

@@ -1,7 +1,6 @@
-// D transliteration of FLTK's test/resize-example5a.cxx (~/Repositories/fltk),
+// D transliteration of FLTK's test/resize-example5a.cxx,
 // linked with resize-arrows.cxx (see resize_arrows.d).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh resize-example5a
+// Build: rdmd buildsamples.d test resize_example5a
 import fl;
 import resize_arrows;
 

@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Roller.H + src/Fl_Roller.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Roller.H + src/Fl_Roller.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port. handle()'s drag/wheel/keyboard math is a
  * direct translation, including the `static int ipos` -- like
@@ -280,7 +279,7 @@ unittest
     // Also drains fl.core's shared default callback queue (pushed to
     // several times above, since no explicit callback was set) -- see
     // resetForTest()'s doc comment and the hermetic-tests note in
-    // CLAUDE.md.
+    // CONVENTIONS.md.
     fl.core.resetForTest();
     FlGroup.current(null);
 }

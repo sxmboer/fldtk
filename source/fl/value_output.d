@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Value_Output.H + src/Fl_Value_Output.cxx (FLTK
- * 1.5.0, ~/Repositories/fltk). A lightweight, read-only-looking numeric
+ * 1.5.0). A lightweight, read-only-looking numeric
  * display: unlike `Fl_Value_Input`, it has no hidden text-entry widget
  * or character buffer at all -- the only way to change its value is
  * dragging (left/middle/right mouse button = 1x/10x/100x step() per

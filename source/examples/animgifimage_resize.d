@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/animgifimage-resize.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh animgifimage-resize
+// D transliteration of FLTK's examples/animgifimage-resize.cxx.
+// Build: rdmd buildsamples.d examples animgifimage_resize
 //
 //  Test program for Fl_Anim_GIF_Image::copy().
 import fl;

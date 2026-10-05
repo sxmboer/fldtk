@@ -1,8 +1,6 @@
-// D transliteration of FLTK's test/keyboard.cxx + test/keyboard.h
-// (~/Repositories/fltk). Part of the samples/ contract -- see
-// samples/README.md.
+// D transliteration of FLTK's test/keyboard.cxx + test/keyboard.h.
 //
-// keyboard_ui.fl (Fluid-generated -- see samples/test/generated/
+// keyboard_ui.fl (Fluid-generated -- see source/test/generated/
 // keyboard_ui.d once built) provides make_window(), the KeyBtn/ShiftBtn
 // registration arrays (keyButtons_/shiftButtons_), and regKey()/
 // regShift() -- see that .fl file's own top comment for the split.
@@ -58,7 +56,7 @@ private struct KeycodeEntry
 
 // Display names use fldtk's own bare D constant spelling, not FLTK's
 // C `FL_*` macro name -- see source/test/handle_keys.d's identical table
-// for the full reasoning (CLAUDE.md's memory notes on this standing
+// for the full reasoning (CONVENTIONS.md's convention on this standing
 // rule).
 private immutable KeycodeEntry[] keyTable = [
     KeycodeEntry(escape, "escape"),

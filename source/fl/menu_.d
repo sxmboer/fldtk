@@ -162,7 +162,7 @@ abstract class Menu_ : Widget
     /// use case: it flips `menuInactive` on its own items in `handle()`).
     /// The `void* user_data` parameter FLTK also takes has no
     /// equivalent here (`MenuItem` has no user_data slot at all, see
-    /// CLAUDE.md's callback-porting convention), so it's dropped rather
+    /// CONVENTIONS.md's callback-porting convention), so it's dropped rather
     /// than ported as a dead parameter.
     void copy(MenuItem[] items)
     {
@@ -435,7 +435,7 @@ abstract class Menu_ : Widget
      * above, which (matching FLTK's own `find_index()`) don't
      * follow `FL_SUBMENU_POINTER`. Returns `null` if `finditem` isn't
      * found anywhere in this menu (FLTK's `-1` case) -- same
-     * D-`string`-return substitution CLAUDE.md documents for
+     * D-`string`-return substitution CONVENTIONS.md documents for
      * `Widget.label()`/`tooltip()` elsewhere in this port: no
      * caller-supplied buffer/length, so there's no `-2` "buffer too
      * small" case to report either.

@@ -1,10 +1,9 @@
 /*
- * Ported from FL/Fl_Group.H + src/Fl_Group.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Group.H + src/Fl_Group.cxx (FLTK 1.5.0).
  *
  * `Fl_Group` is ported as `FlGroup`, not `Group` -- one of two deliberate
  * exceptions to this port's usual "drop the `Fl_`/`Fl` prefix" naming
- * convention (see `CLAUDE.md`'s "Porting conventions" section), because
+ * convention (see `CONVENTIONS.md`'s "Porting conventions" section), because
  * a bare `Group` collides with `std.algorithm.iteration.Group` the
  * moment generated code (which does a wildcard `import fl; import
  * std;`) names one. `fl.clock.Clock` got the same treatment for the

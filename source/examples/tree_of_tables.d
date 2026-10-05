@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/tree-of-tables.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh tree-of-tables
+// D transliteration of FLTK's examples/tree-of-tables.cxx.
+// Build: rdmd buildsamples.d examples tree_of_tables
 import fl;
 import std.format : format;
 import std.math : sin, cos, pow, PI;

@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/adjuster.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh adjuster
+// D transliteration of FLTK's test/adjuster.cxx.
+// Build: rdmd buildsamples.d test adjuster
 import fl;
 
 void adjcb(Widget o, Box b)

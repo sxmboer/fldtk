@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/clipboard.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh clipboard
+// D transliteration of FLTK's test/clipboard.cxx.
+// Build: rdmd buildsamples.d test clipboard
 import fl;
 // fl.box's Box is the port of Fl_Box; this program's local "class chess :
 // public Fl_Box" needs the real base type, no name collision here since

@@ -376,7 +376,7 @@ version (linux)
      * Resets every bit of display/font-connection state this module
      * tracks back to its just-loaded defaults -- for hermetic headless
      * tests only, mirroring `fl.core.resetForTest()`'s "shared static
-     * state needs hermetic tests" reasoning (see CLAUDE.md). Nothing
+     * state needs hermetic tests" reasoning (see CONVENTIONS.md). Nothing
      * before `fl.file_icon`'s `draw()` unittest ever issued a real X
      * call from a headless test, so this gap went unnoticed: `fl.core`'s
      * clipboard tests (`copy()`/`paste()`) call `openDisplay()` for
@@ -652,7 +652,7 @@ version (linux)
      * Creates an off-screen `Pixmap` sized `(w, h)` at the current
      * screen's default depth -- the buffer `fl.platform_x11.flushDamage()`
      * draws a `DoubleWindow` into before blitting it onto the real
-     * window (real double-buffering, `CLAUDE.md`/`PORTING.md`'s
+     * window (real double-buffering, `CONVENTIONS.md`/`PORTING.md`'s
      * `fl.double_window` row). `referenceDrawable` is only used to tell
      * `XCreatePixmap()` which screen to create it on (any drawable on
      * that screen works, per the Xlib manual) -- the caller passes the
@@ -874,7 +874,7 @@ else
  * `fl_copy_offscreen()`/`fl_rescale_offscreen()` (`FL/fl_draw.H`) via the
  * real WinAPI bodies in `src/drivers/GDI/Fl_GDI_Image_Surface_Driver.cxx`
  * + `Fl_GDI_Graphics_Driver_color.cxx`'s `fl_makeDC()` (both
- * `~/Repositories/fltk`), read before writing any of this rather than
+ * in FLTK's source), read before writing any of this rather than
  * guessed: FLTK's own current implementation layers these on top of
  * `Fl_Image_Surface` (a small buffer-registry class, see
  * `fl.image_surface`'s own doc comment for why this port's Linux side
@@ -1196,7 +1196,7 @@ private int offsetX_, offsetY_;
 /// with an overflow warning (`Fl::warning()`, not ported); this port
 /// uses a plain growable `int[]` pair instead, matching this module's
 /// usual "GC makes manual capacity management unnecessary" precedent
-/// (see `CLAUDE.md`) rather than replicating the fixed-array-plus-
+/// (see `CONVENTIONS.md`) rather than replicating the fixed-array-plus-
 /// overflow-check design.
 private int[] translateStackX_, translateStackY_;
 
@@ -1485,7 +1485,7 @@ version (linux)
      * itself: uses the active visual's real mask/shift layout (see
      * `figureOutVisual()`), not a hardcoded 8-8-8 formula, but still no
      * PseudoColor/indexed-colormap support (see that function's own
-     * fallback). Used by `samples/test/image.d`/`tiled_image.d`'s
+     * fallback). Used by `source/test/image.d`/`tiled_image.d`'s
      * `-v <visid>` diagnostic path ("make sure black is allocated in
      * overlay visuals") -- a colormap-era concern this port's
      * always-TrueColor drawing has no real equivalent for, so this is
@@ -2524,7 +2524,7 @@ unittest
 
 unittest
 {
-    // Regression test for a double-scaling bug (`samples/test/arc.d`'s
+    // Regression test for a double-scaling bug (`source/test/arc.d`'s
     // donut shape: correct at
     // scale 1.0 -- where double-scaling happens to be a no-op -- but
     // spikes sticking out at any other scale). The test
@@ -4506,7 +4506,7 @@ version (linux)
     /// callthis,img,spacing)` below calls instead of drawing directly --
     /// ported from FLTK's `void (*callthis)(const char*,int,int,int)`
     /// function-pointer parameter (`FL/fl_draw.H`). A D delegate rather
-    /// than a function-pointer+`void*` pair, per CLAUDE.md's established
+    /// than a function-pointer+`void*` pair, per CONVENTIONS.md's established
     /// callback convention -- the closures this backs (`fl_shadow_label`/
     /// `fl_engraved_label`/`fl_embossed_label`, `fl.widget`'s `Label`)
     /// already capture whatever state they need directly.
@@ -5774,7 +5774,7 @@ version (linux)
      * "no abstraction until a second implementation needs one" note).
      * drawArea is a plain delegate rather than FLTK's
      * function-pointer+void* pair, per this project's usual callback
-     * convention (see CLAUDE.md).
+     * convention (see CONVENTIONS.md).
      *
      * Deliberately not ported: FLTK's driver-level `XWindowEvent()`
      * synchronous wait for `GraphicsExpose`/`NoExpose` after the
@@ -8789,7 +8789,7 @@ unittest
 unittest
 {
     // contrast() (CIELAB) vs. contrastLegacy(): the exact real-
-    // world case that surfaced this divergence -- samples/examples/
+    // world case that surfaced this divergence -- source/examples/
     // tabs_simple.d's "Button A1" (fl.enumerations.colorTable[89] ==
     // 0xff240000, RGB (255,36,0), a red-orange) against a black focus-
     // rectangle foreground. The two algorithms genuinely disagree

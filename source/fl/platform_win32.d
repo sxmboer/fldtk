@@ -1,6 +1,6 @@
 /*
  * Windows platform glue for FLTK 1.5.0's window-creation/event-loop layer
- * (~/Repositories/fltk), the Windows
+ *, the Windows
  * analogue of `fl.platform_x11`. Not a 1:1 port of a single FLTK
  * file -- FLTK spreads the real logic across `src/Fl_win32.cxx`
  * (3039 lines, itself free functions + globals, same "namespace Fl as
@@ -715,7 +715,7 @@ private void registerWindowClass()
 
 /**
  * Ported from `Fl_WinAPI_Window_Driver::fake_X_wm()`
- * (`~/Repositories/fltk/src/Fl_win32.cxx`) -- computes the real
+ * (FLTK's `src/Fl_win32.cxx`) -- computes the real
  * decorated-window rectangle (position + border/title-bar sizes) a
  * top-level window with the given `style`/`exStyle` would occupy, given
  * `win`'s own client-area position/size, *before* the real `HWND` exists
@@ -3402,7 +3402,7 @@ private void keyEvent(FlWindow win, HWND hWnd, uint uMsg, WPARAM wParam, LPARAM 
 
     string text;
     MSG charMsg;
-    // Upstream peeks the single range `WM_CHAR..WM_SYSDEADCHAR`, which
+    // FLTK peeks the single range `WM_CHAR..WM_SYSDEADCHAR`, which
     // also spans `WM_SYSKEYDOWN`/`WM_SYSKEYUP` and so can swallow the
     // next queued Alt+key press when this key produced no character.
     // Two peeks cover just the four character messages.
@@ -3479,7 +3479,7 @@ private void keyEvent(FlWindow win, HWND hWnd, uint uMsg, WPARAM wParam, LPARAM 
         else if ((VkKeyScanW('±') & 0xff) == vkPlusKey) plusOtherChar = '±';
         else plusOtherChar = '=';
 
-        // Upstream tests `keysym == '='` for the first case; this port
+        // FLTK tests `keysym == '='` for the first case; this port
         // tests the VK code instead, since `oemKeysym()` now gives
         // `VK_OEM_PLUS` the layout's own character (`'+'` on German,
         // not `'='`), which would otherwise skip the `eText_` rewrite.
@@ -3894,7 +3894,7 @@ package(fl) void setSpot(int fontFace, int fontSize, int X, int Y, int W, int H,
 /// FL_Shift_R}` entry can't reach `FL_Shift_R` (see `FLTK_ISSUES.md`).
 /// This port tells the two Shift keys apart by `scanCode` (lParam bits
 /// 16-23) instead, which `MAPVK_VSC_TO_VK_EX` resolves to `VK_LSHIFT`/
-/// `VK_RSHIFT` -- a deliberate deviation beyond upstream. Callers with
+/// `VK_RSHIFT` -- a deliberate deviation beyond FLTK. Callers with
 /// no real key message (`keyEvent()`'s Ctrl-`+` lookup) leave both at
 /// their defaults and get the left/main-keyboard keysym.
 ///

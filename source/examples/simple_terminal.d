@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/simple-terminal.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh simple-terminal
+// D transliteration of FLTK's examples/simple-terminal.cxx.
+// Build: rdmd buildsamples.d examples simple_terminal
 import fl;
 import std.datetime.systime : Clock;
 

@@ -841,7 +841,7 @@ void applyProperties(WidgetNode n, Widget w, string projectDir = ".", bool apply
     // `Fl_Widget` either -- `Input_`/`ValueOutput`/`ValueInput`/
     // `ValueSlider`/`Menu_` each have their own independent, unrelated
     // version (confirmed real in each of those 5 classes' own D source),
-    // all 5 covered here: e.g. `samples/test/inactive.fl`'s
+    // all 5 covered here: e.g. `source/test/inactive.fl`'s
     // `ValueOutput` sets `textfont 5 textsize 24 textcolor 4` in real,
     // byte-identical-to-FLTK `.fl` text, and it applies on
     // the live canvas. A widget can only be one of these 5 unrelated
@@ -1588,7 +1588,7 @@ unittest
 {
     // Regression coverage for the `ValueOutput`/`ValueInput`/
     // `ValueSlider`/`Menu_` textfont/textsize/textcolor dispatch
-    // (e.g. `samples/test/inactive.fl`'s `ValueOutput` sets `textfont 5
+    // (e.g. `source/test/inactive.fl`'s `ValueOutput` sets `textfont 5
     // textsize 24 textcolor 4` in real, byte-identical-to-FLTK `.fl`
     // text, all of which must apply on the live canvas).
     FlGroup.current(null);

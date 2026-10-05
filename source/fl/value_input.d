@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Value_Input.H + src/Fl_Value_Input.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). A numeric field: a real, editable text entry
+ * Ported from FL/Fl_Value_Input.H + src/Fl_Value_Input.cxx (FLTK 1.5.0). A numeric field: a real, editable text entry
  * (click to type a value directly) that also supports drag-to-adjust
  * like fl.value_output (left/middle/right mouse button = 1x/10x/100x
  * step() per pixel).

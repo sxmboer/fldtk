@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/grid_login.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh grid_login
+// D transliteration of FLTK's test/grid_login.cxx.
+// Build: rdmd buildsamples.d test grid_login
 import fl;
 
 void main()

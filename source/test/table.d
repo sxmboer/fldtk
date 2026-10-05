@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/table.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh table
+// D transliteration of FLTK's test/table.cxx.
+// Build: rdmd buildsamples.d test table
 //
 // exercisetablerow -- Exercise all aspects of the Fl_Table_Row widget
 import fl;

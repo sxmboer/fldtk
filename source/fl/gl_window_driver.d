@@ -1,8 +1,7 @@
 /*
  * Port of `src/Fl_Gl_Window_Driver.H` + `src/Fl_Gl_Choice.cxx` +
- * `src/drivers/X11/Fl_X11_Gl_Window_Driver.{H,cxx}` (FLTK 1.5.0,
- * ~/Repositories/fltk), merged into one module of free functions plus
- * module-level state, one concrete module per upstream driver pair
+ * `src/drivers/X11/Fl_X11_Gl_Window_Driver.{H,cxx}` (FLTK 1.5.0), merged into one module of free functions plus
+ * module-level state, one concrete module per FLTK driver pair
  * rather than a virtual `Fl_Gl_Window_Driver`/`Fl_X11_Gl_Window_Driver`
  * hierarchy -- `fl.gl_choice` gets the same treatment. This mirrors the
  * existing `fl.platform_x11` <-> `fl.window` relationship exactly (free
@@ -16,7 +15,7 @@
  * `cached_window`, `copy`) precisely because it's genuinely
  * process-global, shared across every `Fl_Gl_Window`/GL context in the
  * program -- not per-window state. That maps directly onto plain
- * module-level variables here, the same translation CLAUDE.md's
+ * module-level variables here, the same translation CONVENTIONS.md's
  * "D module-level variables are thread-local by default" note already
  * covers for other single-threaded-by-convention global state in this
  * port (GL context/window creation only ever happens on the main

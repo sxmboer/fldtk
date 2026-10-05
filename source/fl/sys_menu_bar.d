@@ -46,7 +46,7 @@ class SysMenuBar : MenuBar
     /// "effective only under the MacOS platform" per its own FLTK
     /// doc comment; a genuine no-op here, not a simplification (no
     /// driver exists to route this to). The `void* data` parameter
-    /// FLTK also takes has no equivalent (see CLAUDE.md's
+    /// FLTK also takes has no equivalent (see CONVENTIONS.md's
     /// callback-porting convention -- a delegate already carries its
     /// own captured state).
     static void about(Callback cb) { }

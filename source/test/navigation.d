@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/navigation.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh navigation
+// D transliteration of FLTK's test/navigation.cxx.
+// Build: rdmd buildsamples.d test navigation
 //
 // Silly test of navigation keys. This is not a recommended method of
 // laying out your panels!

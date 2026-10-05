@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Pack.H + src/Fl_Pack.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). "Designed to add the functionality of
+ * Ported from FL/Fl_Pack.H + src/Fl_Pack.cxx (FLTK 1.5.0). "Designed to add the functionality of
  * compressing and aligning widgets" (FLTK's own doc comment):
  * lays its children out end-to-end (horizontally or vertically per
  * type()), skipping hidden ones, and resizes itself to exactly wrap

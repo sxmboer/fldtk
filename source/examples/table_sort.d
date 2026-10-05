@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/table-sort.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh table-sort
+// D transliteration of FLTK's examples/table-sort.cxx.
+// Build: rdmd buildsamples.d examples table_sort
 import fl;
 import std.format : format;
 import std.algorithm : sort;

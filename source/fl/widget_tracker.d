@@ -1,5 +1,5 @@
 /*
- * Ported from FL/Fl_Widget_Tracker.H (FLTK 1.5.0, ~/Repositories/fltk).
+ * Ported from FL/Fl_Widget_Tracker.H (FLTK 1.5.0).
  * Watches a widget so calling code can tell whether it was destroyed as
  * a side effect of something risky it just did -- typically, whether a
  * callback closed/destroyed the very widget that's about to keep
@@ -7,7 +7,7 @@
  * FL_RELEASE case and triggeredByKeyboard() for the concrete use).
  *
  * DELIBERATE D-APPROPRIATE REDESIGN, not a straight port (see
- * CLAUDE.md's GC-finalizer note). The mechanism
+ * CONVENTIONS.md's GC-finalizer note). The mechanism
  * FLTK needs and the mechanism this port needs turn out to be the
  * same *shape* (a global watch-list of registered pointer-to-pointer
  * slots, nulled out by the watched widget's own destructor) for a

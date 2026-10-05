@@ -16,7 +16,7 @@
  * used throughout here.
  *
  * Linux/X11 only for now, matching this port's current primary target
- * (see CLAUDE.md); gated with `version (linux)` so it's inert on
+ * (see CONVENTIONS.md); gated with `version (linux)` so it's inert on
  * other platforms until a Wayland/Windows driver exists alongside it.
  *
  * No `unittest` blocks here -- see fl.platform_x11's module note on
@@ -600,7 +600,7 @@ enum int DirectColor = 5;
 /// treated as opaque. Field names mix FLTK's raw C spelling
 /// (`visualid`/`screen`/`depth`) with camelCase for the three mask
 /// fields and `c_class` in place of the reserved word `class` --
-/// matches `samples/test/list_visuals.d`/`image.d`/`tiled_image.d`
+/// matches `source/test/list_visuals.d`/`image.d`/`tiled_image.d`
 /// (transliterated from `test/list_visuals.cxx` et al. before these
 /// bindings existed, already committed to this exact spelling).
 struct XVisualInfo

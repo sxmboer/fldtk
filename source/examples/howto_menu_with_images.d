@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/howto-menu-with-images.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh howto-menu-with-images
+// D transliteration of FLTK's examples/howto-menu-with-images.cxx.
+// Build: rdmd buildsamples.d examples howto_menu_with_images
 import fl;
 import std.format : format;
 
@@ -69,7 +67,7 @@ Pixmap redxPixmap;
 
 // Handle the different menu items.. -- one callback per item, each
 // capturing its own item name directly rather than stashing it in the
-// menu item's void* user_data (see CLAUDE.md's callback-delegate note,
+// menu item's void* user_data (see CONVENTIONS.md's callback-delegate note,
 // which calls out menu item callbacks by name).
 void menuCb(Widget w, string itemname)
 {

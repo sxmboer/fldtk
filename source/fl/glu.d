@@ -29,7 +29,7 @@
  * Linux and Windows (`version (linux)`/`version (Windows)`) -- GLU is a
  * standard part of any Windows OpenGL install too, `glu32.dll`/`GLU32.lib`
  * shipping alongside `opengl32.dll` since Windows 95/NT (confirmed by
- * reading the real FLTK `FL/glu.h`, `~/Repositories/fltk`: on Windows
+ * reading the real FLTK `FL/glu.h`: on Windows
  * it's `#include <windows.h>` followed by the plain system `<GL/glu.h>`,
  * no different from any other Windows OpenGL header -- no GLEW-style
  * runtime extension resolution needed, unlike `fl.glew`, since GLU's ABI

@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/texteditor-with-dynamic-colors.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh texteditor-with-dynamic-colors
+// D transliteration of FLTK's examples/texteditor-with-dynamic-colors.cxx.
+// Build: rdmd buildsamples.d examples texteditor_with_dynamic_colors
 import fl;
 import std.ascii : isDigit;
 

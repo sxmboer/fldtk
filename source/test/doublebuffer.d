@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/doublebuffer.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh doublebuffer
+// D transliteration of FLTK's test/doublebuffer.cxx.
+// Build: rdmd buildsamples.d test doublebuffer
 import fl;
 import std.math : cos, sin, PI;
 

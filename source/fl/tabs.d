@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Tabs.H + src/Fl_Tabs.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Tabs.H + src/Fl_Tabs.cxx (FLTK 1.5.0).
  *
  * A FlGroup that shows one child at a time, selected via a row of
  * clickable "file card" tabs drawn along the top or bottom edge

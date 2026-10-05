@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/coordinates.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh coordinates
+// D transliteration of FLTK's test/coordinates.cxx.
+// Build: rdmd buildsamples.d test coordinates
 import fl;
 // fl.box's Box is the port of Fl_Box; FLTK's local "class Box :
 // public Fl_Box" collides with that name under the Fl_Foo -> Foo naming

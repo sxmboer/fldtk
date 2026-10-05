@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/list_visuals.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh list_visuals
+// D transliteration of FLTK's test/list_visuals.cxx.
+// Build: rdmd buildsamples.d test list_visuals
 //
 // List all the visuals on the screen, and dumps anything interesting
 // about them to stdout. Does not use FLTK widgets at all -- it's raw

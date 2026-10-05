@@ -3,12 +3,12 @@ version 1.0000
 comment {FLTK wraps this whole UI in a class purely so its
 per-widget static callback trampolines can reach `cube` via a
 parent()-chain + user_data() walk (the Fl_Callback+void* pattern this
-port doesn't have -- see CLAUDE.md's "Callbacks are D delegates"
+port doesn't have -- see CONVENTIONS.md's "Callbacks are D delegates"
 convention) -- there is no real base-class relationship here (no ": X"
 after the class name FLTK either), so the class is just a
 namespacing convenience working around C++'s lack of closures. Flattened
 here into plain module-level widget globals + capturing closures
-instead, matching samples/test/CubeView.d's own established flattening
+instead, matching source/test/CubeView.d's own established flattening
 of this exact FLTK shape. This also merges in what FLTK splits
 into a separate hand-written CubeMain.cxx driver (the fl.core.visual()
 call and the real main()), since this port doesn't preserve that

@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Value_Slider.H + src/Fl_Value_Slider.cxx (FLTK
- * 1.5.0, ~/Repositories/fltk).
+ * 1.5.0).
  *
  * Faithful, complete port. Fl_Value_Slider is Fl_Slider plus a small
  * text box showing the current value; draw()/handle() confine the
@@ -194,7 +194,7 @@ unittest
 
     // Also drains fl.core's shared default callback queue -- see
     // resetForTest()'s doc comment and the hermetic-tests note in
-    // CLAUDE.md.
+    // CONVENTIONS.md.
     fl.core.resetForTest();
     FlGroup.current(null);
 }

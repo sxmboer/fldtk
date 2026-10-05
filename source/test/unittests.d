@@ -1,10 +1,8 @@
-// D transliteration of FLTK's test/unittests.cxx + test/unittests.h
-// (~/Repositories/fltk). Part of the samples/ contract -- see
-// samples/README.md.
-// Check: ./samples/build.sh unittests
+// D transliteration of FLTK's test/unittests.cxx + test/unittests.h.
+// Build: rdmd buildsamples.d test unittests
 //
 // This is the "main()" translation unit of a 16-file bundle: the other
-// 15 files (samples/test/unittest_*.d) are separate tabs that
+// 15 files (source/test/unittest_*.d) are separate tabs that
 // self-register into the `UnitTest` registry declared here, exactly the
 // way each unittest_*.cxx FLTK self-registers a file-scope global
 // `UnitTest` object into unittests.h's `UnitTest::test_list_[200]`. In D
@@ -60,7 +58,7 @@ alias WidgetCreateFn = Widget delegate();
 /// D port of unittests.h's `UnitTest` helper class -- registers a tab by
 /// index, label, and a widget-factory delegate (FLTK: a raw
 /// `Fl_Widget* (*create)()` function pointer; ported to a delegate per
-/// CLAUDE.md's callback convention even though this particular one never
+/// CONVENTIONS.md's callback convention even though this particular one never
 /// needs to close over state, just for consistency).
 class UnitTest
 {

@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Toggle_Round_Button.H (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Toggle_Round_Button.H (FLTK 1.5.0).
  *
  * FLTK isn't a real class here: the header is a back-compatibility
  * `#define Fl_Toggle_Round_Button Fl_Round_Button`, i.e. a plain alias

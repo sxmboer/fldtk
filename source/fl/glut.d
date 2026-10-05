@@ -1,6 +1,5 @@
 /*
- * Port of `FL/glut.H` + `src/glut_compatibility.cxx` (FLTK 1.5.0,
- * ~/Repositories/fltk): GLUT emulation built on top of `fl.gl_window`.
+ * Port of `FL/glut.H` + `src/glut_compatibility.cxx` (FLTK 1.5.0): GLUT emulation built on top of `fl.gl_window`.
  *
  * **Scope**: determined by grepping every `glut*`/`glu*` call site
  * across the 5 GLUT-dependent samples (`source/test/
@@ -17,7 +16,7 @@
  * not an oversight or a gap left for later -- that stands unless a
  * future sample actually calls one of these primitives. What *is* needed,
  * and *is* ported here, in full (not just the subset any one sample
- * happens to call -- see CLAUDE.md's memory notes on why partial,
+ * happens to call -- see CONVENTIONS.md on why partial,
  * demo-scoped "coverage" is exactly the failure mode to avoid): the
  * whole real `glut_compatibility.cxx` window/callback/menu emulation
  * layer, plus every non-commented-out declaration in `FL/glut.H`. The
@@ -32,7 +31,7 @@
  * **Callback shape**: GLUT's own C API is genuinely "register a plain
  * function pointer" (`void (*f)()`, no closure/context slot at all) --
  * unlike this port's own `Callback = void delegate(Widget)` convention
- * for FLTK's *own* widget callbacks (CLAUDE.md's established delegate-
+ * for FLTK's *own* widget callbacks (CONVENTIONS.md's established delegate-
  * over-function-pointer substitution), `GlutWindow`'s per-callback
  * fields below are plain D `function` pointers, matching FLTK's
  * real shape exactly -- a GLUT program's `glutDisplayFunc(&display)`
@@ -202,7 +201,7 @@ class GlutWindow : GlWindow
     {
         import core.memory : GC;
 
-        // See CLAUDE.md's GC-finalizer-hazard note: touching other
+        // See CONVENTIONS.md's GC-finalizer-hazard note: touching other
         // GC-managed state (the module-level windows_/glutWindow
         // globals) from a finalizer running during a GC sweep is unsafe.
         if (GC.inFinalizer()) return;

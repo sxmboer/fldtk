@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/minimum.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh minimum
+// D transliteration of FLTK's test/minimum.cxx.
+// Build: rdmd buildsamples.d test minimum
 import fl;
 
 void main(string[] args)

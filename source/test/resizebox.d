@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/resizebox.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh resizebox
+// D transliteration of FLTK's test/resizebox.cxx.
+// Build: rdmd buildsamples.d test resizebox
 import fl;
 
 bool big = false;

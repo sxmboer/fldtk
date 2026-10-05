@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/buttons.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh buttons
+// D transliteration of FLTK's test/buttons.cxx.
+// Build: rdmd buildsamples.d test buttons
 import fl;
 
 void main(string[] args)

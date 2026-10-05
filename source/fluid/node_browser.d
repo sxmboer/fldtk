@@ -189,7 +189,7 @@ void applyPresetColor(ref Color field, Color preset, Button swatch)
 /// function across all 6 swatch buttons via a `Fl_Callback*` +
 /// `void* user_data` pointing at the specific static `Fl_Color` each one
 /// owns (`Node_Browser::label_color`/`class_color`/...); this port has
-/// no such per-widget-tag mechanism at all (see CLAUDE.md's own
+/// no such per-widget-tag mechanism at all (see CONVENTIONS.md's own
 /// "Callbacks are D delegates" convention -- a real, separately-tracked
 /// gap in core `fl.widget.Widget`, not
 /// something to route around here). This helper avoids each of

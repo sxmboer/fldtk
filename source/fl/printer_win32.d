@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Printer.H + src/drivers/WinAPI/Fl_WinAPI_Printer_
- * Driver.cxx (FLTK 1.5.0, ~/Repositories/fltk) -- the Windows half of
+ * Driver.cxx (FLTK 1.5.0) -- the Windows half of
  * `fl.printer`'s platform split (see that module's own doc comment for
  * why the split exists).
  *
@@ -38,7 +38,7 @@
  * **Deliberately not ported**: `Fl_PDF_GDI_File_Surface` (FLTK's
  * `Fl_PDF_File_Surface` backing implementation, using Windows' own
  * "Microsoft Print to PDF" virtual printer) -- `fl.pdf_file_surface`
- * itself is `Deferred` project-wide (see `CLAUDE.md`'s Pango note and
+ * itself is `Deferred` project-wide (see `CONVENTIONS.md`'s Pango note and
  * `PORTING.md`'s `FL/Fl_PDF_File_Surface.H` row), so there is no PDF
  * surface class here for it to back. Revisit together with that
  * decision, not before.

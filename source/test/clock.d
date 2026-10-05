@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/clock.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh clock
+// D transliteration of FLTK's test/clock.cxx.
+// Build: rdmd buildsamples.d test clock
 import fl;
 
 enum bool devTest = false; // true = enable non-standard colors and no-shadow tests

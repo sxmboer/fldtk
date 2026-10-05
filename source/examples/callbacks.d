@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/callbacks.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh callbacks
+// D transliteration of FLTK's examples/callbacks.cxx.
+// Build: rdmd buildsamples.d examples callbacks
 //
 // FLTK demonstrates the FL_FUNCTION_CALLBACK_N / FL_METHOD_CALLBACK_N /
 // FL_INLINE_CALLBACK_N macros, which exist purely to let a plain C
@@ -8,7 +7,7 @@
 // already close over whatever state they need, so none of that macro
 // machinery is needed here -- every "callback with custom parameters"
 // below is just a delegate literal capturing its parameters directly
-// (see CLAUDE.md's callback-delegate convention).
+// (see CONVENTIONS.md's callback-delegate convention).
 import fl;
 import std.format : format;
 

@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/native-filechooser.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh native-filechooser
+// D transliteration of FLTK's test/native-filechooser.cxx.
+// Build: rdmd buildsamples.d test native_filechooser
 import fl;
 
 enum TERMINAL_HEIGHT = 120;

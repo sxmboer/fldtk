@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_File_Input.H + src/Fl_File_Input.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). A path-displaying Input subclass with a
+ * Ported from FL/Fl_File_Input.H + src/Fl_File_Input.cxx (FLTK 1.5.0). A path-displaying Input subclass with a
  * clickable "breadcrumb" navigation bar above the text field, letting
  * the user click a path component to truncate the value up to (and
  * including) that directory separator.
@@ -40,7 +39,7 @@
  *    Fl_File_Input::handle(), genuinely shared across every
  *    Fl_File_Input instance process-wide): module-level D global here,
  *    matching the fl.slider `offcenter`/fl.roller `ipos` precedent
- *    CLAUDE.md documents.
+ *    CONVENTIONS.md documents.
  *
  * handle()'s default case now uses fl.widget_tracker.WidgetTracker to
  * guard against Input::handle(event) having destroyed this widget

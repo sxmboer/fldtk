@@ -4,7 +4,7 @@
  * (`0xRRGGBBAA`, alpha byte always 0) supplementing `fl.enumerations`'
  * small named subset (black/red/green/.../white) and its 256-entry
  * `colorTable`. These are plain manifest constants, not an enum of a
- * closed tag set -- `Color` is an open `alias uint` per CLAUDE.md's
+ * closed tag set -- `Color` is an open `alias uint` per CONVENTIONS.md's
  * porting conventions, so combining/comparing them needs no casts.
  *
  * Naming: `FL_RGB_ALICE_BLUE` -> `rgbAliceBlue` (strip the `FL_RGB_`

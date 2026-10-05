@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/menubar.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh menubar
+// D transliteration of FLTK's test/menubar.cxx.
+// Build: rdmd buildsamples.d test menubar
 import fl;
 import std.format : format;
 import std.stdio : writeln;
@@ -290,7 +289,7 @@ void main(string[] args)
     auto ch = new DynamicChoice(300, 100, 80, 25, "&choice:");
     ch.copy(pulldown);
     // FLTK's single-string add(const char*) is the |-separated,
-    // \t-shortcut Forms-compat convenience form (CLAUDE.md's "Out of
+    // \t-shortcut Forms-compat convenience form (CONVENTIONS.md's "Out of
     // scope: XForms/Forms Library compatibility" -- fl_old_shortcut()
     // parsing) and isn't ported; neither label has a '|' or '\t', so
     // this is exactly equivalent (see Fl_Menu_::add(const char*)'s own

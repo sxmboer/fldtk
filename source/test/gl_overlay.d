@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/gl_overlay.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh gl_overlay
+// D transliteration of FLTK's test/gl_overlay.cxx.
+// Build: rdmd buildsamples.d test gl_overlay
 //
 // OpenGL overlay test: a GL polygon whose side count is slider-driven,
 // plus a software-simulated-overlay wireframe outline (also slider-

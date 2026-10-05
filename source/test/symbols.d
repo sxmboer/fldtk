@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/symbols.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh symbols
+// D transliteration of FLTK's test/symbols.cxx.
+// Build: rdmd buildsamples.d test symbols
 import fl;
 import std.format : format;
 
@@ -15,7 +14,7 @@ ValueSlider orientation;
 ValueSlider size;
 
 // fldtk's Widget has no user_data() equivalent (delegates capture their own
-// state instead -- see CLAUDE.md's callback-porting convention), but this
+// state instead -- see CONVENTIONS.md's callback-porting convention), but this
 // sample needs to stash each box's symbol name for a later batch sweep over
 // window.children(), not inside a callback closure. A plain AA keyed on the
 // widget stands in for FLTK's Fl_Widget::user_data(name).

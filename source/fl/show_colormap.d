@@ -1,6 +1,6 @@
 /*
  * Ported from FL/fl_show_colormap.H + src/fl_show_colormap.cxx (FLTK
- * 1.5.0, ~/Repositories/fltk). A small modal popup ("pretty much
+ * 1.5.0). A small modal popup ("pretty much
  * unchanged from Forms", per FLTK's own comment) showing all 256
  * legacy colormap entries as an 8x32 grid of swatches; click, drag, or
  * arrow-key/Enter/Escape to pick one and return it as a `Color`.

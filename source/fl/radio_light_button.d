@@ -1,7 +1,6 @@
 /*
  * Ported from FL/Fl_Radio_Light_Button.H + the Fl_Radio_Light_Button
- * constructor at the bottom of src/Fl_Light_Button.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * constructor at the bottom of src/Fl_Light_Button.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port. Trivial subclass: sets type() to
  * fl.button.radioButton, which makes fl.button.Button's setonly()

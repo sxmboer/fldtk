@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Dial.H + src/Fl_Dial.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). "Provides a circular dial to control a single
+ * Ported from FL/Fl_Dial.H + src/Fl_Dial.cxx (FLTK 1.5.0). "Provides a circular dial to control a single
  * floating point value" (FLTK's own doc comment): dragging traces
  * an angle from the widget's center, mapped onto [minimum(),
  * maximum()] between angle1()/angle2() (default 45/315 degrees, 0

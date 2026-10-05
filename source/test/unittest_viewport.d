@@ -1,8 +1,8 @@
-// D transliteration of FLTK's test/unittest_viewport.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md. One tab of the
-// "unittests" bundle; see samples/test/unittests.d for the registry
+// D transliteration of FLTK's test/unittest_viewport.cxx.
+// One tab of the
+// "unittests" bundle; see source/test/unittests.d for the registry
 // (including `mainwin`, whose testAlignment() this tab drives).
-// Check: ./samples/build.sh unittests
+// Build: rdmd buildsamples.d test unittest_viewport
 module unittest_viewport;
 
 import fl;

@@ -1,5 +1,5 @@
 /*
- * Ported from FL/Fl_Output.H (FLTK 1.5.0, ~/Repositories/fltk). Trivial
+ * Ported from FL/Fl_Output.H (FLTK 1.5.0). Trivial
  * `type(outputNormal)` subclass of fl.input's Input -- a read-only
  * display field with the same look/selection/copy behavior as Input,
  * minus editing and the on-screen-keyboard request (clearFlag(

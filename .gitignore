@@ -7,13 +7,8 @@
 /fluid
 /fluid-bootstrap
 /build/
-/smoke-tests/*
-!/smoke-tests/*.d
-!/smoke-tests/*.cxx
-!/smoke-tests/Makefile*
 /source/fluid/panels/generated/
 /source/test/generated/
 /source/examples/generated/
-.claude
 fldtk-fluid-test-fluid
 fldtk-test-linux-default

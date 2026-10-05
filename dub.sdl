@@ -22,7 +22,7 @@ configuration "linux-default" {
 // Same library, built under another name and in another directory, so
 // `dub build --config=linux-release --build=release` (or `-b release-nobounds`,
 // `-b plain`, ...) can be tried without replacing the debug libfldtk.so in
-// the repo root that Fluid, the samples and the smoke tests are linked
+// the repo root that Fluid and the samples are linked
 // against. The result is build/release/libfldtk-release.so. Release builds
 // are not supported yet; see BUILDING.md.
 configuration "linux-release" {

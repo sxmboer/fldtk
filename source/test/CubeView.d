@@ -1,6 +1,4 @@
-// D transliteration of FLTK's test/CubeView.cxx + test/CubeView.h
-// (~/Repositories/fltk). Part of the samples/ contract -- see
-// samples/README.md.
+// D transliteration of FLTK's test/CubeView.cxx + test/CubeView.h.
 
 module CubeView;
 

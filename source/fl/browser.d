@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Browser.H + src/Fl_Browser.cxx + src/Fl_Browser_load.cxx
- * (FLTK 1.5.0, ~/Repositories/fltk).
+ * (FLTK 1.5.0).
  *
  * The concrete, Forms-compatible scrolling text-line browser: manages
  * storage for a doubly-linked list of lines (FLTK's `FL_BLINE`),

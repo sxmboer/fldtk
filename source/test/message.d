@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/message.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh message
+// D transliteration of FLTK's test/message.cxx.
+// Build: rdmd buildsamples.d test message
 import fl;
 import std.stdio : writefln;
 import std.format : format;

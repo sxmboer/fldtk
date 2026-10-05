@@ -7,7 +7,7 @@
  * an integer "how" code, invoked from `app/Menu.cxx`'s `&Layout` menu).
  * This port re-expresses the numeric codes as a real D enum
  * (`AlignHow`) rather than a bare `int` cast through `void*
- * user_data` -- see CLAUDE.md's "Closed, non-combinable tag sets ...
+ * user_data` -- see CONVENTIONS.md's "Closed, non-combinable tag sets ...
  * become real D enums" convention -- and returns whether anything
  * changed instead of reaching into a project-wide `Fluid.proj.undo`/
  * `Fluid.proj.tree` singleton this port doesn't have; the caller

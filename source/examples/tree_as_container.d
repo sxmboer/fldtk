@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/tree-as-container.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh tree-as-container
+// D transliteration of FLTK's examples/tree-as-container.cxx.
+// Build: rdmd buildsamples.d examples tree_as_container
 import fl;
 import std.format : format;
 

@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Flex.H + src/Fl_Flex.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). "A container (layout) widget for one row or
+ * Ported from FL/Fl_Flex.H + src/Fl_Flex.cxx (FLTK 1.5.0). "A container (layout) widget for one row or
  * one column of widgets" (FLTK's own doc comment): every
  * non-fixed-size child shares the remaining space evenly along the
  * row/column axis, and is stretched to the full cross-axis size (minus
@@ -23,11 +22,11 @@
  * already has amortized growth built into the runtime, so none of
  * that bookkeeping -- including the `alloc_size()` customization
  * point, which would have nothing left to customize -- is ported; see
- * CLAUDE.md's "check for a cleaner D stdlib alternative" convention.
+ * CONVENTIONS.md's "check for a cleaner D stdlib alternative" convention.
  * Similarly, FLTK's `fixed(Fl_Widget&, int)` inline overload
  * exists only so C++ callers can pass either a reference or a
  * pointer; D references are already reference types, so there's only
- * one `fixed(Widget, int)` here (same collapse CLAUDE.md documents for
+ * one `fixed(Widget, int)` here (same collapse CONVENTIONS.md documents for
  * `Fl_Callback` vs. D delegates).
  */
 module fl.flex;

@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Radio_Round_Button.H + src/Fl_Round_Button.cxx
- * (FLTK 1.5.0, ~/Repositories/fltk).
+ * (FLTK 1.5.0).
  *
  * Faithful, complete port. Trivial subclass: sets type() to
  * fl.button.radioButton on top of fl.round_button's round "light"

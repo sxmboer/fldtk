@@ -1,11 +1,10 @@
-// D transliteration of FLTK's test/contrast.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh contrast
+// D transliteration of FLTK's test/contrast.cxx.
+// Build: rdmd buildsamples.d test contrast
 import fl;
 // fl.button's Button is the port of Fl_Button; this program's own local
 // "class Button : public Fl_Button" collides with that name under the
 // Fl_Foo -> Foo convention, so alias the real one to disambiguate (same
-// situation as samples/test/coordinates.d's local Box).
+// situation as source/test/coordinates.d's local Box).
 import flbutton = fl.button;
 import std.format : format;
 import std.random : uniform;

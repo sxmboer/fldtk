@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/nativefilechooser-simple-app.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh nativefilechooser-simple-app
+// D transliteration of FLTK's examples/nativefilechooser-simple-app.cxx.
+// Build: rdmd buildsamples.d examples nativefilechooser_simple_app
 import fl;
 import std.stdio : File, writefln;
 import std.string : empty;

@@ -1,5 +1,5 @@
 /*
- * Ported from FL/Fl_Multiline_Input.H (FLTK 1.5.0, ~/Repositories/fltk).
+ * Ported from FL/Fl_Multiline_Input.H (FLTK 1.5.0).
  * Trivial `type(inputMultiline)` subclass of fl.input's Input -- the
  * constructor body is ported from Fl_Multiline_Input::Fl_Multiline_Input()
  * (src/Fl_Input.cxx), not the (empty) header.

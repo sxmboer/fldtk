@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Text_Editor.H + src/Fl_Text_Editor.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). `Fl_Text_Editor` -> `TextEditor` adds editing
+ * Ported from FL/Fl_Text_Editor.H + src/Fl_Text_Editor.cxx (FLTK 1.5.0). `Fl_Text_Editor` -> `TextEditor` adds editing
  * (as opposed to `fl.text_display`'s read-only display/selection/
  * scrolling) on top of `TextDisplay`: a keyboard-event dispatcher built
  * around a per-instance (and a process-wide global) linked list of
@@ -11,7 +10,7 @@
  *
  * `Key_Binding`'s FLTK `Key_Func` is `int (*)(int, Fl_Text_Editor*)`
  * -- a plain C function pointer with no accompanying `void*` user-data
- * slot (unlike `Fl_Callback`), so CLAUDE.md's function-pointer -> D-
+ * slot (unlike `Fl_Callback`), so CONVENTIONS.md's function-pointer -> D-
  * delegate convention doesn't apply here: there's no captured state to
  * eliminate. `KeyFunc` stays a plain D `function` pointer, and
  * `Key_Binding`'s `new`/`delete`d linked-list nodes become a GC-managed
@@ -22,7 +21,7 @@
  *
  * `global_key_bindings` is a genuine process-wide mutable static
  * (FLTK: `static Key_Binding* global_key_bindings`), same hazard
- * category CLAUDE.md flags for `FlGroup.current_`/`fl.core`'s event-state
+ * category CONVENTIONS.md flags for `FlGroup.current_`/`fl.core`'s event-state
  * globals. Nothing in this module's own unittests mutates it (they all
  * go through a `TextEditor`'s own per-instance `keyBindings_` list
  * instead) specifically to avoid needing a reset hook; a future test
@@ -83,7 +82,7 @@ enum textEditorAnyState = -1;
 
 /// A key-function binding callback (FLTK's `Key_Func`). Plain
 /// function pointer, not a delegate -- see the module comment for why
-/// CLAUDE.md's delegate convention doesn't apply here.
+/// CONVENTIONS.md's delegate convention doesn't apply here.
 alias KeyFunc = int function(int key, TextEditor editor);
 
 /// One key/state -> function binding, linked-list node (FLTK's
@@ -458,7 +457,7 @@ class TextEditor : TextDisplay
     // calls e.g. `Fl_Text_Editor::kf_undo(0, e)` directly), not just an
     // internal implementation detail -- kept public here, not under the
     // same `protected:` block as
-    // handleKey()/maybeDoCallback() above, matching samples/test/editor.d
+    // handleKey()/maybeDoCallback() above, matching source/test/editor.d
     // (which calls TextEditor.kfUndo()
     // etc. directly, matching FLTK's own test/editor.cxx exactly).
 

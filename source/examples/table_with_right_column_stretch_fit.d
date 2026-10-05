@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/table-with-right-column-stretch-fit.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh table-with-right-column-stretch-fit
+// D transliteration of FLTK's examples/table-with-right-column-stretch-fit.cxx.
+// Build: rdmd buildsamples.d examples table_with_right_column_stretch_fit
 import fl;
 import std.format : format;
 

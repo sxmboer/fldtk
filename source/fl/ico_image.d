@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_ICO_Image.H + src/Fl_ICO_Image.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk): Fl_ICO_Image, a Windows Icon (.ico) file
+ * Ported from FL/Fl_ICO_Image.H + src/Fl_ICO_Image.cxx (FLTK 1.5.0): Fl_ICO_Image, a Windows Icon (.ico) file
  * reader. Genuinely subclasses Fl_BMP_Image FLTK -- an .ico file
  * is a small directory of embedded image resources, each either a
  * BMP-format bitmap with no outer BITMAPFILEHEADER (handled by

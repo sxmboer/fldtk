@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_File_Icon.H + src/Fl_File_Icon.cxx +
- * src/Fl_File_Icon2.cxx (FLTK 1.5.0, ~/Repositories/fltk).
+ * src/Fl_File_Icon2.cxx (FLTK 1.5.0).
  *
  * A small vector-icon format: a `short[]` array of opcodes (COLOR,
  * LINE, CLOSEDLINE, POLYGON, OUTLINEPOLYGON, VERTEX, END) drawn
@@ -135,7 +135,7 @@ enum Color iconColor = 0xffffffff;
 /// File types a FileIcon can be registered against -- `Fl_File_Icon`'s
 /// anonymous `ANY`/`PLAIN`/`FIFO`/`DEVICE`/`LINK`/`DIRECTORY` enum. A
 /// closed, non-combinable tag set (never combined with `|`), so a real
-/// D `enum`, matching `CLAUDE.md`'s convention.
+/// D `enum`, matching `CONVENTIONS.md`'s convention.
 enum FileType
 {
     any,

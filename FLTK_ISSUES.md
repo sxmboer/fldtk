@@ -1,22 +1,22 @@
-# Upstream FLTK issues found while porting
+# FLTK issues found while porting
 
-Reading upstream source line-by-line to port it (rather than skimming docs)
-occasionally turns up things in `~/Repositories/fltk` that look like genuine
-upstream bugs or inconsistencies, as opposed to behavior this port needs to
+Reading FLTK source line-by-line to port it (rather than skimming docs)
+occasionally turns up things in FLTK's source that look like genuine
+FLTK bugs or inconsistencies, as opposed to behavior this port needs to
 replicate faithfully. This file tracks those candidates.
 
 Process:
 
-- When something looks off while porting, add it here with the upstream
+- When something looks off while porting, add it here with the FLTK
   file/line, what looks wrong, and why. Don't fix it in the port unless the
   port's own correctness requires deviating (and if so, say so explicitly in
   the D module's comments, same as any other intentional deviation).
 - Entries here are **candidates**, not confirmed bugs. Verify against
-  upstream's actual runtime behavior and issue tracker before reporting
-  anything upstream.
+  FLTK's actual runtime behavior and issue tracker before reporting
+  anything FLTK.
 - Nothing gets filed on FLTK's tracker without explicit review first —
   filing is a visible action on a project we don't maintain.
-- Once a candidate is filed (or confirmed not-a-bug, or fixed upstream),
+- Once a candidate is filed (or confirmed not-a-bug, or fixed FLTK),
   update its entry with the outcome rather than deleting it.
 
 ## Candidates
@@ -171,8 +171,8 @@ Looks like a genuine, if narrow, latent OOB-read bug: it requires a caller to
 pass an `end` less than 0 (not just less than `start`), which no in-tree
 FLTK caller currently does, but nothing in the public API contract rules it
 out. Status: not verified against a live crash; `fl.text_buffer.textRange()`
-preserves the same input-handling shape (deliberately, per CLAUDE.md's "don't
-silently fix upstream bugs" policy) but the consequence differs in the D
+preserves the same input-handling shape (deliberately, per CONVENTIONS.md's "don't
+silently fix FLTK bugs" policy) but the consequence differs in the D
 port: D's bounds-checked array slicing turns the equivalent access into a
 well-defined `RangeError` instead of an out-of-bounds C read, so the *bug
 trigger* is preserved faithfully but its *memory-safety consequence* isn't
@@ -251,7 +251,7 @@ lines. Status: not verified against a live miscount (would need a buffer
 crafted so this exact offset coincides with specific byte content); ported
 verbatim in `fl.text_display.wrappedLineCounter()` (`retLines =
 buf.nextChar(retLines);`, with a comment pointing at this entry) rather than
-"fixed" to `retLines + 1` -- faithfully reproducing upstream's actual
+"fixed" to `retLines + 1` -- faithfully reproducing FLTK's actual
 behavior, bugs included, is this port's whole point, and the fix (if any) is
 FLTK's call to make, not this port's.
 
@@ -282,9 +282,9 @@ correctly returns `0` for the out-of-range row), and falls through to
 `col == cols_` via `Cols_[col]`. Undefined behavior in C++ (silent
 out-of-bounds write, not merely a crash). Status: not verified against a
 live crash/corruption; ported faithfully in `fl.grid` (`Grid.widget()`'s
-`row > rowCount_`/`col > colCount_` checks, matching upstream's `>`
+`row > rowCount_`/`col > colCount_` checks, matching FLTK's `>`
 verbatim) since D's own bounds-checked arrays turn the same off-by-one into
-a caught `RangeError` rather than silent corruption -- the bug is upstream's
+a caught `RangeError` rather than silent corruption -- the bug is FLTK's
 to fix, not this port's to silently paper over.
 
 Same family, same file: `layout()`'s colspan/rowspan span-accumulation loops
@@ -369,7 +369,7 @@ tracker** -- `fl.draw`'s `fl_end_points()`/`fl_end_line()` reproduce this
 exactly (a `pts.length > 1` guard on both), ported faithfully per this
 file's process notes rather than silently fixed, since the surrounding
 begin/end/vertex API is otherwise a straight line-for-line port and this
-"fix" would only be a guess at upstream's actual intent.
+"fix" would only be a guess at FLTK's actual intent.
 
 ### `fl_box_table`'s `FL_GLEAM_ROUND_UP_BOX`/`FL_GLEAM_ROUND_DOWN_BOX` rows point at the plain (non-round) gleam box functions (`src/fl_boxtype.cxx:465-466`)
 
@@ -405,7 +405,7 @@ tracker** -- `fl.draw`'s `drawBoxAt()` reproduces this exactly
 (`Boxtype.gleamRoundUpBox`/`gleamRoundDownBox` dispatch to
 `flGleamUpBox()`/`flGleamDownBox()`, the same square functions as
 `gleamUpBox`/`gleamDownBox`), ported faithfully rather than silently
-"fixed" with an invented round-gleam-box shape upstream itself never
+"fixed" with an invented round-gleam-box shape FLTK itself never
 specified.
 
 ### `fl_draw_arrow()`'s "oxy" branch skips the trailing `fl_color(saved_color)` restore every other branch gets (`src/fl_draw_arrow.cxx:242-289`)
@@ -463,7 +463,7 @@ tracker** -- `fl.draw`'s `fl_draw_arrow()` reproduces this exactly (its own
 `isScheme("oxy")` branch also `return`s immediately after calling
 `oxyArrow()`, skipping the trailing `fl_color(old)` restore every other path
 gets), ported faithfully per this file's process notes rather than silently
-adding a restore upstream itself doesn't have.
+adding a restore FLTK itself doesn't have.
 
 ### `Fl_Table::row_height(int, int)` grows `_rowheights` one element short, unlike its own `col_width()` twin (`src/Fl_Table.cxx`)
 
@@ -518,7 +518,7 @@ one growing "eagerly" (`col+1`) and the other "lazily" (`row`).
 tracker** -- **deviation**: `fl.table`'s `rowHeight(int, int)` uses `row + 1`
 (matching `colWidth()`'s own correct pattern) rather than faithfully reproducing
 `row`, since D arrays bounds-check by default and faithfully reproducing the
-upstream call would turn silent C++ UB into a guaranteed `RangeError` crash on
+FLTK call would turn silent C++ UB into a guaranteed `RangeError` crash on
 the first row ever added to a table -- the same "faithful replication would be
 actively harmful in a memory-safe language" category as the `Fl_Text_Buffer::copy()`
 entry above, the first instance of this exception in this port.
@@ -552,7 +552,7 @@ relied upon.
 
 **Status: not verified against actual rendered output or FLTK's issue
 tracker** -- `fl.table`'s `isFltkContainer()` reproduces this exactly (`super.children()
-> 3`, i.e. `Group.children()`, matching the check upstream performs), ported
+> 3`, i.e. `Group.children()`, matching the check FLTK performs), ported
 faithfully rather than "fixed" with a guess at what the original intent was
 (e.g. checking the nested container's own count instead).
 
@@ -583,7 +583,7 @@ final iteration, `i == size()-1`, resolves to the second-to-last item) --
 item's real height and whatever `item_height(NULL)` returns, minus the true
 last item's height entirely.
 
-This doesn't crash upstream only by what looks like an accident of C pointer
+This doesn't crash FLTK only by what looks like an accident of C pointer
 arithmetic: `Fl_File_Browser::item_height(NULL)` calls `bline_txt(NULL)` first,
 which just computes a `NULL + offsetof(txt)` address (forming a flexible-array-
 member pointer, not dereferencing anything) before the function's own
@@ -736,7 +736,7 @@ Status: not verified against actual rendered output (needs a document
 whose single block wraps to 33+ lines). **Deviation**: none needed --
 `fl.help_view.d`'s `TextBlock.line` (a `int[32]` field) and its own
 `doAlign()` reproduce the same fixed-size cap and guard verbatim; ported
-faithfully as a real, if obscure, upstream limitation rather than "fixed"
+faithfully as a real, if obscure, FLTK limitation rather than "fixed"
 by switching to a growable array, per this port's practice of not silently
 correcting behavior a reader might rely on.
 
@@ -813,7 +813,7 @@ The doc comment on this constructor (and on `fail()` itself, which lists `ERR_ME
 
 This isn't hit for `Fl_Bitmap` (where `d_` is always `0`, so the `d_<=0` half of the condition is always true and `count_==0` correctly gates it) or `Fl_PNM_Image`/other loaders that hit file-access/format errors before `Fl_Image::w()`/`h()`/`d()` are ever set to non-trivial values -- it's specific to this one constructor's "valid dimensions requested, but the supplied buffer doesn't back them" case.
 
-**Status: not verified against FLTK's issue tracker.** Ported faithfully in `fl.image.RGBImage`'s single (D-slice-length-checked) constructor: `fail()` has the same `w_<=0||h_<=0||d_<=0` shape (this port doesn't have a `count_` field at all, see that class's own doc comment on why -- the `&& count_==0` term upstream has would be moot here anyway, since it's already dead for this exact case as shown above) and returns `0` for a too-short-buffer construction too; `array.length == 0` is the real, working signal, documented in the constructor's own doc comment and exercised by its unit test.
+**Status: not verified against FLTK's issue tracker.** Ported faithfully in `fl.image.RGBImage`'s single (D-slice-length-checked) constructor: `fail()` has the same `w_<=0||h_<=0||d_<=0` shape (this port doesn't have a `count_` field at all, see that class's own doc comment on why -- the `&& count_==0` term FLTK has would be moot here anyway, since it's already dead for this exact case as shown above) and returns `0` for a too-short-buffer construction too; `array.length == 0` is the real, working signal, documented in the constructor's own doc comment and exercised by its unit test.
 
 ### `fl_symbols.cxx`'s `fl_draw_symbol()`: arbitrary-rotation `'0'` escape silently drops its first digit
 
@@ -940,9 +940,9 @@ comment explaining why `free_icons()` should behave differently from
 `icons(icons, 0)`).
 
 **Status: not verified against FLTK's issue tracker.** Ported faithfully:
-`fl.window.Window.freeIcons()` matches upstream's own `free_icons()` exactly
+`fl.window.Window.freeIcons()` matches FLTK's own `free_icons()` exactly
 (clears state, no immediate `fl.platform_x11.setIcons()` call), while
-`Window.icons([])` matches upstream's `icons(icons, 0)` (does call
+`Window.icons([])` matches FLTK's `icons(icons, 0)` (does call
 `setIcons()` when shown) -- see `freeIcons()`'s own doc comment in
 `fl.window.d`.
 
@@ -1000,7 +1000,7 @@ independent mistakes.
 exact same off-by-one (see each function's own doc comment), with a
 `unittest` pinning down the buggy behavior explicitly so a future faithful-
 sync doesn't accidentally "fix" it without noticing the deviation from
-upstream.
+FLTK.
 
 ### `fl_show_colormap.cxx`: `ColorMenu::run()` uses `y()` instead of `h()` for the `which > 255` initial-position branch
 
@@ -1030,7 +1030,7 @@ the more common index case (the `else` branch) is unaffected and correct.
 in `fl.show_colormap.ColorMenu.run()` (this port's `fl_show_colormap()`),
 same `y()` use, with a comment pointing at this entry -- no caller in this
 port's samples exercises the `which > 255` branch yet, so the faithful
-port is unverified against real upstream behavior for this specific case
+port is unverified against real FLTK behavior for this specific case
 either.
 
 ### `Fl_EPS_File_Surface::origin()` reads `left_margin`/`top_margin`/`angle` without either ever being initialized on that call path (`src/drivers/PostScript/Fl_PostScript.cxx`)
@@ -1162,7 +1162,7 @@ as a degenerate case rather than collapsing to a solid fill).
 
 **Status: not verified against FLTK's issue tracker.** **Not ported
 faithfully** -- the only case in this whole nanosvg/nanosvgrast port
-where CLAUDE.md's usual "port faithfully, note the quirk, don't fix it"
+where CONVENTIONS.md's usual "port faithfully, note the quirk, don't fix it"
 rule was overridden: a literal transliteration reads `stops[i]` on a
 D dynamic array of length 1 for `i` up to 255, which is a `RangeError`
 (D bounds-checks array indexing by default) on every single-stop
@@ -1171,8 +1171,8 @@ rasterizer on a valid, unremarkable SVG input is worse than silently
 diverging from an out-of-bounds C read that has no well-defined result
 to be faithful *to* in the first place. `fl.nanosvg_rast.NsvgRasterizer.
 initPaint()` uses `stops[0]` for every entry instead (arguably closer to
-upstream's own likely-in-practice behavior than not, since index 0 is
-the only in-bounds read upstream's own loop would have performed before
+FLTK's own likely-in-practice behavior than not, since index 0 is
+the only in-bounds read FLTK's own loop would have performed before
 wandering out of bounds) -- see that call site's own inline comment.
 
 ### `nanosvg.h`'s `NSVGparser::pathFlag`: dead "no nested paths" guard, never actually set
@@ -1207,7 +1207,7 @@ faithfully (same dead guard, same behavior -- nested `<path>` elements
 are not rejected) in `fl.nanosvg`'s `startElement()`/`endElement()`; see
 those functions' own bodies (the `case "path":` branch checks
 `p.pathFlag` and `endElement()`'s `case "path":` clears it, matching
-upstream's shape exactly, dead code and all).
+FLTK's shape exactly, dead code and all).
 
 ### `test/sudoku.cxx`'s `Sudoku::new_game()`: "start over" retry doesn't actually restart, indexes the grid out of bounds
 
@@ -1257,12 +1257,12 @@ above: a literal transliteration of this exact loop structure is a real,
 deterministic `core.exception.ArrayIndexError` crash in D (bounds-checked
 static arrays by default), not a faithfully-reproduced quirk, and not
 merely theoretical -- reproduced by picking a difficulty level from the
-Sudoku menu, `samples/test/sudoku.d(872): index [10] is out of bounds for
+Sudoku menu, `source/test/sudoku.d(872): index [10] is out of bounds for
 array of length 9`. It also plausibly explains the puzzle grid showing no
 numbers at all on first launch, as silent grid corruption from this same
 out-of-bounds write on a run where it happened to land somewhere that
 didn't immediately crash.
-Fixed in `samples/test/sudoku.d`'s `Sudoku.newGame()` with a labeled
+Fixed in `source/test/sudoku.d`'s `Sudoku.newGame()` with a labeled
 `continue outer;` so the retry actually jumps back to the outer `j`
 loop immediately (matching the comment's own clearly-stated intent)
 instead of relying on loop variables the innermost loop doesn't
@@ -1296,7 +1296,7 @@ entry above: a literal port indexing `printOutputMode_[val]` (a D
 `core.exception.RangeError` on a corrupted or unusually-valued prefs
 file, not a faithfully-reproduced quirk. `fl.printer.PrintPanel.
 updateStatus()` clamps `val` to `0` whenever it falls outside `0..3`
-before indexing, matching the same "closer to upstream's own
+before indexing, matching the same "closer to FLTK's own
 likely-in-practice behavior" reasoning used for the nanosvgrast fix
 (index 0 is what a freshly-created or default preferences file would
 store anyway).
@@ -1330,14 +1330,14 @@ route through `GL_LINE_STRIP`) would dash correctly.
 **Status: not verified against FLTK's issue tracker.** **Ported
 faithfully, not fixed** — `fl.gl_graphics_driver.GlGraphicsDriver.rect()`
 reproduces the same `glRectf()`-bars body with the same gap (see that
-method's own doc comment), matching upstream's real GL-driver behavior
+method's own doc comment), matching FLTK's real GL-driver behavior
 exactly rather than deviating to a stippled `GL_LINE_LOOP` outline
 fldtk's own port would draw differently from real FLTK. Revisit only if
 explicitly asked to deviate here.
 
 ### `test/checkers.cxx`'s `movepiece()`: `&&`/`?:` precedence makes the kinging check ignore "already a king" for one branch
 
-Found while porting `test/checkers.cxx` to `samples/test/checkers.d`.
+Found while porting `test/checkers.cxx` to `source/test/checkers.d`.
 
 Both places `movepiece()` decides whether a moved piece should be
 crowned use the same expression, once for a plain move and once for a
@@ -1384,12 +1384,12 @@ than an intentional design choice — there's no comment justifying
 checking `j<=8` unconditionally for an already-crowned piece.
 
 **Status: not verified against FLTK's issue tracker.** **Ported
-faithfully, not fixed**: `samples/test/checkers.d`'s `movepiece()`
+faithfully, not fixed**: `source/test/checkers.d`'s `movepiece()`
 reproduces the exact same parse at both call sites
 (`(!(oldpiece & KING) && n.who) ? (j >= 36) : (j <= 8)`, parens added
 only to make the preserved grouping explicit, not to change it) — see
 that file's own top comment for the same writeup. No fldtk-specific
-consequence beyond reproducing upstream's own gameplay quirk (this
+consequence beyond reproducing FLTK's own gameplay quirk (this
 isn't a memory-safety-relevant bug the way some other entries in this
 file are, so there's no "faithful replication would crash a
 bounds-checked D array" reason to deviate here).
@@ -1445,8 +1445,8 @@ slicing the `dstring` array it works over — see that function's own
 doc comment. This one's more "belt-and-suspenders while already
 rewriting the byte-offset arithmetic as codepoint-array slicing
 anyway" than a bug anyone is likely to hit, but worth recording since
-the clamping is a real, deliberate difference from upstream's own
-unchecked math, not something upstream itself also does.
+the clamping is a real, deliberate difference from FLTK's own
+unchecked math, not something FLTK itself also does.
 
 ### `Window_Node::newposition()` (`fluid/nodes/Window_Node.cxx`): `FD_BOTTOM` clamp compares against `bt+dx`, not `bt+dy`
 
@@ -1484,8 +1484,8 @@ faithfully, not silently corrected**: `fluid.canvas.ProjectCanvas.
 applyDrag()`'s own `dragBottom` branch reproduces the same `dragBt_ +
 ddx` comparison (see that function's own doc comment, which points
 back here) rather than "fixing" it to `+ ddy` on this port's own
-authority — matching CLAUDE.md's "log it, don't quietly fix it" policy
-for an unconfirmed upstream bug.
+authority — matching CONVENTIONS.md's "log it, don't quietly fix it" policy
+for an unconfirmed FLTK bug.
 
 ### `widget_panel.fl`'s Size Range fields: tooltips copied from the Values group, not their own
 
@@ -1505,7 +1505,7 @@ of the widget value.") are *also* copied from the Values group
 (Maximum/Step) rather than written fresh for Size Range, but at least
 land on the right general Field within the reused text. Confirmed not
 a copy-paste of some OTHER Size-Range-appropriate template that just
-happens to say "slider"/"widget" generically -- these four upstream
+happens to say "slider"/"widget" generically -- these four FLTK
 `Fl_Value_Input`s are consecutive lines in the same file (uid `0a71`,
 `9310`, `30ee`, `647f`), and Size Range's own four fields' tooltips
 match all four of them in the same order, exactly the shape a whole-
@@ -1524,7 +1524,7 @@ bug-for-bug faithful rather than silently improved.
 Found while porting `Node_Browser`'s per-role text-styling
 fields (`fluid.node_browser`'s `labelColor`/`classFont`/etc, the User
 tab's real backing feature). The "Reset" button's callback
-(`~/Repositories/fltk/fluid/panels/settings_panel.fl`, uid `4df2`,
+(FLTK's `fluid/panels/settings_panel.fl`, uid `4df2`,
 lines ~1904-1922) resets all 12 static fields to their defaults —
 eleven of the twelve match `Node_Browser.cxx`'s own real static
 initializers exactly, but the twelfth doesn't:
@@ -1798,7 +1798,7 @@ and a generated program built for the same platform compiles that to
 `FL_META|'s'` (Meta+S) — the opposite modifier — while the checkbox's own
 tooltip says it *replaces* `FL_CTRL`/`FL_META` with `FL_COMMAND`, i.e. the
 portable spelling. Inferred from reading the macros and the block; not
-run against a built upstream Fluid.
+run against a built FLTK's Fluid.
 
 **Status: not verified against FLTK's issue tracker.** **Deviated from
 in the port** (`fluid.code_writer.shortcutExpression()`): the bit equal
@@ -1806,7 +1806,7 @@ to `stateCommand` is written as `stateCommand` and the bit equal to
 `stateControl` as `stateControl`, which preserves each shortcut's meaning
 on the platform the port targets (`fl.enumerations` maps them for X11).
 The same function also escapes `'` and `\` inside the character literal
-(upstream writes `'''` and `'\'`, which are not valid C++/D).
+(FLTK writes `'''` and `'\'`, which are not valid C++/D).
 
 ### `Mergeback::analyse_callback()`/`apply_callback()` (`fluid/proj/mergeback.cxx`): menu-item callback edits can never be merged back
 
@@ -1823,7 +1823,7 @@ uid) around each menu callback, and `analyse()`/`apply()` route
 the lookup for a menu callback's uid always finds a node that fails the
 `is_true_widget()` test. Every edited menu callback is therefore counted
 as "no Node can be found" and never applied. Inferred from reading the
-source; not run against a built upstream Fluid.
+source; not run against a built FLTK's Fluid.
 
 Also in `apply()`: `block_end` is only updated when a non-tag line is
 read, so a block with no lines between two tags reuses the previous
@@ -1855,7 +1855,7 @@ presses on Windows need to wait roughly the popup's own 1-second
 lifetime between each one (each press's focus lands on the *new*
 popup, not the window whose shortcut handler needs to see the next
 press). Inferred from reading the source directly, not run against a
-built upstream Windows FLTK (no Windows toolchain available where this
+built FLTK Windows FLTK (no Windows toolchain available where this
 was found) -- consistent with, but not independently confirmed
 against, a real user report of the identical symptom in this port.
 
@@ -1897,12 +1897,12 @@ only difference is the scan code (0x2A left, 0x36 right). So the
 on X11. `MapVirtualKeyW(scanCode, MAPVK_VSC_TO_VK_EX)` returns
 `VK_LSHIFT`/`VK_RSHIFT` and would fix it. Inferred from reading the
 source and the Win32 keyboard-input documentation; not run against a
-built upstream FLTK.
+built FLTK.
 
 **Status: not verified against FLTK's issue tracker.** **Deviated from
 in the port** (`fl.platform_win32.vkToKeysym()`): `VK_SHIFT` is resolved
 by scan code as above, giving `shiftR` for right Shift. The port's
-right Ctrl/right Alt/keypad Enter handling follows upstream's
+right Ctrl/right Alt/keypad Enter handling follows FLTK's
 extended-bit table as-is.
 
 ### `ms2fltk()` (`src/Fl_win32.cxx:1164-1174`): punctuation keysyms are the US characters on every layout
@@ -1940,7 +1940,7 @@ it still fires on layouts where that key's character is `'+'`.
 and answers from `Fl::event_state()`, so `Fl::event_key(FL_Button+1)`
 works on X11 and never does on Windows (`test/keyboard`'s mouse-button
 indicators stay off there). Inferred from reading the source; not run
-against a built upstream FLTK.
+against a built FLTK.
 
 **Status: not verified against FLTK's issue tracker.** **Deviated from
 in the port** (`fl.platform_win32.eventKey()`/`getKey()`): the same
@@ -1967,7 +1967,7 @@ clears `MAXIMIZED`. So right after `maximize()` returns,
 `!maximize_active()` gate without restoring the saved geometry. In
 `test/fullscreen` with "Border" off, the maximize toggle would grow the
 window but never shrink it back. Inferred from reading the source; not
-run against a built upstream FLTK.
+run against a built FLTK.
 
 **Status: not verified against FLTK's issue tracker.** **Deviated from
 in the port** (`fl.platform_win32.maximizeOn()`): the flag is set again
@@ -1982,7 +1982,7 @@ a 0x0 window at 0,0 -- borderless, so with no taskbar entry either. In
 the port the window vanishes exactly this way. Whether FLTK reaches
 it depends on `MAXIMIZED` surviving `border(0)`'s hide/show (the
 re-created window's first `WM_SIZE` arrives before `fl_find()` can see
-it); not checked against a built upstream FLTK. **Deviated from in the
+it); not checked against a built FLTK. **Deviated from in the
 port** (`fl.platform_win32.maximizeOn()`/`maximizeOff()`,
 `fl.window.Window.unMaximizeByResize()`): the geometry is recorded on
 both paths, the restore path is chosen by `IsZoomed()`, and a resize to
@@ -1997,7 +1997,7 @@ PM_REMOVE)`. That range (0x102-0x107) also contains `WM_SYSKEYDOWN`
 queued behind it, the peek removes that message and handles it as the
 first key's character: its virtual-key code becomes `Fl::e_text`, and
 the Alt+key press itself is lost. Inferred from reading the source; not
-run against a built upstream FLTK.
+run against a built FLTK.
 
 **Status: not verified against FLTK's issue tracker.** **Deviated from
 in the port** (`fl.platform_win32.keyEvent()`): two peeks,
@@ -2014,7 +2014,7 @@ otherwise `SRCPAINT` ORs the image's color into the background the
 `SRCAND` pass kept. The offscreen holds the full RGB value at every
 pixel, so transparent pixels come out as background OR color: a
 washed-out, often near-white blend instead of the background. Inferred
-from reading the source; not run against a built upstream FLTK (the
+from reading the source; not run against a built FLTK (the
 path needs a display or printer driver without `AlphaBlend()`).
 
 **Status: not verified against FLTK's issue tracker.** **Deviated from
@@ -2040,7 +2040,7 @@ bottom edge (`fl_xyline()`) sits above the rounded ends (`fl_arc()`).
 **Status: not verified against FLTK's issue tracker.** Confirmed on
 real hardware in the port, whose code is identical (printing
 `test/device` to Microsoft Print to PDF and to a physical printer);
-not run against a built upstream FLTK. **Deviated from in the port**
+not run against a built FLTK. **Deviated from in the port**
 (`fl.gdi_graphics_driver.GdiGraphicsDriver.advancedModeEdge()`): in
 `GM_ADVANCED`, the right/bottom of the rectangle passed to
 `Arc()`/`Pie()` is reduced by one.

@@ -1,5 +1,5 @@
 /*
- * Ported from FL/Fl_Hold_Browser.H (FLTK 1.5.0, ~/Repositories/fltk).
+ * Ported from FL/Fl_Hold_Browser.H (FLTK 1.5.0).
  *
  * Trivial type(holdBrowser) subclass of Fl_Browser: exactly one line
  * can be selected at a time and the selection persists until another

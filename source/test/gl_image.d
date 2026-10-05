@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/gl_image.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh gl_image
+// D transliteration of FLTK's test/gl_image.cxx.
+// Build: rdmd buildsamples.d test gl_image
 //
 // OpenGL image-drawing test: draws an Fl_Image composited over a plain
 // GL polka-dot background (Fl_Gl_Window's default draw() compositing

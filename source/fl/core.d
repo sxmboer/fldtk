@@ -1,5 +1,5 @@
 /*
- * Partial port of FL/Fl.H (FLTK 1.5.0, ~/Repositories/fltk) -- a real,
+ * Partial port of FL/Fl.H (FLTK 1.5.0) -- a real,
  * substantial (5000+ line) partial port; see PORTING.md's `FL/Fl.H` row
  * for the authoritative, up-to-date status.
  *
@@ -42,7 +42,7 @@
  *    right-aligned key-name display would, and that's not ported).
  *    Returns a plain D `string` built fresh each call rather than
  *    FLTK's static reused buffer, same `string`-over-`char*`
- *    substitution CLAUDE.md documents elsewhere. Modifier-name lookup
+ *    substitution CONVENTIONS.md documents elsewhere. Modifier-name lookup
  *    (Fl::system_driver()->control_name()/alt_name()/shift_name()/
  *    meta_name()) collapses to plain mutable module-level strings
  *    (flLocalCtrl/flLocalAlt/flLocalShift/flLocalMeta, still swappable
@@ -116,7 +116,7 @@
  *
  * `Fl::now()`/`Fl::seconds_since()`/`Fl::seconds_between()`/
  * `Fl::ticks_since()`/`Fl::ticks_between()` are real too, needed by
- * `samples/test/threads.d`'s worker threads,
+ * `source/test/threads.d`'s worker threads,
  * backed by the same `MonoTime`, as `now()`/
  * `secondsSince()`/`secondsBetween()`/`ticksSince()`/`ticksBetween()`
  * (`Timestamp` a plain `alias` for `MonoTime`, every function taking it
@@ -1037,7 +1037,7 @@ private ClipboardNotifyHandler[] clipNotifyHandlers_;
  * clipboard) whenever *another* application changes the selection or
  * clipboard -- not for this process's own copy()/paste() calls. A
  * plain D delegate, not FLTK's function-pointer-plus-`void*`-data
- * pair (matching CLAUDE.md's established callback substitution); a
+ * pair (matching CONVENTIONS.md's established callback substitution); a
  * caller needing per-registration data just captures it in the
  * delegate's closure. Removes any pre-existing identical registration
  * first, matching FLTK's own de-dup-via-remove-then-add. Real,
@@ -1879,7 +1879,7 @@ void pushed(Widget o)
  * default callback queue that fl.widget's own readqueue() test then
  * popped instead of its own widget. Call this at the start and/or end
  * of any test that touches handle()/doCallback() through a real
- * widget -- see the hermetic-tests note in CLAUDE.md.
+ * widget -- see the hermetic-tests note in CONVENTIONS.md.
  */
 package(fl) void resetForTest()
 {
@@ -1916,7 +1916,7 @@ package(fl) void resetForTest()
     // default" unittest fail. Marking options as already-read means a
     // reset test exercises the in-memory default table only, matching
     // this module's own "Shared static state needs hermetic tests"
-    // convention (CLAUDE.md) — same category of ambient-state leak as
+    // convention (CONVENTIONS.md) — same category of ambient-state leak as
     // the `FlGroup.current()`/callback-queue cases that convention was
     // written for, just leaking from the real filesystem instead of
     // from a previous test.
@@ -2324,7 +2324,7 @@ private bool argMatch(string a, string canonical, size_t atleast = 1)
 
 /// Delegate type for a custom switch handler passed to `args()` --
 /// ported from `Fl_Args_Handler` (`FL/core/function_types.H`) as a D
-/// delegate rather than a C function pointer, per CLAUDE.md's callback
+/// delegate rather than a C function pointer, per CONVENTIONS.md's callback
 /// convention (a closure can already capture whatever context a
 /// function-pointer+`void*` pair would have needed). Should return `0`
 /// (leaving `i` unchanged) if `cmdArgs[i]` is unrecognized; otherwise
@@ -2620,7 +2620,7 @@ class FatalError : Exception
 
 /// Ported from `Fl_Abort_Handler` (`FL/core/function_types.H`) -- this
 /// port's usual delegate substitution for a C function pointer (see
-/// CLAUDE.md's "Callbacks are D delegates" convention), applied here
+/// CONVENTIONS.md's "Callbacks are D delegates" convention), applied here
 /// even though `fatal()` isn't a widget callback, since the shape (a
 /// settable, overridable handler slot) is identical.
 alias AbortHandler = void delegate(string msg);
@@ -2893,7 +2893,7 @@ string getFontName(Font fnum, out int attributes)
 /// ships ("nothing to do, reimplement in driver if needed"): freeing an
 /// allocated X11 pixel for reuse is only meaningful for a real limited-
 /// colormap (palette) display, which this port doesn't support (see
-/// CLAUDE.md: "plain 8-8-8 TrueColor visual assumed, no colormap/
+/// CONVENTIONS.md: "plain 8-8-8 TrueColor visual assumed, no colormap/
 /// palette support" -- `fl.draw`'s own module comment says the same).
 void releaseColor(Color i, int overlay = 0) { }
 
@@ -3085,7 +3085,7 @@ unittest
 
     // Restore the default palette entry so this test doesn't leak into
     // whatever else runs afterward (module-level state, same reasoning
-    // CLAUDE.md's core.resetForTest() note documents elsewhere).
+    // CONVENTIONS.md's core.resetForTest() note documents elsewhere).
     setColor(200, colorTable[200]);
     assert(colorTableEntry(200) == colorTable[200]);
 }
@@ -3552,7 +3552,7 @@ void reloadScheme()
  * recommends the exact workaround FLTK users have always needed:
  * set the tiled image on a plain child `Fl_Group`/`Box` filling the
  * window instead of on the window itself. Originally ported faithfully
- * (bug included) rather than silently fixed, per CLAUDE.md's "raise
+ * (bug included) rather than silently fixed, per CONVENTIONS.md's "raise
  * any other exceeds-FLTK idea before acting on it" policy --
  * flagged to the user rather than decided unilaterally.
  *
@@ -4214,8 +4214,8 @@ bool check()
  * Ported from `Fl::flush()` -- forces any pending damage to be drawn to
  * the screen right now, without processing input events (unlike
  * `wait()`/`check()`, which also flush damage but only as a side effect
- * of waiting for/checking events). Real gap found porting `samples/
- * test/checkers.d`: its `computer_move()` sets a wait cursor, calls
+ * of waiting for/checking events). Real gap found porting
+ * `source/test/checkers.d`: its `computer_move()` sets a wait cursor, calls
  * `Fl::flush()` so that cursor is actually visible, *then* runs a
  * synchronous AI search that can take a noticeable moment -- without a
  * real flush here the cursor wouldn't appear until the search finishes
@@ -4236,7 +4236,7 @@ void flush()
 /**
  * Fl_Timeout_Handler's D equivalent: a closure invoked when the timer
  * expires. Unlike FLTK, there is no companion `void* data` slot --
- * same substitution CLAUDE.md documents for Callback (fl.widget): a
+ * same substitution CONVENTIONS.md documents for Callback (fl.widget): a
  * caller needing per-timer context just captures it directly. This
  * also means removeTimeout()/hasTimeout() only take one argument where
  * FLTK takes two (cb, data): comparing two D delegates with `==`
@@ -4689,7 +4689,7 @@ package(fl) void runChecks()
 // ---------------------------------------------------------------------
 // Fl::now()/seconds_since()/seconds_between()/ticks_since()/
 // ticks_between() (Fl.H + the new src/Fl_Timeout.cxx). Needed for
-// real by samples/test/threads.d, which measures elapsed wall-clock
+// real by source/test/threads.d, which measures elapsed wall-clock
 // time between fl.awake() calls in its prime-number-finder worker
 // threads. Backed by core.time.MonoTime, same as the timer queue above
 // -- monotonic and free of the wraparound caveat FLTK's own
@@ -4741,7 +4741,7 @@ long ticksBetween(Timestamp back, Timestamp furtherBack)
 // ---------------------------------------------------------------------
 // Thread locking (src/Fl_lock.cxx) -- Fl::lock()/unlock()/awake()/
 // awake(handler)/awake_once(handler). Needed for real by
-// samples/test/threads.d, which spawns worker threads (via D's own
+// source/test/threads.d, which spawns worker threads (via D's own
 // core.thread.Thread, not FLTK's sample-local test/threads.h
 // pthread-wrapper shim -- out of this port's scope, see that sample's
 // own header comment) that compute prime numbers and hand results back
@@ -4832,7 +4832,7 @@ int lock()
         // threads can ever race the lazy-init `if (x is null) x = new
         // Mutex();` check in ringMutex()/pipeMutex() below by both
         // calling awake(handler) at once right after being spawned
-        // (exactly what samples/test/threads.d's six worker threads
+        // (exactly what source/test/threads.d's six worker threads
         // do) -- a real race those lazy accessors would otherwise be
         // exposed to that FLTK's own `lock_ring()` doesn't have to
         // worry about in quite the same way (its own equivalent
@@ -5224,12 +5224,12 @@ package(fl) void currentScale(float factor)
 /// GUI scale factor, shared by every fldtk application -- a genuine
 /// fldtk-only addition, not a port of anything: grepping FLTK's
 /// `Fl_Screen_Driver::scale_handler()`/`rescale()` chain in
-/// `~/Repositories/fltk` turns up no `Fl_Preferences` use at all, so
+/// FLTK's source turns up no `Fl_Preferences` use at all, so
 /// FLTK's own Ctrl-+/Ctrl--/Ctrl-0 handler never remembers the
 /// chosen scale across a restart. Requested explicitly by the user
 /// ("a user-wide setting that remembers the last scale used... a
 /// global factor applying to all applications at once"), which is what
-/// satisfies CLAUDE.md's "raise any other beyond-FLTK idea before
+/// satisfies CONVENTIONS.md's "raise any other beyond-FLTK idea before
 /// acting" rule here -- the user raised it. **Deliberately vendor
 /// `"fldtk"`, not `readOptions_()`'s `"fltk.org"`** -- that pair is a
 /// faithful port reading FLTK's own real `Fl_Option` settings
@@ -5271,7 +5271,7 @@ private enum scaleFactorPrefsKey_ = "ScaleFactor"; // matches optionKeys_'s Pasc
 /// `version(unittest)` (checked at compile time, so it's unaffected by
 /// which module's unittest happens to run first) is the right tool
 /// instead: the whole `fldtk-test-library` test-runner binary simply
-/// never touches this file, matching `CLAUDE.md`'s "Shared static
+/// never touches this file, matching `CONVENTIONS.md`'s "Shared static
 /// state needs hermetic tests" convention as directly as `optionsRead_`
 /// does, just via a different mechanism suited to eager vs. lazy reads.
 package(fl) float loadPersistedScaleFactor()
@@ -5383,7 +5383,7 @@ package(fl) void seedBaseScale(int n, float value)
 /// application windows" filter -- stands in for FLTK's own
 /// `win->user_data() != (void*)&transient_scale_display` marker-pointer
 /// check, which this port can't replicate directly (`Widget` has no
-/// generic per-widget data slot at all yet, see `CLAUDE.md`'s own
+/// generic per-widget data slot at all yet, see `CONVENTIONS.md`'s own
 /// tracked note on that gap) but doesn't need to either: there is only
 /// ever at most one such window alive at a time, so a direct identity
 /// comparison against this single stored reference is exactly
@@ -5857,7 +5857,7 @@ void clearWidgetPointer(Widget w)
 /// intended use here, so nulling one out during clearWidgetPointer()
 /// is always touching plain stack memory, never another GC-managed
 /// object's fields -- safe unconditionally, including during
-/// GC-driven finalization, unlike the cross-object cases CLAUDE.md's
+/// GC-driven finalization, unlike the cross-object cases CONVENTIONS.md's
 /// GC-finalizer note warns about).
 private Widget*[] widgetWatchList_;
 

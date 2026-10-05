@@ -1,5 +1,5 @@
 /*
- * Ported from src/fl_symbols.cxx (FLTK 1.5.0, ~/Repositories/fltk;
+ * Ported from src/fl_symbols.cxx (FLTK 1.5.0;
  * declared in FL/fl_draw.H alongside fl.draw's other free functions --
  * fl_symbols.cxx has no header of its own). The "@"-leading-symbol
  * glyph system: drawSymbol()/addSymbol() (2 overloads)/
@@ -12,7 +12,7 @@
  *
  * Deviations from FLTK, all deliberate:
  *
- *  - **Plain D `function` pointers, not delegates.** CLAUDE.md's
+ *  - **Plain D `function` pointers, not delegates.** CONVENTIONS.md's
  *    "callbacks are D delegates" convention exists specifically because
  *    FLTK's `Fl_Callback` needs a function-pointer+`void*` pair to
  *    fake per-instance closures in C++. FLTK's symbol-drawing table

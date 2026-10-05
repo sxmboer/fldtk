@@ -9,7 +9,7 @@
  *
  * **`std.process`/`std.file` replace FLTK's raw `fork()`/
  * `execvp()`/`waitpid()`/`pipe()`/`stat()`/`mkdir()` entirely** (per
- * CLAUDE.md's "check for a cleaner D stdlib alternative before
+ * CONVENTIONS.md's "check for a cleaner D stdlib alternative before
  * transliterating a raw C library call" convention) -- this isn't a
  * marginal cleanup, it eliminates whole subsystems FLTK needs
  * purely because C++ has no safe process-spawning primitive:
@@ -89,7 +89,7 @@ class ExternalCodeEditor
 
     ~this()
     {
-        // GC-finalizer hazard (CLAUDE.md's own established note):
+        // GC-finalizer hazard (CONVENTIONS.md's own established note):
         // closeEditor() can pop `fl_alert()`/`fl_choice()` dialogs and
         // touch `fl.core`'s timer queue, both cross-object GC-managed
         // state only safe to touch outside of finalization. Skipped

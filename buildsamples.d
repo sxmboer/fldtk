@@ -78,7 +78,7 @@ else
     enum exeSuffix = "";
 
 /// Programs that are known not to build, with the reason. Each is a real,
-/// documented gap rather than a regression -- see CLAUDE.md's "Deferred:
+/// documented gap rather than a regression -- see CONVENTIONS.md's "Deferred:
 /// external-library-backed features" and "Out of scope: XForms/Forms
 /// Library compatibility" sections. Skipped with their reason printed,
 /// so the run stays green and the exceptions stay visible.

@@ -1,8 +1,8 @@
-// D transliteration of FLTK's test/unittest_core.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md. One tab of the
-// "unittests" bundle; see samples/test/unittests.d for the registry
+// D transliteration of FLTK's test/unittest_core.cxx.
+// One tab of the
+// "unittests" bundle; see source/test/unittests.d for the registry
 // (UnitTest) and the local Google-Test-alike (UtTest/UtSuite).
-// Check: ./samples/build.sh unittests
+// Build: rdmd buildsamples.d test unittest_core
 module unittest_core;
 
 import fl;

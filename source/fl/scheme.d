@@ -6,7 +6,7 @@
  * change... do not rely on details of this class" -- ported minimally,
  * matching that scope, as free functions rather than a class with only
  * static members (same "D modules already behave like namespaces"
- * reasoning CLAUDE.md documents for fl.core/Fl namespace mapping).
+ * reasoning CONVENTIONS.md documents for fl.core/Fl namespace mapping).
  *
  * The registry is a plain, growable D `string[]` rather than FLTK's
  * manually malloc/realloc'd `const char**` -- the D container already

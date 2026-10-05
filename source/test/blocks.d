@@ -1,7 +1,6 @@
-// D transliteration of FLTK's test/blocks.cxx (~/Repositories/fltk),
+// D transliteration of FLTK's test/blocks.cxx,
 // "Block Attack!" scrolling blocks game.
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh blocks
+// Build: rdmd buildsamples.d test blocks
 //
 // Notes on this transliteration:
 //  - fl.image/fl.bitmap/fl.tiled_image (Pixmap/Bitmap/TiledImage below),
@@ -21,7 +20,7 @@
 //    bitmap);` directly.
 //  - BlockSound is transliterated against the ALSA branch only (FLTK
 //    also has CoreAudio and Win32 branches selected by #ifdef) since
-//    Linux is this project's primary target (see CLAUDE.md); no ALSA
+//    Linux is this project's primary target (see CONVENTIONS.md); no ALSA
 //    bindings exist in fldtk yet, so the snd_pcm_* calls are kept
 //    verbatim but wrapped in version(none) so this sample still
 //    compiles -- flip to version(all) once ALSA bindings exist.
@@ -53,7 +52,7 @@ enum bool DEBUG_TIMER = false;
 // XPM pixel data for the block/bomb sprites, transliterated verbatim from
 // test/pixmaps/*.xpm FLTK (32x32, 32-color, 1-char-per-pixel classic
 // XPM -- same `immutable string[] xxxXpm = [...]` convention already
-// established in samples/test/tiled_image.d's tileXpm).
+// established in source/test/tiled_image.d's tileXpm).
 immutable string[] blastXpm = [
     "32 32 32 1",
     " 	c #905518",
@@ -1136,7 +1135,7 @@ static this()
 // There are MANY ways to implement sound in a FLTK application. The
 // approach used here is ALSA on Linux -- the current Xorg releases no
 // longer support XBell() or the PC speaker, and Linux/Wayland is this
-// project's primary target (see CLAUDE.md); the CoreAudio/Win32 branches
+// project's primary target (see CONVENTIONS.md); the CoreAudio/Win32 branches
 // FLTK carries for macOS/Windows are not transliterated.
 class BlockSound
 {

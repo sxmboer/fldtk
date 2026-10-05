@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/colbrowser.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh colbrowser
+// D transliteration of FLTK's test/colbrowser.cxx.
+// Build: rdmd buildsamples.d test colbrowser
 import fl;
 import std.format : format;
 import std.stdio : File;
@@ -31,7 +30,7 @@ void main()
 {
     // FLTK parses argc/argv here (Fl::args_to_utf8/Fl::args) to pick an
     // optional database filename, falling back to "rgb.txt"; dropped along
-    // with argc/argv (see samples/README.md and test/button.cxx's precedent).
+    // with argc/argv (see source/test/README.md and test/button.cxx's precedent).
     dbname = "rgb.txt";
 
     createFormCl();

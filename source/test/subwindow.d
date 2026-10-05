@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/subwindow.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh subwindow
+// D transliteration of FLTK's test/subwindow.cxx.
+// Build: rdmd buildsamples.d test subwindow
 //
 // FLTK guards a positioning test with #ifdef DEBUG / DEBUG_POS (both
 // undefined by default) -- neither is transliterated since they're dead
@@ -86,7 +85,7 @@ MenuButton popup;
 immutable string bigmess = "this|is|only|a test";
 
 // FLTK's Fl_Menu_::add(const char*) '|'-separated multi-item form is
-// the Forms-compatible shim CLAUDE.md marks out of scope; split locally
+// the Forms-compatible shim CONVENTIONS.md marks out of scope; split locally
 // and add each item via the real 4-arg add() instead.
 void addPipeItems(Menu_ m, string items)
 {

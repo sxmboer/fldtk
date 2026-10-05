@@ -1,8 +1,7 @@
 /*
  * Ported from FL/Fl_Device.H (the `Fl_Surface_Device` half only) and
  * FL/Fl_Image_Surface.H + src/Fl_Image_Surface.cxx +
- * src/drivers/Xlib/Fl_Xlib_Image_Surface_Driver.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * src/drivers/Xlib/Fl_Xlib_Image_Surface_Driver.cxx (FLTK 1.5.0).
  *
  * Deliberately minimal, matching this port's "no polymorphic hierarchy
  * for a single implementation" precedent (see `fl.platform_x11`'s own
@@ -160,7 +159,7 @@ class SurfaceDevice
      * Found for real via the user's own `gdb` backtrace: `popCurrent()`
      * crashed inside `current_.doEndCurrent()` on a destroyed
      * `ImageSurface`, tracing directly to this guard being missing.
-     * No `GC.inFinalizer()` concern (see CLAUDE.md's own note on that
+     * No `GC.inFinalizer()` concern (see CONVENTIONS.md's own note on that
      * hazard) -- this only nulls a static reference, never dereferences
      * another object.
      */

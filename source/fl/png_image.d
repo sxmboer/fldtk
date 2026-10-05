@@ -1,14 +1,14 @@
 /*
  * Ported from FL/Fl_PNG_Image.H + src/Fl_PNG_Image.cxx + src/fl_write_png.cxx
- * (FLTK 1.5.0, ~/Repositories/fltk): Fl_PNG_Image, a Portable Network
+ * (FLTK 1.5.0): Fl_PNG_Image, a Portable Network
  * Graphics (PNG) file reader, plus the free fl_write_png() writer
  * functions.
  *
  * PNG decoding/encoding itself is adapted from Adam D. Ruppe's
- * `arsd.png` (~/Repositories/arsd/png.d, part of the `arsd` D utility
+ * `arsd.png` (png.d, part of the `arsd` D utility
  * collection, Boost Software License 1.0 -- full text below, per that
  * license's own requirement to keep it attached to the source). Per
- * CLAUDE.md's "Deferred: external-library-backed features" section,
+ * CONVENTIONS.md's "Deferred: external-library-backed features" section,
  * this resolves PNG's "write a small D-native decoder, or bind to
  * libpng" choice as neither -- arsd.png is already real, tested,
  * high-level D, and its low-level chunk/zlib/filter-reconstruction API is

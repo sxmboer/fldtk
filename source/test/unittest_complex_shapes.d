@@ -1,8 +1,7 @@
-// D transliteration of FLTK's test/unittest_complex_shapes.cxx
-// (~/Repositories/fltk). Part of the samples/ contract -- see
-// samples/README.md. One tab of the "unittests" bundle; see
-// samples/test/unittests.d for the registry.
-// Check: ./samples/build.sh unittests
+// D transliteration of FLTK's test/unittest_complex_shapes.cxx.
+// One tab of the "unittests" bundle; see
+// source/test/unittests.d for the registry.
+// Build: rdmd buildsamples.d test unittest_complex_shapes
 module unittest_complex_shapes;
 
 import fl;

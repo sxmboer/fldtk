@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/offscreen.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh offscreen
+// D transliteration of FLTK's test/offscreen.cxx.
+// Build: rdmd buildsamples.d test offscreen
 import fl;
 
 static DoubleWindow mainWindow = null;

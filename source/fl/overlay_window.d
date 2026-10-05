@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Overlay_Window.H + src/Fl_Overlay_Window.cxx (FLTK
- * 1.5.0, ~/Repositories/fltk), plus the driver-agnostic core of
+ * 1.5.0), plus the driver-agnostic core of
  * src/Fl_Window_Driver.cxx's own can_do_overlay()/redraw_overlay() and
  * src/drivers/X11/Fl_X11_Window_Driver.cxx's flush_overlay(). FLTK
  * splits the real logic across Fl_Window_Driver rather than keeping it
@@ -23,7 +23,7 @@
  * in `Fl_X11_Window_Driver.cxx` (only the WinAPI/Cocoa Gl_Window
  * drivers have a real one, for OpenGL's own separate overlay-plane
  * extension -- unrelated to this class, and blocked on GL like the
- * rest of `fl.gl_window` per CLAUDE.md). So the software-simulated
+ * rest of `fl.gl_window` per CONVENTIONS.md). So the software-simulated
  * path is the *only* path here, same as real FLTK on X11.
  *
  * `type()` is deliberately NOT overridden to a distinct tag, matching
@@ -46,7 +46,7 @@
  * code for a code path this port's architecture never takes. The
  * destructor (`~Fl_Overlay_Window() { hide(); }`) is skipped too,
  * matching every other `Window` subclass in this port (none define an
- * explicit destructor -- see CLAUDE.md's GC-finalizer-hazard note).
+ * explicit destructor -- see CONVENTIONS.md's GC-finalizer-hazard note).
  */
 module fl.overlay_window;
 

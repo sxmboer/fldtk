@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/howto-remap-numpad-keyboard-keys.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh howto-remap-numpad-keyboard-keys
+// D transliteration of FLTK's examples/howto-remap-numpad-keyboard-keys.cxx.
+// Build: rdmd buildsamples.d examples howto_remap_numpad_keyboard_keys
 import fl;
 
 CheckButton gCheckbut;

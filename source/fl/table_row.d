@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Table_Row.H + src/Fl_Table_Row.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). A row-selection specialization of Table --
+ * Ported from FL/Fl_Table_Row.H + src/Fl_Table_Row.cxx (FLTK 1.5.0). A row-selection specialization of Table --
  * click/drag/Ctrl/Shift select whole rows, similar to a Browser with
  * columns. Still needs a subclass to override drawCell() for actual
  * cell content, same as Table itself.

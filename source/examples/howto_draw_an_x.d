@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/howto-draw-an-x.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh howto-draw-an-x
+// D transliteration of FLTK's examples/howto-draw-an-x.cxx.
+// Build: rdmd buildsamples.d examples howto_draw_an_x
 import fl;
 
 class DrawX : Widget

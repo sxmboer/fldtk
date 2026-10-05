@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Browser_.H + src/Fl_Browser_.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Browser_.H + src/Fl_Browser_.cxx (FLTK 1.5.0).
  *
  * The base class for browsers -- to be useful it must be subclassed
  * with the item_* virtuals defined (see fl.browser, fl.check_browser).

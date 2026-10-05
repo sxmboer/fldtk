@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/howto-parse-args.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh howto-parse-args
+// D transliteration of FLTK's examples/howto-parse-args.cxx.
+// Build: rdmd buildsamples.d examples howto_parse_args
 import fl;
 import std.format : format;
 

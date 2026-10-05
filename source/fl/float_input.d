@@ -1,5 +1,5 @@
 /*
- * Ported from FL/Fl_Float_Input.H (FLTK 1.5.0, ~/Repositories/fltk).
+ * Ported from FL/Fl_Float_Input.H (FLTK 1.5.0).
  * Trivial `type(inputFloat)` subclass of fl.input's Input -- the
  * constructor body is ported from Fl_Float_Input::Fl_Float_Input()
  * (src/Fl_Input.cxx), not the (empty) header.

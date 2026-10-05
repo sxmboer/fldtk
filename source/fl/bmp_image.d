@@ -1,10 +1,9 @@
 /*
- * Ported from FL/Fl_BMP_Image.H + src/Fl_BMP_Image.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk): Fl_BMP_Image, a Windows Bitmap (BMP) file
+ * Ported from FL/Fl_BMP_Image.H + src/Fl_BMP_Image.cxx (FLTK 1.5.0): Fl_BMP_Image, a Windows Bitmap (BMP) file
  * reader. No external library needed -- BMP pixel data is either
  * uncompressed or uses a simple run-length scheme (RLE4/RLE8) FLTK
  * decodes itself, unlike JPEG/PNG/GIF's real compression codecs (see
- * CLAUDE.md's "Where this port intentionally exceeds FLTK" section
+ * CONVENTIONS.md's "Where this port intentionally exceeds FLTK" section
  * for why those, and SVG, are deliberately still out of scope).
  *
  * Reads the whole file into memory via `std.file.read()` and walks it

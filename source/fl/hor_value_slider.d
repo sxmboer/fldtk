@@ -1,7 +1,6 @@
 /*
  * Ported from FL/Fl_Hor_Value_Slider.H + the Fl_Hor_Value_Slider
- * constructor in src/Fl_Value_Slider.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * constructor in src/Fl_Value_Slider.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port. Trivial subclass: sets type() to
  * fl.slider.horSlider on top of fl.value_slider's text-box styling.

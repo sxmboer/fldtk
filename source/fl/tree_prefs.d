@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Tree_Prefs.H + src/Fl_Tree_Prefs.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Tree_Prefs.H + src/Fl_Tree_Prefs.cxx (FLTK 1.5.0).
  *
  * TreePrefs is a plain settings object shared by a Tree and every
  * TreeItem in it (Tree owns one instance; TreeItem.prefs() returns the
@@ -14,7 +13,7 @@
  *    (`Fl_System_Driver` hooks FLTK adds so a future non-X11
  *    platform driver could theme these) are not ported as a driver
  *    abstraction -- this port has no `Fl_Screen_Driver`-style hierarchy
- *    at all yet (see `CLAUDE.md`'s "not a gap to close proactively"
+ *    at all yet (see `CONVENTIONS.md`'s "not a gap to close proactively"
  *    note on that, same reasoning `fl.draw`/`fl.platform_x11` being
  *    concrete rather than polymorphic already establishes).
  *    `tree_connector_style()`'s only real body
@@ -39,14 +38,14 @@
  *    `FL_TREE_ITEM_DRAW_LABEL_AND_WIDGET`/`FL_TREE_ITEM_HEIGHT_FROM_WIDGET`
  *    as independent bits alongside `FL_TREE_ITEM_DRAW_DEFAULT`). Ported
  *    as `TreeItemDrawMode = alias int` plus manifest constants, per
- *    `CLAUDE.md`'s "open bitmask set expressed as a plain C enum" rule
+ *    `CONVENTIONS.md`'s "open bitmask set expressed as a plain C enum" rule
  *    (matching `Align`/`Damage`/etc.'s treatment), not a closed D
  *    `enum` like the other four `Fl_Tree_*` enums in this header, which
  *    genuinely are exclusive/non-combinable and stay real D `enum`s.
  *  - `item_draw_callback()`/`Fl_Tree_Item_Draw_Callback` is a D
  *    delegate (`void delegate(TreeItem)`), not FLTK's C function
  *    pointer + separate `void* userdata` pair -- the usual callback
- *    substitution this port applies everywhere (`CLAUDE.md`'s
+ *    substitution this port applies everywhere (`CONVENTIONS.md`'s
  *    "callbacks are D delegates" convention); a delegate already
  *    closes over whatever context it needs, so there's no
  *    `item_draw_user_data()` counterpart either.
@@ -54,7 +53,7 @@
  *    `item_labelfont()`, etc.) are ported too, as thin forwarding
  *    methods -- cheap, and this port defaults to faithful-unless-
  *    there's-a-specific-reason-not-to; unlike the Forms/XForms-era
- *    exclusions `CLAUDE.md` documents, these are ordinary FLTK API
+ *    exclusions `CONVENTIONS.md` documents, these are ordinary FLTK API
  *    evolution (a same-library rename), not scaffolding for a defunct
  *    external toolkit.
  */

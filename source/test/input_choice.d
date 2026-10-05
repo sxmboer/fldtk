@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/input_choice.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh input_choice
+// D transliteration of FLTK's test/input_choice.cxx.
+// Build: rdmd buildsamples.d test input_choice
 import fl;
 
 enum int terminalHeight = 150;

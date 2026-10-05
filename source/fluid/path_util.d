@@ -13,7 +13,7 @@
  * (title bars, recent-files menus) -- not reversible, purely for
  * display. Reimplemented over `dstring` (indexable by Unicode
  * codepoint) rather than transliterating FLTK's own manual
- * `fl_utf8strlen()`-based byte-offset arithmetic (CLAUDE.md's "check
+ * `fl_utf8strlen()`-based byte-offset arithmetic (CONVENTIONS.md's "check
  * for a cleaner D stdlib alternative before transliterating a raw C
  * library call" -- this is exactly that case: the byte-offset-of-the-
  * Nth-codepoint dance FLTK needs has no equivalent problem once

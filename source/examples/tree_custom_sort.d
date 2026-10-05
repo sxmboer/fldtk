@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/tree-custom-sort.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh tree-custom-sort
+// D transliteration of FLTK's examples/tree-custom-sort.cxx.
+// Build: rdmd buildsamples.d examples tree_custom_sort
 import fl;
 import std.conv : to;
 import std.random : uniform;

@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/arc.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh arc
+// D transliteration of FLTK's test/arc.cxx.
+// Build: rdmd buildsamples.d test arc
 import fl;
 
 double[6] args = [140, 140, 50, 0, 360, 0];

@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/device.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh device
+// D transliteration of FLTK's test/device.cxx.
+// Build: rdmd buildsamples.d test device
 import fl;
 import std.math : sqrt;
 import std.stdio : File;
@@ -80,7 +79,7 @@ immutable string[] porscheXpm = [
 ];
 
 // pixmaps/sorceress.xbm, transcribed verbatim from the FLTK file
-// (see samples/test/bitmap.d, which transcribes the same FLTK file).
+// (see source/test/bitmap.d, which transcribes the same FLTK file).
 enum sorceressWidth = 75;
 enum sorceressHeight = 75;
 immutable ubyte[] sorceressBits = [
@@ -678,7 +677,7 @@ void copy(Widget, Object)
         // FL/Fl_PDF_File_Surface.H row marks this Deferred (Pango):
         // FLTK's own implementation is unconditionally gated on Pango
         // on Linux too, the same project-wide deferred decision (see
-        // CLAUDE.md's "Deferred: external-library-backed features"),
+        // CONVENTIONS.md's "Deferred: external-library-backed features"),
         // not a fresh gap this sample can just port around.
         message("PDF output isn't ported yet (see PORTING.md's\n"
             ~ "FL/Fl_PDF_File_Surface.H row -- deferred pending the\n"

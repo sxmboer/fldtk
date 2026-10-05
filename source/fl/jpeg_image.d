@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_JPEG_Image.H + src/Fl_JPEG_Image.cxx + src/
- * fl_write_jpeg.cxx (FLTK 1.5.0, ~/Repositories/fltk): Fl_JPEG_Image,
+ * fl_write_jpeg.cxx (FLTK 1.5.0): Fl_JPEG_Image,
  * a JPEG file/buffer reader, plus the free fl_write_jpeg() writer
  * functions.
  *

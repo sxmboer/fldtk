@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Terminal.H + src/Fl_Terminal.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). A ~5400-line VT100/ANSI/xterm-style terminal
+ * Ported from FL/Fl_Terminal.H + src/Fl_Terminal.cxx (FLTK 1.5.0). A ~5400-line VT100/ANSI/xterm-style terminal
  * output widget -- a ring buffer of Unicode display cells (scrollback
  * history + active display), mouse text selection, and real
  * escape-sequence-driven colors/attributes/cursor control. See
@@ -33,7 +32,7 @@
  * `fl.terminal`'s feature set against FLTK's own public API --
  * nothing else is deliberately deferred.
  *
- * **Known, deliberately deferred gap:** `samples/test/contrast.d`'s
+ * **Known, deliberately deferred gap:** `source/test/contrast.d`'s
  * embedded terminal shows 9 display rows where real FLTK shows 10, when
  * constructed via the 4-arg constructor (`fontsize_defer_ = false`,
  * used by `contrast.d` and its own FLTK `.cxx`) *before* any window has
@@ -1139,7 +1138,7 @@ class Terminal : FlGroup
         // same constructor. Same category of "don't call an override
         // that touches not-yet-initialized state from your own
         // constructor" pitfall as fl.table.Table's construction-order
-        // note in CLAUDE.md, just via an explicit same-object call
+        // note in CONVENTIONS.md, just via an explicit same-object call
         // here rather than virtual dispatch during base construction.
         super.box(Boxtype.downFrame);
         updateScreenXywh();

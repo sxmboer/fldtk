@@ -7,7 +7,7 @@
  *
  * `fluid/panels/*.fl` are Fluid's own primary source; `fluid/panels/*.d`
  * are `fluid -c` output, gitignored and regenerated rather than checked
- * in (see `CLAUDE.md`'s "Build commands" section). The full `fluid`
+ * in (see `CONVENTIONS.md`'s "Build commands" section). The full `fluid`
  * binary (`app.d`, `fluid/dub.sdl`'s default `"fluid"` configuration)
  * can't be the tool that regenerates those files on a checkout that
  * only ships the `.fl` sources: building `fluid` itself requires

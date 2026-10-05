@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Text_Display.H + src/Fl_Text_Display.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). The widget that visually displays an
+ * Ported from FL/Fl_Text_Display.H + src/Fl_Text_Display.cxx (FLTK 1.5.0). The widget that visually displays an
  * `Fl_Text_Buffer` -> `TextBuffer`: line-start/line-end/word-wrap
  * calculation, vertical+horizontal scrolling (via two `Fl_Scrollbar`s),
  * cursor positioning/blinking, selection highlighting, a secondary
@@ -132,7 +131,7 @@
  * - **`highlight_data()`'s `nStyles`/`cbArg` parameters.** `nStyles` is
  *   redundant with `styleTable.length` in D (a slice, unlike C's bare
  *   pointer+length pair FLTK's `const Style_Table_Entry*` needs).
- *   `cbArg` is dropped per CLAUDE.md's delegate-over-function-pointer-
+ *   `cbArg` is dropped per CONVENTIONS.md's delegate-over-function-pointer-
  *   plus-`void*` convention: `UnfinishedStyleCb` is a `void
  *   delegate(int)` that can already close over whatever context it
  *   needs.
@@ -205,7 +204,7 @@ private enum tmpFontWidth = 6;
 // Style masks (or'd into the `style` int handle_vline()/draw_string()/
 // position_style() pass around: low byte is a style-table index,
 // high bits are drawing-mode flags). Open/combinable bitmask, so this
-// stays a D `alias` + manifest constants per CLAUDE.md, like Align/
+// stays a D `alias` + manifest constants per CONVENTIONS.md, like Align/
 // Color/Damage.
 // ---------------------------------------------------------------------
 alias StyleFlags = uint;
@@ -236,7 +235,7 @@ enum : uint
 }
 
 /// Text-cursor shapes (FLTK's anonymous enum: NORMAL_CURSOR..
-/// SIMPLE_CURSOR). A closed tag set -> real D enum per CLAUDE.md.
+/// SIMPLE_CURSOR). A closed tag set -> real D enum per CONVENTIONS.md.
 enum CursorStyle
 {
     normalCursor, /// I-beam
@@ -296,7 +295,7 @@ private enum HandleMode
 /// Called when position_style() encounters `unfinishedStyle` in the
 /// style buffer, so the caller can lazily re-parse/re-highlight that
 /// region on the fly. Matches FLTK's `Unfinished_Style_Cb` minus
-/// the `void* cbArg` slot -- per CLAUDE.md's delegate convention, a
+/// the `void* cbArg` slot -- per CONVENTIONS.md's delegate convention, a
 /// caller needing context just captures it in the delegate.
 alias UnfinishedStyleCb = void delegate(int pos);
 
@@ -500,7 +499,7 @@ class TextDisplay : FlGroup
             scrollDirection_ = 0;
         }
 
-        // See CLAUDE.md's GC-finalizer note (and fl.widget.d's ~this()
+        // See CONVENTIONS.md's GC-finalizer note (and fl.widget.d's ~this()
         // for the established pattern): buffer_ is another GC-managed
         // object, so unregistering our callbacks from it is only safe
         // when this destructor runs deterministically.
@@ -3375,7 +3374,7 @@ package(fl) void flTextDragMe(int pos, TextDisplay d)
 // is possible yet, see the module comment). Every test constructing a
 // FlGroup/TextDisplay brackets with FlGroup.current(null), and every test
 // touching handle()/focus ends with fl.core.resetForTest(), per
-// CLAUDE.md.
+// CONVENTIONS.md.
 // =======================================================================
 
 unittest
@@ -3495,7 +3494,7 @@ unittest
 {
     // Cursor movement (called directly -- Fl_Text_Display's own
     // handle() doesn't process arrow keys; that's Fl_Text_Editor's job,
-    // out of scope for this module, see CLAUDE.md's task description).
+    // out of scope for this module).
     FlGroup.current(null);
 
     auto td = new TextDisplay(0, 0, 300, 200);

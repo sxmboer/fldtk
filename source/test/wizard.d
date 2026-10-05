@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/wizard.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh wizard
+// D transliteration of FLTK's test/wizard.cxx.
+// Build: rdmd buildsamples.d test wizard
 import fl;
 import fl.wizard : WizardBase = Wizard;
 

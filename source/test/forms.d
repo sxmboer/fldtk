@@ -1,12 +1,11 @@
-// D transliteration of FLTK's test/forms.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh forms
+// D transliteration of FLTK's test/forms.cxx.
+// Build: rdmd buildsamples.d test forms
 //
 // Another forms demo -- this is an XForms compatibility-layer program
 // (FL/forms.H's fl_bgn_form()/fl_add_box()/... free-function API, a
 // straight port of the old XForms library's API onto FLTK widgets).
 // Kept as the legacy free-function API here rather than rewritten into
-// modern widget construction -- see samples/README.md.
+// modern widget construction -- see source/test/README.md.
 import fl;
 
 int border = 1; // changed from FL_TRANSIENT for FLTK

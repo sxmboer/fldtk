@@ -1,14 +1,14 @@
 /*
  * Ported from FL/Fl_PostScript.H + src/drivers/PostScript/
  * Fl_PostScript_Graphics_Driver.H + src/drivers/PostScript/
- * Fl_PostScript.cxx (FLTK 1.5.0, ~/Repositories/fltk).
+ * Fl_PostScript.cxx (FLTK 1.5.0).
  *
  * **Scope**: `Fl_PostScript_Graphics_Driver.H` declares two entirely
  * different classes behind `#if USE_PANGO` -- one that extends
  * `Fl_Cairo_Graphics_Driver` (the Pango/Cairo build), one that extends
  * `Fl_Graphics_Driver` directly (the plain X11/Wayland-without-Pango
  * build). This port has neither Pango nor Cairo (both `Deferred`, see
- * `CLAUDE.md`), so only the `#else` (`! USE_PANGO`) branch of both that
+ * `CONVENTIONS.md`), so only the `#else` (`! USE_PANGO`) branch of both that
  * header and `Fl_PostScript.cxx` is relevant here -- every function in
  * this module is a port of that branch specifically, not the Cairo one.
  *

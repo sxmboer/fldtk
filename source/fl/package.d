@@ -175,7 +175,7 @@ public import fl.glew;
 // need internally: real GL sample programs call their functions
 // directly from their own `draw()` overrides, the same "genuine
 // user-facing public API" test fl.gl/fl.glut already have to pass
-// (`fl.opengl`'s `glVertex3f()`/etc in `samples/test/cube.d`,
+// (`fl.opengl`'s `glVertex3f()`/etc in `source/test/cube.d`,
 // `fl.glu`'s `gluPerspective()`/`gluLookAt()` in `fracviewer.d`/
 // `glpuzzle.d`/`fractals.d`/`OpenGL3_glut_test.d`, `fl.glew`'s
 // `glShaderSource()`/etc in `OpenGL3test.d`/`OpenGL3_glut_test.d`).
@@ -214,7 +214,7 @@ public import fl.glew;
 // wrapper-function port) IS re-exported, unlike the four modules just
 // above -- it's real, user-facing public API real GL programs call
 // directly from their own
-// immediate-mode `draw()` overrides (`samples/test/cube.d`'s own
+// immediate-mode `draw()` overrides (`source/test/cube.d`'s own
 // `gl_color(gray0); gl_font(helveticaBold, 16); gl_draw(...)`, matching
 // FLTK's real usage exactly), the same "actual port-target/
 // public-API module" category `fl.gl_choice`/`fl.gl_window` are in, not

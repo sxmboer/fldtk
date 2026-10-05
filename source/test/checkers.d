@@ -1,5 +1,4 @@
-// D transliteration of FLTK's test/checkers.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
+// D transliteration of FLTK's test/checkers.cxx.
 //
 // Only the `#define FLTK` build is ported -- `#define VT100` is
 // commented out in the real FLTK source (`//#define VT100`), so
@@ -22,7 +21,7 @@
 //    (FLTK passes the item pointer itself as user-data specifically
 //    for this). This port has no delegate/user-data equivalent for a
 //    `MenuItem*` (`fl.menu_item`'s own `Callback` is `void delegate
-//    (Widget)`, matching CLAUDE.md's callback convention) -- instead,
+//    (Widget)`, matching CONVENTIONS.md's callback convention) -- instead,
 //    both toggle items' `.flags` are refreshed from the real `bool`
 //    state (`refreshToggleFlags()`) right before either menu is shown,
 //    which is the only time the checkbox state is actually observed.
@@ -30,7 +29,7 @@
 //    bitfield flags) becomes a plain GC-managed `class Node` with
 //    `bool` fields instead of `unsigned x:1` bitfields -- the bitfields
 //    existed purely for C-era memory packing, no reason to carry that
-//    over (same substitution CLAUDE.md documents elsewhere for packed
+//    over (same substitution CONVENTIONS.md documents elsewhere for packed
 //    FLTK types). `killnode()` keeps its real, load-bearing half
 //    (recursively decrementing the `nodes` search-bound counter and
 //    detaching the subtree) but drops the free-list-recycling half
@@ -48,7 +47,7 @@
 //    itself a few lines earlier).
 //
 // Found, NOT fixed (ported faithfully, flagged here rather than
-// silently worked around or silently corrected -- see CLAUDE.md's
+// silently worked around or silently corrected -- see CONVENTIONS.md's
 // FLTK-bug process): in `movepiece()`, the kinging check
 // `!(oldpiece&KING) && n->who ? (j>=36) : (j<=8)` parses (`&&` binds
 // tighter than `?:`) as `(!(oldpiece&KING) && n->who) ? (j>=36) :

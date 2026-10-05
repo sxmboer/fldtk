@@ -16,7 +16,7 @@
  * C++ needs a same-signature free-function pointer decoupled from any
  * closure state. This writer just emits a plain delegate literal
  * inline (`.callback((raw) { auto o = cast(X) raw; ... });`), matching
- * CLAUDE.md's "Callbacks are D delegates" convention.
+ * CONVENTIONS.md's "Callbacks are D delegates" convention.
  *
  * **The "o" convention**: every callback/`setup` body written in a
  * `.fl` file refers to "the widget this code concerns" as a bare `o`,
@@ -2480,7 +2480,7 @@ class Writer
                     ~ "it looks like an unconverted copy of real FLTK C++, not this "
                     ~ "project's own D-embedded `.fl` dialect. Convert its code/callback/"
                     ~ "setup/decl bodies to real D before running them through `fluid -c` "
-                    ~ "(see TRANSLITERATION_GUIDE.md for the technique, or CLAUDE.md's "
+                    ~ "(see TRANSLITERATION_GUIDE.md for the technique, or CONVENTIONS.md's "
                     ~ "code_writer.d note on the \"beauty of D\" pivot).", trimmed));
     }
 

@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/fonts.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh fonts
+// D transliteration of FLTK's test/fonts.cxx.
+// Build: rdmd buildsamples.d test fonts
 //
 // Notes on this transliteration:
 //  - Fl_Tile/Fl_Hold_Browser (fl.tile.Tile/fl.hold_browser.HoldBrowser)

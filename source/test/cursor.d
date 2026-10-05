@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/cursor.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh cursor
+// D transliteration of FLTK's test/cursor.cxx.
+// Build: rdmd buildsamples.d test cursor
 import fl;
 
 // fluid/pixmaps/compressed.xpm, transcribed verbatim from the FLTK file.

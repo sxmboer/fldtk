@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Widget_Surface.H + src/Fl_Widget_Surface.cxx
- * (FLTK 1.5.0, ~/Repositories/fltk).
+ * (FLTK 1.5.0).
  *
  * `WidgetSurface` is the real base class `fl.image_surface.ImageSurface`
  * extends instead of `SurfaceDevice` directly.
@@ -449,7 +449,7 @@ class CopySurface : WidgetSurface
      * ("once...successfully placed data on the clipboard...the
      * application no longer owns the data and cannot free the handle"),
      * freeing a handle the clipboard now owns is exactly the kind of
-     * real, silent-corruption-shaped bug CLAUDE.md's porting-conventions
+     * real, silent-corruption-shaped bug CONVENTIONS.md's porting-conventions
      * section calls out as worth deviating from FLTK for (same
      * category as `Fl_Text_Buffer::copy()`'s `FLTK_ISSUES.md`
      * entry) -- it's what makes real FLTK's own decode path (reading

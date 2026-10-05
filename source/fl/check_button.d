@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Check_Button.H + src/Fl_Check_Button.cxx (FLTK
- * 1.5.0, ~/Repositories/fltk).
+ * 1.5.0).
  *
  * Faithful, complete port. Trivial subclass of fl.light_button: draws
  * its "on" state as a checkmark (downBox() = downBox) instead of a

@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/boxtype.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh boxtype
+// D transliteration of FLTK's test/boxtype.cxx.
+// Build: rdmd buildsamples.d test boxtype
 import fl;
 import std.format : format;
 
@@ -96,7 +95,7 @@ void main(string[] args)
 
     // create demo boxes -- labels use fldtk's own qualified D enum
     // spelling (matching each button's own `Boxtype` argument exactly),
-    // not FLTK's C `FL_*` macro name. See CLAUDE.md's memory notes
+    // not FLTK's C `FL_*` macro name. See CONVENTIONS.md's convention
     // on this standing rule for GUI text that names a constant.
     bt("Boxtype.noBox", Boxtype.noBox);
     bt("Boxtype.flatBox", Boxtype.flatBox);

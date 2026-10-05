@@ -1,9 +1,7 @@
-// D transliteration of FLTK's test/resize-arrows.cxx / resize-arrows.h
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
+// D transliteration of FLTK's test/resize-arrows.cxx / resize-arrows.h.
 // Shared module imported by the resize_exampleN programs; not itself
-// runnable, so there is no `./samples/build.sh resize_arrows` result
-// beyond compiling as part of one of those.
+// runnable, so it has no standalone binary beyond compiling as part of
+// one of those.
 module resize_arrows;
 
 import fl;

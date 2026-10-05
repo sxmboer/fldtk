@@ -10,7 +10,7 @@
  * Deliberately excludes `fluid.app`/`fluid.bootstrap`: both are real
  * `void main(string[] args)` entry points for two separate `dub.sdl`
  * build configurations (`"fluid"` and `"bootstrap"`, see `fluid/
- * dub.sdl` and CLAUDE.md's own build-commands section) that are never
+ * dub.sdl` and CONVENTIONS.md's own build-commands section) that are never
  * linked together into one binary -- `public import`ing both here
  * would force any consumer of this aggregator to compile both `main()`s
  * into the same translation unit, an unconditional error neither

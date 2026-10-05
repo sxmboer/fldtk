@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_PNM_Image.H + src/Fl_PNM_Image.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk): Fl_PNM_Image, a Portable Anymap (PNM: PBM/PGM/
+ * Ported from FL/Fl_PNM_Image.H + src/Fl_PNM_Image.cxx (FLTK 1.5.0): Fl_PNM_Image, a Portable Anymap (PNM: PBM/PGM/
  * PPM, formats P1-P6, plus XV's own P7 "3:3:2" thumbnail extension)
  * file reader. Milestone 3 of the fl.image port -- see fl.image's own
  * top comment for the overall staging.

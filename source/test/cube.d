@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/cube.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh cube
+// D transliteration of FLTK's test/cube.cxx.
+// Build: rdmd buildsamples.d test cube
 //
 // OpenGL test with 2 cubes (to test multiple GL contexts), including
 // ordinary FLTK widgets (buttons/sliders/radio buttons) composited over

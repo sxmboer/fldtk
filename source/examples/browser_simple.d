@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/browser-simple.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh browser-simple
+// D transliteration of FLTK's examples/browser-simple.cxx.
+// Build: rdmd buildsamples.d examples browser_simple
 import fl;
 import std.stdio : writefln;
 

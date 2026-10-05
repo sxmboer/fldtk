@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/wizard-simple.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh wizard-simple
+// D transliteration of FLTK's examples/wizard-simple.cxx.
+// Build: rdmd buildsamples.d examples wizard_simple
 import fl;
 
 //

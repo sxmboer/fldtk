@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Scrollbar.H + src/Fl_Scrollbar.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Scrollbar.H + src/Fl_Scrollbar.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port of the layout/event/draw logic: a Slider with
  * arrow buttons at each end, added for fl.text_display (which needs

@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Toggle_Button.H + the Fl_Toggle_Button constructor
- * in src/Fl_Button.cxx (FLTK 1.5.0, ~/Repositories/fltk).
+ * in src/Fl_Button.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port. Trivial subclass: sets type() to
  * fl.button.toggleButton, which makes fl.button.Button's value() flip

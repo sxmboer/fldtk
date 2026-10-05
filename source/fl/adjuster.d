@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Adjuster.H + src/Fl_Adjuster.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Adjuster.H + src/Fl_Adjuster.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port of the numeric/event logic: a 3-button
  * "slider" (small/medium/large step buttons side by side), where

@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/table-with-keynav.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh table-with-keynav
+// D transliteration of FLTK's examples/table-with-keynav.cxx.
+// Build: rdmd buildsamples.d examples table_with_keynav
 import fl;
 import std.format : format;
 

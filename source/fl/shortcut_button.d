@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Shortcut_Button.H + src/Fl_Shortcut_Button.cxx
- * (FLTK 1.5.0, ~/Repositories/fltk).
+ * (FLTK 1.5.0).
  *
  * A button that records a key combination typed by the user (click to
  * arm it, then type the shortcut; a second click or losing focus makes
@@ -52,7 +52,7 @@ class ShortcutButton : Button
 
     // D hides every base-class overload of a name once a derived class
     // declares its own method of that name (unlike C++, which hides
-    // only same-signature members) -- the same corner CLAUDE.md/
+    // only same-signature members) -- the same corner CONVENTIONS.md/
     // fl.counter's module comment documents for Fl_Counter::step().
     // shortcutValue()/shortcutValue(uint) (below) sidestep it by not
     // reusing the name `value` at all, matching FLTK's own

@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Round_Button.H + the Fl_Round_Button constructor in
- * src/Fl_Round_Button.cxx (FLTK 1.5.0, ~/Repositories/fltk).
+ * src/Fl_Round_Button.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port. Trivial subclass: draws its "on" state as a
  * round radio-style light (downBox() = roundDownBox) rather than a

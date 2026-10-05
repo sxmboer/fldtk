@@ -1,7 +1,7 @@
 /*
  * Ported from FL/Fl_Printer.H + src/Fl_Printer.cxx +
  * src/drivers/Posix/Fl_Posix_Printer_Driver.cxx + src/print_panel.{h,
- * cxx} (FLTK 1.5.0, ~/Repositories/fltk).
+ * cxx} (FLTK 1.5.0).
  *
  * The Linux/X11/Wayland half of `fl.printer`'s platform split -- see
  * that module's own (tiny) doc comment for why a `version()`-selected

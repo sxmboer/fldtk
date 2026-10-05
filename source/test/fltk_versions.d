@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/fltk-versions.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh fltk-versions
+// D transliteration of FLTK's test/fltk-versions.cxx.
+// Build: rdmd buildsamples.d test fltk_versions
 import fl;
 import std.stdio : writef, writefln, stdout;
 import std.format : format;

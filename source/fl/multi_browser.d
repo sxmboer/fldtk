@@ -1,5 +1,5 @@
 /*
- * Ported from FL/Fl_Multi_Browser.H (FLTK 1.5.0, ~/Repositories/fltk).
+ * Ported from FL/Fl_Multi_Browser.H (FLTK 1.5.0).
  *
  * Trivial type(multiBrowser) subclass of Fl_Browser: any number of
  * lines can be selected at once (Shift/Ctrl-click to extend/toggle,

@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Valuator.H + src/Fl_Valuator.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Valuator.H + src/Fl_Valuator.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port. Fl_Valuator is pure numeric bookkeeping
  * (range/step/value/rounding/clamping) with no drawing of its own --
@@ -12,7 +11,7 @@
  * API) are collapsed into a single format() returning a D string,
  * matching this port's established convention of using D `string`
  * instead of C buffer-passing (see fl.widget's label()/tooltip() note
- * in CLAUDE.md).
+ * in CONVENTIONS.md).
  */
 module fl.valuator;
 
@@ -314,6 +313,6 @@ unittest
     // Drains what handleDrag()/handleRelease() pushed onto fl.core's
     // shared default callback queue (no custom callback was set, so
     // doCallback() fell back to it) -- see resetForTest()'s doc
-    // comment and the hermetic-tests note in CLAUDE.md.
+    // comment and the hermetic-tests note in CONVENTIONS.md.
     fl.core.resetForTest();
 }

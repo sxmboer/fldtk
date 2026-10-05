@@ -1,10 +1,9 @@
 /*
- * Ported from FL/Fl_GIF_Image.H + src/Fl_GIF_Image.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk): Fl_GIF_Image, a Compuserve GIF file reader. No
+ * Ported from FL/Fl_GIF_Image.H + src/Fl_GIF_Image.cxx (FLTK 1.5.0): Fl_GIF_Image, a Compuserve GIF file reader. No
  * external library needed -- GIF's LZW compression is simple enough to
  * decode natively (same shape as fl.bmp_image's own RLE decoder),
  * unlike JPEG/PNG's real entropy coders. (Earlier revisions of this
- * comment listed GIF/AnimGIF under CLAUDE.md's "Deferred: external-
+ * comment listed GIF/AnimGIF under CONVENTIONS.md's "Deferred: external-
  * library-backed features" -- that was based on a mistaken premise;
  * neither `Fl_GIF_Image.cxx` nor `Fl_Anim_GIF_Image.cxx` links any
  * external codec.)
@@ -67,7 +66,7 @@ class GifImage : Pixmap
     /// `fl.ico_image.ICOImage` precedent for the same shape. Loads
     /// nothing; the subclass calls `load()` itself once its own fields
     /// are initialized (constructing with a vtable already pointed at
-    /// the most-derived class -- see CLAUDE.md's note on why loading
+    /// the most-derived class -- see CONVENTIONS.md's note on why loading
     /// from *this* constructor instead would reach an overridden hook
     /// before the subclass's own state exists).
     protected this()

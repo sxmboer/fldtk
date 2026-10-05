@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/windowfocus.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh windowfocus
+// D transliteration of FLTK's test/windowfocus.cxx.
+// Build: rdmd buildsamples.d test windowfocus
 import fl;
 
 private DoubleWindow win1, win2;

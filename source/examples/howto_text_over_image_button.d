@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/howto-text-over-image-button.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh howto-text-over-image-button
+// D transliteration of FLTK's examples/howto-text-over-image-button.cxx.
+// Build: rdmd buildsamples.d examples howto_text_over_image_button
 import fl;
 
 /* XPM */

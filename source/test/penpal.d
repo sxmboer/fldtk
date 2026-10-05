@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/penpal.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh penpal
+// D transliteration of FLTK's test/penpal.cxx.
+// Build: rdmd buildsamples.d test penpal
 //
 // The Penpal test app is here to test pen/stylus/tablet event distribution
 // in the Fl::Pen driver. Our main window has three canvases for drawing.

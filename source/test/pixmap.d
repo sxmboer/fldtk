@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/pixmap.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh pixmap
+// D transliteration of FLTK's test/pixmap.cxx.
+// Build: rdmd buildsamples.d test pixmap
 import fl;
 import std.format : format;
 

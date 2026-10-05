@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Spinner.H + src/Fl_Spinner.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). A FlGroup combining a numeric Input field with
+ * Ported from FL/Fl_Spinner.H + src/Fl_Spinner.cxx (FLTK 1.5.0). A FlGroup combining a numeric Input field with
  * up/down buttons.
  *
  * The up/down buttons are now real fl.repeat_button.RepeatButton
@@ -13,7 +12,7 @@
  * Fl_Spinner::sb_cb() (FLTK's `Fl_Callback*` + `Fl_Spinner*`
  * user-data two-arg callback, needed in C++ because a plain function
  * pointer can't close over `this`) becomes a private method bound as a
- * D delegate instead -- see CLAUDE.md's callback porting convention.
+ * D delegate instead -- see CONVENTIONS.md's callback porting convention.
  */
 module fl.spinner;
 

@@ -1,6 +1,6 @@
 /*
  * Port of `src/drivers/OpenGL/Fl_OpenGL_Graphics_Driver*.cxx` (7 files,
- * FLTK 1.5.0, ~/Repositories/fltk): the base class plus `_rect.cxx`/
+ * FLTK 1.5.0): the base class plus `_rect.cxx`/
  * `_color.cxx`/`_arci.cxx`/`_line_style.cxx`/`_vertex.cxx`. See
  * `fl.graphics_driver`'s own doc comment for the dispatch model
  * (`fl.draw`'s leaf primitives call `fl.graphics_driver.currentDriver`'s
@@ -12,7 +12,7 @@
  * own abstract method set -- not FLTK's full ~20-method
  * `Fl_OpenGL_Graphics_Driver` surface. That set turns out to already
  * cover every leaf a real widget's `draw()` reaches on the way to
- * pixels for the boxtypes/primitives `samples/test/cube.d`'s widget
+ * pixels for the boxtypes/primitives `source/test/cube.d`'s widget
  * tree (`Button`/`LightButton`/`Slider`/`Grid`/`SysMenuBar`) actually
  * uses -- `color`/`rectf`/`rect`/`line`/`xyline`/`yxline`/`polygon`/
  * `lineStyle`/`pushClip`/`popClip`/`arc`/`pie`/the vertex-path `end*()`
@@ -22,7 +22,7 @@
  * `fl_yxline()`+`fl_rect()`, all already dispatched leaves) and
  * `focusRect()`/`drawRadio()` (compose from `lineStyle()`+
  * `fl_rect()` and `fl_arc()`/`fl_pie()` respectively). `drawImage()`
- * (see that method's own doc comment -- `samples/test/gl_image.d` needs
+ * (see that method's own doc comment -- `source/test/gl_image.d` needs
  * it) is a deliberately simpler uncached `gl_draw_image()`/
  * `glDrawPixels()` forward rather than FLTK's persistent
  * `GL_TEXTURE_RECTANGLE_ARB` cache. `drawBitmap()` (the 1-bit
@@ -514,7 +514,7 @@ final class GlGraphicsDriver : GraphicsDriver
     // ---- Fl_OpenGL_Graphics_Driver_image.cxx ----
 
     /**
-     * `ImageBackgroundBox.draw()` (`samples/test/gl_image.d`) calling
+     * `ImageBackgroundBox.draw()` (`source/test/gl_image.d`) calling
      * `Image.draw()` always goes through `fl.draw.drawImage()` ->
      * `currentDriver.drawImage()` when a `GraphicsDriver` is active,
      * same dispatch every other primitive in this class already uses.

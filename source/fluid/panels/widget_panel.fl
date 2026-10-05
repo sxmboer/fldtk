@@ -1726,7 +1726,7 @@ decl {/// FLTK's own `whenmenu[]` (`Widget_Node.cxx`) is a single
 /// Always/Enter Key Always/Enter Key Changed) -- FLTK tells a preset
 /// apart from a toggle pick via `mvalue()->argument()` (each preset's
 /// own void*-cast numeric payload). This port's MenuItem has no such
-/// per-item payload slot at all (see CLAUDE.md's "callbacks are D
+/// per-item payload slot at all (see CONVENTIONS.md's "callbacks are D
 /// delegates" note), so `onUserDataWhenChanged()` uses pointer identity
 /// against this held array instead -- the direct D-shaped equivalent,
 /// not a design compromise. `menu(MenuItem[])` retains the array by
@@ -1756,7 +1756,7 @@ private void setWhenMenu(int n)
 /// specifically to show a Fluid user which `when()` constant(s) the
 /// current selection corresponds to, so it should teach the D
 /// vocabulary a Fluid-generated program actually uses, matching the
-/// same standing rule CLAUDE.md's memory notes apply to the demo/test
+/// same standing rule CONVENTIONS.md's convention apply to the demo/test
 /// samples (`source/test/boxtype.d` etc.).
 private string whenSymbolName(int n)
 \{
@@ -3970,7 +3970,7 @@ foreach (n; selectedNodes_)
                                         labelfont 1
                                         labelsize 11
                                         setup {// Labels use fldtk's own bare D constant spelling, not
-// FLTK's C `FL_*` macro name -- see CLAUDE.md's memory notes on
+// FLTK's C `FL_*` macro name -- see CONVENTIONS.md's convention on
 // this standing rule for GUI text that names a constant.
 whenMenuItems_[0] = MenuItem("whenChanged", 0, null, menuToggle);
 whenMenuItems_[1] = MenuItem("whenNotChanged", 0, null, menuToggle);
@@ -4478,7 +4478,7 @@ source, static/non-static this decl block's own children get emitted
 into) is round-tripped for real (fluid.decl_block_node.DeclBlockNode's
 own writeMap_ field, see its own doc comment) but has "no codegen
 meaning" here yet -- generated D has no header/source split at all for
-it to steer (see CLAUDE.md's Build-commands section on `-h`). Ported
+it to steer (see CONVENTIONS.md's Build-commands section on `-h`). Ported
 faithfully anyway: a project's own saved flags round-trip correctly
 even though this port's own code_writer.d doesn't consult them yet.}
                           {

@@ -9,7 +9,7 @@
  * a C-style `char* + tolen` buffer API (the original, `FL_PATH_MAX`-sized)
  * and a set of `_str` wrappers added later that return `std::string` for
  * C++ callers. This port only has the latter shape, using D `string`
- * (immutable, GC-owned) throughout -- the same substitution CLAUDE.md
+ * (immutable, GC-owned) throughout -- the same substitution CONVENTIONS.md
  * already documents for `Widget.label()`/`tooltip()`: the buffer-length
  * bookkeeping the C API needs has no D equivalent worth keeping.
  * Functions are also "does this filename look absolute" boolean-free --
@@ -67,7 +67,7 @@ import std.string : toStringz, indexOf;
 /// `{return c == '/';}`) on Linux, but `Fl_WinAPI_System_Driver::
 /// isdirsep()` (`{return c == '/' || c == '\\';}`) on Windows -- a real,
 /// separate override FLTK itself has, not a Linux-only detail this
-/// port skipped: confirmed by reading `~/Repositories/fltk`'s own
+/// port skipped: confirmed by reading FLTK's own
 /// `Fl_WinAPI_System_Driver.cxx`, both `filename_absolute()` and the
 /// `filename_relative()` helpers there scan for `\` as a separator too.
 /// This port has no per-platform driver-class split (matching every
@@ -97,7 +97,7 @@ private bool isDirSep(char c)
  * ("C:file.txt")` (a drive-relative path with no separator at all,
  * legal on Windows) correctly returns `"file.txt"`, not the whole
  * string including the drive letter. Getting this right matters for
- * real, not just theoretically: `samples/test/demo.d`'s own
+ * real, not just theoretically: `source/test/demo.d`'s own
  * `filenameName(args[0])` call silently returned the *entire* argv[0]
  * path unchanged on Windows before this fix (no `/` anywhere in a
  * normal `C:\...\demo.exe` argv[0]), which then fed into a
@@ -230,7 +230,7 @@ string filenameExpand(string from)
  * directory separator), fall through to the relative-path branch below,
  * and come back as `base ~ "/" ~ from` -- a duplicated, doubled path
  * exactly matching a real symptom seen on this port's Windows build
- * (`samples/test/demo.d`'s own menu-file lookup).
+ * (`source/test/demo.d`'s own menu-file lookup).
  */
 string filenameAbsolute(string from, string base = null)
 {
@@ -243,7 +243,7 @@ string filenameAbsolute(string from, string base = null)
     // Fl_WinAPI_System_Driver::filename_absolute()'s own "ha ha"-commented
     // line: base (usually getcwd(), which returns backslashes on Windows)
     // gets its separators normalized to '/' before building the result --
-    // from's own separators are left alone, matching upstream exactly.
+    // from's own separators are left alone, matching FLTK exactly.
     version (Windows)
     {
         import std.array : replace;

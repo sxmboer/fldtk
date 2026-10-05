@@ -1,7 +1,7 @@
 /*
  * Port of `FL/gl.h`'s own wrapper functions (`gl_color()`/`gl_font()`/
  * `gl_draw()`/etc -- built on the raw GL/GLX bindings in `fl.opengl`/
- * `fl.glx`) + `src/gl_draw.cxx` (FLTK 1.5.0, ~/Repositories/fltk).
+ * `fl.glx`) + `src/gl_draw.cxx` (FLTK 1.5.0).
  *
  * **Scope decision: texture-rectangle-based text rendering only, no
  * legacy fallback.** FLTK's own `gl_draw.cxx` supports two
@@ -55,7 +55,7 @@
  * `gl_draw()` calls back to back without an explicit `glRasterPos*()`
  * between them sees each one start from the *same* position rather
  * than advancing -- real callers (`gl_draw(str,x,y)`, matching
- * `samples/test/cube.d`'s own usage) are unaffected, since each call
+ * `source/test/cube.d`'s own usage) are unaffected, since each call
  * already sets its own raster position explicitly.
  *
  * `gl_rect()`/`gl_rectf()`/`gl_color()`/`gl_draw_image()` are simple,

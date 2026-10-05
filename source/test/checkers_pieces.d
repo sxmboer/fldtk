@@ -1,15 +1,15 @@
 /*
  * Checkers piece images for the Fast Light Tool Kit (FLTK) checkers
  * sample -- ported from Fluid-generated `test/checkers_pieces.h`/`.cxx`
- * (`~/Repositories/fltk/build/test/`, generated from `test/
+ * (FLTK's `build/test/`, generated from `test/
  * checkers_pieces.fl`'s `data ... {filename pixmaps/....png}` blocks).
  *
  * Each array below is the exact byte content of the corresponding real
- * PNG file (`~/Repositories/fltk/test/pixmaps/*.png`, also copied into
- * `samples/test/pixmaps/` in this repo for reference) -- generated
+ * PNG file (FLTK's `test/pixmaps/*.png`, also copied into
+ * `source/test/pixmaps/` in this repo for reference) -- generated
  * programmatically from those files rather than hand-transcribed from
  * FLTK's generated `.cxx`, matching this project's existing
- * `samples/test/bitmap.d`'s "transcribed verbatim" precedent for
+ * `source/test/bitmap.d`'s "transcribed verbatim" precedent for
  * `sorceressBits`, just script-generated instead of hand-typed given
  * the size (~27KB total across 4 files). Decoded via `fl.png_image.
  * PngImage` at runtime by `checkers.d` -- see that file's own

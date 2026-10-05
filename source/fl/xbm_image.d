@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_XBM_Image.H + src/Fl_XBM_Image.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk): Fl_XBM_Image, an X Bitmap (XBM) file reader.
+ * Ported from FL/Fl_XBM_Image.H + src/Fl_XBM_Image.cxx (FLTK 1.5.0): Fl_XBM_Image, an X Bitmap (XBM) file reader.
  * Milestone 3 of the fl.image port -- see fl.image's own top comment
  * for the overall staging.
  *

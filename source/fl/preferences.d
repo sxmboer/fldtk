@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Preferences.H + src/Fl_Preferences.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). Stores user settings (window sizes, recent-file
+ * Ported from FL/Fl_Preferences.H + src/Fl_Preferences.cxx (FLTK 1.5.0). Stores user settings (window sizes, recent-file
  * lists, etc.) between application runs, in a human-legible (but
  * intentionally undocumented/non-API) text file under the user's config
  * directory. Preferences are organized as a tree of named groups, each
@@ -48,13 +47,13 @@
  *    FLTK's raw entropy-gathering fallback (time + rand() + a stack
  *    address + hostname, only used when `dlopen("libuuid")` fails) --
  *    a cleaner, stronger standard-library alternative, matching
- *    CLAUDE.md's "check for a cleaner D stdlib alternative before
+ *    CONVENTIONS.md's "check for a cleaner D stdlib alternative before
  *    transliterating a raw C library call" convention.
  *  - **`Root`/file-access permission flags are `alias int`/`alias uint`
  *    plus manifest constants, not closed `enum`s** -- both are open
  *    bitmasks combined with `|`/tested with `&` throughout FLTK's
  *    own code (`root & CLEAR`, `root & CORE`, `flags | USER_WRITE_OK`),
- *    matching CLAUDE.md's established rule for this shape (same
+ *    matching CONVENTIONS.md's established rule for this shape (same
  *    treatment as `Align`/`Color`/`Font`/`When`/`Damage`).
  *  - **`Fl_Preferences::PreferencesNode`'s internal child-list is a plain,
  *    chronologically-ordered `PreferencesNode[]` D array, not FLTK's
@@ -100,7 +99,7 @@
  *    is a plain D `string` parameter already, so callers needing a
  *    dynamic name just call `std.format.format("File%d", i)` directly
  *    -- no wrapper needed, same category of C++-only-trick substitution
- *    CLAUDE.md's Callback note documents elsewhere.
+ *    CONVENTIONS.md's Callback note documents elsewhere.
  *  - **No copy constructor or `operator=` override.** `Preferences` is
  *    a `class` (D reference type, matching every other widget port),
  *    so plain assignment (`auto b = a;`) already reproduces FLTK's
@@ -141,7 +140,7 @@
  *    run during a later collection sweep, or (in a program that exits
  *    abruptly) not at all before the process ends. `~this()` is still
  *    ported, faithfully, as a best-effort fallback (guarded with
- *    `core.memory.GC.inFinalizer()`, matching CLAUDE.md's established
+ *    `core.memory.GC.inFinalizer()`, matching CONVENTIONS.md's established
  *    GC-finalizer-hazard pattern, since walking the `PreferencesNode` tree to
  *    write it touches other GC-managed objects that may already be
  *    finalized) -- but callers that actually need the data saved
@@ -176,7 +175,7 @@ import std.uuid : randomUUID;
 import std.format : format;
 
 // ---------------------------------------------------------------------
-// Root / file_access: open bitmasks (CLAUDE.md's alias+constants rule)
+// Root / file_access: open bitmasks (CONVENTIONS.md's alias+constants rule)
 // ---------------------------------------------------------------------
 
 alias Root = int;
@@ -1281,7 +1280,7 @@ class Preferences
     /// even constructed). Forwards to `rootNode`, previously
     /// `package(fl)`-only despite `RootNode.filename()`/`.root()`
     /// themselves already being public -- found as a real, reachable
-    /// gap via a `samples/test/preferences.fl`-vs-FLTK audit
+    /// gap via a `source/test/preferences.fl`-vs-FLTK audit
     /// (2026-09-02): its own `readPrefs()` needs exactly this to
     /// re-query the just-opened app's own resolved path/root (matching
     /// FLTK's own `app.filename(path, FL_PATH_MAX)` call), and had
@@ -1562,7 +1561,7 @@ unittest
     // `Preferences.filename()`: previously unreachable (`rootNode` was
     // `package(fl)`-only) despite `RootNode.filename()`/`.root()`
     // themselves already being public -- see this method's own doc
-    // comment for the `samples/test/preferences.fl` audit that found it.
+    // comment for the `source/test/preferences.fl` audit that found it.
     import std.file : tempDir, rmdirRecurse, exists, mkdirRecurse;
     import std.path : buildPath;
     import std.uuid : randomUUID;

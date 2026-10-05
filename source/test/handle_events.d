@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/handle_events.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh handle_events
+// D transliteration of FLTK's test/handle_events.cxx.
+// Build: rdmd buildsamples.d test handle_events
 import fl;
 import std.stdio : stderr;
 

@@ -1,14 +1,12 @@
-// D transliteration of FLTK's test/threads.cxx + test/threads.h
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh threads
+// D transliteration of FLTK's test/threads.cxx + test/threads.h.
+// Build: rdmd buildsamples.d test threads
 //
 // Notes on this transliteration:
 //  - threads.h exists purely so FLTK's *demo* programs can spawn a
 //    thread portably; it #ifdef-selects pthreads/Win32/Watcom. Per the
 //    batch instructions, Linux/pthread is this project's primary target
-//    (CLAUDE.md), so only that branch matters -- same approach
-//    samples/test/sudoku.d took picking ALSA over CoreAudio/Win32/X11-bell.
+//    (CONVENTIONS.md), so only that branch matters -- same approach
+//    source/test/sudoku.d took picking ALSA over CoreAudio/Win32/X11-bell.
 //    Rather than transliterate threads.h's `Fl_Thread`
 //    typedef/`fl_create_thread()` wrapper around a raw
 //    `pthread_create(..., Fl_Thread_Func*, void*)`, this file uses D's
@@ -17,7 +15,7 @@
 //    That also means `prime_func`'s `void*` "which terminal" argument
 //    disappears: each thread's Thread delegate just closes over the
 //    Terminal/Output it should use, the same function-pointer+void*
-//    -> capturing-delegate substitution CLAUDE.md documents for
+//    -> capturing-delegate substitution CONVENTIONS.md documents for
 //    Fl_Widget callbacks, applied here to Fl_Awake_Handler and
 //    fl_create_thread's Fl_Thread_Func alike.
 //  - Fl_Terminal is `fl.terminal.Terminal` (a real, complete port --

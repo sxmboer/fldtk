@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/animated.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh animated
+// D transliteration of FLTK's test/animated.cxx.
+// Build: rdmd buildsamples.d test animated
 import fl;
 import std.math : abs;
 

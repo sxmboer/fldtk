@@ -1,6 +1,5 @@
-// D transliteration of FLTK's examples/table-as-container.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh table-as-container
+// D transliteration of FLTK's examples/table-as-container.cxx.
+// Build: rdmd buildsamples.d examples table_as_container
 import fl;
 import std.format : format;
 import std.stdio : stderr;

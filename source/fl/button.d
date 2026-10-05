@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Button.H + src/Fl_Button.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk).
+ * Ported from FL/Fl_Button.H + src/Fl_Button.cxx (FLTK 1.5.0).
  *
  * Faithful port of value()/setonly()/shortcut()/downBox()/compact() and
  * the handle()/draw() logic, except:
@@ -107,7 +106,7 @@ class Button : Widget
      * (by-then-zeroed) object).
      *
      * Safe unconditionally, including during GC-driven finalization
-     * (see CLAUDE.md's GC-finalizer-hazard note and `Widget.~this()`'s
+     * (see CONVENTIONS.md's GC-finalizer-hazard note and `Widget.~this()`'s
      * own `clearWidgetPointer(this)` call for the established
      * precedent): `fl.core.removeTimeout()` and `pendingKeyRelease_`
      * both only touch this module's/`fl.core`'s own module-level

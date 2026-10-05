@@ -7,7 +7,7 @@
  * Deviations from FLTK, all deliberate:
  *
  *  - `callback_` is a D delegate (fl.widget.Callback = void
- *    delegate(Widget)), the same substitution CLAUDE.md documents for
+ *    delegate(Widget)), the same substitution CONVENTIONS.md documents for
  *    Fl_Callback elsewhere in this port -- no companion `void*
  *    user_data()`/`argument()` slot, since a delegate already closes
  *    over whatever context it needs. FLTK's `do_callback(Fl_Widget*,
@@ -158,7 +158,7 @@ struct MenuStyle
  * point, rather than needing it duplicated in each.
  *
  * Without this check, a menu array missing its trailing sentinel (e.g.
- * `samples/test/label.d`'s `Choice` dropdown) lets `MenuItem.next()`'s
+ * `source/test/label.d`'s `Choice` dropdown) lets `MenuItem.next()`'s
  * pointer walk read past the array's own end into unrelated memory,
  * corrupting a `MenuItem.text` string that can later crash `fl.draw`
  * with a `SIGSEGV` three call-levels away, nowhere near the actual
@@ -248,7 +248,7 @@ struct MenuItem
     /// way out to `labelfont_`/`labelcolor_` via that positional form.
     /// `user_data_` is dropped, same as the main constructor above (this
     /// port's `MenuItem` has no equivalent slot at all -- see
-    /// CLAUDE.md's callback-porting convention), so this lines up with
+    /// CONVENTIONS.md's callback-porting convention), so this lines up with
     /// FLTK's field order minus that one slot. `labelfont`/
     /// `labelsize`/`labelcolor` default to `0`, matching this struct's
     /// own documented field semantics (**not** FLTK's literal

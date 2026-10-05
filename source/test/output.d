@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/output.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh output
+// D transliteration of FLTK's test/output.cxx.
+// Build: rdmd buildsamples.d test output
 import fl;
 
 void main(string[] args)

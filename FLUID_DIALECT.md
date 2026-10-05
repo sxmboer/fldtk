@@ -2,17 +2,17 @@
 
 A reference for authoring or editing a `.fl` project file for this
 project's own Fluid port — `fluid/panels/*.fl`, `fluid/templates/*.fl`,
-and any `samples/*/*.fl`. It holds durable rules for the text itself;
+and any `source/test/*.fl` or `source/examples/*.fl`. It holds durable rules for the text itself;
 per-module implementation status lives in `PORTING.md`'s `## Fluid`
 section.
 
 For current implementation status (what's built, what's a known gap,
 file by file) see `PORTING.md`'s `## Fluid` section. For build/run
-commands (`fluid -c`, `rdmd fluid/buildfluid.d`, etc.) see `CLAUDE.md`.
+commands (`fluid -c`, `rdmd fluid/buildfluid.d`, etc.) see `CONVENTIONS.md`.
 
 ## The dialect pivot: `.fl` files contain literal D, not C++
 
-Upstream FLTK's own `.fl` files store `Fl_`-prefixed C++ type names and
+FLTK's own `.fl` files store `Fl_`-prefixed C++ type names and
 `code`/`code0`-`code3`/`callback` bodies full of real C++ (`o->foo()`,
 `Fl::bar()`, `FL_SOME_CONST`, C-style casts, `sprintf`/`printf`). This
 project's own `.fl` files use fldtk's own D class names directly
@@ -122,10 +122,10 @@ writeln(msg);} {selected
 
 A trailing flags group only gets its own line(s) if its own content
 genuinely needs them, never just because the *value before it* happened
-to be multi-line. (Real upstream Fluid's own `Code_Writer` does produce
+to be multi-line. (Real FLTK's Fluid's own `Code_Writer` does produce
 the second, worse shape — it's an inherited C++ habit with no reason to
 carry over here, since nothing depends on byte-for-byte matching
-upstream's own save format.)
+FLTK's own save format.)
 
 ## Two shapes of named Function
 
@@ -147,7 +147,7 @@ by `isCallbackShape()` in `code_writer.d`:
 
 - **`class Name : Base { ... }`** (a genuine base class) becomes a real
   D class. This is also where the biggest FLTK/C++ simplification lands:
-  upstream needs a `static` trampoline method forwarding to a real
+  FLTK needs a `static` trampoline method forwarding to a real
   virtual method purely because a C++ callback can't close over `this`;
   a D closure created inside a real method body already captures its
   enclosing instance, so the trampoline is simply gone — the

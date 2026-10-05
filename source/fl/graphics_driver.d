@@ -1,5 +1,5 @@
 /*
- * New port of FL/Fl_Graphics_Driver.H (FLTK 1.5.0, ~/Repositories/fltk).
+ * New port of FL/Fl_Graphics_Driver.H (FLTK 1.5.0).
  *
  * Deliberately minimal, and deliberately *not* the same "no polymorphic
  * hierarchy" call this port made for `fl.platform_x11`/`fl.draw`'s own
@@ -33,7 +33,7 @@
  * primitive fl_draw.H exposes, plus image caching, region/clip
  * bookkeeping, and font-metrics plumbing. Building all of that up front
  * with only one real consumer in view (SVG output) would be exactly the
- * kind of speculative scope CLAUDE.md warns against. This starts with
+ * kind of speculative scope CONVENTIONS.md warns against. This starts with
  * the smallest slice that lets one full primitive family (color +
  * filled/outline rects + lines + polygons) round-trip end to end through
  * a real subclass (`fl.svg_file_surface.SvgGraphicsDriver`) -- grow this
@@ -398,7 +398,7 @@ abstract class GraphicsDriver
  * this port is main-thread-only already (a single X `Display*`/GC
  * threaded through `fl.draw`'s own module-level state the same way),
  * so D's default thread-local storage is the correct, deliberate choice
- * here, not an oversight -- see CLAUDE.md's own note on `__gshared` vs.
+ * here, not an oversight -- see CONVENTIONS.md's own note on `__gshared` vs.
  * thread-local globals for when the *other* choice is required (genuine
  * cross-thread state, which this isn't).
  */

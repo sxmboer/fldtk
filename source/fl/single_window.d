@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Single_Window.H + src/Fl_Single_Window.cxx (FLTK
- * 1.5.0, ~/Repositories/fltk). FLTK's own doc comment: "This is
+ * 1.5.0). FLTK's own doc comment: "This is
  * the same as Fl_Window. However, it is possible that some
  * implementations will provide double-buffered windows by default.
  * This subclass can be used to force single-buffering."

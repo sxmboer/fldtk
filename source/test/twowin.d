@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/twowin.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh twowin
+// D transliteration of FLTK's test/twowin.cxx.
+// Build: rdmd buildsamples.d test twowin
 import fl;
 
 private Input b1, b2;

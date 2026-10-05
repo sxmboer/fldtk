@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Double_Window.H + src/Fl_Double_Window.cxx (FLTK
- * 1.5.0, ~/Repositories/fltk). FLTK's own doc comment: "provides a
+ * 1.5.0). FLTK's own doc comment: "provides a
  * double-buffered window. It will draw the window data into an
  * off-screen pixmap, and then copy it to the on-screen window."
  *

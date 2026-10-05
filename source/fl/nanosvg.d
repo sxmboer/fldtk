@@ -34,17 +34,17 @@
  * plainly marked as an altered/derived version, not the original nanosvg
  * distribution.
  *
- * Ported for fldtk (a D port of FLTK, ~/Repositories/fltk): FLTK's
+ * Ported for fldtk (a D port of FLTK): FLTK's
  * `Fl_SVG_Image` (`FL/Fl_SVG_Image.H` + `src/Fl_SVG_Image.cxx`) vendors this
- * exact library as source (`~/Repositories/fltk/nanosvg/nanosvg.h` +
+ * exact library as source (FLTK's `nanosvg/nanosvg.h` +
  * `nanosvgrast.h`, built via `src/nanosvg.cxx`), not a linked external
- * library -- no `find_package()`, unlike JPEG/PNG (see CLAUDE.md's
+ * library -- no `find_package()`, unlike JPEG/PNG (see CONVENTIONS.md's
  * "Deferred: external-library-backed features" section). This module
  * is the parser half (nanosvg.h);
  * `fl.nanosvg_rast` is the rasterizer half (nanosvgrast.h); `fl.svg_image`
  * is the `Fl_SVG_Image` glue on top of both.
  *
- * Deliberate simplifications vs. the C original (matching CLAUDE.md's "check
+ * Deliberate simplifications vs. the C original (matching CONVENTIONS.md's "check
  * for a cleaner D alternative" rule for allocation plumbing -- the algorithm
  * itself, the numeric/string parsing quirks, and the two faithfully-ported
  * FLTK oddities below are NOT touched):
@@ -75,7 +75,7 @@
  *    worth relying on); the extra field is a few bytes, not a real cost.
  *  - The XML parser's `void* ud` + separate callback function pointers
  *    become D delegates closing directly over the `NsvgParser` (matching
- *    CLAUDE.md's established "delegates over function-pointer+void*"
+ *    CONVENTIONS.md's established "delegates over function-pointer+void*"
  *    convention, e.g. `fl.widget`'s `Callback`).
  *  - `nsvgParseFromFile()` and `nsvgDuplicatePath()` are not ported --
  *    neither is called anywhere in `Fl_SVG_Image.cxx` (it reads the file
@@ -88,7 +88,7 @@
  *    `std.conv.to!float`/libc's locale-sensitive `atof()` -- FLTK's own
  *    comment explains why ("we roll our own... because the std library one
  *    uses locale and messes things up"). This is the opposite case from
- *    CLAUDE.md's usual "check for a cleaner D alternative" guidance: the
+ *    CONVENTIONS.md's usual "check for a cleaner D alternative" guidance: the
  *    custom parser exists for a specific, still-valid reason, so it's
  *    ported verbatim rather than swapped for a stdlib call.
  *  - `nsvg__parseXML()` mutates its input buffer in place (writing `\0`
@@ -2610,7 +2610,7 @@ unittest
 
 unittest
 {
-    // The FLTK-logo SVG fixture used by samples/examples/howto_simple_svg.d
+    // The FLTK-logo SVG fixture used by source/examples/howto_simple_svg.d
     // -- a real, non-trivial multi-subpath <path> (several disjoint glyph
     // outlines in one `d` attribute) plus a rect-shaped outer border,
     // exercising cubic beziers and multiple 'M' subpath restarts for real

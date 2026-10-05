@@ -11,7 +11,7 @@
 // without firing its own click callback, then starting a real
 // cross-window drag-and-drop (`fl.copy()` + `fl.dnd()`) carrying the
 // widget's type name as the payload -- the same XDND infrastructure
-// `samples/examples/howto_drag_and_drop.d` exercises. See
+// `source/examples/howto_drag_and_drop.d` exercises. See
 // `fluid.canvas.ProjectCanvas.handle()`'s `Event.paste` case for the
 // receiving side.
 //

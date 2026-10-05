@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/button.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh button
+// D transliteration of FLTK's test/button.cxx.
+// Build: rdmd buildsamples.d test button
 import fl;
 import std.stdio : stdout;
 import core.stdc.stdlib : exit; /* how it was done in C++, but not really a clean way to do this in D

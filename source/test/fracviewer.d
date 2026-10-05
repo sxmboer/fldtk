@@ -1,22 +1,15 @@
-// D transliteration of FLTK's test/fracviewer.cxx + test/fracviewer.h
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
+// D transliteration of FLTK's test/fracviewer.cxx + test/fracviewer.h.
 // Shared module imported by fractals.d; not itself runnable (no
-// main()), so there's no standalone `./samples/build.sh fracviewer`
-// result -- see fractals.d for the driver and its build.sh invocation.
+// main()), so it has no standalone binary -- see fractals.d for the
+// driver and its build command.
 //
-// NOTE on FLTK mismatch: samples/MANIFEST.json lists test/mandelbrot.h
-// among this program's FLTK sources, but that header belongs to a
-// *different*, Fluid-generated test program ("mandelbrot", already
-// `excluded` in MANIFEST.json for exactly that reason -- see
-// samples/README.md's excluded-programs section) and has nothing to do
-// with fracviewer.cxx or fractals.cxx. The real fracviewer.cxx/.h is
-// "AGV" (Philip Winston's generic GLUT scene viewer, see the file
-// banner ported below as a doc comment) -- free functions plus
-// module-global camera state implementing polar-orbit and first-person
-// "flying" navigation, driven by GLUT mouse/motion/keyboard callbacks
-// and an idle function. mandelbrot.h is not ported here at all -- it
-// isn't part of this program.
+// fracviewer.cxx/.h is "AGV" (Philip Winston's generic GLUT scene
+// viewer, see the file banner ported below as a doc comment) -- free
+// functions plus module-global camera state implementing polar-orbit
+// and first-person "flying" navigation, driven by GLUT
+// mouse/motion/keyboard callbacks and an idle function. It has nothing
+// to do with test/mandelbrot.h, which belongs to a different,
+// Fluid-generated program.
 //
 // fldtk has real OpenGL/GLU/GLUT bindings (`fl.opengl`/`fl.glu`/
 // `fl.glut`, plus a real `fl.gl_window`) -- every gl*/glu*/glut* call
@@ -32,7 +25,7 @@
 //
 // Invented/adjusted vs. a byte-for-byte transliteration:
 //  - MovementType is a closed 2-value tag set (`typedef enum { FLYING,
-//    POLAR }`), so per CLAUDE.md it becomes a real D enum
+//    POLAR }`), so per CONVENTIONS.md it becomes a real D enum
 //    (`flying`/`polar`) rather than an alias+constants pair. moveMode
 //    itself stays plain `int` (not MovementType) because
 //    agvSwitchMoveMode is registered directly as a GLUT menu callback

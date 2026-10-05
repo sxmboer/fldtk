@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Tree.H + src/Fl_Tree.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). A FlGroup-derived hierarchical list/browser of
+ * Ported from FL/Fl_Tree.H + src/Fl_Tree.cxx (FLTK 1.5.0). A FlGroup-derived hierarchical list/browser of
  * TreeItems, with vertical/horizontal scrollbars, open/close subtrees,
  * several selection modes, and keyboard navigation.
  *
@@ -20,7 +19,7 @@
  *  - **Path-taking overloads return `string`, not `char*`+`len`.**
  *    `item_pathname(char*, int, item)` becomes `itemPathname(item)`
  *    returning a plain `string` -- the usual "D string over
- *    caller-managed buffer" substitution `CLAUDE.md` documents for
+ *    caller-managed buffer" substitution `CONVENTIONS.md` documents for
  *    `Widget.label()`/etc. `parse_path()`/`free_path()` (FLTK's
  *    manual `char**` splitting with matching manual frees) becomes a
  *    private, pure `parsePath()` returning `string[]`, no explicit

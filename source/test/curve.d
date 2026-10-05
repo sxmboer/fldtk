@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/curve.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh curve
+// D transliteration of FLTK's test/curve.cxx.
+// Build: rdmd buildsamples.d test curve
 import fl;
 
 double[9] args = [20, 20, 50, 200, 100, 20, 200, 200, 0];

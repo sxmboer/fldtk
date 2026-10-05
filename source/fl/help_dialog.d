@@ -1,7 +1,7 @@
 /*
  * Ported from FL/Fl_Help_Dialog.H + src/Fl_Help_Dialog.cxx (FLTK
- * 1.5.0, ~/Repositories/fltk). Milestone 3 of the fl.help_view port
- * (see PORTING.md's row for that module and CLAUDE.md's module map).
+ * 1.5.0). Milestone 3 of the fl.help_view port
+ * (see PORTING.md's row for that module).
  *
  * A small, self-contained help browser window: a toolbar (Back/
  * Forward buttons, smaller/larger text-size buttons, a find field)
@@ -19,7 +19,7 @@
  *    instance method -- needed only because `Fl_Callback` is a plain
  *    C function pointer. A D delegate already closes over `this`
  *    directly, so each pair collapses into one closure, matching
- *    `fl.file_chooser`'s identical simplification and CLAUDE.md's
+ *    `fl.file_chooser`'s identical simplification and CONVENTIONS.md's
  *    "Callbacks are D delegates" convention. Not a behavior change --
  *    it's exactly the boilerplate the delegate substitution exists to
  *    eliminate.

@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/grid_alignment.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh grid_alignment
+// D transliteration of FLTK's test/grid_alignment.cxx.
+// Build: rdmd buildsamples.d test grid_alignment
 import fl;
 
 // This program tests several different alignment features of Fl_Grid.

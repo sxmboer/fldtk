@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/grid_buttons.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh grid_buttons
+// D transliteration of FLTK's test/grid_buttons.cxx.
+// Build: rdmd buildsamples.d test grid_buttons
 
 // Q: How to achieve a spaced out layout?
 // https://groups.google.com/g/fltkgeneral/c/haet7hOQR0g

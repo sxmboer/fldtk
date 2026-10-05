@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/color_chooser.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh color_chooser
+// D transliteration of FLTK's test/color_chooser.cxx.
+// Build: rdmd buildsamples.d test color_chooser
 import fl;
 import std.format : format;
 import std.stdio : writefln;
@@ -116,7 +115,7 @@ void main(string[] args)
 
     // FLTK parses argc/argv here to pick an X11 visual (Fl::args/
     // Fl::visual/Fl::own_colormap); dropped along with argc/argv (see
-    // samples/README.md and test/button.cxx's precedent).
+    // source/test/README.md and test/button.cxx's precedent).
 
     window.show(args);
     fl.run();

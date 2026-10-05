@@ -18,7 +18,7 @@
  * WGL-backed Windows one equally. Wayland's GL story is EGL-based and
  * genuinely different, so it's out of scope until this port has a
  * Wayland driver at all; Cocoa is out of scope like the rest of this
- * port's macOS-untested code (see `CLAUDE.md`'s own "Platform scope"
+ * port's macOS-untested code (see `CONVENTIONS.md`'s own "Platform scope"
  * section).
  *
  * `extern (System)` rather than `extern (C)`: real `GL/gl.h` declares
@@ -368,6 +368,6 @@ void glLineStipple(GLint factor, GLushort pattern);
 // Rectangles as filled quads, GLfloat coordinates (fl.gl_graphics_driver)
 void glRectf(GLfloat x1, GLfloat y1, GLfloat x2, GLfloat y2);
 
-// 3-component vertex from an array pointer (samples/test/cube.d's own
+// 3-component vertex from an array pointer (source/test/cube.d's own
 // v3f() helper -- FLTK's test/cube.cxx calls this directly too).
 void glVertex3fv(const(GLfloat)* v);

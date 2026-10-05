@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Image.H + src/Fl_Image.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk): Fl_Image, the base class for image caching,
+ * Ported from FL/Fl_Image.H + src/Fl_Image.cxx (FLTK 1.5.0): Fl_Image, the base class for image caching,
  * scaling, and drawing, and Fl_RGB_Image, the full-color (1-4 channel)
  * image subclass -- both live in the same FLTK file, so they stay
  * together here too (FLTK's own separate FL/Fl_RGB_Image.H is only
@@ -13,7 +12,7 @@
  * color-table decoding first. Fl_Pixmap (Milestone 2) and the XBM/XPM/
  * PNM file readers (Milestone 3) build on this. JPEG/PNG/SVG (real
  * external-library codecs) were deliberately out of scope for this
- * pass -- see CLAUDE.md's "Deferred: external-library-backed features"
+ * pass -- see CONVENTIONS.md's "Deferred: external-library-backed features"
  * section. **Correction: JPEG, PNG, and SVG are all done now** (`fl.
  * jpeg_image`, `fl.png_image`, `fl.svg_image` -- see PORTING.md's own
  * rows for each); no external-codec gap remains for `fl.image` itself.
@@ -42,7 +41,7 @@
  *    (a caller-supplied compile-time literal array is just as GC-safe
  *    as one this port allocates itself), so the C-memory-ownership
  *    distinction alloc_array exists to track is moot, same substitution
- *    CLAUDE.md documents for Widget.label()'s COPIED_LABEL flag. This
+ *    CONVENTIONS.md documents for Widget.label()'s COPIED_LABEL flag. This
  *    also collapses FLTK's two RGB constructors (a raw-pointer one
  *    with no bounds checking, and a bits_length-checked one) into a
  *    single constructor -- a D slice already carries its own length,
@@ -53,7 +52,7 @@
  *    resource right away, matching FLTK's immediate-release
  *    intent) but does not itself destroy the D object -- the GC
  *    reclaims it normally. FLTK's `delete this` has no D
- *    equivalent that isn't its own separate hazard (see CLAUDE.md's
+ *    equivalent that isn't its own separate hazard (see CONVENTIONS.md's
  *    GC-finalizer note); nothing in this class's shape needs it either
  *    (an Image holds no references to other GC-managed objects the
  *    way Widget does).
@@ -78,7 +77,7 @@ class Image
     /// algorithm `RGBImage.copy(w,h)` (and so `draw()`'s own lazy
     /// resample, see that function's own doc comment) uses when
     /// resizing pixel data. A small closed set, so a real D `enum`
-    /// (matching CLAUDE.md's established "closed, non-combinable tag
+    /// (matching CONVENTIONS.md's established "closed, non-combinable tag
     /// sets become real D enums" convention -- same category as
     /// `Boxtype`/`Labeltype`, not the open bitmask sets that stay
     /// manifest constants), unlike FLTK's own plain C enum whose
@@ -626,7 +625,7 @@ class RGBImage : Image
      * single `d()`-channel loop rather than FLTK's 4 near-
      * identical hand-unrolled `switch(D)` cases (1/2/3/4-channel) --
      * same output, no duplicated bodies to keep in sync; a cleaner D
-     * alternative CLAUDE.md's porting conventions ask to prefer when
+     * alternative CONVENTIONS.md's porting conventions ask to prefer when
      * one doesn't change behavior.
      */
     private RGBImage copyScaleDown2h() const

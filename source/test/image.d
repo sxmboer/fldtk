@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/image.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh image
+// D transliteration of FLTK's test/image.cxx.
+// Build: rdmd buildsamples.d test image
 import fl;
 import xlib = fl.xlib;
 import platformX11 = fl.platform_x11;
@@ -103,7 +102,7 @@ void main(string[] args)
             if (!platformX11.fl_visual)
             {
                 import std.stdio : stderr;
-                // Each samples/test/*.d program is its own standalone
+                // Each source/test/*.d program is its own standalone
                 // binary (unlike FLTK's `#include "list_visuals.cxx"`
                 // textual inlining, which has no D equivalent via
                 // `import`), so this points at the separate `list_visuals`

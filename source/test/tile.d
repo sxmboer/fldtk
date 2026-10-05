@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/tile.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh tile
+// D transliteration of FLTK's test/tile.cxx.
+// Build: rdmd buildsamples.d test tile
 //
 // FLTK picks between two whole demos with #if 0/#else (the "Sample
 // code from Fl_Tile documentation" branch is dead, #if 0'd out) and gates

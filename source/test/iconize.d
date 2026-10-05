@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/iconize.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh iconize
+// D transliteration of FLTK's test/iconize.cxx.
+// Build: rdmd buildsamples.d test iconize
 import fl;
 
 void main(string[] args)

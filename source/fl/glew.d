@@ -1,6 +1,6 @@
 /*
  * Bindings for the ~26 modern (GL 2.0+/3.0+) core-profile functions
- * `samples/examples/OpenGL3test.d`/`OpenGL3_glut_test.d` need (shader/
+ * `source/examples/OpenGL3test.d`/`OpenGL3_glut_test.d` need (shader/
  * program creation & introspection, VAO/VBO management, vertex-
  * attribute/uniform setup) -- infrastructure, not a port of an FLTK
  * header, same role `fl.opengl`/`fl.glx`/`fl.glu` play for their own

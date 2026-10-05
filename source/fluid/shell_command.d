@@ -10,7 +10,7 @@
  * ShellFlags`, reused directly, not redefined here).
  *
  * `ShellCondition`/`ToolStore` are real D `enum`s (closed,
- * non-combinable tag sets, matching CLAUDE.md's own porting
+ * non-combinable tag sets, matching CONVENTIONS.md's own porting
  * convention) -- FLTK's own plain `enum { ALWAYS, NEVER, ... }`/
  * `enum class Tool_Store`. `ToolStore` lives here rather than a shared
  * module since `ShellCommand` is its only real consumer in this port
@@ -140,7 +140,7 @@ final class ShellCommand
     /// should appear in the live `&Shell` menu at all right now.
     /// Platform conditions are compile-time (`version()`), matching
     /// this port's own primary(Linux)/secondary(Windows) platform scope
-    /// (see root `CLAUDE.md`) -- macOS is `false` throughout, this
+    /// (see root `CONVENTIONS.md`) -- macOS is `false` throughout, this
     /// port's own explicitly out-of-scope-for-testing target.
     bool isActive() const
     {

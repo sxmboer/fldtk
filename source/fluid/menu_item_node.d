@@ -9,7 +9,7 @@
  * `MenuItem[]` array literal + `.menu(arr)` call, not a normal widget
  * subtree -- see `code_writer.d`'s `writeMenuOwnerNode()`, grounded against
  * the real generated `menu_menu[]` array in
- * `~/Repositories/fltk/build/test/inactive.cxx`).
+ * FLTK's `build/test/inactive.cxx`).
  */
 module fluid.menu_item_node;
 

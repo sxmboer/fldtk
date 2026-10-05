@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_SVG_File_Surface.H + src/drivers/SVG/
- * Fl_SVG_File_Surface.cxx (FLTK 1.5.0, ~/Repositories/fltk).
+ * Fl_SVG_File_Surface.cxx (FLTK 1.5.0).
  *
  * **Scope (updated 2026-09-22, third pass)**: FLTK's `Fl_SVG_
  * Graphics_Driver` overrides ~35 `Fl_Graphics_Driver` virtuals. This

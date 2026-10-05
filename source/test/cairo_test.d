@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/cairo_test.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh cairo_test
+// D transliteration of FLTK's test/cairo_test.cxx.
+// Build: rdmd buildsamples.d test cairo_test
 //
 // FLTK is entirely conditional on FLTK_HAVE_CAIRO (a CMake option);
 // fldtk has no Cairo bindings/support at all yet, so this transliterates

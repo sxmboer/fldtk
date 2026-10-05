@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Input_.H + src/Fl_Input_.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). Fl_Input_ is the virtual base class below
+ * Ported from FL/Fl_Input_.H + src/Fl_Input_.cxx (FLTK 1.5.0). Fl_Input_ is the virtual base class below
  * Fl_Input -- all the text-buffer/undo/selection/scrolling logic, minus
  * handle()/draw() themselves (those live in fl.input, mirroring
  * FLTK's split).
@@ -22,7 +21,7 @@
  * treatment: `Fl_Input_Undo_Action::undobuffer` (a malloc'd byte array
  * with manual resizing) becomes a plain `string` slice/concatenation
  * too, and `Fl_Input_Undo_Action_List` (a hand-grown pointer array)
- * becomes a plain `UndoAction[]` used as a stack. See CLAUDE.md's
+ * becomes a plain `UndoAction[]` used as a stack. See CONVENTIONS.md's
  * "check for a cleaner D stdlib alternative" porting convention -- this
  * is that principle applied at buffer-ownership granularity, not just
  * to individual libc calls.
@@ -78,7 +77,7 @@
  *    class members, genuinely shared across *every* Fl_Input_ instance
  *    process-wide) map to module-level D globals (upDownPos_/
  *    wasUpDown_) here, matching the fl.slider `offcenter`/fl.roller
- *    `ipos` precedent CLAUDE.md documents. `l_secret` (FLTK: a
+ *    `ipos` precedent CONVENTIONS.md documents. `l_secret` (FLTK: a
  *    `static int` at file scope in Fl_Input_.cxx, likewise genuinely
  *    shared) becomes module-level `lSecret_` for the same reason.
  */

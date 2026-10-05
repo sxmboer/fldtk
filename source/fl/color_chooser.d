@@ -1,6 +1,6 @@
 /*
  * Ported from FL/Fl_Color_Chooser.H + src/Fl_Color_Chooser.cxx (FLTK
- * 1.5.0, ~/Repositories/fltk). A standard RGB color chooser: a "hue
+ * 1.5.0). A standard RGB color chooser: a "hue
  * box" (click/drag to pick hue+saturation, or a circular wheel),
  * a vertical brightness slider, and three numeric fields that can show
  * rgb/byte/hex/hsv values via a dropdown. Plus `colorChooser()`,
@@ -25,7 +25,7 @@
  *    `hueboxIs_`/`valueboxIv_`), not per-instance fields -- matching
  *    the established "genuinely shared C++ function-local static"
  *    precedent already documented for `fl.slider`'s `offcenter` and
- *    `fl.roller`'s `ipos` (`CLAUDE.md`'s porting-conventions section):
+ *    `fl.roller`'s `ipos` (`CONVENTIONS.md`'s porting-conventions section):
  *    faithfully reproduce the sharing rather than silently making it
  *    per-instance, even though in practice a single `ColorChooser`
  *    (and therefore a single live `HueBox`/`ValueBox` pair) is the
@@ -336,7 +336,7 @@ private final class ChooserValueInput : ValueInput
         // owner_ isn't assigned until after super()'s constructor body
         // finishes, but that body's own valueDamage() call already
         // dispatches virtually to this override (D resolves the vtable
-        // from the start of construction, unlike C++ -- see CLAUDE.md's
+        // from the start of construction, unlike C++ -- see CONVENTIONS.md's
         // "D also does not build up the vtable progressively during
         // construction" note, first hit by fl.table.Table). Guard against
         // that not-yet-constructed window.

@@ -1,7 +1,5 @@
-// D transliteration of FLTK's examples/cairo-draw-x.cxx
-// (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh cairo-draw-x
+// D transliteration of FLTK's examples/cairo-draw-x.cxx.
+// Build: rdmd buildsamples.d examples cairo_draw_x
 //
 // Simple demo of drawing an "X" in Cairo (antialiased lines).
 //

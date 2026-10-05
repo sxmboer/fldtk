@@ -1,5 +1,5 @@
 /*
- * Ported from FL/Enumerations.H (FLTK 1.5.0, ~/Repositories/fltk).
+ * Ported from FL/Enumerations.H (FLTK 1.5.0).
  *
  * Only the subset needed by fl.widget so far is ported; the rest of
  * Enumerations.H (cursors, orientation, fd-watch flags, etc.) will be
@@ -20,7 +20,7 @@ module fl.enumerations;
 //
 // Ported from Enumerations.H, but reporting *fldtk's own* version
 // (1.0.0), not the FLTK release it happens to be ported from at any
-// given time (currently 1.5.0, tracked separately -- see CLAUDE.md's
+// given time (currently 1.5.0, tracked separately -- see CONVENTIONS.md's
 // "Reference source" section and `fltk_version.dat` in the FLTK
 // checkout). **Corrected 2026-09-04** (user-reported: `test/fltk-
 // versions.d` looked "inconsistent" against fldtk's and Fluid's own
@@ -680,7 +680,7 @@ enum : EventState
     /// FL_COMMAND/FL_CONTROL are platform aliases FLTK
     /// (FL/platform_types.h): on X11/Wayland/Windows FL_COMMAND is
     /// FL_CTRL and FL_CONTROL is FL_META; only macOS swaps them. Linux
-    /// X11/Wayland is this port's primary target (see CLAUDE.md), so
+    /// X11/Wayland is this port's primary target (see CONVENTIONS.md), so
     /// that's the only mapping ported.
     stateCommand = stateCtrl,
     stateControl = stateMeta,
@@ -818,7 +818,7 @@ enum ContrastMode
 /// Ported from `Fl_Contrast_Function` (`typedef Fl_Color
 /// (Fl_Contrast_Function)(Fl_Color, Fl_Color, int, int);`) -- a D
 /// delegate rather than a bare function pointer, this port's usual
-/// substitution (see CLAUDE.md's "Callbacks are D delegates" porting
+/// substitution (see CONVENTIONS.md's "Callbacks are D delegates" porting
 /// convention) even though FLTK's own `Fl_Contrast_Function` has no
 /// `void*` user-data slot to motivate it either way; kept for
 /// consistency and so a caller's custom function can still close over

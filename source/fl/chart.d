@@ -1,6 +1,5 @@
 /*
- * Ported from FL/Fl_Chart.H + src/Fl_Chart.cxx (FLTK 1.5.0,
- * ~/Repositories/fltk). FLTK's own doc comment: "displays simple
+ * Ported from FL/Fl_Chart.H + src/Fl_Chart.cxx (FLTK 1.5.0). FLTK's own doc comment: "displays simple
  * charts. It is provided for Forms compatibility."
  *
  * Faithful, complete port of the data-management API (add()/insert()/

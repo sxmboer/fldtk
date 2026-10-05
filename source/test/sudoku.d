@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/sudoku.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh sudoku
+// D transliteration of FLTK's test/sudoku.cxx.
+// Build: rdmd buildsamples.d test sudoku
 //
 // Notes on this transliteration:
 //  - Fl_Sys_Menu_Bar/Fl_Menu_Item (SysMenuBar/MenuItem), Fl_Help_Dialog
@@ -11,13 +10,13 @@
 //    below.
 //  - FLTK's Fl_Menu_Item callback is a function pointer plus a
 //    void* user_data (here, ASCII '0'-'3' difficulty strings decoded
-//    with atoi()); per CLAUDE.md's callback convention this becomes a
+//    with atoi()); per CONVENTIONS.md's callback convention this becomes a
 //    D delegate that just captures the difficulty level directly,
 //    dropping the user_data/atoi indirection entirely.
 //  - SudokuSound is transliterated against the ALSA branch only
 //    (FLTK also has CoreAudio/Win32/X11-bell branches selected by
 //    #ifdef) since Linux is this project's primary target (see
-//    CLAUDE.md); no ALSA bindings exist in fldtk yet, so the snd_pcm_*
+//    CONVENTIONS.md); no ALSA bindings exist in fldtk yet, so the snd_pcm_*
 //    calls are kept verbatim but wrapped in version(none) so this
 //    sample still compiles -- flip to version(all) once ALSA bindings
 //    exist.

@@ -1,6 +1,5 @@
 /*
- * Port of `src/drivers/GDI/Fl_GDI_Graphics_Driver*.cxx` (FLTK 1.5.0,
- * ~/Repositories/fltk): the base class plus `_rect.cxx`/`_color.cxx`/
+ * Port of `src/drivers/GDI/Fl_GDI_Graphics_Driver*.cxx` (FLTK 1.5.0): the base class plus `_rect.cxx`/`_color.cxx`/
  * `_arci.cxx`/`_line_style.cxx`/`_vertex.cxx`. See `fl.platform_win32`'s
  * own module comment for the window/event-loop half this pairs with,
  * and `fl.graphics_driver`'s doc comment for the dispatch model
@@ -225,7 +224,7 @@ class GdiGraphicsDriver : GraphicsDriver
     /// `origins`/`depth` pair -- a growable D array instead of FLTK's
     /// fixed 10-deep `POINT[]` plus overflow warning, matching this
     /// port's usual "GC makes manual capacity management unnecessary"
-    /// precedent (see `CLAUDE.md`) rather than replicating the fixed-size
+    /// precedent (see `CONVENTIONS.md`) rather than replicating the fixed-size
     /// stack.
     private POINT[] originStack_;
 

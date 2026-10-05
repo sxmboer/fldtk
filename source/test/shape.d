@@ -1,6 +1,5 @@
-// D transliteration of FLTK's test/shape.cxx (~/Repositories/fltk).
-// Part of the samples/ contract -- see samples/README.md.
-// Check: ./samples/build.sh shape
+// D transliteration of FLTK's test/shape.cxx.
+// Build: rdmd buildsamples.d test shape
 //
 // Tiny OpenGL demo, using the real `fl.gl_window.GlWindow` port of
 // Fl_Gl_Window. gl*() calls keep their FLTK C names verbatim

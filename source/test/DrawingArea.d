@@ -1,8 +1,6 @@
-// D transliteration of FLTK's test/mandelbrot.cxx + test/mandelbrot.h
-// (~/Repositories/fltk). Part of the samples/ contract -- see
-// samples/README.md.
+// D transliteration of FLTK's test/mandelbrot.cxx + test/mandelbrot.h.
 //
-// mandelbrot_ui.fl (Fluid-generated -- see samples/test/generated/
+// mandelbrot_ui.fl (Fluid-generated -- see source/test/generated/
 // mandelbrot_ui.d once built) provides the `DrawingWindow` class's
 // makeWindow() only -- see that .fl file's own top comment for the
 // full split. This file provides everything FLTK's own

@@ -186,12 +186,12 @@ private final class MenuLevelWindow : MenuWindow
     /// certainly `it.measure()`'s own text-height result (`fl.xft`'s
     /// simple Xft metrics vs a Cairo+Pango reference build's more
     /// generous line metrics), not this function -- the same
-    /// documented, deliberately-not-chased rendering gap CLAUDE.md's
+    /// documented, deliberately-not-chased rendering gap CONVENTIONS.md's
     /// build-config note already covers for antialiasing/text shaping.
     /// `menuLinespacing`'s default is left alone rather than
     /// compensating for that gap with an unrelated knob; revisit once
     /// `fl.xft` is replaced with Pango (already the agreed future
-    /// direction, see CLAUDE.md's "Where this port intentionally
+    /// direction, see CONVENTIONS.md's "Where this port intentionally
     /// exceeds FLTK").
     int rowHeight() const
     {
@@ -1124,7 +1124,7 @@ private final class PopupEngine
         // Leave global construction state clean for whatever the
         // caller does next -- FlGroup.current() would otherwise still
         // point at a just-destroyed level window (see the Window
-        // constructor's own implicit begin(), and CLAUDE.md's note on
+        // constructor's own implicit begin(), and CONVENTIONS.md's note on
         // destroy() wiping an object's fields immediately).
         FlGroup.current(null);
         return picked;
