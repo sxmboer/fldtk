@@ -15,7 +15,7 @@
  * (some already added for fl.light_button, the rest new here).
  *
  * handleAt()'s Fl_Widget_Tracker "was `this` deleted mid-callback?"
- * guards are ported now too (fl.widget_tracker.WidgetTracker), matching
+ * guards are ported too (fl.widget_tracker.WidgetTracker), matching
  * FLTK exactly: FL_PUSH's handle_push() call and each of
  * FL_KEYBOARD's four arrow-direction handle_push()/handle_drag() calls
  * are guarded, but FL_DRAG's/FL_RELEASE's own handle_drag()/
@@ -338,34 +338,147 @@ class Slider : Valuator
         }
     }
 
+    /// Formats a tick value as a short label: "%g" for |v| >= 1, "%.3g"
+    /// without the leading "0" for |v| < 1 (".5", not "0.5").
+    private static string tickLabel(double v)
+    {
+        import std.format : format;
+        import std.math : abs;
+        if (abs(v) >= 1) return format("%g", v);
+        string t = format("%.3g", v);
+        bool neg = t.length > 0 && t[0] == '-';
+        string digits = neg ? t[1 .. $] : t;
+        while (digits.length > 1 && digits[0] == '0') digits = digits[1 .. $];
+        return neg ? "-" ~ digits : digits;
+    }
+
+    /// Draws tick marks at round-number intervals (multiples of 1, 2 or 5
+    /// times a power of ten) no closer than about half the slider size
+    /// `s`; every few ticks is longer and labeled with its value. Ported
+    /// from Fl_Slider::draw_ticks().
     protected void drawTicks(const(Rect) r, int s)
     {
-        if (ticks_ == ticksNone || numTicks_ == 0) return;
+        import std.math : abs;
 
-        fl_color(activeR() ? foregroundColor : inactiveColor);
-        int n = numTicks_;
-        double nd = cast(double)(n - 1);
-        for (int i = 0; i < n; i++)
+        if (ticks_ == ticksNone) return;
+
+        double A = minimum();
+        double B = maximum();
+        if (A > B) { double t = A; A = B; B = t; }
+        if (A == B) return;
+
+        int w = horizontal() ? r.w() : r.h();
+        if (w <= 0) return;
+
+        int minSpacing = s > 0 ? (s + 1) / 2 : 10;
+
+        // mul/div: value spacing between minor ticks; smallmod: minor ticks
+        // per long tick; nummod: minor ticks per labeled tick; powincr: ticks
+        // before the spacing grows tenfold (log scale only).
+        double mul = 1;
+        double div = 1;
+        int smallmod = 5;
+        int nummod = 10;
+        int powincr = 10000;
+
+        bool logScaled = scaleType_ == ScaleType.logScale && A > 0;
+        if (!logScaled)
         {
-            double v = i / nd;
-            if (scaleType_ == ScaleType.logScale)
-            {
-                v = positionToValue(1.0 - v);
-                v = (v - minimum()) / (maximum() - minimum());
-            }
+            double derivative = (B - A) * minSpacing / w;
+            if (derivative < step()) derivative = step();
+            if (derivative <= 0) return;
+            while (mul * 5 <= derivative) mul *= 10;
+            while (mul > derivative * 2 * div) div *= 10;
+            if (derivative * div > mul * 2) { mul *= 5; smallmod = 2; }
+            else if (derivative * div > mul) { mul *= 2; nummod = 5; }
+        }
+        else
+        {
+            while (mul * 5 <= A) mul *= 10;
+            while (mul > A * 2 * div) div *= 10;
+            powincr = 10;
+            double d = exp(minSpacing * log(B / A) / w * 3);
+            if (d >= 5) { mul *= 10; smallmod = nummod = 1; powincr = 1; }
+            else if (d >= 2) { mul *= 5; smallmod = powincr = nummod = 2; }
+        }
+
+        // Same mapping the knob uses, so ticks line up with it.
+        int tickOffset(double v) { return cast(int)(valueToPosition(v) * w + .5); }
+
+        // Long ticks span major1..major2; minor ticks the middle half.
+        int major1, major2;
+        if (horizontal())
+        {
+            major1 = (ticks_ & ticksAbove) ? r.y() : r.y() + r.h() / 2;
+            major2 = (ticks_ & ticksBelow) ? r.b() - 1 : r.y() + r.h() / 2;
+        }
+        else
+        {
+            major1 = (ticks_ & ticksLeft) ? r.x() : r.x() + r.w() / 2;
+            major2 = (ticks_ & ticksRight) ? r.r() - 1 : r.x() + r.w() / 2;
+        }
+        int mid = (major1 + major2) / 2;
+        int minor1 = (major1 + mid) / 2;
+        int minor2 = (major2 + mid) / 2;
+
+        Color fullColor = activeR() ? foregroundColor : inactiveColor;
+        Color lineColor = colorAverage(fullColor, color(), .667f);
+        fl_font(labelfont(), labelsize());
+        bool labelBelow = horizontal() ? (ticks_ & ticksBelow) != 0 : (ticks_ & ticksRight) != 0;
+
+        void drawTick(double v, bool major)
+        {
+            int t = tickOffset(v);
+            if (horizontal())
+                fl_yxline(r.x() + t, major ? major1 : minor1, major ? major2 : minor2);
+            else
+                fl_xyline(major ? major1 : minor1, r.y() + t, major ? major2 : minor2);
+        }
+        void drawTickLabel(double v)
+        {
+            string p = tickLabel(v);
+            int t = tickOffset(v);
+            double lx, ly;
             if (horizontal())
             {
-                int y1 = (ticks_ & ticksAbove) ? r.y() : r.y() + r.h() / 2;
-                int y2 = (ticks_ & ticksBelow) ? r.b() - 1 : r.y() + r.h() / 2;
-                fl_yxline(cast(int)(r.r() - v * (r.w() - 1) - 1), y1, y2);
+                lx = r.x() + t + 1;
+                if (lx + fl.draw.width(p) > r.r()) lx = r.x() + t - 1 - fl.draw.width(p); // keep inside
+                ly = labelBelow ? major2 + fl.draw.height() - fl.draw.descent() : major1 - fl.draw.descent() - 1;
             }
             else
             {
-                int x1 = (ticks_ & ticksLeft) ? r.x() : r.x() + r.w() / 2;
-                int x2 = (ticks_ & ticksRight) ? r.r() - 1 : r.x() + r.w() / 2;
-                fl_xyline(x1, cast(int)(r.b() - v * (r.h() - 1) - 1), x2);
+                lx = labelBelow ? major2 + 2 : major1 - 2 - fl.draw.width(p);
+                ly = r.y() + t + fl.draw.height() / 2 - fl.draw.descent();
+            }
+            fl_color(fullColor);
+            fl_draw(p, cast(int) lx, cast(int) ly);
+        }
+
+        for (int n = 0; ; n++)
+        {
+            if (n > powincr) { mul *= 10; n = (n - 1) / 10 + 1; }
+            double v = mul * n / div;
+            if (v >= abs(A) && v >= abs(B)) break;
+            bool major = (n % smallmod) == 0;
+            fl_color(major ? fullColor : lineColor);
+            if (v > A && v < B)
+            {
+                drawTick(v, major);
+                if (major && n % nummod == 0) drawTickLabel(v);
+            }
+            if (v != 0 && -v > A && -v < B)
+            {
+                drawTick(-v, major);
+                if (major && n % nummod == 0) drawTickLabel(-v);
             }
         }
+
+        // Always mark and label both ends of the range.
+        fl_color(fullColor);
+        drawTick(A, true);
+        drawTickLabel(A);
+        drawTick(B, true);
+        drawTickLabel(B);
     }
 
     /// Handles event within (x,y,w,h); lets subclasses (e.g.

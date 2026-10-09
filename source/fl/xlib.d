@@ -1403,9 +1403,8 @@ enum c_ulong AllPlanes = ~0UL;
 
 /// GC fill-style state used for `Fl_Bitmap`'s stipple-based draw
 /// (`XSetFillStyle()`/`FillStippled`/`FillSolid`, `X11/X.h`). Values
-/// verified against `/usr/include/X11/X.h` after a real, user-reported
-/// bug (`FillStippled` was `3` here, which is actually
-/// `FillOpaqueStippled` -- paints the GC's *background* pixel
+/// verified against `/usr/include/X11/X.h`. `FillStippled` is `2`;
+/// `3` is `FillOpaqueStippled` -- paints the GC's *background* pixel
 /// wherever a stipple bit is 0, instead of leaving it transparent,
 /// which is why a Bitmap rendered as a solid black square: foreground
 /// and background were both black in the normal case, and only

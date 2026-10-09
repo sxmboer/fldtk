@@ -849,7 +849,7 @@ abstract class Browser_ : FlGroup
                         if (selection_ !is null) l = itemNext(selection_);
                         while (l !is null)
                         {
-                            if (itemHeight(l) > 0) { selectOnly(l, when() & ~whenNotChanged); break; }
+                            if (itemHeight(l) > 0) { selectOnly(l, when()); break; }
                             l = itemNext(l);
                         }
                         return 1;
@@ -865,7 +865,7 @@ abstract class Browser_ : FlGroup
                         }
                         while (l !is null)
                         {
-                            if (itemHeight(l) > 0) { selectOnly(l, when() & ~whenNotChanged); break; }
+                            if (itemHeight(l) > 0) { selectOnly(l, when()); break; }
                             l = itemPrev(l);
                         }
                         return 1;
@@ -875,19 +875,27 @@ abstract class Browser_ : FlGroup
                 {
                     if (fl.core.eventKey() == enter || fl.core.eventKey() == kpEnter)
                     {
-                        selectOnly(l, when() & ~whenEnterKey);
-                        if (wp.deleted()) return 1;
-                        if (when() & whenEnterKey)
+                        if (selectOnly(l, when() & ~whenEnterKeyAlways))
                         {
-                            setChanged();
-                            doCallback(CallbackReason.changed);
+                            if (wp.deleted()) return 1;
+                            if (when() & whenEnterKey)
+                            {
+                                setChanged();
+                                doCallback(CallbackReason.changed);
+                            }
+                        }
+                        else
+                        {
+                            if (wp.deleted()) return 1;
+                            if ((when() & whenEnterKey) && (when() & whenNotChanged))
+                                doCallback(CallbackReason.reselected);
                         }
                         return 1;
                     }
                     else if (fl.core.eventKey() == ' ')
                     {
                         selection_ = l;
-                        select(l, !itemSelected(l), when() & ~whenEnterKey);
+                        select(l, !itemSelected(l), when());
                         return 1;
                     }
                     else if (fl.core.eventKey() == down)

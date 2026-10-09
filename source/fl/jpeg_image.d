@@ -63,13 +63,16 @@ class JpegImage : RGBImage
     }
 
     /// Loads a JPEG image from an in-memory buffer -- e.g. data embedded
-    /// at compile time via Fluid or similar. `name` is unused by this
-    /// port, matching `fl.bmp_image.BMPImage`'s/`fl.png_image.PngImage`'s
-    /// own equivalent constructors.
+    /// at compile time via Fluid or similar. A non-empty `name` adds the
+    /// decoded image to the shared-image pool under that name, as FLTK
+    /// does.
     this(string name, const(ubyte)[] data)
     {
+        import fl.shared_image : SharedImage;
+
         super(null, 0, 0);
         loadJpeg(data);
+        if (name.length && w() && h()) SharedImage.addNamed(name, this);
     }
 
     private void loadJpeg(const(ubyte)[] data)

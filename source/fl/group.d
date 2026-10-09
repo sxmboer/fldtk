@@ -25,15 +25,15 @@
  * with clipChildren() set actually confines its children to its own
  * bounds. drawFocus() is real too -- see fl.widget's drawFocus().
  *
- * handle(int)/navigation(int) are now ported too, backed by the
+ * handle(int)/navigation(int) are ported too, backed by the
  * event-state subsystem in fl.core (event_key()/event_state()/
  * belowmouse()/pushed()/event_inside(), plus focus()'s new oldFocus()
- * tracking). The private send()/navkey() helpers Fl_Group.cxx declares
+ * tracking). The send() (now public Widget.send()) and navkey() helpers Fl_Group.cxx declares
  * as file-local statics (not part of FL/Fl_Group.H's public surface)
  * are ported the same way, as private module-level functions here.
  * FL_PUSH's Fl_Widget_Tracker safety net (checks a child widget wasn't
  * destroyed by its own FL_PUSH handler/callback before touching it
- * again) is ported now too, via fl.widget_tracker.WidgetTracker -- see
+ * again) is ported too, via fl.widget_tracker.WidgetTracker -- see
  * that module's comment for why it needed a real D-appropriate
  * redesign rather than a straight translation.
  *
@@ -61,32 +61,6 @@ import fl.widget_tracker : WidgetTracker;
 import fl.window : Window;
 import fl.draw;
 import fl.core;
-
-/**
- * File-local helper in src/Fl_Group.cxx (not declared in FL/Fl_Group.H),
- * used throughout handle(): forwards event to o, translating e_x/e_y
- * into o's coordinate space first if o is a window (for back-compatible
- * subwindow support), and updating belowmouse() on a successful
- * FL_ENTER/FL_DND_ENTER.
- */
-private int send(Widget o, Event event)
-{
-    if (o.asWindow() is null) return o.handle(event);
-
-    if (event == Event.dndEnter || event == Event.dndDrag)
-        event = o.contains(fl.core.belowmouse()) ? Event.dndDrag : Event.dndEnter;
-
-    int savedX = fl.core.eX_; fl.core.eX_ -= o.x;
-    int savedY = fl.core.eY_; fl.core.eY_ -= o.y;
-    int ret = o.handle(event);
-    fl.core.eY_ = savedY;
-    fl.core.eX_ = savedX;
-
-    if (event == Event.enter || event == Event.dndEnter)
-        if (!o.contains(fl.core.belowmouse())) fl.core.belowmouse(o);
-
-    return ret;
-}
 
 /// File-local helper in src/Fl_Group.cxx: translates the current
 /// keystroke into a navigation direction (left/right/up/down), or 0 if
@@ -215,10 +189,10 @@ class FlGroup : Widget
 
         case Event.shortcut:
             foreach_reverse (o; rawArray())
-                if (o.takesEvents() && fl.core.eventInside(o) && send(o, Event.shortcut))
+                if (o.takesEvents() && fl.core.eventInside(o) && o.send(Event.shortcut))
                     return 1;
             foreach_reverse (o; rawArray())
-                if (o.takesEvents() && !fl.core.eventInside(o) && send(o, Event.shortcut))
+                if (o.takesEvents() && !fl.core.eventInside(o) && o.send(Event.shortcut))
                     return 1;
             if (fl.core.eventKey() == enter || fl.core.eventKey() == kpEnter)
                 return navigation(down);
@@ -231,9 +205,9 @@ class FlGroup : Widget
                 if (o.visible() && fl.core.eventInside(o))
                 {
                     if (o.contains(fl.core.belowmouse()))
-                        return send(o, Event.move);
+                        return o.send(Event.move);
                     fl.core.belowmouse(o);
-                    if (send(o, Event.enter)) return 1;
+                    if (o.send(Event.enter)) return 1;
                 }
             }
             fl.core.belowmouse(this);
@@ -246,8 +220,8 @@ class FlGroup : Widget
                 if (o.takesEvents() && fl.core.eventInside(o))
                 {
                     if (o.contains(fl.core.belowmouse()))
-                        return send(o, Event.dndDrag);
-                    else if (send(o, Event.dndEnter))
+                        return o.send(Event.dndDrag);
+                    else if (o.send(Event.dndEnter))
                     {
                         if (!o.contains(fl.core.belowmouse())) fl.core.belowmouse(o);
                         return 1;
@@ -263,7 +237,7 @@ class FlGroup : Widget
                 if (o.takesEvents() && fl.core.eventInside(o))
                 {
                     auto wp = WidgetTracker(o);
-                    if (send(o, Event.push))
+                    if (o.send(Event.push))
                     {
                         if (fl.core.pushed() !is null && wp.exists() && !o.contains(fl.core.pushed()))
                             fl.core.pushed(o);
@@ -278,19 +252,19 @@ class FlGroup : Widget
         {
             Widget o = fl.core.pushed();
             if (o is this) return 0;
-            if (o !is null) return send(o, event) != 0;
+            if (o !is null) return o.send(event) != 0;
             foreach_reverse (c; rawArray())
-                if (c.takesEvents() && fl.core.eventInside(c) && send(c, event))
+                if (c.takesEvents() && fl.core.eventInside(c) && c.send(event))
                     return 1;
             return 0;
         }
 
         case Event.mouseWheel:
             foreach_reverse (o; rawArray())
-                if (o.takesEvents() && fl.core.eventInside(o) && send(o, Event.mouseWheel))
+                if (o.takesEvents() && fl.core.eventInside(o) && o.send(Event.mouseWheel))
                     return 1;
             foreach_reverse (o; rawArray())
-                if (o.takesEvents() && !fl.core.eventInside(o) && send(o, Event.mouseWheel))
+                if (o.takesEvents() && !fl.core.eventInside(o) && o.send(Event.mouseWheel))
                     return 1;
             return 0;
 
@@ -330,7 +304,7 @@ class FlGroup : Widget
                 int j = i;
                 for (;;)
                 {
-                    if (a[j].takesEvents() && send(a[j], event)) return 1;
+                    if (a[j].takesEvents() && a[j].send(event)) return 1;
                     j++;
                     if (j >= rawChildren) j = 0;
                     if (j == i) break;

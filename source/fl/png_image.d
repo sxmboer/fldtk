@@ -650,13 +650,17 @@ class PngImage : RGBImage
     }
 
     /// Loads a PNG image from an in-memory buffer -- e.g. data embedded
-    /// at compile time via Fluid or similar. `namePng` is unused by this
-    /// port, matching `fl.bmp_image.BMPImage`'s own equivalent
-    /// constructor and its own doc comment on why.
+    /// at compile time via Fluid or similar. A non-empty `namePng` adds
+    /// the decoded image to the shared-image pool under that name, as
+    /// FLTK does, so `SharedImage.get(namePng)` (and an `<img src>` in a
+    /// `HelpView`) finds it.
     this(string namePng, const(ubyte)[] buffer)
     {
+        import fl.shared_image : SharedImage;
+
         super(null, 0, 0);
         loadPng(buffer);
+        if (namePng.length && w() && h()) SharedImage.addNamed(namePng, this);
     }
 
     private void loadPng(const(ubyte)[] data)
@@ -956,4 +960,21 @@ unittest
     assert(img.w() == 2 && img.h() == 2 && img.d() == 3);
     ubyte[] expected = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
     assert(img.array == expected);
+}
+
+unittest
+{
+    import fl.shared_image : SharedImage;
+
+    // A named in-memory PNG is added to the shared-image pool, as FLTK's
+    // `Fl_PNG_Image(name, buffer, size)` does; an unnamed one is not.
+    ubyte[] pixels = [255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255];
+    auto bytes = encodePngBytes(pixels, 2, 2);
+    auto img = new PngImage("embedded:/png_image_unittest.png", bytes);
+    auto found = SharedImage.find("embedded:/png_image_unittest.png");
+    assert(found !is null && found.w() == 2 && found.h() == 2);
+    found.release();
+
+    new PngImage(null, bytes);
+    assert(SharedImage.find("") is null);
 }

@@ -181,6 +181,152 @@ void loadPixmaps()
     pixmaps_["HelpView"] = pixmaps_["Fl_Help_View"];
 
     addSymbol("fd_zoom", &fdZoom, true);
+    addSymbol("fd_beaker", &fdBeaker, true);
+    addSymbol("fd_user", &fdUser, true);
+    addSymbol("fd_project", &fdProject, true);
+    addSymbol("fd_file", &fdFile, true);
+}
+
+/// Ported from `fd_beaker()` (`fluid/app/Snap_Action.cxx`) -- a small
+/// beaker, the symbol for a layout suite built into Fluid.
+private void fdBeaker(Color c)
+{
+    fl_color(cast(Color) 221);
+    beginPolygon();
+    vertex(-0.6, 0.2);
+    vertex(-0.9, 0.8);
+    vertex(-0.8, 0.9);
+    vertex(0.8, 0.9);
+    vertex(0.9, 0.8);
+    vertex(0.6, 0.2);
+    endPolygon();
+    fl_color(c);
+    beginLine();
+    vertex(-0.3, -0.9);
+    vertex(-0.2, -0.8);
+    vertex(-0.2, -0.2);
+    vertex(-0.9, 0.8);
+    vertex(-0.8, 0.9);
+    vertex(0.8, 0.9);
+    vertex(0.9, 0.8);
+    vertex(0.2, -0.2);
+    vertex(0.2, -0.8);
+    vertex(0.3, -0.9);
+    endLine();
+}
+
+/// Ported from `fd_user()` -- a user silhouette, the symbol for a
+/// user-preference storage location.
+private void fdUser(Color c)
+{
+    fl_color(cast(Color) 245);
+    beginComplexPolygon();
+    fl_arc(0.1, 0.9, 0.8, 0.0, 80.0);
+    fl_arc(0.0, -0.5, 0.4, -65.0, 245.0);
+    fl_arc(-0.1, 0.9, 0.8, 100.0, 180.0);
+    endComplexPolygon();
+    fl_color(c);
+    beginLine();
+    fl_arc(0.1, 0.9, 0.8, 0.0, 80.0);
+    fl_arc(0.0, -0.5, 0.4, -65.0, 245.0);
+    fl_arc(-0.1, 0.9, 0.8, 100.0, 180.0);
+    endLine();
+}
+
+/// Ported from `fd_project()` -- a document with a folded corner, the
+/// symbol for storage in the `.fl` project file.
+private void fdProject(Color c)
+{
+    import fl.enumerations : light2;
+
+    Color fc = light2;
+    fl_color(fc);
+    beginComplexPolygon();
+    vertex(-0.7, -1.0);
+    vertex(0.1, -1.0);
+    vertex(0.1, -0.4);
+    vertex(0.7, -0.4);
+    vertex(0.7, 1.0);
+    vertex(-0.7, 1.0);
+    endComplexPolygon();
+
+    fl_color(lighter(fc));
+    beginPolygon();
+    vertex(0.1, -1.0);
+    vertex(0.1, -0.4);
+    vertex(0.7, -0.4);
+    endPolygon();
+
+    fl_color(darker(c));
+    beginLoop();
+    vertex(-0.7, -1.0);
+    vertex(0.1, -1.0);
+    vertex(0.1, -0.4);
+    vertex(0.7, -0.4);
+    vertex(0.7, 1.0);
+    vertex(-0.7, 1.0);
+    endLoop();
+
+    beginLine();
+    vertex(0.1, -1.0);
+    vertex(0.7, -0.4);
+    endLine();
+}
+
+/// Ported from `fd_file()` -- a 3.5" floppy disk, the symbol for storage
+/// in an external file.
+private void fdFile(Color c)
+{
+    import fl.enumerations : light2, dark3;
+
+    Color fl = light2;
+    Color fc = dark3;
+    fl_color(fc);
+    beginPolygon(); // case
+    vertex(-0.9, -1.0);
+    vertex(0.9, -1.0);
+    vertex(1.0, -0.9);
+    vertex(1.0, 0.9);
+    vertex(0.9, 1.0);
+    vertex(-0.9, 1.0);
+    vertex(-1.0, 0.9);
+    vertex(-1.0, -0.9);
+    endPolygon();
+
+    fl_color(lighter(fl));
+    beginPolygon(); // slider
+    vertex(-0.7, -1.0);
+    vertex(0.7, -1.0);
+    vertex(0.7, -0.4);
+    vertex(-0.7, -0.4);
+    endPolygon();
+
+    beginPolygon(); // label
+    vertex(-0.7, 0.0);
+    vertex(0.7, 0.0);
+    vertex(0.7, 1.0);
+    vertex(-0.7, 1.0);
+    endPolygon();
+
+    fl_color(fc);
+    beginPolygon(); // slot
+    vertex(-0.5, -0.9);
+    vertex(-0.3, -0.9);
+    vertex(-0.3, -0.5);
+    vertex(-0.5, -0.5);
+    endPolygon();
+
+    fl_color(darker(c));
+    beginLoop();
+    vertex(-0.9, -1.0);
+    vertex(0.9, -1.0);
+    vertex(1.0, -0.9);
+    vertex(1.0, 0.9);
+    vertex(0.9, 1.0);
+    vertex(-0.9, 1.0);
+    vertex(-1.0, 0.9);
+    vertex(-1.0, -0.9);
+    endLoop();
 }
 
 /// Ported from `fluid::rsrcs::fd_zoom()` (`fluid/rsrcs/pixmaps.cxx`) --

@@ -23,9 +23,8 @@
  * fl_arc(double,double,double,double,double), for the pie/special-pie
  * wedges (draw_piechart()) -- see that function's own doc comment in
  * fl.draw for what it does and how it's simplified relative to
- * FLTK. Also promoted fl.draw's previously-private flBorderBox()
- * (backing the borderBox boxtype) to a public rectbound() -- this
- * is fl.chart's first caller of it as the standalone primitive
+ * FLTK. fl.draw's flBorderBox() (backing the borderBox boxtype) is public as
+ * rectbound() -- fl.chart is a caller of it as the standalone primitive
  * FLTK itself is (draw_barchart()/draw_horbarchart() call it
  * directly, not through a boxtype).
  */

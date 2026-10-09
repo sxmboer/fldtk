@@ -67,7 +67,7 @@
  * (`FL/Fl.H`, ported here as `glVisual()` rather than in `fl.core`, to
  * keep `fl.core` free of any GL-specific dependency) are real too, see
  * their own doc comments below. The software-simulated overlay
- * (`Fl_Gl_Overlay.cxx`) is real now too, see `fl.gl_window`'s own doc
+ * (`Fl_Gl_Overlay.cxx`) is real too, see `fl.gl_window`'s own doc
  * comment.
  */
 module fl.gl;

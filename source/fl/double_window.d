@@ -4,11 +4,8 @@
  * double-buffered window. It will draw the window data into an
  * off-screen pixmap, and then copy it to the on-screen window."
  *
- * **Real double-buffering, done 2026-08-02** (this comment previously
- * called it an API-only tag with no actual buffering -- stale as of
- * that date, corrected 2026-08-12 during an unrelated stub sweep):
- * `fl.platform_x11`'s `flushDamage()` allocates a real off-screen
- * `Pixmap` (`WindowRecord.offscreen`, sized to the window and
+ * **Double-buffering**: `fl.platform_x11`'s `flushDamage()` allocates an
+ * off-screen `Pixmap` (`WindowRecord.offscreen`, sized to the window and
  * reallocated on resize) for any window whose `type() ==
  * doubleWindowTypeTag`, draws the widget tree into that pixmap, then
  * blits the damaged region onto the real on-screen window via a single

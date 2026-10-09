@@ -29,11 +29,9 @@
  * way (a `Preferences` opened directly against a file path, matching
  * FLTK's own `Fl_Preferences(filename, "layout.fluid.fltk.org",
  * nullptr, C_LOCALE)` call). One deliberate simplification, shared
- * with the Settings dialog's User tab: no `@fd_beaker`/`@fd_user`/`@fd_project`/
- * `@fd_file` `fl_add_symbol()` glyphs -- `LayoutSuite` has no separate
- * `menu_label` field at all (FLTK's own symbol-prefixed display
- * string); every caller just uses `.name` directly where FLTK
- * would read `menu_label`.
+ * with the Settings dialog's User tab: `menuLabel()` is FLTK's
+ * `menu_label`, the name prefixed with the `@fd_beaker`/`@fd_user`/
+ * `@fd_project`/`@fd_file` symbol for its storage location.
  */
 module fluid.layout_suite;
 
@@ -292,6 +290,19 @@ final class LayoutSuite
     string name;
     LayoutPreset[3] presets;
     ToolStore storage = ToolStore.internal;
+
+    /// FLTK: `Layout_Suite::menu_label` -- the name with a leading symbol
+    /// (see `fluid.pixmaps`) for where the suite is stored.
+    string menuLabel() const
+    {
+        final switch (storage)
+        {
+        case ToolStore.internal: return "@fd_beaker  " ~ name;
+        case ToolStore.user: return "@fd_user  " ~ name;
+        case ToolStore.project: return "@fd_project  " ~ name;
+        case ToolStore.file: return "@fd_file  " ~ name;
+        }
+    }
 
     this(string name, LayoutPreset application, LayoutPreset dialog, LayoutPreset toolbox,
         ToolStore storage = ToolStore.internal)

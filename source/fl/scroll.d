@@ -480,6 +480,19 @@ class Scroll : FlGroup
         }
         else
         {
+            // Growing while scrolled to the far edge would leave the
+            // position past the new maximum; clamp it back.
+            ScrollInfo si;
+            recalcScrollbars(si);
+            int minX = si.hscroll.first;
+            int maxX = si.hscroll.first + si.hscroll.total - si.hscroll.size;
+            if (maxX < minX) maxX = minX;
+            int minY = si.vscroll.first;
+            int maxY = si.vscroll.first + si.vscroll.total - si.vscroll.size;
+            if (maxY < minY) maxY = minY;
+            int newX = xposition_ < minX ? minX : (xposition_ > maxX ? maxX : xposition_);
+            int newY = yposition_ < minY ? minY : (yposition_ > maxY ? maxY : yposition_);
+            if (newX != xposition_ || newY != yposition_) scrollTo(newX, newY);
             redraw(); // full scrollbar recalculation needed; done in draw()
         }
     }
@@ -487,6 +500,15 @@ class Scroll : FlGroup
     override int handle(Event event)
     {
         fixScrollbarOrder();
+        if (event == Event.mouseWheel)
+        {
+            // Children get first refusal, then the scrollbars, even when hidden
+            // (a hidden scrollbar takes no events through Group dispatch).
+            if (super.handle(event)) return 1;
+            if (!scrollbar.visible() && scrollbar.handle(Event.mouseWheel)) return 1;
+            if (!hscrollbar.visible() && hscrollbar.handle(Event.mouseWheel)) return 1;
+            return 0;
+        }
         return super.handle(event);
     }
 

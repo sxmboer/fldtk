@@ -172,7 +172,7 @@ class GdiGraphicsDriver : GraphicsDriver
     /// Ported from `Fl_Graphics_Driver::line_width_` (the base-class
     /// field FLTK's own `color()`/`rect_unscaled()` both read) --
     /// this port has no such field on `GraphicsDriver` itself (no
-    /// platform needed it before now), so it lives here instead, kept in
+    /// other driver needs it), so it lives here instead, kept in
     /// sync by `lineStyle()`.
     protected int lineWidth_;
 
@@ -1209,8 +1209,8 @@ class GdiGraphicsDriver : GraphicsDriver
             // identity no-op) created a device-unit region sized as if
             // 1 point were 1 printer pixel, clipping everything down to
             // a tiny corner of the real, much-larger device canvas --
-            // a real, user-reported bug (`device`'s "Printer" radio
-            // button printing only a small fragment of the target
+            // (`device`'s "Printer" radio
+            // button printed only a small fragment of the target
             // window). Ported from FLTK's own `Fl_GDI_Graphics_
             // Driver::XRectangleRegion()`, which takes this exact branch
             // whenever the current surface isn't the on-screen display:
@@ -1815,7 +1815,7 @@ class GdiGraphicsDriver : GraphicsDriver
      * ordered-dither "screen door" transparency mask -- coarser than
      * true alpha compositing (each pixel ends up either fully opaque or
      * fully transparent, never blended), but real per-pixel transparency
-     * instead of the flat, fully-opaque blend this used to fall back to.
+     * instead of a flat, fully-opaque blend.
      *
      * Builds two fresh GDI bitmaps per call (matching this port's own
      * "no persistent image-object cache" scope -- see `drawImageAlphaBlended()`'s

@@ -43,10 +43,9 @@
  *
  * `resize()`'s FLTK `resize_bug_fix` echo-prevention guard for
  * app-initiated moves/resizes is real (see `resizeBugFix_` below --
- * fl.platform_x11 calls resize() both ways). Windows is a real,
- * substantially complete second backend now (`version (Windows)`
- * throughout, backed by `fl.platform_win32`) -- still genuinely
- * placeholder: Wayland and macOS.
+ * fl.platform_x11 calls resize() both ways). Windows is a second
+ * backend (`version (Windows)` throughout, backed by
+ * `fl.platform_win32`); Wayland and macOS have none.
  */
 module fl.window;
 
@@ -564,6 +563,15 @@ class Window : FlGroup
      */
     override void show()
     {
+        // Apply `-scaling_factor` once, when the first top-level window shows.
+        static bool firstShow = true;
+        if (firstShow && parent() is null)
+        {
+            firstShow = false;
+            if (fl.core.argScalingFactor_ != 1.0f)
+                fl.core.normalizedScreenScale(-1, fl.core.argScalingFactor_);
+        }
+
         if (!shown_) defaultSizeRange();
 
         // Ported from Fl_Window::show()'s own unconditional
@@ -1082,12 +1090,12 @@ class Window : FlGroup
      * The one real consumer today: `fl.tiled_image.TiledImage.draw()`'s
      * `W == 0 && H == 0` case ("tile the whole current window" --
      * FLTK's own documented, if fragile, background-image
-     * convenience) reads this to know what to fill. Found missing via a
-     * real, user-reported visual discrepancy: `examples/shapedwindow.cxx`'s
-     * `Dragbox` binds exactly such a zero-sized `Fl_Tiled_Image` as its
-     * background, and without this, `TiledImage.draw()` had nothing to
-     * fall back to and drew nothing at all (a plain gray `Box` background
-     * showing through instead of the checkered tile FLTK shows).
+     * convenience) reads this to know what to fill.
+     * `examples/shapedwindow.cxx`'s `Dragbox` binds exactly such a
+     * zero-sized `Fl_Tiled_Image` as its background; without a current
+     * window `TiledImage.draw()` would draw nothing at all (a plain gray
+     * `Box` background showing through instead of the checkered tile
+     * FLTK shows).
      */
     static Window current() { return current_; }
 
@@ -1283,7 +1291,7 @@ class Window : FlGroup
      * image passed to it.
      *
      * The mask is resized to `w()`/`h()` **scaled** to real device pixels,
-     * not the plain FLTK-unit `w()`/`h()` this used to pass -- matching
+     * not the plain FLTK-unit `w()`/`h()` -- matching
      * FLTK's own `combine_mask()` exactly (`shape_data_->lw_ =
      * w()*s;`/`temp->copy(shape_data_->lw_, shape_data_->lh_)`) and its
      * `draw_begin()`'s own change-detection (`lw_ != int(s*w())`, not

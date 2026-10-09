@@ -11,9 +11,7 @@
  * `fl.printer_win32`), each providing its own concrete `Printer` class,
  * selected here by `version()` so every caller can just `import
  * fl.printer;` and use `Printer` regardless of platform. See
- * `fl.printer_posix`'s own doc comment for why this dispatcher exists
- * now when it didn't before (this module used to *be* the POSIX
- * implementation directly).
+ * `fl.printer_posix`'s own doc comment for why this dispatcher exists.
  */
 module fl.printer;
 

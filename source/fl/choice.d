@@ -4,7 +4,7 @@
  * fixed label), that pops up a dropdown when clicked.
  *
  * Deviations from FLTK, all deliberate:
- *  - `draw()`'s box/divider branches are real now (`fl.core.isScheme()`
+ *  - `draw()`'s box/divider branches are real (`fl.core.isScheme()`
  *    is real as of core-roadmap item 11 Phase A -- see that
  *    function's own doc comment) -- `Boxtype btype` picks `upBox` under
  *    any active scheme, `downBox` under "none", matching FLTK's

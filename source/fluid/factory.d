@@ -119,11 +119,10 @@ static this()
     reg("Roller", () => cast(Node) new WidgetNode());
     reg("Dial", () => cast(Node) new WidgetNode());
     reg("Clock", () => cast(Node) new WidgetNode());
-    // Not FLTK -- neither FLTK's own Fluid palette nor this port's
-    // had a way to place a static (non-ticking) `Fl_Clock_Output`
-    // directly; both only ever offered `Fl_Clock`. Added at the user's
-    // own explicit request after asking about the two classes' real
-    // difference (`fl.clock.ClockOutput`/`FlClock`'s own doc comment).
+    // Not FLTK -- FLTK's own Fluid palette has no way to place a static
+    // (non-ticking) `Fl_Clock_Output` directly, only `Fl_Clock`; this
+    // adds one (see `fl.clock.ClockOutput`/`FlClock`'s own doc comment
+    // for the difference between the two classes).
     reg("Clock_Output", () => cast(Node) new WidgetNode());
     registry["ClockOutput"] = () => cast(Node) new WidgetNode();
     reg("Adjuster", () => cast(Node) new WidgetNode());
@@ -140,19 +139,17 @@ static this()
     registry["TextEditor"] = () => cast(Node) new WidgetNode();
     reg("File_Input", () => cast(Node) new WidgetNode());
     registry["FileInput"] = () => cast(Node) new WidgetNode();
-    // Fl_Tree/Fl_Help_View/Fl_Table are Fl_Group subclasses in C++, but
-    // FLUID itself treats them as leaf Widget_Type nodes -- their own
-    // FLTK source comments say so explicitly ("FLUID does not
-    // support extended Fl_Tree"/"Fl_Help_View is derived from Fl_Group,
-    // but supporting children is not useful"), and this port's own
-    // fl.tree.Tree/fl.help_view.HelpView/fl.table.Table constructors all
-    // already call end() internally (matching Fl_Text_Display's own
-    // FLTK pattern), so registering them as a plain WidgetNode here
-    // -- not GroupNode -- needs no extra Group.current() bookkeeping.
-    // Table's FLTK Table_Node does support real widget children via
-    // its own specialized add_child()/move_child() overrides; that's a
-    // separate, bigger mechanism this port doesn't have yet, so Table's
-    // own widget-in-cell support stays deferred, same as Tree/Help_View.
+    // Fl_Tree/Fl_Help_View are Fl_Group subclasses in C++, but FLUID
+    // itself treats them as leaf Widget_Type nodes -- their own FLTK
+    // source comments say so explicitly ("FLUID does not support
+    // extended Fl_Tree"/"Fl_Help_View is derived from Fl_Group, but
+    // supporting children is not useful"), and this port's own
+    // fl.tree.Tree/fl.help_view.HelpView constructors both already call
+    // end() internally (matching Fl_Text_Display's own FLTK pattern),
+    // so registering them as a plain WidgetNode here -- not GroupNode --
+    // needs no extra Group.current() bookkeeping. Fl_Table is the
+    // exception: FLTK's Table_Node is a Group_Node that accepts child
+    // widgets.
     reg("Tree", () => cast(Node) new WidgetNode());
     reg("Help_View", () => cast(Node) new WidgetNode());
     registry["HelpView"] = () => cast(Node) new WidgetNode();
@@ -160,7 +157,7 @@ static this()
     registry["CheckBrowser"] = () => cast(Node) new WidgetNode();
     reg("File_Browser", () => cast(Node) new WidgetNode());
     registry["FileBrowser"] = () => cast(Node) new WidgetNode();
-    reg("Table", () => cast(Node) new WidgetNode());
+    reg("Table", () => cast(Node) new GroupNode());
     reg("Progress", () => cast(Node) new WidgetNode());
 
     reg("Menu_Button", () => cast(Node) new MenuOwnerNode());

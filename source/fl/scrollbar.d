@@ -21,15 +21,14 @@
  * *can* disambiguate). Callers wanting an int read do
  * `cast(int) sb.value()`.
  *
- * The auto-repeat-while-held behavior (`timeout_cb()`) is ported now
- * too, using fl.core's timer subsystem (previously skipped -- see
- * fl.button's `simulateKeyAction()`, which had the same gap and is
- * also now ported). `timeout_cb` (FLTK: a `static void(*)(void*)`
+ * The auto-repeat-while-held behavior (`timeout_cb()`) is ported
+ * too, using fl.core's timer subsystem (as is fl.button's
+ * `simulateKeyAction()`). `timeout_cb` (FLTK: a `static void(*)(void*)`
  * needing the scrollbar as `void*` data) becomes a private bound
  * method, per the usual callback-porting convention.
  *
  * draw()'s track/slider boxes (drawBox()) and the end-button arrow
- * glyphs both render for real now -- fl.draw's drawArrow() (added
+ * glyphs both render for real -- fl.draw's drawArrow() (added
  * here originally) is real too (see fl.draw's header comment).
  */
 module fl.scrollbar;
@@ -48,6 +47,7 @@ class Scrollbar : Slider
     private
     {
         int linesize_;
+        float scrollErr_ = 0.5f; // fractional line carried between wheel events
         int pushed_;
     }
 
@@ -106,11 +106,11 @@ class Scrollbar : Slider
 
         if (horizontal())
         {
-            if (W >= 3 * H) { X += H; W -= 2 * H; }
+            if (W >= 3 * H && H >= 7) { X += H; W -= 2 * H; }
         }
         else
         {
-            if (H >= 3 * W) { Y += W; H -= 2 * W; }
+            if (H >= 3 * W && W >= 7) { Y += W; H -= 2 * W; }
         }
 
         int relx;
@@ -180,20 +180,19 @@ class Scrollbar : Slider
             return handleAt(event, X, Y, W, H);
 
         case Event.mouseWheel:
-            if (horizontal())
-            {
-                if (fl.core.eventDx() == 0) return 0;
-                int ls = maximum() >= minimum() ? linesize_ : -linesize_;
-                handleDrag(clamp(value() + ls * fl.core.eventDx()));
-                return 1;
-            }
-            else
-            {
-                if (fl.core.eventDy() == 0) return 0;
-                int ls = maximum() >= minimum() ? linesize_ : -linesize_;
-                handleDrag(clamp(value() + ls * fl.core.eventDy()));
-                return 1;
-            }
+        {
+            // Map the hi-res wheel/touchpad delta to whole lines, carrying
+            // the fraction over to the next event.
+            float d = horizontal() ? fl.core.eventDxF() : fl.core.eventDyF();
+            if (d == 0) return 0;
+            int ls = maximum() >= minimum() ? linesize_ : -linesize_;
+            scrollErr_ += d * ls;
+            import std.math : floor;
+            float di = floor(scrollErr_);
+            scrollErr_ -= di;
+            handleDrag(clamp(value() + cast(int) di));
+            return 1;
+        }
 
         case Event.shortcut:
         case Event.keyDown:
@@ -255,7 +254,7 @@ class Scrollbar : Slider
 
         if (horizontal())
         {
-            if (W < 3 * H)
+            if (W < 3 * H || H < 7)
             {
                 drawSlider(X, Y, W, H);
                 return;
@@ -277,7 +276,7 @@ class Scrollbar : Slider
         }
         else
         {
-            if (H < 3 * W)
+            if (H < 3 * W || W < 7)
             {
                 drawSlider(X, Y, W, H);
                 return;
@@ -485,11 +484,11 @@ unittest
     s.value(50);
     s.linesize(5);
 
-    fl.core.eDy_ = 2;
+    fl.core.setWheelDelta(0, 2);
     assert(s.handle(Event.mouseWheel) == 1);
     assert(s.value() == 60);
 
-    fl.core.eDy_ = 0;
+    fl.core.setWheelDelta(0, 0);
     assert(s.handle(Event.mouseWheel) == 0); // no vertical delta -> not handled
 
     fl.core.resetForTest();

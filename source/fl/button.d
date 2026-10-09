@@ -595,10 +595,9 @@ unittest
 
 unittest
 {
-    // Regression test for a real, reported segfault (see Button's own
-    // ~this() doc comment): a keyboard-triggered button destroyed
-    // while its keyReleaseTimeout() is still pending used to leave
-    // that timer dangling, later firing on the by-then-destroyed
+    // Regression test (see Button's own ~this() doc comment): a
+    // keyboard-triggered button destroyed while its keyReleaseTimeout()
+    // is still pending would leave that timer dangling, later firing on the by-then-destroyed
     // widget. Confirms destroy() cancels the pending timeout and
     // clears pendingKeyRelease_ instead of leaving either dangling.
     import fl.group : FlGroup;

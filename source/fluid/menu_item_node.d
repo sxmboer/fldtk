@@ -68,14 +68,10 @@ class MenuItemNode : WidgetNode
 /// from a plain `MenuItemNode` (same properties, same `canHaveChildren()
 /// == false`).
 ///
-/// Deliberately not ported: `Menu_Item_Node::subtypes()`'s own
-/// `menu_item_type_menu` dropdown (FLTK's UI for changing an
-/// *existing* item's kind in place after creation) and `Submenu_Node::
-/// is_button() == 0` (disables the shortcut field for a submenu title,
-/// since it's never itself clicked as a leaf command) -- neither is
-/// needed to create the three types in the first place, which is this
-/// port's whole current scope; add them alongside a real "change type"
-/// UI if one is ever built.
+/// Changing an existing item's kind (FLTK's `menu_item_type_menu`) goes
+/// through `fluid.subtypes`' `SubtypeStorage.menuItemKind`, which rewrites
+/// `typeName`; the Widget Properties panel hides the shortcut field for a
+/// submenu, as FLTK's `Submenu_Node::is_button() == 0` does.
 class SubmenuNode : MenuItemNode
 {
     override bool canHaveChildren() const { return true; }

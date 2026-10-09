@@ -73,7 +73,7 @@
  * not FLTK's real multi-loop/hole support). Porting the scanline
  * algorithm over that flat array (dropping the GAP check) reproduces
  * the same simplification faithfully rather than trying to reconstruct
- * sub-loop boundaries that no longer exist in this port's data model.
+ * sub-loop boundaries that this port's data model does not keep.
  */
 module fl.gl_graphics_driver;
 

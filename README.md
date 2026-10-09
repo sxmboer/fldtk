@@ -1,7 +1,7 @@
 # fldtk
 
 **fldtk** (Full-D-tick) is a complete port of [FLTK](https://www.fltk.org/), the
-Fast Light Toolkit, to the D programming language. It is not a binding layer: the
+Fast Light Toolkit GUI system, to the D programming language. It is not a binding layer: the
 toolkit is reimplemented as native D code, so the only things it links against are
 the system's own libraries (Xlib, OpenGL, ...), not a compiled FLTK. It also
 includes a port of Fluid, FLTK's UI designer, which exports D source files
@@ -35,7 +35,8 @@ which produces a window with a clickable button.
 ## Status
 
 The library and Fluid run stably on **Linux/X11** and on **Windows**. A
-**Linux/Wayland** driver has not been started yet; macOS is out of scope for now.
+**Linux/Wayland** driver has not been started yet; macOS is out of scope for now because
+I don't have the hardware to test it.
 
 What is in the box:
 
@@ -64,11 +65,12 @@ itself, found while porting, are collected in [`FLTK_ISSUES.md`](FLTK_ISSUES.md)
 
 You need a D compiler (dmd, ldc or gdc) and `dub`. On Linux the development
 packages for X11, Xft, Xinerama, fontconfig, Xcursor, Xfixes, Xext, OpenGL,
-GLU, GLEW and zlib must be installed. Then, from the repository root:
+GLU, GLEW and zlib must be installed, which is the case by default on most
+Linux distributions. Then, from the repository root:
 
     dub build              # the library: ./libfldtk.so
     rdmd buildfluid.d      # the Fluid designer: ./fluid
-    rdmd buildsamples.d    # the demo programs: ./build/
+    rdmd buildsamples.d    # the demo programs: ./build/*
 
 [`BUILDING.md`](BUILDING.md) has the details, including how to compile your own
 programs against the library and the Windows instructions.

@@ -42,6 +42,9 @@ configuration "fluid" {
     targetName "fluid"
     sourcePaths "."
     importPaths ".." "panels/generated"
+    // `documentation/fluid_flow_chart_paths.svg`, embedded by `gui_main.d`'s
+    // `showHelp()` with a string import.
+    stringImportPaths "documentation"
     mainSourceFile "app.d"
 }
 

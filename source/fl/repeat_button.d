@@ -2,8 +2,7 @@
  * Ported from FL/Fl_Repeat_Button.H + src/Fl_Repeat_Button.cxx (FLTK
  * 1.5.0). A Button that repeats its callback while
  * held down, using fl.core's timer subsystem (addTimeout()/
- * repeatTimeout()/removeTimeout()) -- previously blocked entirely on
- * that not existing (see PORTING.md's history for this row).
+ * repeatTimeout()/removeTimeout()).
  *
  * Faithful, complete port. One structural deviation: FLTK's
  * `handle()` uses `goto J1` to jump from the FL_HIDE/FL_DEACTIVATE/

@@ -440,27 +440,17 @@ class CopySurface : WidgetSurface
      * object's about-to-be-freed buffer.
      *
      * Windows: ported from `~Fl_GDI_Copy_Surface_Driver()`, with one
-     * deliberate deviation. FLTK hands `hmf`/
-     * `surf->offscreen()` straight to `SetClipboardData()` and then
-     * frees both of them anyway (`DeleteEnhMetaFile(hmf)` right after
-     * `CloseClipboard()`; `delete surf` triggers `~Fl_GDI_Image_Surface_
-     * Driver()`'s own unconditional `DeleteObject((HBITMAP)offscreen)`)
-     * -- per Win32's own documented clipboard contract
-     * ("once...successfully placed data on the clipboard...the
-     * application no longer owns the data and cannot free the handle"),
-     * freeing a handle the clipboard now owns is exactly the kind of
-     * real, silent-corruption-shaped bug CONVENTIONS.md's porting-conventions
-     * section calls out as worth deviating from FLTK for (same
-     * category as `Fl_Text_Buffer::copy()`'s `FLTK_ISSUES.md`
-     * entry) -- it's what makes real FLTK's own decode path (reading
-     * back `CF_DIB`, which Windows synthesizes on demand from whatever
-     * `CF_BITMAP` is currently on the clipboard) silently fail/produce
-     * empty data. Fixed by duplicating each handle
-     * (`CopyEnhMetaFileW()`/`CopyImage(..., IMAGE_BITMAP, ...)`) and
-     * giving the *duplicate* to the clipboard, so this object's own
-     * `hmf`/`surf` cleanup right below only ever touches its own
-     * private copy, never the clipboard's. See `FLTK_ISSUES.md`'s
-     * matching entry for the full writeup.
+     * deliberate deviation. FLTK hands `hmf`/`surf->offscreen()` to
+     * `SetClipboardData()` and then frees both (`DeleteEnhMetaFile(hmf)`
+     * after `CloseClipboard()`; `delete surf` reaches
+     * `~Fl_GDI_Image_Surface_Driver()`'s `DeleteObject((HBITMAP)
+     * offscreen)`). Win32's documented clipboard contract says the
+     * application may not free a handle once the clipboard owns it. No
+     * failure is known from FLTK's version, but this port follows the
+     * contract: it gives the clipboard duplicates
+     * (`CopyEnhMetaFileW()`/`CopyImage(..., IMAGE_BITMAP, ...)`), so the
+     * cleanup below only frees this object's own `hmf`/`surf`. See
+     * `FLTK_ISSUES.md`'s matching entry.
      */
     ~this()
     {

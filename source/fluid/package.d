@@ -60,6 +60,7 @@ public import fluid.group_ungroup;
 public import fluid.gui_main;
 public import fluid.i18n;
 public import fluid.instantiate;
+public import fluid.layout_edit;
 public import fluid.layout_suite;
 public import fluid.menu_item_node;
 public import fluid.menu_owner_node;

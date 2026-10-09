@@ -42,11 +42,10 @@
  * live widget exists yet at parse time) -- `instantiate.d`/`code_writer.d`
  * read this table once they build/emit the grid's children.
  *
- * Deliberately not ported (interactive-editing-only, depends on the
- * not-yet-built drag/resize infrastructure regardless -- matches
- * FLTK's own `enter_live_mode()`/`Fl_Grid_Proxy::draw_overlay()`
- * scope, not a new gap): `keyboard_move_child()`, `insert_child_at()`,
- * drag-based fixed-size adjustment, the live-mode grid overlay.
+ * The canvas-side pieces live in `fluid.grid_proxy` (overlay, cell
+ * moves, transient cells) and `fluid.layout_edit` (click-to-cell
+ * insertion, keyboard moves, `child_resized()`, and the sync of a
+ * child's cell and rectangle from the live grid back into this node).
  */
 module fluid.grid_node;
 

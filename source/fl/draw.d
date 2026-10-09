@@ -3,7 +3,7 @@
  * drawing-primitives API (lines, rects, text, clipping, images, ...).
  * Most entry points below still forward straight to Xlib/Xft, matching
  * `fl.platform_x11`'s own "no polymorphic hierarchy for a single
- * backend" precedent -- but that's no longer the *whole* story: a real,
+ * backend" precedent -- but that is not the whole story: a
  * deliberately minimal `fl.graphics_driver.GraphicsDriver` abstraction
  * also exists (`Fl_SVG_File_Surface`/
  * `Fl_PostScript_File_Device` are its second/third consumers, see
@@ -38,7 +38,7 @@
  * point below was originally stubbed out purely so some already-ported
  * widget's draw() had a name to call, one widget at a time, as
  * documented in the bullet list right below), most of what's listed
- * here is real now -- see the "REAL (Linux/X11) BODIES" paragraph
+ * here is real -- see the "REAL (Linux/X11) BODIES" paragraph
  * onward for the current, accurate picture of what actually draws
  * pixels. Images are real too: see `drawImage()`/
  * `drawImageMono()` below. `fl.image` has no remaining codec gap --
@@ -61,12 +61,12 @@
  *    overload/clipBox(): added for fl.text_display's draw()/layout code
  *    (src/Fl_Text_Display.cxx), which measures and lays out text long
  *    before it draws a single pixel of it. height()/descent()/
- *    width() are real now (see the "TEXT" paragraph below) --
+ *    width() are real (see the "TEXT" paragraph below) --
  *    fl.text_display's layout math now runs against real glyph metrics
  *    instead of the "font size + 4"/6px-per-byte placeholders it
  *    originally shipped with (those placeholders matched FLTK's own
  *    documented `#define TMPFONTWIDTH 6 // CET - FIXME` stand-in, kept
- *    only as long as no real metrics existed). clipBox() is real now
+ *    only as long as no real metrics existed). clipBox() is real
  *    too (see the "CLIPPING" paragraph below).
  *
  * REAL (Linux/X11) BODIES: fl_color()/fl_rectf()/fl_line()/fl_xyline()
@@ -82,7 +82,7 @@
  * gleam/gtk+/oxy/plastic).
  *
  * TEXT (Linux/X11): fl_font()/fl_draw() (both overloads)/width()/
- * height()/descent()/fl_measure() are now real too, via a new
+ * height()/descent()/fl_measure() are real too, via a new
  * Xft binding (fl.xft) -- see the "Text drawing" section below
  * fl_font() for the font-name mapping and exactly what's simplified
  * relative to FLTK's fancier fl_draw() (no word-wrap, no `@`-symbol
@@ -108,7 +108,7 @@
  * FLTK-1.3.x-compatible "legacy" algorithm or a caller-registered one --
  * see contrast()'s own doc comment.
  *
- * CLIPPING: pushClip()/popClip()/notClipped()/clipBox() are real now
+ * CLIPPING: pushClip()/popClip()/notClipped()/clipBox() are real
  * too, and -- unlike the color math above -- fully platform-
  * independent even for the bookkeeping/query side (only actually
  * restricting rendering is Linux-specific): see the "Clipping" section
@@ -142,7 +142,7 @@
  * fl_translate()/fl_scale()/fl_rotate()/beginPolygon()/
  * endPolygon()/beginLoop()/endLoop()/vertex()/circle()
  * -- the "complex" drawing API (fl_vertex.cxx/fl_arc.cxx FLTK) --
- * are real now too: the matrix math and path bookkeeping are pure
+ * are real too: the matrix math and path bookkeeping are pure
  * geometry (platform-independent, see the section comment above
  * pushMatrix()), and endPolygon()/endLoop() draw real
  * pixels via XFillPolygon()/XDrawLines() on Linux. This is what makes
@@ -180,7 +180,7 @@
  * the same "port the whole small accessor group" reasoning as other
  * small FLTK API groups elsewhere in this port) are real too.
  *
- * ARROWS: fl_draw_arrow() is real now too, ported from
+ * ARROWS: fl_draw_arrow() is real too, ported from
  * src/fl_draw_arrow.cxx -- a single triangular arrow (arrowSingle,
  * backing fl.scrollbar's end buttons and fl.counter's increment/
  * decrement buttons), a side-by-side pair (arrowDouble), or a plain
@@ -326,9 +326,22 @@ version (linux)
     /// explicit wide pen active, use the default hairline." Set by
     /// `lineStyle()`, consulted by `fl_xyline()`/`fl_yxline()`'s 3-arg
     /// forms -- see those functions' own doc comments for the bug this
-    /// fixes (they used to always assume a 1-logical-unit-thick default
+    /// fixes (otherwise they would assume a 1-logical-unit-thick default
     /// line regardless of any explicit width `lineStyle()` had set).
     private int explicitWideLineWidthPx_ = 0;
+
+    /// True while the pen has a dash pattern or a round/square cap
+    /// (set by `lineStyle()`). Horizontal and vertical lines then go
+    /// through `XDrawLine()`, as in FLTK, instead of the filled-rectangle
+    /// shortcut `fl_xyline()`/`fl_yxline()` take for plain solid lines,
+    /// which can show neither dashes nor caps.
+    private bool penNeedsXDrawLine_ = false;
+
+    /// True after a `lineStyle()` call that set anything but the default
+    /// hairline (a style, a width, or explicit dashes). Vertex paths
+    /// then draw with the pen exactly as set, instead of widening the
+    /// default hairline at whole-number scales.
+    private bool penCustom_ = false;
     private Colormap colormap_;
 
     /**
@@ -622,19 +635,19 @@ version (linux)
      * repaint and read directly by `createOffscreen()` as a
      * reference drawable for a *new*, unrelated `ImageSurface`
      * (`fl.core.transientScaleDisplay()`'s own indicator popup, in
-     * this case). Destroying a window never used to clear this, so
-     * once a window was destroyed while it was still the last thing
+     * this case). Destroying a window must clear this: otherwise,
+     * once a window is destroyed while it is still the last thing
      * painted (the common case for a short-lived popup with nothing
-     * else to redraw meanwhile), `drawable_` stayed a dangling XID --
+     * else to redraw meanwhile), `drawable_` stays a dangling XID --
      * the *next* `createOffscreen()` call anywhere would try to
      * create a Pixmap referencing an already-destroyed window and
      * fail. Resetting to `0` here reuses `createOffscreen()`'s own
      * existing "no live drawable" fallback (the root window) rather
      * than needing a new one, and matches the `gc_ !is null &&
      * drawable_ != 0` guard every direct-drawing primitive already
-     * requires -- `0` was already the
+     * requires -- `0` is the
      * documented "nothing to draw into" sentinel throughout this
-     * module, this is just one more place that needed to set it.
+     * module.
      */
     package(fl) void releaseDrawable(Drawable d)
     {
@@ -737,14 +750,12 @@ version (linux)
     /// Ported from `fl_create_offscreen(int, int)` (`FL/fl_draw.H`) --
     /// FLTK's own current implementation is layered on top of
     /// `Fl_Image_Surface` (a small buffer registry mapping each
-    /// `Fl_Offscreen` handle back to its owning surface object), but
-    /// `Fl_Image_Surface` itself isn't ported yet (`PORTING.md`: "Not
-    /// started"). This goes straight to the same lower-level primitive
-    /// `Fl_Image_Surface` itself would ultimately reach for on X11
-    /// (`XCreatePixmap()`, already wrapped as `createOffscreenBuffer()`
-    /// for `fl.double_window`'s real buffering) rather than waiting on
-    /// that whole layer -- a legitimate smaller implementation of the
-    /// same public contract, not a stand-in for it. `Offscreen` is a
+    /// `Fl_Offscreen` handle back to its owning surface object). This
+    /// goes straight to the lower-level primitive `Fl_Image_Surface`
+    /// itself reaches for on X11 (`XCreatePixmap()`, wrapped as
+    /// `createOffscreenBuffer()` and also used by `fl.double_window`'s
+    /// buffering), a smaller implementation of the same public
+    /// contract. `Offscreen` is a
     /// plain `alias` for `fl.xlib.Pixmap` (matching FLTK's own
     /// `typedef Fl_Pixmap Fl_Offscreen` on X11), so `0`/`Offscreen.init`
     /// still means "no buffer" the same way callers already expect.
@@ -1537,7 +1548,7 @@ Color fl_color()
 /// way `fl_rect()` is -- FLTK's real
 /// `Fl_Scalable_Graphics_Driver::arc(int,...)` additionally factors in
 /// the active line width (`line_width_`), which this port's arc/pie
-/// functions don't track at all (no consumer needed it before now);
+/// functions don't track at all (no consumer needs it);
 /// skipped here as a documented simplification, same class as
 /// `fl_rect()`'s own. At `currentScale() == 1` this reduces exactly to
 /// the pre-scaling `w-1`/`h-1` formula.
@@ -1641,7 +1652,7 @@ void drawCircle(int x, int y, int d, Color c)
 // (fl_vertex.cxx/fl_arc.cxx FLTK) -- added for fl.dial's/
 // fl.clock's draw(), the first widgets in this port needing the
 // rotate/scale-then-trace-a-shape drawing style rather than plain
-// axis-aligned boxes/lines. Real now: the matrix math and path
+// axis-aligned boxes/lines. Real: the matrix math and path
 // bookkeeping are pure geometry (platform-independent, ported straight
 // from Fl_Graphics_Driver::mult_matrix()/rotate()/vertex()), and the
 // actual pixels come from XDrawLines()/XFillPolygon() on Linux (a no-op
@@ -2341,6 +2352,9 @@ version (linux)
      * width state, callers restore it themselves" contract -- see this
      * module's "General line style" section comment -- makes 0 a safe
      * assumption for the width already in effect on entry). Only
+     * widens the default hairline pen: after a `lineStyle()` call that set a
+     * style, width or dashes (`penCustom_`) the path is drawn with that pen
+     * as set, already scaled by `lineStyle()`. Only
      * widens for a whole-number scale (`s == s_int`); a fractional scale
      * would need FLTK's own further `lwidth`-based centering
      * dance this port's line-style state deliberately doesn't carry,
@@ -2352,7 +2366,7 @@ version (linux)
     {
         float s = currentScale();
         int sInt = cast(int) s;
-        bool widen = sInt >= 2 && s == sInt;
+        bool widen = !penCustom_ && sInt >= 2 && s == sInt;
         if (widen) XSetLineAttributes(display_, gc_, cast(uint) sInt, LineSolid, CapButt, JoinMiter);
         XDrawLines(display_, drawable_, gc_, xpts.ptr, cast(int) xpts.length, coordModeOrigin);
         if (widen) XSetLineAttributes(display_, gc_, 0, LineSolid, CapButt, JoinMiter);
@@ -2566,7 +2580,7 @@ private VPoint[] fixloop(VPoint[] pts)
 /**
  * Returns the weighted average of c1 and c2: `color1 * weight + color2
  * * (1 - weight)` per channel (weight 1.0 = all c1, 0.0 = all c2).
- * Ported from src/fl_color.cxx's fl_color_average() -- real now that
+ * Ported from src/fl_color.cxx's fl_color_average() -- real since
  * colorToRgb8()/rgbColor() exist to decode/repack both "free"
  * (packed-RGB) and indexed colors.
  */
@@ -2896,7 +2910,7 @@ else version (Windows)
 }
 else
 {
-    /// TODO: draws a checkmark filling bb, forwarding to the graphics
+    /// Fallback for platforms without a backend: draws a checkmark filling bb, forwarding to the graphics
     /// driver FLTK. No-op on unsupported platforms.
     void drawCheck(Rect bb, Color col)
     {
@@ -3160,8 +3174,10 @@ void fl_line(int x, int y, int x1, int y1)
         currentDriver.line(x, y, x1, y1);
         return;
     }
-    if (y == y1) { fl_xyline(x, y, x1); return; }
-    if (x == x1) { fl_yxline(x, y, y1); return; }
+    version (linux) { if (!penNeedsXDrawLine_) {
+        if (y == y1) { fl_xyline(x, y, x1); return; }
+        if (x == x1) { fl_yxline(x, y, y1); return; }
+    } }
     version (linux)
     {
         if (gc_ !is null && drawable_ != 0) XDrawLine(display_, drawable_, gc_,
@@ -3219,9 +3235,9 @@ void fl_line(int x, int y, int x1, int y1, int x2, int y2)
 /// Draws a closed, unfilled 3-point loop: (x0,y0)-(x1,y1)-(x2,y2)-
 /// (x0,y0).
 ///
-/// **Correction**: this used to decompose into three 2-arg fl_line()
-/// calls, matching FLTK's *unscaled* base
-/// `Fl_Graphics_Driver::loop()` -- but not the real scaled driver.
+/// Does not decompose into three 2-arg fl_line() calls, which is what
+/// FLTK's *unscaled* base `Fl_Graphics_Driver::loop()` does, because the
+/// real scaled driver differs:
 /// `Fl_Scalable_Graphics_Driver::loop(x0,y0,x1,y1,x2,y2)`
 /// (`src/Fl_Graphics_Driver.cxx`) scales all 6 coordinates once,
 /// uniformly, in a single pass, for exactly the same reason the 3-point
@@ -3256,13 +3272,12 @@ void loop(int x0, int y0, int x1, int y1, int x2, int y2)
 /// outer diamond outline; also used by fl.check_browser's checkbox
 /// glyph (a rectangular loop, not a diamond).
 ///
-/// **Correction**: this used to decompose into four 2-arg fl_line()
-/// calls, matching FLTK's *unscaled* base loop() rather than the
-/// real scaled driver -- same class of shared-vertex rounding mismatch
-/// as the 3-point loop()/fl_line() fixes above, and a real, currently-
-/// live bug: fl.check_browser's checkbox glyph is exactly the
-/// rectangular case, so its outline picked up corner gaps at scale > 1
-/// the same way flFrame2()'s boxtype bevels did.
+/// Does not decompose into four 2-arg fl_line() calls, which is what
+/// FLTK's *unscaled* base loop() does -- same class of shared-vertex
+/// rounding mismatch as the 3-point loop()/fl_line() cases above:
+/// fl.check_browser's checkbox glyph is exactly the rectangular case,
+/// and its outline would pick up corner gaps at scale > 1 the same way
+/// flFrame2()'s boxtype bevels do.
 /// `Fl_Scalable_Graphics_Driver::loop(x0,y0,x1,y1,x2,y2,x3,y3)`
 /// (`src/Fl_Graphics_Driver.cxx`) special-cases both possible point
 /// orderings of an axis-aligned rectangle and redirects to rect() (a
@@ -3323,6 +3338,13 @@ void fl_yxline(int x, int y, int y1)
     }
     version (linux)
     {
+        if (penNeedsXDrawLine_)
+        {
+            if (gc_ !is null && drawable_ != 0) XDrawLine(display_, drawable_, gc_,
+                scaledFloor(x) + offsetX_, scaledFloor(y) + offsetY_,
+                scaledFloor(x) + offsetX_, scaledFloor(y1) + offsetY_);
+            return;
+        }
         int sx, sw;
         if (explicitWideLineWidthPx_ > 0)
         {
@@ -3429,6 +3451,13 @@ void fl_xyline(int x, int y, int x1)
     }
     version (linux)
     {
+        if (penNeedsXDrawLine_)
+        {
+            if (gc_ !is null && drawable_ != 0) XDrawLine(display_, drawable_, gc_,
+                scaledFloor(x) + offsetX_, scaledFloor(y) + offsetY_,
+                scaledFloor(x1) + offsetX_, scaledFloor(y) + offsetY_);
+            return;
+        }
         int sy, sh;
         if (explicitWideLineWidthPx_ > 0)
         {
@@ -3600,10 +3629,10 @@ Color lighter(Color c)
 //    matching FLTK's own fontopen() shape exactly for that one case
 //    (still no core-font fallback).
 //  - Only the 12 classic built-in fonts fl.enumerations.Font defines
-//    (helvetica/courier/times x plain/bold/italic/bold-italic) resolve
-//    to a real family; anything else wraps into that range rather than
-//    erroring (fl.enumerations.Font is deliberately open-ended for a
-//    future Fl::set_fonts()/FL_FREE_FONT, not ported yet). The actual
+//    (helvetica/courier/times x plain/bold/italic/bold-italic) plus
+//    symbol/screen/screen-bold/Zapf Dingbats resolve algorithmically;
+//    any other index wraps into that range unless setFont()/setFonts()
+//    registered a name for it. The actual
 //    Fontconfig family strings resolved to are the generic aliases
 //    "sans"/"mono"/"serif" (see getFont()'s
 //    own doc comment for the full story -- the literal
@@ -4447,7 +4476,7 @@ version (linux)
      * `currentDriver` dispatch is checked first, same as every other
      * text primitive here, so an SVG/PostScript-file backend gets the
      * angle too. The plain on-screen/offscreen Xft path (`currentDriver
-     * is null`) is real now as well: ported from
+     * is null`) is real as well: ported from
      * `Fl_Xlib_Graphics_Driver::draw_unscaled(int angle,...)`
      * (`Fl_Xlib_Graphics_Driver_font_xft.cxx`) -- temporarily swaps
      * `currentXftFont_` to a rotated variant of the current face/size
@@ -5479,16 +5508,16 @@ else
     }
     else
     {
-        /// TODO: sets the font/size used by subsequent fl_draw() text
+        /// Fallback for platforms without a backend: sets the font/size used by subsequent fl_draw() text
         /// calls, forwarding to the graphics driver FLTK. No-op on
         /// platforms with no driver yet.
         void fl_font(Font face, Fontsize size)
         {
         }
 
-        /// TODO: returns the height (in pixels) of a line of text in
-        /// (face, size). No real font metrics exist on this platform
-        /// yet, so this returns a fixed "size + 4" placeholder.
+        /// Fallback for platforms without a backend: returns the height (in pixels) of a line of text in
+        /// (face, size). No font metrics exist on such a platform, so
+        /// this returns a fixed "size + 4" placeholder.
         int height(Font face, Fontsize size)
         {
             return size + 4;
@@ -5500,7 +5529,7 @@ else
             return height(0, 14);
         }
 
-        /// TODO: returns the descent (in pixels, below the baseline) of
+        /// Fallback for platforms without a backend: returns the descent (in pixels, below the baseline) of
         /// the font set by the most recent fl_font() call. Fixed
         /// placeholder on this platform.
         int descent()
@@ -5508,7 +5537,7 @@ else
             return 4;
         }
 
-        /// TODO: returns the width (in pixels) of nChars characters of
+        /// Fallback for platforms without a backend: returns the width (in pixels) of nChars characters of
         /// str in the font set by the most recent fl_font() call.
         /// Fixed-width-per-byte placeholder (6px, matching FLTK's
         /// own TMPFONTWIDTH stand-in) on this platform.
@@ -5517,7 +5546,7 @@ else
             return nChars * 6.0;
         }
 
-        /// TODO: returns the exact glyph bounding box of nChars
+        /// Fallback for platforms without a backend: returns the exact glyph bounding box of nChars
         /// characters of str. Fixed placeholder (zeroed) on this
         /// platform.
         void textExtents(const(char)[] str, int nChars, out int dx, out int dy, out int w, out int h)
@@ -5681,7 +5710,7 @@ void fl_measure(const(char)[] str, ref int w, out int h, bool drawSymbols = true
 /**
  * Intersects (x,y,w,h) with the current clip (if any) and reports
  * whether the result differs from the input (i.e. whether anything was
- * actually clipped away). Real now -- ported from Fl_Xlib_Graphics_
+ * actually clipped away). Real -- ported from Fl_Xlib_Graphics_
  * Driver::clip_box(), specialized to a single rectangle the same way
  * notClipped() above is (see this section's comment for why that's
  * exactly as capable for this port).
@@ -5848,7 +5877,7 @@ version (linux)
 }
 else
 {
-    /// TODO: scrolls (X,Y,W,H) by (dx,dy) and calls drawArea() for the
+    /// Fallback for platforms without a backend: scrolls (X,Y,W,H) by (dx,dy) and calls drawArea() for the
     /// newly-exposed strips, forwarding to the graphics driver
     /// FLTK. No-op on non-Linux platforms.
     void fl_scroll(int X, int Y, int W, int H, int dx, int dy,
@@ -5894,6 +5923,16 @@ void fl_rect(int x, int y, int w, int h, Color c)
 // 0 themselves when done, exactly as FLTK's own fl_line_style()
 // doc comment already requires ("it is your responsibility to set it
 // back to the default").
+
+/// Dash patterns for the PostScript driver, from `Fl_Graphics_Driver::
+/// dashes_flat`/`dashes_cap`, indexed by the style's low byte (lineSolid,
+/// lineDash, lineDot, lineDashDot, lineDashDotDot) and multiplied by the
+/// line width. Round and square caps extend every dash at both ends, so
+/// their dashes are shorter and their gaps wider than the flat ones.
+package(fl) immutable int[][5] dashesFlat = [[], [3, 1], [1, 1], [3, 1, 1, 1], [3, 1, 1, 1, 1, 1]];
+/// ditto, for round and square caps.
+package(fl) immutable double[][5] dashesCap = [[], [2, 2], [0.01, 1.99], [2, 2, 0.01, 1.99],
+    [2, 2, 0.01, 1.99, 0.01, 1.99]];
 
 /**
  * Computes the auto dash/gap pattern for style's low byte (lineDash/
@@ -6029,6 +6068,8 @@ void lineStyle(int style, int width = 0, const(ubyte)[] dashes = null)
         const(ubyte)[] d = dashes;
         if (d.length == 0 && (style & 0xff) != 0)
             d = dashPatternFor(style, lineWidth);
+        penNeedsXDrawLine_ = d.length != 0 || ((style >> 8) & 3) >= 2;
+        penCustom_ = style != 0 || width != 0 || dashes.length != 0;
 
         static immutable int[4] capTable = [CapButt, CapButt, CapRound, CapProjecting];
         static immutable int[4] joinTable = [JoinMiter, JoinMiter, JoinRound, JoinBevel];
@@ -7006,7 +7047,7 @@ private void flRshadowBox(int x, int y, int w, int h, Color c)
 // module note above flOvalFlatBox() for the full reasoning, which
 // applies here unchanged).
 //
-// FLTK_ISSUES.md candidate (not filed as a bug, just noted): the
+// FLTK_ISSUES.md entry: the
 // "round" gleam boxtypes (gleamRoundUpBox/gleamRoundDownBox) are wired
 // in FLTK's own fl_box_table to the exact same fl_gleam_up_box/
 // fl_gleam_down_box functions as the plain (non-round) gleam boxtypes
@@ -8709,8 +8750,8 @@ unittest
     // fl_draw()'s image-aware overload: headless (no display_), so
     // every glyph/image draw call along the way is a documented no-op
     // -- what this actually exercises is that a null image reduces to
-    // exactly the plain text-only overload (the two are no longer two
-    // separate implementations, see that overload's own doc comment),
+    // exactly the plain text-only overload (the two are one
+    // implementation, see that overload's own doc comment),
     // and that passing a real Image plus every alignment combination
     // this overload branches on doesn't crash headlessly (RGBImage
     // itself has no display to draw into either, so its own draw()

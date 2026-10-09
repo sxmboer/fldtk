@@ -22,7 +22,7 @@
  * Not ported: `fl_filename_list()`/`fl_filename_free_list()` (a portable
  * `scandir()` wrapper) and `fl_decode_uri()` -- both exist to back a file
  * chooser's own directory listing (`fl.file_chooser`/`fl.native_file_chooser`,
- * both done now, but neither ended up needing this specific pair -- see
+ * both done, but neither ended up needing this specific pair -- see
  * their own module comments for what they use instead) or percent-decoding
  * a URI's path component, and still have no caller in this port.
  * `Fl_File_Sort_F`, `fl_alphasort()`/`fl_casealphasort()`/

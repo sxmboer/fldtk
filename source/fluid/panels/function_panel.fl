@@ -8,122 +8,36 @@ here for this project's own camelCase convention), but now the FULL
 window: all 8 group boxes, all 57 buttons, every one at FLTK's own
 literal `xywh` slot. Window size (600x102) is FLTK's own too.
 
-Every button FLTK has gets a slot here, whether or not this port
-can act on it yet -- a deliberate choice, not an oversight: omitting
-anything not yet wired up would mean re-deriving FLTK's own geometry a
-second time later
--- rereading `panels/function_panel.fl`, re-finding every xywh, re-
-grouping -- pure wasted work when the data is sitting right here
-already. So: every slot exists, permanently, and only a button's
-*class* (`BinButton` vs plain `Button`) changes as this port's
-`fluid.factory`/`fluid.instantiate` registries grow.
+Each button is a `BinButton` (`class \{BinButton\}`, real `tooltip`,
+`setup \{o.typeName("X");\}`, `callback binButtonCb`) whose type is
+registered in both `fluid.factory` (Node-parsing side) and
+`fluid.instantiate` (live-widget side) -- click to add at a default
+position, or drag onto the canvas to drop at the exact release
+point via real XDND. See `fluid/bin_button.d`'s own doc
+comment for the click-vs-drag mechanism. The Code group's own 9
+buttons are wired to a second delegate, `callback codeButtonCb` --
+they still reuse `BinButton` for its `typeName()` storage, but a
+`Function`/`decl`/`comment`/... node is never a live canvas widget, so
+only the click path (`gui_main.d`'s `addNode()`, the non-widget
+counterpart of `addWidget()`) actually does anything; dragging one onto
+the canvas is a harmless no-op (matches FLTK's own real split -- these 9
+used a plain click-only `type_make_cb` there too, never `Bin_Button`'s
+drag machinery).
 
-Two kinds of button, distinguished by whether the widget type it names
-is registered in both `fluid.factory` (Node-parsing side) and
-`fluid.instantiate` (live-widget side) today:
+The four menu-item buttons (`MenuItem`/`CheckMenuItem`/`Submenu`/
+`RadioMenuItem`) are menu-structure nodes, not canvas widgets, so
+`binButtonCb` routes them through `gui_main.d`'s `addNode()` (the same
+path as the `&New/&Menus` entries), and a drag-and-drop of one adds
+the item to the menu owner or submenu it is dropped on. The Table
+button creates a `Table` showing sample data, as FLTK's does.
 
-- **Real** (`class \{BinButton\}`, real `tooltip`, `setup \{o.typeName
-  ("X");\}`, `callback binButtonCb`) -- click to add at a default
-  position, or drag onto the canvas to drop at the exact release
-  point via real XDND. See `fluid/panels/BinButton.d`'s own doc
-  comment for the click-vs-drag mechanism. The Code group's own 9
-  buttons are "real" in this same sense but wired to a
-  second delegate, `callback codeButtonCb` -- they still reuse
-  `BinButton` for its `typeName()` storage, but a `Function`/`decl`/
-  `comment`/... node is never a live canvas widget, so only the click
-  path (`gui_main.d`'s `addNode()`, the non-widget counterpart of
-  `addWidget()`) actually does anything; dragging one onto the canvas
-  is a harmless no-op (matches FLTK's own real split -- these 9
-  used a plain click-only `type_make_cb` there too, never `Bin_Button`'s
-  drag machinery).
-- **Placeholder** (plain `Button`, real `tooltip` with a "(not yet
-  implemented)" suffix, `deactivate`, no `class`/`callback` -- but a
-  real `setup \{o.image(pixmapFor("X"));\}` icon too,
-  see below) -- present at the exact FLTK position so the grid
-  never needs re-deriving, but genuinely inert: a deactivated widget
-  never receives push/drag events at all (matches this port's own
-  established `deactivate()` semantics), so there's no risk of it
-  reaching `createNode()`/`addWidget()` with a type name neither
-  registry actually knows yet (`fluid.factory.createNode()` throws on
-  an unknown type name -- a placeholder must never be able to trigger
-  that). **To promote a placeholder to real** once its type is
-  registered: swap its block for the "Real" shape above (`class`,
-  `o.typeName(...)` alongside the existing `o.image(...)` call,
-  `callback`, dropping `deactivate` and the tooltip suffix) -- a small,
-  mechanical edit, not a re-port. No FLTK re-reading needed; the
-  position/tooltip/icon are already here.
-
-Placeholder reasons, by category -- only two categories have any left:
-Table is real but, matching FLTK's own `Table_Node`'s much bigger
-`add_child()`/`move_child()` override machinery, this port's own Table
-support is leaf-only for now -- no live widget-in-cell children yet,
-see its own tooltip. The Code group (all 9) needed a new, non-widget-shaped insertion path
-(`gui_main.d`'s `addNode()`) and a node-browser fix (`NodeBrowser.
-build()` widened from a single window root to the whole `projectRoots_`
-forest -- otherwise a newly-added top-level `Function`/`decl` would
-have had nowhere to render in the project tree at all), not just a
-registry entry -- see this file's own `codeButtonCb` note above):
-- **Menus group**: `checkmenuitem`/`submenu`/`radiomenuitem` (3 of the
-  original 4) -- a different node kind (`MenuItemNode`, a menu owner's
-  child, not a general canvas widget) that `addWidget()`'s current
-  insertion path can't target at all, a real, separate mechanism gap
-  even once the node kind itself is technically parseable.
-  `Fl_Input_Choice`/`Fl_Menu_Bar` are real --
-  both are concrete subclasses of FLTK's abstract
-  `Menu_Manager_Node`, the same "widget that owns a menu, can have
-  `MenuItem` children" role `Menu_Button`/`Choice` (already real) fill,
-  which this port's own `MenuOwnerNode` already covers generically;
-  registering the two remaining concrete types (`fluid.factory`/
-  `fluid.instantiate`) needed no new mechanism at all, just two more
-  registry entries -- see `PORTING.md`'s `fluid/nodes/` row for the
-  full writeup. All 4 of the menu-item family are real in the `&New`
-  menu (`fluid.factory` registers
-  `"Submenu"`/`"CheckMenuItem"`/`"RadioMenuItem"`/`"MenuItem"`, see
-  `fluid.menu_item_node`'s own doc comment for why `CheckMenuItem`/
-  `RadioMenuItem` are plain `MenuItemNode`s while `Submenu` gets a real
-  `SubmenuNode` subclass), but these 4 bin buttons specifically are
-  still placeholders -- promoting them needs the same `codeButtonCb`-
-  style click-only wiring `Fl_Window`'s own promotion got below.
-
-`Fl_Window` is promoted to real --
-neither of the two existing callback kinds above fit it exactly, so it
-gets a **third**: still `class \{BinButton\}`/`callback binButtonCb`
-(the same delegate every ordinary widget button uses), but
-`binButtonCb`'s own body (`gui_main.d`) now special-cases
-`typeName() == "Window"` to call a dedicated `createWindowNode()`
-instead of the generic `addWidget()` every other real button falls
-through to -- ported from FLTK's own `Window_Node::make()`: walks
-up from the current selection for a `FunctionNode` ancestor and nests
-the new window there, or shows `fl_message()`'s real "Please select a
-function" if none exists, rather than `addWidget()`'s generic
-"current selection or project root" fallback (which would silently
-create a window with no enclosing function, something `code_writer.d`
-has no shape for). Still no nested-window *canvas rendering* --
-`instantiate.d`'s `instantiateChild()` still skips `WindowNode`s, so a
-newly-created window shows up in the project tree and generates real
-code, just isn't drawn live -- that structural gap is unchanged, only
-node *creation* is new here. Dragging this button onto the canvas
-still isn't a real drop target either (`instantiateChild()`'s guard
-makes it a harmless no-op rather than a crash, but there's genuinely
-nowhere useful for the drop to land).
-
-Real icons, for real buttons *and*
-placeholders alike -- every button gets its own 16x16 FLTK icon
-via `fluid.pixmaps.pixmapFor()`, the type-name-keyed lookup table
-backed by FLTK's own real `fluid/pixmaps/*.xpm` assets,
-mechanically transliterated (see that module's own top comment). A
-real button's `setup \{\}` calls `o.image(pixmapFor("X"))` right after
-`o.typeName("X")`, matching FLTK's own `o->image(pixmap_for(
-"Fl_X"))` one-for-one in spirit (the literal string differs since this
-dialect's own `typeName()` values are short aliases, not FLTK's
-`Fl_`-prefixed names -- `pixmapFor()` resolves both forms, see its own
-doc comment). A placeholder has no `typeName()` to read (it's a plain
-`Button`, never a `BinButton`), so its own `setup \{\}` passes
-`pixmapFor()` the correct FLTK key directly, by hand, and still stays
-`deactivate`d: every
-one of the 62 ported icons can be visually checked for correctness
-even for a type this port doesn't act on yet, without these
-buttons becoming functional.
+Each button's `setup \{\}` calls `o.image(pixmapFor("X"))` right after
+`o.typeName("X")`, matching FLTK's own `o->image(pixmap_for("Fl_X"))`
+one-for-one in spirit (the literal string differs since this dialect's
+own `typeName()` values are short aliases, not FLTK's `Fl_`-prefixed
+names -- `pixmapFor()` resolves both forms, see its own doc comment).
+The Code group's `NodeBrowser.build()` handles the whole `projectRoots_`
+list, so a node with no enclosing window can be created from here too.
 }
   {
     in_source
@@ -622,11 +536,13 @@ o.image(pixmapFor("InputChoice"));}
               }
             Button {}
               {
+                callback {binButtonCb}
                 xywh {425 21 24 24}
                 box THIN_UP_BOX
-                setup {o.image(pixmapFor("MenuItem"));}
-                tooltip {Menu Item (not yet implemented)}
-                deactivate
+                class BinButton
+                setup {o.typeName("MenuItem");
+o.image(pixmapFor("MenuItem"));}
+                tooltip {Menu Item}
               }
             Button {}
               {
@@ -650,19 +566,23 @@ o.image(pixmapFor("MenuButton"));}
               }
             Button {}
               {
+                callback {binButtonCb}
                 xywh {425 46 24 24}
                 box THIN_UP_BOX
-                setup {o.image(pixmapFor("CheckMenuItem"));}
-                tooltip {Checkbox Menu Item (not yet implemented)}
-                deactivate
+                class BinButton
+                setup {o.typeName("CheckMenuItem");
+o.image(pixmapFor("CheckMenuItem"));}
+                tooltip {Checkbox Menu Item}
               }
             Button {}
               {
+                callback {binButtonCb}
                 xywh {450 46 24 24}
                 box THIN_UP_BOX
-                setup {o.image(pixmapFor("Submenu"));}
-                tooltip {Sub Menu (not yet implemented)}
-                deactivate
+                class BinButton
+                setup {o.typeName("Submenu");
+o.image(pixmapFor("Submenu"));}
+                tooltip {Sub Menu}
               }
             Button {}
               {
@@ -676,11 +596,13 @@ o.image(pixmapFor("Choice"));}
               }
             Button {}
               {
+                callback {binButtonCb}
                 xywh {425 71 24 24}
                 box THIN_UP_BOX
-                setup {o.image(pixmapFor("RadioMenuItem"));}
-                tooltip {Radio Menu Item (not yet implemented)}
-                deactivate
+                class BinButton
+                setup {o.typeName("RadioMenuItem");
+o.image(pixmapFor("RadioMenuItem"));}
+                tooltip {Radio Menu Item}
               }
           }
         Group {}
@@ -749,7 +671,7 @@ o.image(pixmapFor("FileBrowser"));}
                 class BinButton
                 setup {o.typeName("Table");
 o.image(pixmapFor("Table"));}
-                tooltip {Table (no cell-widget children yet)}
+                tooltip {Table}
               }
           }
         Group {}

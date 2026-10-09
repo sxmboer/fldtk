@@ -12,7 +12,7 @@
  * Deviations from FLTK, all deliberate:
  *
  *  - **`Fl_Preferences::Node` is ported as `PreferencesNode`, not
- *    `Node`** (renamed 2026-09-02, at the user's own request). This is
+ *    `Node`**. This is
  *    a real naming deviation from FLTK, not this project's usual
  *    faithful-by-default naming -- done specifically because `fl.
  *    preferences` is `public import`ed by `fl/package.d`, so a bare
@@ -25,8 +25,7 @@
  *    type's own name was referenced only within this file itself (51
  *    internal spots) versus `Node` being the single most pervasively
  *    used identifier across the entire `fluid/` tree. See
- *    `PORTING.md`'s `FL/Fl_Preferences.H` row and `TRANSLITERATION_
- *    GUIDE.md`'s own now-historical note on this exact clash.
+ *    `PORTING.md`'s `FL/Fl_Preferences.H` row.
  *
  *  - **Linux/Unix path resolution and UUID generation only.** FLTK
  *    dispatches through `Fl::system_driver()` (`Fl_Unix_System_Driver`/
@@ -1277,14 +1276,10 @@ class Preferences
     /// static `Fl_Preferences::filename()`/this module's own
     /// `preferencesFilename()` free function (which only *predicts* a
     /// path without opening anything, e.g. before this `Preferences` is
-    /// even constructed). Forwards to `rootNode`, previously
-    /// `package(fl)`-only despite `RootNode.filename()`/`.root()`
-    /// themselves already being public -- found as a real, reachable
-    /// gap via a `source/test/preferences.fl`-vs-FLTK audit
-    /// (2026-09-02): its own `readPrefs()` needs exactly this to
-    /// re-query the just-opened app's own resolved path/root (matching
-    /// FLTK's own `app.filename(path, FL_PATH_MAX)` call), and had
-    /// dropped that call entirely for lack of any way to reach it.
+    /// even constructed). Forwards to `rootNode`. Needed by
+    /// `source/test/preferences.fl`'s `readPrefs()` to re-query the
+    /// just-opened app's own resolved path/root (matching FLTK's own
+    /// `app.filename(path, FL_PATH_MAX)` call).
     Root filename(out string path) const
     {
         if (rootNode is null) return rootUnknown;
@@ -1558,10 +1553,9 @@ unittest
 
 unittest
 {
-    // `Preferences.filename()`: previously unreachable (`rootNode` was
-    // `package(fl)`-only) despite `RootNode.filename()`/`.root()`
-    // themselves already being public -- see this method's own doc
-    // comment for the `source/test/preferences.fl` audit that found it.
+    // `Preferences.filename()` reaches the public
+    // `RootNode.filename()`/`.root()` -- see this method's own doc
+    // comment.
     import std.file : tempDir, rmdirRecurse, exists, mkdirRecurse;
     import std.path : buildPath;
     import std.uuid : randomUUID;

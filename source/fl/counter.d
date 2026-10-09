@@ -38,11 +38,10 @@
  * literal resolves to.)
  *
  * The click-and-hold auto-repeat timer (`repeat_callback()`) and the
- * `Fl_Widget_Tracker` guards in `handle()` are both ported now too,
+ * `Fl_Widget_Tracker` guards in `handle()` are both ported,
  * using `fl.core`'s timer subsystem and `fl.widget_tracker`'s
- * `WidgetTracker` respectively (previously skipped, the same gaps
- * `fl.scrollbar`'s auto-repeat and `fl.button`'s `simulateKeyAction()`/
- * `handle()` guards had -- all now also ported). The destructor's only
+ * `WidgetTracker` respectively (as in `fl.scrollbar`'s auto-repeat and
+ * `fl.button`'s `simulateKeyAction()`/`handle()` guards). The destructor's only
  * job FLTK is cancelling the repeat timer; ported as `~this()`
  * calling `removeTimeout()`, safe unconditionally even during
  * GC-driven finalization (see fl.clock's destructor for the same
@@ -65,7 +64,7 @@
  * bug, and this port's version is arguably the cleaner one anyway.
  *
  * draw() calls fl.draw's now-real `fl_font()`/`fl_draw()` (text) and
- * `drawArrow()` (added for `fl.scrollbar` originally, real now --
+ * `drawArrow()` (added for `fl.scrollbar` originally, real --
  * see fl.draw's own module comment), plus the real `drawBox()`/
  * `drawFocus()`, so everything renders for real, including the
  * increment/decrement arrow glyphs.

@@ -6,10 +6,9 @@
  * FLTK, including fl_return_arrow() -- FLTK defines that as a
  * free (non-static) function in Fl_Return_Button.cxx rather than in
  * fl_draw.H, so it's kept here rather than in fl.draw, same file
- * placement as FLTK. It needed two fl.draw primitives that were
- * still stubs until now: the 4-arg fl_xyline() and 5-arg fl_yxline()
- * overloads (both added there as plain compositions of the already-real
- * 3-arg forms -- see that module's doc comment).
+ * placement as FLTK. It uses fl.draw's 4-arg fl_xyline() and 5-arg
+ * fl_yxline() overloads (plain compositions of the 3-arg forms -- see
+ * that module's doc comment).
  */
 module fl.return_button;
 

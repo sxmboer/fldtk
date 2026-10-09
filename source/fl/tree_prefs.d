@@ -292,7 +292,7 @@ class TreePrefs
     int openiconW() const { return openimage_ !is null ? openimage_.w() : 11; }
     int openiconH() const { return openimage_ !is null ? openimage_.h() : 11; }
     /// Set the default 'open' icon. null restores the built-in [+] icon.
-    /// Also derives (and caches) a deactivated copy, real now via
+    /// Also derives (and caches) a deactivated copy, real via
     /// Image.copy()/inactive() -- see opendeicon().
     void openicon(Image val)
     {

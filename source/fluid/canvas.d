@@ -32,7 +32,9 @@
  * rubber-band box-select (`FD_BOX`, `dragBox`/`finishBoxSelect()`),
  * double-click-to-open (`Event.release`'s `eventClicks()` check,
  * `onOpenRequested`), keyboard arrow-key nudge and Tab/Shift+Tab
- * widget-cycling (`Event.keyDown`), Escape-hides-the-window, and
+ * widget-cycling (`Event.keyDown`), keyboard shortcuts tested against
+ * Fluid's own main menu and never passed to the design's widgets
+ * (`onShortcut`), Escape-hides-the-window, and
  * external image-file drag-and-drop onto a widget (`onImageDropped`,
  * distinguished from a widget-bin type-name drop via
  * `imageDropPath()`). See each feature's own doc comment (`handle()`'s
@@ -54,7 +56,7 @@
  * *empty-space* press is one exception to "immediate on push": it
  * defers to FLTK's own two-phase timing after all, since that's
  * exactly what box-select needs (see `finishBoxSelect()`'s own doc
- * comment). `click_test()` itself *is* ported now, for the two node
+ * comment). `click_test()` itself *is* ported, for the two node
  * kinds FLTK overrides it on: a `Tabs` hit on its own tab-label
  * strip forwards to the live `Fl_Tabs`' own click-to-switch-page
  * handling (`Tabs_Node::click_test()`), and an unselected menu widget
@@ -84,9 +86,15 @@ module fluid.canvas;
 import fl;
 
 import fluid.node : Node;
-import fluid.window_node : WindowNode;
+import fluid.window_node : WindowNode, isNestedWindow;
 import fluid.widget_node : WidgetNode;
-import fluid.instantiate : instantiate, LiveTree, idealSizeFor, menuItemNodeMap;
+import fluid.grid_proxy : GridProxy;
+import fluid.grid_node : GridNode;
+import fluid.flex_node : FlexNode;
+import fluid.layout_edit : flexInsertChildAt, flexKeyboardMoveChild, gridInsertChildAt,
+    gridKeyboardMoveChild, gridChildResized, syncLayoutFromLive;
+import fluid.instantiate : instantiate, LiveTree, geometryFromLive, syncDescendantsFromLive, nestedWindowFactory, idealSizeFor, menuItemNodeMap, applyMenuItems;
+import fluid.menu_item_node : MenuItemNode;
 import fluid.snap_action : SnapData, checkAll, drawAll, getMoveStepsize, getResizeStepsize;
 
 /// Which edge(s) (or plain move) a drag is currently manipulating --
@@ -124,6 +132,7 @@ private struct DragOrigin
 final class ProjectCanvas : OverlayWindow
 {
     private Node root_;
+    private string projectDir_ = ".";
     private LiveTree live_;
     private Node[] selected_;
 
@@ -230,6 +239,15 @@ final class ProjectCanvas : OverlayWindow
     /// this, so selecting something never pushes an empty undo entry.
     void delegate() onBeforeGeometryEdit;
 
+    /// Fired on every resize of this window that changes its size, before
+    /// the window node follows it. A drag sends many; the owner records one
+    /// undo step for the run (`gui_main.d`'s `checkpointOnce()`).
+    void delegate() onBeforeWindowResize;
+
+    /// Set while `rebuildFrom()` sizes the window to the restored node, so
+    /// that resize is not taken as an edit.
+    private bool restoring_;
+
     /// Fired once after a real move/resize drag ends (`Event.release`)
     /// with actual movement -- lets `gui_main.d` refresh the property
     /// panel and mark the project dirty, the same way `alignSelected()`
@@ -277,6 +295,14 @@ final class ProjectCanvas : OverlayWindow
     /// the interaction, the owner decides what it means" split every
     /// other delegate on this class already uses.
     void delegate(int x, int y) onContextMenu;
+
+    /// Handles a keyboard shortcut that reached this canvas, returning
+    /// nonzero if it was used. Ported from `Window_Node::handle()`'s
+    /// `FL_SHORTCUT` case: the canvas tests the shortcut against Fluid's
+    /// own main menu (`gui_main.d` owns it) and never passes it on to the
+    /// design's widgets, so a live menu's item shortcuts can't take a
+    /// key away from Fluid's own commands.
+    int delegate() onShortcut;
 
     /// Fired on a real drag-and-drop widget-palette drop (`Event.paste`,
     /// see `fluid/panels/BinButton.d`'s `BinButton`/`fluid/panels/
@@ -340,8 +366,33 @@ final class ProjectCanvas : OverlayWindow
         // *project file's* own display name, never a per-window label
         // default -- confirmed by grepping the whole `fluid/` tree for
         // "Untitled": it appears nowhere near `Window_Node`.
-        super(w, h, rootNode.hasLabel ? rootNode.label : null);
+        string title = rootNode.hasLabel ? rootNode.label : null;
+        // A nested window is a subwindow: constructed inside its
+        // parent's open group (`instantiateChild()`) at its own
+        // position within that window, rather than a top-level window
+        // the window manager places.
+        if (isNestedWindow(rootNode))
+            super(rootNode.hasXywh ? rootNode.x : 0, rootNode.hasXywh ? rootNode.y : 0, w, h, title);
+        else
+            super(w, h, title);
+        projectDir_ = projectDir;
         live_ = instantiate(rootNode, this, projectDir);
+    }
+
+    /// Whether this canvas is a subwindow inside another window's canvas.
+    bool nested() { return isNestedWindow(root_); }
+
+    /// The window node this canvas edits.
+    WindowNode rootNode() { return cast(WindowNode) root_; }
+
+    /// The canvases of the nested windows directly inside this one.
+    ProjectCanvas[] nestedCanvases()
+    {
+        ProjectCanvas[] result;
+        foreach (w; live_.widgetOf.byValue())
+            if (auto pc = cast(ProjectCanvas) w)
+                if (pc !is this) result ~= pc;
+        return result;
     }
 
     /// Rebuilds this canvas's live widget content in place from
@@ -377,7 +428,15 @@ final class ProjectCanvas : OverlayWindow
         selected_ = [];
         rangeAnchor_ = null;
         root_ = newRoot;
+        projectDir_ = projectDir;
         live_ = instantiate(newRoot, this, projectDir);
+        // An undone or redone window resize restores the window's size too.
+        if (newRoot.hasXywh && (newRoot.w != w() || newRoot.h != h()))
+        {
+            restoring_ = true;
+            size(newRoot.w, newRoot.h);
+            restoring_ = false;
+        }
         redraw();
     }
 
@@ -426,8 +485,9 @@ final class ProjectCanvas : OverlayWindow
         super.resize(X, Y, W, H);
         if (!allowLayout) resizable(savedResizable);
 
-        if (sizeChanged && shown())
+        if (sizeChanged && shown() && !restoring_)
         {
+            if (onBeforeWindowResize !is null) onBeforeWindowResize();
             if (auto wn = cast(WindowNode) root_)
             {
                 wn.w = W;
@@ -585,17 +645,13 @@ final class ProjectCanvas : OverlayWindow
     /// BOX) fl_rect(...)`), since a `noBox` widget paints nothing at
     /// all for the flat-box swap to ever apply to. This port has no
     /// per-node-kind proxy `draw()` overrides the way FLTK's
-    /// `Fl_Group_Proxy`/`Fl_Grid_Proxy` provide (`fluid.instantiate`
-    /// creates plain `fl.group.Group`/`fl.grid.Grid` instances
-    /// directly, matching this project's established "concrete, not
-    /// polymorphic" stance) -- `outlineNoBoxGroups()` below covers the
-    /// same ground with one tree-walk from here instead, right after
-    /// the real content has been drawn. Covers every FLTK node
-    /// kind that gets this treatment: `Group`/`Tabs`/`Wizard`/`Pack`/
-    /// `Scroll`/`Tile` all instantiate as plain `fl.group.Group`
-    /// (`fluid.factory`'s own registry), and `fl.grid.Grid` is a
-    /// `Group` subclass too, so a single `cast(FlGroup)` walk reaches
-    /// all of them with no extra type-kind checks needed.
+    /// `Fl_Group_Proxy`/`Fl_Grid_Proxy` provide --
+    /// `outlineNoBoxGroups()` below covers the same ground with one
+    /// tree-walk from here instead, right after the real content has
+    /// been drawn. Unlike FLTK, which outlines only its
+    /// `Group`/`Flex`/`Tabs`/`Wizard`/`Grid` proxies, every `Group`
+    /// subclass (`Pack`/`Scroll`/`Tile`/`Table` too) is outlined, so
+    /// all containers look alike.
     override void draw()
     {
         enum checkSize = 8;
@@ -641,6 +697,7 @@ final class ProjectCanvas : OverlayWindow
         {
             auto c = g.child(i);
             if (!c.visible()) continue;
+            if (cast(Window) c !is null) continue; // a nested window draws its own
             if (auto cg = cast(FlGroup) c)
             {
                 if (cg.box() == Boxtype.noBox)
@@ -739,7 +796,7 @@ final class ProjectCanvas : OverlayWindow
         foreach (i; 0 .. g.children())
         {
             if (auto cg = cast(FlGroup) g.child(i))
-                if (cast(Scroll) cg is null && cast(TextDisplay) cg is null)
+                if (cast(Scroll) cg is null && cast(TextDisplay) cg is null && cast(Window) cg is null)
                     outOfBoundsHatch(cg, cg.x(), cg.y(), cg.w(), cg.h());
         }
     }
@@ -805,7 +862,7 @@ final class ProjectCanvas : OverlayWindow
             widgets ~= c;
             depths ~= depth;
             if (auto cg = cast(FlGroup) c)
-                if (cast(TextDisplay) cg is null)
+                if (cast(TextDisplay) cg is null && cast(Window) cg is null)
                     collectWithDepth(cg, depth + 1, widgets, depths);
         }
     }
@@ -903,6 +960,16 @@ final class ProjectCanvas : OverlayWindow
             // 1px apart (a real bug this pass introduced and caught
             // before landing -- an earlier version of this line read
             // `(*w).x() - 1, (*w).y() - 1, (*w).w() + 2, (*w).h() + 2`).
+            // FLTK: a selected grid shows its cell lines (unless a
+            // single selected widget is being dragged, when the
+            // parent-grid overlay below takes over).
+            bool singleDrag = showGuides && dragMode_ != dragNone && selected_.length == 1;
+            if (!singleDrag)
+                if (auto grid = cast(GridProxy) *w) grid.drawOverlay();
+            // FLTK: dragging a child of a grid shows that grid's cell lines.
+            if (showGuides && dragMode_ != dragNone && n.parent !is null)
+                if (auto pw = n.parent in live_.widgetOf)
+                    if (auto grid = cast(GridProxy) *pw) grid.drawOverlay();
             fl_rect((*w).x(), (*w).y(), (*w).w(), (*w).h());
         }
         if (windowSelected)
@@ -1139,10 +1206,55 @@ final class ProjectCanvas : OverlayWindow
         }
     }
 
+    /// Set when a flex's children changed order during a drag, so the
+    /// project tree needs rebuilding; read (and cleared) by `gui_main.d`.
+    private bool layoutReordered_;
+
+    /// Whether the last geometry edit reordered a flex's children.
+    bool takeLayoutReordered()
+    {
+        bool r = layoutReordered_;
+        layoutReordered_ = false;
+        return r;
+    }
+
+    /// A grid or flex decides where its children sit, so a child that was
+    /// just moved or resized by `applyDrag()` is handed to its container
+    /// instead, as `Window_Node::moveallchildren()` does: a moved flex
+    /// child goes to the slot nearest the pointer, a moved grid child to
+    /// the cell under it, an arrow key moves it one slot or cell, and a
+    /// resize becomes a fixed size (flex) or the cell's minimum size
+    /// (grid). `key` is the arrow key of a keyboard nudge, else 0.
+    private void relayoutDraggedChildren(int key)
+    {
+        foreach (o; dragOrigins_)
+        {
+            auto wgt = live_.widgetOf.get(o.node, null);
+            if (wgt is null) continue;
+            bool moving = (dragMode_ & dragMove) != 0;
+            if (auto flex = cast(Flex) wgt.parent())
+            {
+                if (key && moving) flexKeyboardMoveChild(flex, wgt, key);
+                else if (moving) flexInsertChildAt(flex, wgt, eventX(), eventY());
+                else if (flex.horizontal() ? wgt.w() != o.w : wgt.h() != o.h)
+                    flex.fixed(wgt, flex.horizontal() ? wgt.w() : wgt.h());
+                flex.layout();
+            }
+            else if (auto grid = cast(GridProxy) wgt.parent())
+            {
+                if (key && moving) gridKeyboardMoveChild(grid, wgt, key);
+                else if (moving) gridInsertChildAt(grid, wgt, eventX(), eventY());
+                else gridChildResized(grid, wgt);
+                grid.needLayout(true);
+                grid.layout();
+            }
+        }
+    }
+
     /// Writes every dragged/nudged widget's real, live post-move/-resize
     /// geometry back onto its own `Node` and fires `onGeometryEdited` --
     /// factored out of `Event.release`'s own move/resize-commit branch
-    /// (formerly inline there) so keyboard arrow-nudge can reuse the
+    /// so keyboard arrow-nudge can reuse the
     /// identical logic instead of duplicating it. Sharing this matters,
     /// not just tidiness: without it, an arrow-key nudge would move the
     /// *live* widget (via `applyDrag()`) but never persist the new
@@ -1155,11 +1267,23 @@ final class ProjectCanvas : OverlayWindow
         {
             auto wgt = live_.widgetOf.get(o.node, null);
             if (wgt is null) continue;
-            o.node.x = wgt.x();
-            o.node.y = wgt.y();
-            o.node.w = wgt.w();
-            o.node.h = wgt.h();
-            o.node.hasXywh = true;
+            geometryFromLive(o.node, wgt);
+            syncDescendantsFromLive(o.node, live_);
+        }
+        // The parent of a dragged child may have moved it: bring its
+        // node (cell, order, fixed sizes, every child's rectangle) in
+        // line with the live container.
+        Node[] synced;
+        foreach (o; dragOrigins_)
+        {
+            auto p = o.node.parent;
+            if (p is null) continue;
+            bool done = false;
+            foreach (q; synced)
+                if (q is p) { done = true; break; }
+            if (done) continue;
+            synced ~= p;
+            if (syncLayoutFromLive(p, live_)) layoutReordered_ = true;
         }
         if (onGeometryEdited !is null) onGeometryEdited();
     }
@@ -1178,10 +1302,8 @@ final class ProjectCanvas : OverlayWindow
     /// null)`, FLTK's `deselect()`) so only the box's own contents
     /// end up selected.
     ///
-    /// **User-reported gap, found comparing this port's own editor
-    /// against real FLTK's own Fluid side by side: clicking the
-    /// window's own empty margin selected nothing here, but selects the
-    /// window itself FLTK.** Root cause traced to FLTK's own
+    /// **Clicking the window's own empty margin selects the window
+    /// itself, as in FLTK.** The mechanism is in FLTK's own
     /// `Window_Node::handle()`: `FL_PUSH` seeds a local `selection =
     /// this` (the window) before scanning descendants, only overwriting
     /// it with a specific child whose bounds contain the click point --
@@ -1192,11 +1314,9 @@ final class ProjectCanvas : OverlayWindow
     /// `n == 0`* falls back to `select(selection, ...)` -- which is
     /// what actually selects the window for a plain empty-space click
     /// (a box that never grew past a single point, matching zero
-    /// widgets inside it either way). This function used to stop after
-    /// the containment loop, silently dropping that whole fallback --
-    /// reproducing only the "clear the selection" half of FLTK's
-    /// behavior, never the "select the window" half. Restored below,
-    /// using this port's own `hitTest()` (already the same "what's at
+    /// widgets inside it either way). Without that fallback only the
+    /// "clear the selection" half of FLTK's behavior would exist, never
+    /// the "select the window" half. This port uses its own `hitTest()` (already the same "what's at
     /// this point" primitive `Event.push` itself uses) at the release
     /// point in place of FLTK's own flat-list re-scan, falling back
     /// to `root_` (the window) when even that finds nothing.
@@ -1260,6 +1380,7 @@ final class ProjectCanvas : OverlayWindow
         {
             foreach (c; x.children)
             {
+                if (cast(WindowNode) c !is null) continue; // a nested window has its own canvas
                 if (auto wn = cast(WidgetNode) c) result ~= wn;
                 walk(c);
             }
@@ -1270,6 +1391,20 @@ final class ProjectCanvas : OverlayWindow
 
     override int handle(Event e)
     {
+        if (e == Event.shortcut)
+            return onShortcut is null ? 0 : onShortcut();
+
+        // FLTK's `Overlay_Window::handle()` passes only `FL_SHOW`/`FL_HIDE`
+        // on to its window base class, so a design widget never becomes
+        // `belowmouse()` or the focus. Keeping pointer-crossing and focus
+        // events here does the same; otherwise a design widget under the
+        // mouse would be offered a shortcut before this canvas
+        // (`fl.core`'s `Event.shortcut` dispatch tries `belowmouse()`
+        // first).
+        if (e == Event.enter || e == Event.move || e == Event.leave
+            || e == Event.focus || e == Event.unfocus)
+            return 1;
+
         if (e == Event.push)
         {
             dragMode_ = dragNone;
@@ -1407,9 +1542,13 @@ final class ProjectCanvas : OverlayWindow
                         auto picked = menu.mvalue();
                         if (picked !is null)
                         {
+                            // Picking a toggle or radio item flipped its
+                            // live value: rebuild to restore the model's.
+                            bool restore = (picked.flags & (menuToggle | menuRadio)) != 0;
                             auto idx = menu.findIndex(picked);
                             if (idx >= 0 && idx < itemNodes.length && itemNodes[idx] !is null)
                                 target = itemNodes[idx];
+                            if (restore) applyMenuItems(wn, hit, true, projectDir_);
                         }
                         else
                         {
@@ -1424,6 +1563,12 @@ final class ProjectCanvas : OverlayWindow
                             rangeAnchor_ = cast(WidgetNode) target;
                         }
                         if (onSelectionChanged !is null) onSelectionChanged(selected_);
+                        // FLTK opens a menu item picked this way in the
+                        // properties panel (`if (dynamic_cast<Menu_Item_
+                        // Node*>(t)) t->open();`).
+                        if (!fl.core.eventShift() && cast(MenuItemNode) target !is null
+                            && onOpenRequested !is null)
+                            onOpenRequested(target);
                         redrawOverlay();
                         return 1;
                     }
@@ -1515,7 +1660,14 @@ final class ProjectCanvas : OverlayWindow
                 data.drag = dragMode_;
                 data.wgt = live_.widgetOf.get(dragOrigins_[0].node, null);
                 data.win = this;
-                idealSizeFor(dragOrigins_[0].node.typeName, data.wgtIdealW, data.wgtIdealH);
+                int pw, ph;
+                if (auto pn = dragOrigins_[0].node.parent)
+                    if (auto pwid = pn in live_.widgetOf)
+                    {
+                        pw = (*pwid).w();
+                        ph = (*pwid).h();
+                    }
+                idealSizeFor(dragOrigins_[0].node.typeName, data.wgtIdealW, data.wgtIdealH, pw, ph);
                 checkAll(data);
                 if (data.xDist < 4) ddx = data.dxOut;
                 if (data.yDist < 4) ddy = data.dyOut;
@@ -1529,6 +1681,7 @@ final class ProjectCanvas : OverlayWindow
                     if (onBeforeGeometryEdit !is null) onBeforeGeometryEdit();
                 }
                 applyDrag(ddx, ddy);
+                relayoutDraggedChildren(0);
                 // `applyDrag()` calls `Widget.resize()` directly, a bare
                 // setter that never touches `damage()` (matching real
                 // FLTK: geometry-only resize doesn't imply a redraw on
@@ -1746,6 +1899,7 @@ final class ProjectCanvas : OverlayWindow
                     {
                         if (onBeforeGeometryEdit !is null) onBeforeGeometryEdit();
                         applyDrag(ndx * step, ndy * step);
+                        relayoutDraggedChildren(fl.core.eventShift() ? 0 : key);
                         redraw();
                         commitDragGeometry();
                         redrawOverlay();
@@ -1801,7 +1955,7 @@ final class ProjectCanvas : OverlayWindow
             // `gui_main.d`'s "Reopening a closed project window" note).
             if (key == escape)
             {
-                hide();
+                if (!nested) hide();
                 return 1;
             }
         }
@@ -1906,9 +2060,9 @@ final class ProjectCanvas : OverlayWindow
     /// -- every non-subwindow descendant's `x()`/`y()` is already in
     /// this same coordinate space, matching real FLTK's own "relative
     /// to the enclosing window, not the immediate parent group"
-    /// widget-coordinate convention; Phase 1 never instantiates a
-    /// nested window, so that convention's one exception never
-    /// applies here). Children are checked back-to-front (highest
+    /// widget-coordinate convention; a nested window is that
+    /// convention's one exception, so it is returned as a whole rather
+    /// than searched). Children are checked back-to-front (highest
     /// index -- normally the most recently added, so visually on top
     /// -- first) so an overlapping pair resolves to whichever one a
     /// user would actually see under the cursor.
@@ -1931,8 +2085,11 @@ final class ProjectCanvas : OverlayWindow
             if (!c.visible()) continue;
             if (!(px >= c.x() && px < c.x() + c.w() && py >= c.y() && py < c.y() + c.h()))
                 continue;
+            // A nested window's own content is in its own coordinates,
+            // and its own canvas handles the events there.
             if (auto cg = cast(FlGroup) c)
             {
+                if (cast(Window) c !is null) return c;
                 auto deeper = hitTest(cg, px, py);
                 if (deeper !is null) return deeper;
             }
@@ -1950,12 +2107,9 @@ unittest
     // public `eventX(int)`/`eventY(int)`/`eventClicks(int)` setters,
     // the only event-state mutators reachable from outside package `fl`
     // at all: `eKeysym_`/`eState_` are `package(fl)`-scoped, so the
-    // *keyboard*-driven features added in the same pass (arrow-key
-    // nudge, Tab/Shift+Tab, Escape) have no headless test here and rely
-    // on the user's own interactive confirmation instead -- the same
-    // position this file's pre-existing Delete/Backspace handling has
-    // always been in (this module had zero unittest blocks before this
-    // one).
+    // *keyboard*-driven features (arrow-key nudge, Tab/Shift+Tab,
+    // Escape, Delete/Backspace) have no headless test here and are
+    // checked interactively.
     import fl.group : FlGroup;
     FlGroup.current(null);
 
@@ -2081,4 +2235,9 @@ unittest
     // the "Explorer/Finder" shape, not a cumulative one.
     canvas.selectRange(btn2);
     assert(canvas.isSelected(btn1) && canvas.isSelected(btn2) && !canvas.isSelected(btn3));
+}
+
+shared static this()
+{
+    nestedWindowFactory = (WindowNode wn, string projectDir) => cast(Widget) new ProjectCanvas(wn, projectDir);
 }

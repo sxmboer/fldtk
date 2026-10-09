@@ -123,8 +123,9 @@ static immutable PageFormatInfo[30] pageFormats = [
  * `src/Fl_Paged_Device.cxx`) -- represents page-structured drawing
  * surfaces. See this module's own top comment: every method here has
  * FLTK's own trivial default body (failure/no-op); a real
- * subclass (`Fl_Printer`/`Fl_PostScript_File_Device`, not ported yet)
- * overrides them with real page-emission logic.
+ * subclass (`Fl_Printer`/`Fl_PostScript_File_Device`, ported as
+ * `fl.printer` and `fl.postscript`) overrides them with real
+ * page-emission logic.
  */
 abstract class PagedDevice : WidgetSurface
 {
@@ -199,7 +200,7 @@ abstract class PagedDevice : WidgetSurface
 
 unittest
 {
-    // A real subclass exists now (fl.postscript.PostscriptFileDevice --
+    // A real subclass exists (fl.postscript.PostscriptFileDevice --
     // see this module's own top comment), but importing fl.postscript
     // here just to test PagedDevice's own default ("not implemented")
     // bodies would be a pointless module-coupling; a throwaway

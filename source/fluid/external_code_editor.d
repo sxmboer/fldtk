@@ -121,6 +121,11 @@ class ExternalCodeEditor
                 return;
             if (reaped == 1) // reaped
                 return;
+            if (reaped == -1)
+            {
+                alert(format("Error reaping external editor\npid=%d file=%s", pid_.processID, filename_));
+                continue;
+            }
             // Still running (reaped == 0): ask the user.
             int c = choice(
                 format("Please close external editor\npid=%d file=%s", pid_.processID, filename_),
@@ -155,6 +160,11 @@ class ExternalCodeEditor
                 return;
             if (reaped == 1)
                 return;
+            if (reaped == -1)
+            {
+                alert(format("Can't seem to close editor of file: %s\nwaiting on it failed\nPlease close editor and hit OK", filename_));
+                continue;
+            }
             if (++wcount > 30) // ~3 seconds of retrying
                 alert(format("Can't seem to close editor of file: %s\nPlease close editor and hit OK", filename_));
         }
@@ -278,15 +288,19 @@ class ExternalCodeEditor
     /// public, matching FLTK, since the app's own periodic polling
     /// callback (see `setUpdateTimerCallback()`) is expected to call
     /// this directly, alongside `handleChanges()`, for every open
-    /// editor. Returns -2 if no editor is running, 0 if it's still
-    /// running, or 1 if it just exited (the temp file is removed and
-    /// internal state cleared as a side effect, matching FLTK's
-    /// own `reap_editor()`).
+    /// editor. Returns -2 if no editor is running, -1 if waiting on it
+    /// failed, 0 if it's still running, or 1 if it just exited (the temp
+    /// file is removed and internal state cleared as a side effect,
+    /// matching FLTK's own `reap_editor()`).
     int reapEditor()
     {
         if (!isEditing()) return -2;
 
-        auto result = tryWait(pid_);
+        typeof(tryWait(pid_)) result;
+        try
+            result = tryWait(pid_);
+        catch (Exception)
+            return -1; // FLTK: `waitpid()` failed
         if (!result.terminated)
             return 0;
 

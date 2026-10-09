@@ -2,16 +2,15 @@
  * Ported from FL/Fl_SVG_File_Surface.H + src/drivers/SVG/
  * Fl_SVG_File_Surface.cxx (FLTK 1.5.0).
  *
- * **Scope (updated 2026-09-22, third pass)**: FLTK's `Fl_SVG_
- * Graphics_Driver` overrides ~35 `Fl_Graphics_Driver` virtuals. This
- * port's `fl.graphics_driver.GraphicsDriver` now covers rect/line/
- * color/polygon, line style (dash/width/cap/join), clipping, arcs/pies,
- * the vertex-path `end_*()` family, plain (non-rotated) text, and now
- * images too (`drawImage()`/`drawBitmap()`, base64-PNG `<image>`
- * elements -- see those two overrides' own doc comments for the real,
- * documented simplifications vs. FLTK: no `<defs>`/`<use>` reuse
- * caching, PNG only, no JPEG). `SvgGraphicsDriver` below implements
- * exactly that surface; rotated text is the one primitive family left.
+ * **Scope**: FLTK's `Fl_SVG_Graphics_Driver` overrides ~35
+ * `Fl_Graphics_Driver` virtuals. This port's
+ * `fl.graphics_driver.GraphicsDriver` covers rect/line/color/polygon,
+ * line style (dash/width/cap/join), clipping, arcs/pies, the vertex-path
+ * `end_*()` family, text including rotated text, and images
+ * (`drawImage()`/`drawBitmap()`, base64-PNG `<image>` elements -- see
+ * those two overrides' own doc comments for the documented
+ * simplifications vs. FLTK: no `<defs>`/`<use>` reuse caching, PNG only,
+ * no JPEG). `SvgGraphicsDriver` below implements exactly that surface.
  *
  * **`circle()`/`fl_arc(double,...)` need no driver method at all**,
  * unlike FLTK's own `Fl_Graphics_Driver::circle()`/`arc(double,...)`
@@ -25,15 +24,9 @@
  * `fl.draw` leaves and need a real `arc()`/`pie()` driver method.
  *
  * **`SvgFileSurface.draw(Widget)`/`drawDecoratedWindow()` (inherited
- * from `fl.widget_surface.WidgetSurface`) are safe on a general widget
- * now** -- images were the one remaining real gap (a real widget's
- * `draw()` commonly draws one, e.g. an icon/label image), and
- * `drawImage()`/`drawBitmap()` are both real now (see above). Rotated
- * text (`fl.draw.fl_draw(int angle,...)`) still falls through to
- * `GraphicsDriver.draw(int,...)`'s own non-abstract default (plain,
- * unrotated `draw()`) rather than mixing real window pixels in the way
- * an undispatched primitive used to -- a cosmetic gap (text renders,
- * just not rotated), not a correctness one.
+ * from `fl.widget_surface.WidgetSurface`) are safe on a general widget**:
+ * every primitive a widget's `draw()` can reach, including images, is
+ * dispatched to this driver.
  *
  * Also simplified relative to FLTK: no display-scale-factor
  * wrapping (`<g transform="scale(...)">`) -- `fl.core.screenScale(int)`
@@ -51,7 +44,7 @@ import std.math : PI, cos, sin, abs;
 import std.array : appender, array;
 import std.algorithm : map;
 import std.format : formattedWrite;
-import fl.enumerations : Color;
+import fl.enumerations : Color, lineSolid, lineDash, lineDot, lineDashDot;
 import fl.graphics_driver : GraphicsDriver, Point;
 import fl.widget_surface : WidgetSurface;
 import fldraw = fl.draw;
@@ -83,14 +76,15 @@ class SvgGraphicsDriver : GraphicsDriver
     private int lineWidth_ = 1;
     private string linecap_ = "butt";
     private string linejoin_ = "miter";
-    /// Dash lengths in absolute pixel units at scale 1 (empty = solid).
-    /// Kept as numbers, not a pre-formatted string, so `arc()`/`pie()`
-    /// can rescale them into the local unit-circle coordinate space
-    /// their own `<g transform="... scale(...)">` wrapper uses (see
-    /// `dashArrayString()`'s own doc comment) -- matching FLTK's
-    /// own `compute_dasharray(scale, ...)` recomputation for exactly
-    /// this case.
-    private int[] dashLengths_;
+    /// The last `lineStyle()` call's style bits and explicit dashes (empty
+    /// = derive them from the style). Kept as numbers, not a pre-formatted
+    /// string, so `arc()`/`pie()` can rescale the pattern into the local
+    /// unit-circle coordinate space their own `<g transform="...
+    /// scale(...)">` wrapper uses (see `dashArrayString()`'s own doc
+    /// comment) -- matching FLTK's own `compute_dasharray(scale, ...)`
+    /// recomputation for exactly this case.
+    private int lineStyle_;
+    private const(ubyte)[] userDashes_;
 
     /// Clip nesting depth, used only to generate distinct SVG element
     /// IDs (`FLclip0`, `FLclip1`, ...) -- ported from `Fl_SVG_Graphics_
@@ -170,43 +164,53 @@ class SvgGraphicsDriver : GraphicsDriver
     /// this port's simpler `lineStyle()` bit layout (`(style>>8)&3`
     /// for cap, `(style>>12)&3` for join -- see `fl.draw.fl_line_
     /// style()`'s own body, which this table mirrors exactly) rather
-    /// than FLTK's own `FL_CAP_*`/`FL_JOIN_*` bitmask comparisons.
-    /// Reuses `fl.draw.dashPatternFor()` for the auto-dash-from-style
-    /// case instead of re-deriving FLTK's own separate
-    /// `compute_dasharray()` math (see that function's own doc comment).
+    /// than FLTK's own `FL_CAP_*`/`FL_JOIN_*` bitmask comparisons. The
+    /// dash pattern is worked out per output in `dashArrayString()`.
     override void lineStyle(int style, int width, const(ubyte)[] dashes)
     {
+        lineStyle_ = style;
+        userDashes_ = dashes;
         lineWidth_ = width == 0 ? 1 : (width > 0 ? width : -width);
         static immutable string[4] capNames = ["butt", "butt", "round", "square"];
         static immutable string[4] joinNames = ["miter", "miter", "round", "bevel"];
         linecap_ = capNames[(style >> 8) & 3];
         linejoin_ = joinNames[(style >> 12) & 3];
-
-        const(ubyte)[] d = dashes;
-        if (d.length == 0 && (style & 0xff) != 0)
-            d = fldraw.dashPatternFor(style, lineWidth_);
-        dashLengths_ = d.map!(v => cast(int) v).array;
     }
 
-    /// Formats `dashLengths_` as an SVG `stroke-dasharray` value,
-    /// `"none"` if solid. `scale`, if not 1, divides each length first --
-    /// used by `arc()`/`pie()` to express the dash pattern in the local,
-    /// pre-`<g transform="scale(...)">` unit-circle coordinate space
-    /// they draw in (matching FLTK's own `compute_dasharray(scale,
-    /// user_dash_array_)`/`compute_dasharray(1., ...)` recompute-then-
-    /// restore pair around `arc_pie()`) -- `line()`/`rect()` call this
-    /// with the default `scale = 1` (their own coordinates are already
-    /// absolute pixels, no wrapping transform to compensate for).
+    /// The SVG `stroke-dasharray` value for the current line style,
+    /// `"none"` if solid. Ported from `Fl_SVG_Graphics_Driver::
+    /// compute_dasharray()`: explicit dashes are used as given; otherwise
+    /// the pattern is made of the line width times 3 (dash), 1 (dot) and 1
+    /// (gap) for flat caps, or times 2.5, 0.6 and 1.5 for round and square
+    /// caps (whose ends extend each dash). `scale`, if not 1, divides each
+    /// length -- used by `arc()`/`pie()` to express the pattern in the
+    /// local, pre-`<g transform="scale(...)">` unit-circle coordinate space
+    /// they draw in (matching FLTK's own `compute_dasharray(scale, ...)`/
+    /// `compute_dasharray(1., ...)` pair around `arc_pie()`) -- `line()`/
+    /// `rect()` use the default `scale = 1`.
     private string dashArrayString(double scale = 1.0)
     {
-        if (dashLengths_.length == 0) return "none";
-        auto app = appender!string;
-        foreach (i, v; dashLengths_)
+        import std.format : format;
+        import std.array : join;
+
+        if (userDashes_.length)
+            return userDashes_.map!(v => format("%.3f", v / scale)).join(",");
+
+        immutable dashPart = lineStyle_ & 0xff;
+        if (dashPart == lineSolid) return "none";
+
+        immutable bool isFlat = ((lineStyle_ >> 8) & 3) <= 1;
+        immutable float w = lineWidth_;
+        string dot = format("%.3f", (isFlat ? w : w * 0.6f) / scale);
+        string gap = format("%.3f", (isFlat ? w : w * 1.5f) / scale);
+        string big = format("%.3f", (isFlat ? 3 * w : w * 2.5f) / scale);
+        switch (dashPart)
         {
-            if (i) app ~= ",";
-            formattedWrite(app, "%g", v / scale);
+        case lineDot: return [dot, gap].join(",");
+        case lineDash: return [big, gap].join(",");
+        case lineDashDot: return [big, gap, dot, gap].join(",");
+        default: return [big, gap, dot, gap, dot, gap].join(",");
         }
-        return app.data;
     }
 
     override void pushClip(int x, int y, int w, int h)
@@ -706,7 +710,7 @@ unittest
 
 unittest
 {
-    // Exercises the 2026-08-11 second-pass primitives: line_style,
+    // Exercises line_style,
     // clipping, arc/pie, the vertex-path end_*() family (via
     // fl_begin_*()/vertex()/fl_end_*()), and plain text.
     import fl.image_surface : SurfaceDevice;
@@ -757,7 +761,7 @@ unittest
     }
 
     auto text = readText(path);
-    assert(text.canFind("stroke-dasharray:6,2")); // dashPatternFor(lineDash, 2), in fl_line()'s CSS `style="..."` form
+    assert(text.canFind("stroke-dasharray:6.000,2.000")); // lineDash at width 2, flat caps, in fl_line()'s CSS `style="..."` form
     assert(text.canFind("<clipPath id=\"FLclip0\">"));
     assert(text.canFind("<g clip-path=\"url(#FLclip0)\">"));
     assert(text.canFind("A 0.5,0.5 0")); // the outline arc() path
@@ -770,7 +774,7 @@ unittest
 
 unittest
 {
-    // drawImage()/drawBitmap() (2026-09-22) via a real RGBImage.draw()/
+    // drawImage()/drawBitmap() via a real RGBImage.draw()/
     // Bitmap.draw(), the same real call path a live widget with an
     // image label would use -- mirrors fl.postscript's own equivalent
     // unittest.

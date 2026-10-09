@@ -60,7 +60,7 @@ foreach (wn; selectedWidgetNodes())
                     textsize 11
                     class FormulaInput
                     align 5
-                    tooltip {Scale image to this width in pixel units}
+                    tooltip {Scale image to this width in pixel units; 0 keeps the original size}
                   }
                 Input imagePanelImageH
                   {
@@ -73,7 +73,7 @@ foreach (wn; selectedWidgetNodes())
                     textsize 11
                     class FormulaInput
                     align 5
-                    tooltip {Scale image to this height in pixel units}
+                    tooltip {Scale image to this height in pixel units; 0 keeps the original size}
                   }
                 Button {}
                   {
@@ -163,7 +163,7 @@ foreach (wn; selectedWidgetNodes())
                     textsize 11
                     class FormulaInput
                     align 5
-                    tooltip {Scale image to this width in pixel units}
+                    tooltip {Scale image to this width in pixel units; 0 keeps the original size}
                   }
                 Input imagePanelDeimageH
                   {
@@ -176,7 +176,7 @@ foreach (wn; selectedWidgetNodes())
                     textsize 11
                     class FormulaInput
                     align 5
-                    tooltip {Scale image to this height in pixel units}
+                    tooltip {Scale image to this height in pixel units; 0 keeps the original size}
                   }
                 Button {}
                   {
@@ -248,13 +248,16 @@ Function propagateLoadImagePanel()
     code {auto wn = cast(WidgetNode) currentWidgetNode_;
 if (wn is null) return;
 
+// The dimensions come from the image the live widget already loaded, so
+// every format the canvas can show is readable here, and the path is
+// resolved the same way.
+auto liveW = liveTree_.widgetOf.get(wn, null);
 if (wn.imageFilename.length)
   \{
-    auto img = SharedImage.get(wn.imageFilename);
+    auto img = liveW is null ? null : liveW.image();
     if (img !is null)
       \{
         imagePanelData.label(format("%d x %d pixels, %d channels", img.dataW(), img.dataH(), img.d()));
-        img.release();
       \}
     else
       \{
@@ -274,11 +277,10 @@ imagePanelBind.value(wn.bindImage);
 
 if (wn.deimageFilename.length)
   \{
-    auto dimg = SharedImage.get(wn.deimageFilename);
+    auto dimg = liveW is null ? null : liveW.deimage();
     if (dimg !is null)
       \{
         imagePanelDedata.label(format("%d x %d pixels, %d channels", dimg.dataW(), dimg.dataH(), dimg.d()));
-        dimg.release();
       \}
     else
       \{
@@ -323,97 +325,68 @@ fl.core.grab(previousGrab);}
       }
   }
 comment {Every page of `tabs_wizard` is converted to this port's D
-dialect (see TRANSLITERATION_GUIDE.md for the technique): code_tabs, codeblock_tabs, class_tabs,
-declblock_tabs, decl_tabs, comment_tabs, data_tabs, func_tabs (all 8
-of tabs_wizard's non-widget-kind pages), widgetTabsRepo (the
-permanently-hidden vestigial page), the bottom bar (Live Resize/Hide
-Overlays/Close, stub callbacks -- see their own comment further down),
-and widget_tabs itself (tabs_wizard's 9th and by far largest page)
--- its GUI, Style, and C++ sub-tabs are all placed and wired, merged
-from the raw C++ callback bodies plus the already-reasoned-through
-logic in `widget_panel.d` (kept as reference material). `thePanel`/`tabsWizard` (FLTK's
-own anonymous `Fl_Window`/`tabs_wizard`) are placed too.
+dialect (see TRANSLITERATION_GUIDE.md for the technique): code_tabs,
+codeblock_tabs, class_tabs, declblock_tabs, decl_tabs, comment_tabs,
+data_tabs, func_tabs (all 8 of tabs_wizard's non-widget-kind pages),
+widgetTabsRepo (the permanently-hidden vestigial page), the bottom bar
+(Live Resize/Hide Overlays/Close; `gui_main.d` supplies their
+implementations, see the comment near the end of this file), and
+widget_tabs itself (tabs_wizard's 9th and by far largest page, with its
+GUI, Style and D sub-tabs). `thePanel`/`tabsWizard` (FLTK's own
+anonymous `Fl_Window`/`tabs_wizard`) are placed too.
 
 FLTK's own file-header boilerplate (C++-only `header_name`/
 `code_name`/`include_guard`/`snap`/`mergeback` directives, ~20 raw
 `decl \{\#include ...\}`/`extern`/`\#define` blocks, and the 4 dead
 top-of-file C++ helpers -- `use_tab_navigation`/`update_current` x2/
-`w_code_cb`, unreferenced by anything once widget_tabs's own
-fields became self-contained) is dropped, along with the C++-only
-`flex_margin_cb` helper (superseded by widget_tabs's own
-inline `onFlexMarginChanged()`). The image-options dialog (`make_image_
-panel()`/`run_image_panel()`) is placed and wired, as
-`makeImagePanel()`/`propagateLoadImagePanel()`/`runImagePanel()` --
-the "..." button next to the Image field calls it for real. Same
-no-live-widget-update simplification as the rest of widget_tabs: the
-scale-width/height fields write `WidgetNode.scaleImageW`/etc, but
-don't re-scale a live `Fl_Image` or redraw anything (no live widget to
-reach yet); the dimension readout itself is real (loads the image file
-via `SharedImage.get()` purely to read its natural size).
+`w_code_cb`) is dropped, along with the C++-only `flex_margin_cb`
+helper (superseded by widget_tabs's own inline `onFlexMarginChanged()`).
+The image-options dialog (`make_image_panel()`/`run_image_panel()`) is
+`makeImagePanel()`/`propagateLoadImagePanel()`/`runImagePanel()` -- the
+"..." button next to the Image field calls it. The scale-width/height
+fields write `WidgetNode.scaleImageW`/etc; the edit hooks
+(`wireEditHooks()`) then re-apply the node to its live widget
+(`applyProperties()` re-scales the image and redraws the widget and its
+parent). The dimension readout reads the natural size of the image the
+live widget loaded.
 
 The two embedded Grid sub-panels (`widgetTabGrid`/`widgetTabGridChild`,
 `class GridTab`/`class GridChildTab`) live in their own files,
 `panels/widget_panel_grid_tab.fl`/`widget_panel_grid_child_tab.fl`,
-each a real `widget_class` with its own public `load()` method --
-imported explicitly by the two `decl` lines near this file's own top,
-since their file names don't match their class names (D resolves an
-import by file name, so an automatic class-name-based guess would be
-wrong here; see those two files' own top comments for why they're
-named this way).
+each a `widget_class` with its own public `load()` method -- imported
+explicitly by the two `decl` lines near this file's own top, since
+their file names don't match their class names (D resolves an import by
+file name, so an automatic class-name-based guess would be wrong here;
+see those two files' own top comments).
 `propagateLoadWidget()` reparents them into/out of `widgetTabs` and
 calls their `load()` based on whether the selection is a `GridNode` or
-a `GridNode`'s own child, matching FLTK's real reparenting logic.
+a `GridNode`'s own child, matching FLTK's reparenting logic.
 
 `gui_main.d` imports this file's own generated entry points directly
 (`make_widget_panel`/`load`/`current`/`refreshCodeFromNode`/
 `wireEditHooks`/`onBeforeEdit`/`onEdited`/`onOpenExternalEditor`/
-`overlayCb`/`okCb`/`thePanel`/`widgetTabs`). Multi-select apply is real: most field callbacks loop over the whole selection,
-matching FLTK's own real per-field behavior; a small set
-(widget name, Resizable, Hotspot, Border/Modal/Nonmodal) stays
-single-target because FLTK's own real callback does too -- see the
-"---- widget_tabs ----" comment block further below for the full,
-field-by-field writeup.
+`overlayCb`/`okCb`/`thePanel`/`widgetTabs`). Multi-select apply: most
+field callbacks loop over the whole selection, matching FLTK's
+per-field behavior; a small set (widget name, Resizable, Hotspot,
+Border/Modal/Nonmodal) stays single-target because FLTK's own callback
+does too -- see the "---- widget_tabs ----" comment block further below
+for the field-by-field writeup.
 
-Live-canvas-widget updates and undo-checkpoint calls are real too, via
+Live-canvas-widget updates and undo-checkpoint calls go through
 `onBeforeEdit`/`onEdited`/`wireEditHooks()` -- see that same comment
 block and the "gui_main.d integration surface" comment just above the
 `onBeforeEdit`/`onEdited`/`onOpenExternalEditor` declarations.
 
-Per-page state (currentCodeNode_ etc. below)
-and each page's own propagateLoadX() function live here, next to
-make_widget_panel() itself, rather than in the file's own top decl
-section -- FLTK's `current_node`/`current_widget` globals (from
-Fluid.h, not declared in this file at all) have no equivalent yet in
-this project's gui_main.d, so each converted page tracks its own
-"which node am I showing" state explicitly instead, passed in as a
-real parameter rather than read from a magic global. Once more pages
-are converted this may fold into a single shared dispatcher; not
-attempted before there's enough pages to generalize from.
+Per-page state (currentCodeNode_ etc. below) and each page's own
+propagateLoadX() function live here, next to make_widget_panel()
+itself. FLTK reads `current_node`/`current_widget` globals (from
+Fluid.h, not declared in this file); each converted page here tracks
+which node it is showing explicitly, passed in as a parameter.
 
-A real infrastructure addition landed alongside the page conversions,
-not FLTK C++ transliterated but a genuine gap this port needed
-regardless: `fluid.comment_node.CommentNode` (FLTK's `Comment_Node` --
-a standalone project-tree comment entry with real `in_h_`/`in_c_`
-flags -- didn't exist at all before comment_tabs needed it; wired into
-`fluid.factory`'s "comment" registry and round-tripped through
-`project_writer.d`, replacing what used to be a bare, field-less
-`fluid.node.Node`). A second one, `declIsInClass()` (a local, non-FLTK
-helper walking the parent chain for `ClassNode`/`WidgetClassNode`,
-standing in for FLTK's own `Node::is_in_class()`), existed briefly to
-back the Decl and Data tabs' own dead Visibility/Output-file `Choice`s
--- removed along with both once neither had any real caller left.
-
-Several fields real FLTK widgets bind to have no backing field on
-this port's own node classes yet, and are deliberately dropped rather
-than silently miswired -- each one explained in its own comment at the
-point of omission: `ClassNode`'s "Attribute" (a `prefix`/`alignas()`
-string), `DataNode`'s "Output:" format choice (only plain-binary output
-is supported at all, a pre-existing, already-documented gap -- see that
-class's own doc comment), and `Comment_Node`'s "Predefined" menu (a
-whole `Fl_Preferences`-backed comment-template library, large enough to
-warrant its own pass). `project_writer.d` also doesn't yet write
-`ClassNode.baseClass` back out on save at all -- a real, pre-existing
-gap, unrelated to this class hierarchy otherwise.
+`fluid.comment_node.CommentNode` (FLTK's `Comment_Node`, a standalone
+project-tree comment entry with `in_h_`/`in_c_` flags) backs
+comment_tabs; it is wired into `fluid.factory`'s "comment" registry and
+round-tripped through `project_writer.d`.
 }
   {
     in_source
@@ -444,19 +417,23 @@ decl {/// FLTK's own `widget_vars[]` (`panels/widget_panel_callbacks.cxx`)
 private FormulaVar[] positionVars(WidgetNode wn, int i)
 \{
   Widget liveOf(Node n) \{ return n is null ? null : liveTree_.widgetOf.get(n, null); \}
+  // A formula works in node coordinates, which differ from a widget's
+  // live ones by the scroll position of any `Scroll` above it.
+  int nodeX(Widget w) \{ int ox, oy; scrollOffsetAbove(w, ox, oy); return w.x() + ox; \}
+  int nodeY(Widget w) \{ int ox, oy; scrollOffsetAbove(w, ox, oy); return w.y() + oy; \}
 
   FormulaVar[] vars;
   vars ~= FormulaVar("i", () => i);
 
   auto lw = liveOf(wn);
-  vars ~= FormulaVar("x", () => lw !is null ? lw.x() : 0);
-  vars ~= FormulaVar("y", () => lw !is null ? lw.y() : 0);
+  vars ~= FormulaVar("x", () => lw !is null ? nodeX(lw) : 0);
+  vars ~= FormulaVar("y", () => lw !is null ? nodeY(lw) : 0);
   vars ~= FormulaVar("w", () => lw !is null ? lw.w() : 0);
   vars ~= FormulaVar("h", () => lw !is null ? lw.h() : 0);
 
   auto plw = liveOf(wn.parent);
-  vars ~= FormulaVar("px", () => plw !is null ? plw.x() : 0);
-  vars ~= FormulaVar("py", () => plw !is null ? plw.y() : 0);
+  vars ~= FormulaVar("px", () => plw !is null ? nodeX(plw) : 0);
+  vars ~= FormulaVar("py", () => plw !is null ? nodeY(plw) : 0);
   vars ~= FormulaVar("pw", () => plw !is null ? plw.w() : 0);
   vars ~= FormulaVar("ph", () => plw !is null ? plw.h() : 0);
 
@@ -467,8 +444,8 @@ private FormulaVar[] positionVars(WidgetNode wn, int i)
     if (idx > 0) sibling = wn.parent.children[idx - 1];
   \}
   auto slw = liveOf(sibling);
-  vars ~= FormulaVar("sx", () => slw !is null ? slw.x() : 0);
-  vars ~= FormulaVar("sy", () => slw !is null ? slw.y() : 0);
+  vars ~= FormulaVar("sx", () => slw !is null ? nodeX(slw) : 0);
+  vars ~= FormulaVar("sy", () => slw !is null ? nodeY(slw) : 0);
   vars ~= FormulaVar("sw", () => slw !is null ? slw.w() : 0);
   vars ~= FormulaVar("sh", () => slw !is null ? slw.h() : 0);
 
@@ -480,15 +457,15 @@ private FormulaVar[] positionVars(WidgetNode wn, int i)
     if (clw is null) continue;
     if (!anyChild)
       \{
-        cx = clw.x(); cy = clw.y(); cr = clw.x() + clw.w(); cb = clw.y() + clw.h();
+        cx = nodeX(clw); cy = nodeY(clw); cr = nodeX(clw) + clw.w(); cb = nodeY(clw) + clw.h();
         anyChild = true;
       \}
     else
       \{
-        if (clw.x() < cx) cx = clw.x();
-        if (clw.y() < cy) cy = clw.y();
-        if (clw.x() + clw.w() > cr) cr = clw.x() + clw.w();
-        if (clw.y() + clw.h() > cb) cb = clw.y() + clw.h();
+        if (nodeX(clw) < cx) cx = nodeX(clw);
+        if (nodeY(clw) < cy) cy = nodeY(clw);
+        if (nodeX(clw) + clw.w() > cr) cr = nodeX(clw) + clw.w();
+        if (nodeY(clw) + clw.h() > cb) cb = nodeY(clw) + clw.h();
       \}
   \}
   vars ~= FormulaVar("cx", () => cx);
@@ -645,7 +622,7 @@ private void refreshLiveMenuOf(Node n)
         if (auto owner = cast(MenuOwnerNode) p)
         \{
             if (auto w = liveTree_.widgetOf.get(owner, null))
-                applyMenuItems(owner, w);
+                applyMenuItems(owner, w, true);
             return;
         \}
 \}
@@ -659,13 +636,7 @@ private void syncGeometryFromLive(Node n)
     \{
         if (auto cw = cast(WidgetNode) c)
             if (auto lw = liveTree_.widgetOf.get(cw, null))
-            \{
-                cw.x = lw.x();
-                cw.y = lw.y();
-                cw.w = lw.w();
-                cw.h = lw.h();
-                cw.hasXywh = true;
-            \}
+            geometryFromLive(cw, lw);
         syncGeometryFromLive(c);
     \}
 \}
@@ -1029,14 +1000,16 @@ private void loadValuesFields(WidgetNode wn)
     // `Value:` alone also applies to a plain `Button` (its checked/down
     // state) -- matches FLTK's own `cb_Value`'s LOAD branch exactly
     // (`Valuator_Node`/`is_button()`/`Spinner_Node`, all three, unlike
-    // Min/Max/Step which are Valuator/Spinner-only). User-reported: a
+    // Min/Max/Step which are Valuator/Spinner-only). A
     // `Button` with `type(Radio) value 1` set (e.g. `settings_panel.fl`'s
-    // own `layoutPresetApplication`) always showed this field greyed
-    // out, with no way to see or edit the default-on state it already
-    // had. `instantiate.d`'s own live-apply already handled a Button's
-    // `value` correctly -- only this panel's own activation gate was
-    // missing the case.
-    if (isValuatorOrSpinner || cast(Button) liveW !is null)
+    // own `layoutPresetApplication`) has a default-on state that this
+    // field must show and edit.
+    // A menu item counts as a button here too (FLTK's `Menu_Item_Node::
+    // is_button()`): its value is the item's checked state
+    // (`FL_MENU_VALUE`). A submenu is not (`Submenu_Node::is_button()`
+    // returns 0).
+    bool menuItemButton = cast(MenuItemNode) wn !is null && cast(SubmenuNode) wn is null;
+    if (isValuatorOrSpinner || cast(Button) liveW !is null || menuItemButton)
         valuesValue.activate();
     else
         valuesValue.deactivate();
@@ -1522,7 +1495,6 @@ if (boxIdx >= 0) styleBox.value(styleBoxMenuIdx[boxIdx]);
   wColor.labelcolor(contrast(black, c));
 \}
 
-if (isMenuItem) styleDownbox.deactivate(); else styleDownbox.activate();
 int downBoxIdx = wn.hasDownBoxtype ? cast(int) boxtypeNames.countUntil(wn.downBoxtype) : -1;
 if (downBoxIdx >= 0) styleDownbox.value(styleDownboxMenuIdx[downBoxIdx]);
 \{
@@ -1662,6 +1634,14 @@ else
   gate(widgetDeimageInput, !isWindow);
   gate(widgetDeimageBrowse, !isWindow);
 
+  // FLTK's `align_cb()`/`align_position_cb()`/`align_text_image_cb()`:
+  // a menu item has no label alignment of its own.
+  gate(alignClipBtn, !isMenuItem);
+  gate(alignWrapBtn, !isMenuItem);
+  gate(alignInsideBtn, !isMenuItem);
+  gate(wpGuiAlignPosChoice, !isMenuItem);
+  gate(wpGuiAlignImageChoice, !isMenuItem);
+
   gate(widgetXInput, trueWidget);
   gate(widgetYInput, trueWidget);
   gate(widgetWInput, trueWidget);
@@ -1677,8 +1657,10 @@ else
   gate(wSelectcolor, !isMenuItem);
   gate(wSelectcolorMenu, !isMenuItem);
 
-  // Down Box: Button / InputChoice / any Menu_ only.
-  gate(styleDownbox, cast(Button) liveForGating !is null
+  // Down Box: FLTK's `Button_Node` (every button, and every menu item,
+  // since `Menu_Item_Node` derives from it), `Input_Choice_Node` and
+  // `Menu_Manager_Node`.
+  gate(styleDownbox, isMenuItem || cast(Button) liveForGating !is null
       || cast(InputChoice) liveForGating !is null
       || cast(Menu_) liveForGating !is null);
 
@@ -2048,6 +2030,11 @@ root.callback((w) \{
   scope (exit)
     if (typing && (reason == CallbackReason.lostFocus || reason == CallbackReason.enterKey))
       editKeys_.remove(w);
+  // Geometry of every selected node before the field's callback runs, to
+  // tell afterwards whose box was edited.
+  int[4][WidgetNode] geometryBefore;
+  foreach (wn; selectedWidgetNodes())
+    geometryBefore[wn] = [wn.x, wn.y, wn.w, wn.h];
   orig(w);
   // Generic model->live-widget re-sync -- see this function's own doc
   // comment above. Loops every selected `WidgetNode`, not just the
@@ -2059,7 +2046,7 @@ root.callback((w) \{
   // target on purpose (Name, Resizable, Hotspot, ...): `applyProperties()`
   // re-applies a node's own model to its own widget, so it's a no-op for
   // every node whose model this callback didn't actually touch.
-  // `applyXywh` is `false` for a selected `WindowNode`: that Node's own
+  // `applyXywh` is `false` for a selected top-level `WindowNode`: that Node's own
   // `x`/`y` is its editor-session *screen* position, not meaningful
   // geometry to `.resize()` the live canvas window to (matches
   // `instantiate()`'s own root-window call in `instantiate.d`) -- and,
@@ -2067,9 +2054,29 @@ root.callback((w) \{
   // handling would otherwise call `.hide()`/`.deactivate()` on the
   // canvas window itself. `liveTree_`'s own map only ever has an entry
   // once a project is actually loaded.
+  bool gridCellChanged = false;
   foreach (wn; selectedWidgetNodes())
     if (auto liveW = liveTree_.widgetOf.get(wn, null))
-      applyProperties(wn, liveW, projectDir_, cast(WindowNode) wn is null);
+    \{
+      applyProperties(wn, liveW, projectDir_, cast(WindowNode) wn is null || isNestedWindow(wn));
+      // Resizing or moving a container moves its children live: bring
+      // their nodes along.
+      if (auto before = wn in geometryBefore)
+        if (*before != [wn.x, wn.y, wn.w, wn.h])
+          syncDescendantsFromLive(wn, liveTree_);
+      // A grid and its children keep their layout in the node model: push it to the live grid.
+      if (syncLayoutToLive(wn, liveTree_) && wn is currentWidgetNode_)
+        gridCellChanged = true;
+      Node layoutContainer = (cast(GridNode) wn !is null || cast(FlexNode) wn !is null) ? wn : wn.parent;
+      if (layoutContainer !is null)
+        syncLayoutFromLive(layoutContainer, liveTree_);
+    \}
+  // A menu item has no live widget of its own: as in FLTK's
+  // `Widget_Node::redraw()`, an edit to one rebuilds the menu it sits in.
+  foreach (wn; selectedWidgetNodes())
+    if (cast(MenuItemNode) wn !is null)
+      refreshLiveMenuOf(wn);
+  if (gridCellChanged) widgetTabGridChild.load(currentWidgetNode_);
   if (onEdited !is null) onEdited();
 \});}
       {
@@ -3719,7 +3726,7 @@ wn.instanceName = cppNameInput.value();}
                             labelsize 11
                             compact {1}
                             type Radio
-                            tooltip {One or more import lines or single-line declarations, written once each near the top of the generated file. Duplicate lines are dropped, even if several widgets add the same line.}
+                            tooltip {Import lines for this widget (this section is currently ignored by fluid).}
                           }
                         Button codeChoice2
                           {
@@ -3730,7 +3737,7 @@ wn.instanceName = cppNameInput.value();}
                             labelsize 11
                             compact {1}
                             type Radio
-                            tooltip {D declarations for this widget (member variables, external functions, aliases, or import declarations), copied verbatim into the generated file.}
+                            tooltip {D declarations for this widget (this section is currently ignored by fluid).}
                           }
                         Button codeChoice3
                           {
@@ -3752,7 +3759,7 @@ wn.instanceName = cppNameInput.value();}
                             labelsize 11
                             compact {1}
                             type Radio
-                            tooltip {D code inserted after this widget and all its children have been instantiated. Use 'o' to refer to the widget.}
+                            tooltip {D code for after this widget and all its children have been instantiated (this section is currently ignored by fluid).}
                           }
                         Button codeChoice5
                           {
@@ -3820,10 +3827,7 @@ codeChoice0.redraw();}
                                 textfont 4
                                 align 4
                                 setup {o.buffer(new TextBuffer());}
-                                tooltip {FLTK: one of 4 separately-numbered code slots
-(Include/Declare/Setup/Finalize) -- this port's WidgetNode only has a
-single "setup" slot (see widget_node.d's own doc comment), so this
-page is placed but not backed.}
+                                tooltip {Import lines for this widget (this section is currently ignored by fluid).}
                               }
                           }
                         Group {}
@@ -3844,7 +3848,7 @@ page is placed but not backed.}
                                 textfont 4
                                 align 4
                                 setup {o.buffer(new TextBuffer());}
-                                tooltip {Not backed -- see the Include page's own tooltip above.}
+                                tooltip {D declarations for this widget (this section is currently ignored by fluid).}
                               }
                           }
                         Group {}
@@ -3894,7 +3898,7 @@ enableAutoIndent(o);}
                                 textfont 4
                                 align 4
                                 setup {o.buffer(new TextBuffer());}
-                                tooltip {Not backed -- see the Include page's own tooltip above.}
+                                tooltip {D code for after this widget and all its children have been instantiated (this section is currently ignored by fluid).}
                               }
                           }
                         Group {}
@@ -5108,31 +5112,24 @@ o.add(widgetTabGridChild);}
       }
   }
 comment {`liveModeCb`/`overlayCb`/`okCb` (the bottom bar's own three
-buttons) all stay empty stubs *in this file* -- not because they're
-unimplemented, but because a Function referenced only as a bare
-`.callback(name)` value (as all three are, from `wLiveMode`/
-`overlayButton`/the Close `ReturnButton` respectively) is classified
-callback-shaped by `code_writer.d` and becomes a module-level `void
-delegate(Widget) name;` variable instead of an ordinary function --
-and `code_writer.d`'s own `generate()` only ever emits a callback-
-shaped Function's *body* as an assignment inside a `main()`-shaped
-root Function (`writeFunctionBody(mainFn, callbackFns)`, gated on
-`mainFn !is null`). This file has no anonymous root Function (it is a
-panel, not a program), so `mainFn` is always null here and any code
-written into one of these three Functions' own `code \{\}` block would be
-silently unreachable, generated nowhere at all: an
-implementation written
-directly in this file's own `liveModeCb` would compile clean but never
-actually run (the delegate variable staying permanently null). The
-three stay `void delegate(Widget)` variables (public, matching
-`fluid.function_panel`'s own `binButtonCb`/`codeButtonCb`) for
-`gui_main.d` to assign externally instead -- see `gui_main.d`'s own
-`wireEditHooks()`-adjacent init block for `liveModeCb`'s real
-implementation (Live Resize itself, ported from FLTK's `live_
-mode_cb()`); `overlayCb` has a real, already-ported equivalent ready
-to forward to (`toggleOverlays()`), and `okCb` (closes the panel,
-matching real edits back via `set_cb()`) is larger, real work, neither
-wired here yet.}
+buttons) have empty bodies *in this file*, and are implemented in
+`gui_main.d`. A Function referenced only as a bare `.callback(name)`
+value (as all three are, from `wLiveMode`/`overlayButton`/the Close
+`ReturnButton` respectively) is classified callback-shaped by
+`code_writer.d` and becomes a module-level `void delegate(Widget) name;`
+variable instead of an ordinary function -- and `code_writer.d`'s own
+`generate()` only ever emits a callback-shaped Function's *body* as an
+assignment inside a `main()`-shaped root Function
+(`writeFunctionBody(mainFn, callbackFns)`, gated on `mainFn !is null`).
+This file has no anonymous root Function (it is a panel, not a
+program), so `mainFn` is always null here and any code written into one
+of these three Functions' own `code` block would be generated nowhere:
+the delegate variable would stay permanently null. The three stay
+`void delegate(Widget)` variables (public, matching
+`fluid.function_panel`'s own `binButtonCb`/`codeButtonCb`) that
+`gui_main.d` assigns externally: `liveModeCb` runs Live Resize
+(ported from FLTK's `live_mode_cb()`), `overlayCb` forwards to
+`toggleOverlays()`, and `okCb` closes the panel.}
   {
     in_source
     in_header
@@ -5143,7 +5140,7 @@ Function {liveModeCb(Widget o)}
     open
   }
   {
-    code {// See this file's own comment just above -- real implementation
+    code {// See this file's own comment just above -- the real implementation
 // lives in gui_main.d, assigned externally (this body is unreachable).}
       {
       }
@@ -5154,7 +5151,8 @@ Function {overlayCb(Widget o)}
     open
   }
   {
-    code {// See this file's own comment just above -- deferred.}
+    code {// See this file's own comment just above -- the real implementation
+// lives in gui_main.d, assigned externally (this body is unreachable).}
       {
       }
   }
@@ -5164,7 +5162,8 @@ Function {okCb(Widget o)}
     open
   }
   {
-    code {// See this file's own comment just above -- deferred.}
+    code {// See this file's own comment just above -- the real implementation
+// lives in gui_main.d, assigned externally (this body is unreachable).}
       {
       }
   }

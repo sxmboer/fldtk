@@ -1,9 +1,10 @@
 *.o
 *.obj
-*.lst
 *.exe
+*.pdb
 /libfldtk.a
 /libfldtk.so
+/fldtk.lib
 /fluid
 /fluid-bootstrap
 /build/

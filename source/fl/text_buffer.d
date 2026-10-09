@@ -112,22 +112,16 @@ private immutable ushort[32] cp1252Table = [
 ];
 
 /// Ported from fl_utf8len(): the byte length of the UTF-8 sequence
-/// starting with c, or -1 if c can't start a valid sequence (e.g. it's a
-/// continuation byte).
+/// starting with c, or -1 if c isn't a valid leading byte (a continuation
+/// byte, C0/C1, or F5-FF). Examines only c, not the rest of the sequence.
 int utf8Len(char c)
 {
     ubyte u = cast(ubyte) c;
-    if (!(u & 0x80)) return 1;
-    if (u & 0x40)
-    {
-        if (u & 0x20)
-        {
-            if (u & 0x10) return (u & 0x08) ? ((u & 0x04) ? 6 : 5) : 4;
-            return 3;
-        }
-        return 2;
-    }
-    return -1;
+    if (u <= 0x7f) return 1;
+    if (u >= 0xc2 && u <= 0xdf) return 2;
+    if (u >= 0xe0 && u <= 0xef) return 3;
+    if (u >= 0xf0 && u <= 0xf4) return 4;
+    return -1; // continuation byte, C0/C1, F5-FF (incl. obsolete 5/6-byte leaders)
 }
 
 /// Ported from fl_utf8len1(): same as utf8Len(), but returns 1 (instead
@@ -291,7 +285,9 @@ private int utf8NextComposedCharLen(const(char)[] buf)
         {
             from += utf8Len1(buf[from]); // skip joiner
             if (from >= buf.length) break;
-            from += utf8Len1(buf[from]); // skip joined codepoint
+            int skip2 = utf8Len(buf[from]);
+            if (skip2 < 1) break;
+            from += (skip2 < cast(int)(buf.length - from)) ? skip2 : cast(int)(buf.length - from); // skip joined codepoint
         }
         else if (u >= 0xFE00 && u <= 0xFE0F) from += utf8Len1(buf[from]); // variation selector
         else if (u >= 0x1F3FB && u <= 0x1F3FF) from += utf8Len1(buf[from]); // EMOJI MODIFIER FITZPATRICK
@@ -610,12 +606,11 @@ class TextBuffer
 
     /// Called after insertfile()/loadfile() transcodes non-UTF-8 input.
     /// FLTK's default implementation calls alert() with
-    /// fileEncodingWarningMessage; alert() isn't ported yet (see
-    /// fl.ask's module comment -- it's blocked on modal window support
-    /// this port doesn't have), so this defaults to null rather than
-    /// wiring up a call to something that doesn't exist. FLTK's own
-    /// contract already covers this: "No warning message is displayed if
-    /// this pointer is set to NULL."
+    /// fileEncodingWarningMessage. alert() lives in fl.ask, which
+    /// depends on widgets, and this module has no GUI dependency, so
+    /// this defaults to null. FLTK's own contract already covers
+    /// that: "No warning message is displayed if this pointer is set
+    /// to NULL."
     void delegate(TextBuffer) transcodingWarningAction;
 
     /// Creates an empty text buffer. requestedSize preallocates room to

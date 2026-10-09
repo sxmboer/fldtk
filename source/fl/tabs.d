@@ -10,7 +10,7 @@
  * few deliberate, documented gaps where FLTK reaches for a
  * subsystem this port doesn't have yet:
  *
- *  - **The overflow popup menu is real now** (`handleOverflowMenu()`,
+ *  - **The overflow popup menu is real** (`handleOverflowMenu()`,
  *    built on `fl.menu_item.MenuItem` + `fl.menu_popup.popup()`, the
  *    same popup engine `fl.menu_button`/`fl.choice` use). One deviation:
  *    the picked item's tab is recovered via pointer arithmetic against

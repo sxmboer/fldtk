@@ -2,12 +2,8 @@
  * Ported from FL/Fl_Spinner.H + src/Fl_Spinner.cxx (FLTK 1.5.0). A FlGroup combining a numeric Input field with
  * up/down buttons.
  *
- * The up/down buttons are now real fl.repeat_button.RepeatButton
- * instances (previously plain fl.button.Button, since RepeatButton
- * needed a timer subsystem that didn't exist yet -- see
- * fl.repeat_button's own module comment). Holding a spinner button
- * down now repeats continuously, matching FLTK, instead of
- * changing the value once per click.
+ * The up/down buttons are fl.repeat_button.RepeatButton instances:
+ * holding a spinner button down repeats continuously, matching FLTK.
  *
  * Fl_Spinner::sb_cb() (FLTK's `Fl_Callback*` + `Fl_Spinner*`
  * user-data two-arg callback, needed in C++ because a plain function

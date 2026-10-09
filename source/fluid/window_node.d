@@ -77,3 +77,25 @@ class WindowNode : WidgetNode
         }
     }
 }
+
+/// Whether `n` is a window sitting inside another window's widget tree
+/// (a subwindow), as opposed to a top-level window. A subwindow has its
+/// own canvas, nested in its parent window's, and its children's
+/// coordinates are relative to it.
+bool isNestedWindow(Node n)
+{
+    if (cast(WindowNode) n is null) return false;
+    for (Node p = n.parent; p !is null; p = p.parent)
+        if (cast(WindowNode) p !is null) return true;
+    return false;
+}
+
+/// The top-level window that `n` is in, or `n` itself when it is one.
+/// `null` if `n` is in no window.
+WindowNode outermostWindow(Node n)
+{
+    WindowNode result;
+    for (Node p = n; p !is null; p = p.parent)
+        if (auto wn = cast(WindowNode) p) result = wn;
+    return result;
+}

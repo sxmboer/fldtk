@@ -33,19 +33,13 @@
  * "stub" half.
  *
  * draw()/draw_text()/draw_range()/draw_vline()/draw_string()/
- * draw_cursor()/clear_rect()/draw_line_numbers() are structurally
- * ported, and draw real text now too: fl.draw gained height()/
- * descent()/width()/a positional 4-arg fl_draw()/clipBox()
- * specifically for this module, originally as placeholders (reusing
- * FLTK's own "6px placeholder" convention, TMPFONTWIDTH, rather
- * than inventing a new one) so this module's layout math would produce
- * *some* deterministic answer before real font metrics existed --
- * height()/descent()/width() are backed by real Xft glyph
- * metrics now (see fl.draw's own module comment), so layout runs on
- * real numbers and draw_string()/draw_line_numbers() paint real
- * glyphs. clipBox() is real now too (fl.draw's real clip-region
- * tracking, see that module's "Clipping" section), so text drawing
- * actually gets clipped to the widget's text area.
+ * draw_cursor()/clear_rect()/draw_line_numbers() are ported
+ * and draw real text. They rely on fl.draw's height()/descent()/width(),
+ * a positional 4-arg fl_draw() and clipBox(): the metrics are real Xft
+ * glyph metrics (see fl.draw's own module comment), so layout runs on
+ * real numbers, and clipBox() reflects fl.draw's real clip-region
+ * tracking (see that module's "Clipping" section), so text drawing is
+ * clipped to the widget's text area.
  *
  * D-const note: many of FLTK's `const` methods (position_to_line(),
  * string_width(), handle_vline(), count_lines(), ...) are ported here
@@ -3739,7 +3733,6 @@ unittest
     // Ctrl+C copies the current selection to the in-process clipboard
     // (fl.core.copy()); Ctrl+A selects everything and copies that too
     // (slot 0, PRIMARY -- distinct from Ctrl+C's slot 1, CLIPBOARD).
-    // Previously stubbed TODOs, now that fl.core has a real clipboard.
     FlGroup.current(null);
     fl.core.resetForTest();
 

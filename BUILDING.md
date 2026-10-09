@@ -45,10 +45,11 @@ generated panels are already present.
     fluid file.fl          # open the interactive editor
     fluid -c file.fl       # generate file.d instead
     fluid -c -o out.d file.fl
-    fluid -mb file.fl      # merge edits made in the generated file.d back into file.fl
-    fluid -mbs file.fl     # same, but only if nothing conflicts
+    fluid -m file.fl       # merge edits made in the generated file.d back into file.fl
+    fluid -mb file.fl       # same (--merge-back-if-safe), but only if nothing conflicts
+    fluid -mi file.fl       # only report what -m would merge (--merge-back-info)
 
--mb/-mbs need `mergeback 1` in the project (Settings, Project tab). They
+The merge options need `mergeback 1` in the project (Settings, Project tab). They
 read the code file last written for the project, or the one named with -o,
 and combine with -c to merge first and then regenerate.
 

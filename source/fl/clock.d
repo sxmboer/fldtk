@@ -23,10 +23,9 @@
  * got the same treatment for the same reason (`std.algorithm.iteration.
  * FlGroup`) -- see that module's own doc comment.
  *
- * `FlClock` now ports FLTK's `handle()` override and destructor too,
- * now that `fl.core` has a real timer subsystem (previously skipped,
- * same gap as `fl.button`'s `simulateKeyAction()` and `fl.scrollbar`'s
- * auto-repeat -- both now also ported). `tick()` (FLTK: a free
+ * `FlClock` ports FLTK's `handle()` override and destructor too, on
+ * top of `fl.core`'s timer subsystem (as do `fl.button`'s
+ * `simulateKeyAction()` and `fl.scrollbar`'s auto-repeat). `tick()` (FLTK: a free
  * function taking the clock as `void*`) becomes a private bound
  * method; note it schedules itself with plain `addTimeout()`, not
  * `repeatTimeout()`, matching FLTK exactly -- each call recomputes

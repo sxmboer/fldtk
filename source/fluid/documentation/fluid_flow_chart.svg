@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="320" viewBox="0 0 800 320">
+<!-- Editable source of the flow chart on Fluid's "Rapid development with
+     FLUID" help page. Fluid embeds fluid_flow_chart_paths.svg, this file
+     with its text converted to outlines, since the SVG renderer
+     (fl.nanosvg) draws no text: regenerate it with Inkscape's plain-SVG
+     export with text converted to paths. Shapes use plain attributes and
+     drawn arrowheads, which that renderer supports, not CSS or markers. -->
+<rect width="800" height="320" fill="#ffffff"/>
+<path d="M34.5,79 H137.5 L125.5,141 H22.5 Z" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<text x="80" y="115" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#000000" font-size="15">.fl file</text>
+<path d="M34.5,199 H137.5 L125.5,261 H22.5 Z" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<text x="80" y="226" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#000000" font-size="15">images,</text>
+<text x="80" y="244" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#000000" font-size="15">data files</text>
+<rect x="175" y="122" width="100" height="96" rx="8" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<text x="225" y="175" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#000000" font-size="16" font-weight="bold">FLUID</text>
+<path d="M327,79 H465 L453,141 H315 Z" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<text x="390" y="106" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#000000" font-size="15">generated .d</text>
+<text x="390" y="124" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#000000" font-size="12">module</text>
+<path d="M327,209 H465 L453,271 H315 Z" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<text x="390" y="236" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#000000" font-size="15">main.d</text>
+<text x="390" y="254" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#000000" font-size="12">(your code)</text>
+<rect x="503" y="123" width="124" height="104" rx="8" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<text x="565" y="162" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#000000" font-size="16" font-weight="bold">D compiler</text>
+<text x="565" y="180" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#000000" font-size="12">dmd / ldc2 / gdc</text>
+<text x="565" y="198" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#000000" font-size="12">compile + link</text>
+<path d="M517,262 H625 L613,308 H505 Z" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<text x="565" y="290" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#000000" font-size="15">libfldtk</text>
+<path d="M679,144 H777 L765,206 H667 Z" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<text x="722" y="180" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#000000" font-size="15">Program</text>
+<path d="M134,110 L152,110 L152,150 L165,150" fill="none" stroke="#000000" stroke-width="1.4"/>
+<path d="M174,150 L165,154 L165,146 Z" fill="#000000"/>
+<path d="M134,230 L152,230 L152,190 L165,190" fill="none" stroke="#000000" stroke-width="1.4"/>
+<path d="M174,190 L165,194 L165,186 Z" fill="#000000"/>
+<path d="M275,170 L295,170 L295,110 L309,110" fill="none" stroke="#000000" stroke-width="1.4"/>
+<path d="M318,110 L309,114 L309,106 Z" fill="#000000"/>
+<path d="M390,141 L390,199" fill="none" stroke="#000000" stroke-width="1.4"/>
+<path d="M390,208 L386,199 L394,199 Z" fill="#000000"/>
+<text x="398" y="180" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="start" fill="#000000">import</text>
+<path d="M461,110 L481,110 L481,150 L493,150" fill="none" stroke="#000000" stroke-width="1.4"/>
+<path d="M502,150 L493,154 L493,146 Z" fill="#000000"/>
+<path d="M461,240 L481,240 L481,200 L493,200" fill="none" stroke="#000000" stroke-width="1.4"/>
+<path d="M502,200 L493,204 L493,196 Z" fill="#000000"/>
+<path d="M565,262 L565,237" fill="none" stroke="#000000" stroke-width="1.4"/>
+<path d="M565,228 L569,237 L561,237 Z" fill="#000000"/>
+<path d="M627,175 L658,175" fill="none" stroke="#000000" stroke-width="1.4"/>
+<path d="M667,175 L658,179 L658,171 Z" fill="#000000"/>
+<path d="M390,79 L390,40 L80,40 L80,69" fill="none" stroke="#000000" stroke-width="1.4" stroke-dasharray="6 4"/>
+<path d="M80,78 L76,69 L84,69 Z" fill="#000000"/>
+<text x="235" y="32" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#000000">MergeBack: code edited in the .d goes back into the .fl</text>
+<text x="285" y="96" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="start" fill="#000000">fluid -c</text>
+</svg>

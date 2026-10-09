@@ -53,8 +53,8 @@
  *    similar) out of scope for this pass. `load("")` returns `false`
  *    with an explanatory `errmsg()` instead of silently doing nothing.
  *
- *  - Found a likely FLTK bug while reading the source, NOT
- *    replicated here: `Fl_File_Browser::full_height()` calls
+ *  - An FLTK bug, fixed in FLTK `6b20e13c7` and not replicated
+ *    here: `Fl_File_Browser::full_height()` called
  *    `item_height(find_line(i))` with `i` starting at *0* and running
  *    to `size()-1`, but `find_line()` is documented and implemented
  *    throughout the rest of `Fl_Browser` as strictly 1-based (line
@@ -82,9 +82,8 @@
  *    isn't overridden here at all; `incr_height()`'s `item_height(0)`
  *    call is ported with an explicit `item is null` guard in
  *    `itemHeight()` instead of relying on the same accidental C
- *    pointer-arithmetic safety. Filed as an FLTK_ISSUES.md
- *    candidate (off-by-one line-number bug, not a crash FLTK, but
- *    a wrong height sum) rather than silently worked around.
+ *    pointer-arithmetic safety. See FLTK_ISSUES.md's
+ *    `Fl_File_Browser::full_height()` entry.
  */
 module fl.file_browser;
 

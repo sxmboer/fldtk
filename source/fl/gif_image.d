@@ -54,10 +54,9 @@ class GifImage : Pixmap
     /// Ported from `Fl_GIF_Image::animate` -- switches whether
     /// `fl.shared_image`'s format-sniffing should hand a GIF file to
     /// `fl.anim_gif_image.AnimGifImage` instead of a plain `GifImage`.
-    /// (`fl.shared_image` doesn't have GIF format-sniffing wired up yet
-    /// -- see that module's own row in PORTING.md -- so this flag is
-    /// still inert in practice, just no longer for a decoder-existence
-    /// reason.)
+    /// (`fl.shared_image` does not use this flag to choose
+    /// a decoder, so it only matters to callers constructing the image
+    /// themselves.)
     static bool animate = false;
 
     /// Empty-shell constructor for `fl.anim_gif_image.AnimGifImage`'s
@@ -353,7 +352,8 @@ class GifImage : Pixmap
                 if (colorMapSize == 0)
                 {
                     int bpp = codeSize - 1;
-                    colorMapSize = 1 << bpp;
+                    // An LZW code size outside [2,8] would overrun the 256-entry table.
+                    colorMapSize = (bpp >= 1 && bpp <= 8) ? 1 << bpp : 2;
                     cmapR[0] = cmapG[0] = cmapB[0] = 0;
                     cmapR[1] = cmapG[1] = cmapB[1] = 255;
                     foreach (k; 2 .. colorMapSize)
@@ -362,7 +362,7 @@ class GifImage : Pixmap
 
                 // Workaround for broken GIF files (matches FLTK).
                 int bitsPerPixel = codeSize - 1;
-                if ((1 << bitsPerPixel) <= 256) colorMapSize = 1 << bitsPerPixel;
+                if (bitsPerPixel >= 0 && bitsPerPixel <= 8) colorMapSize = 1 << bitsPerPixel;
 
                 // Transparent index outside the color map: extend it.
                 if (hasTransparent && transparentPixel >= colorMapSize)

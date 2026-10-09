@@ -13,7 +13,7 @@
  * reusing everything else (text, images, clipping, `rect()`/`rectf()`/
  * `xyline()`/`yxline()`) from the base GDI driver completely unchanged.
  * `GdiPlusGraphicsDriver : GdiGraphicsDriver` here does the same;
- * `fl.gdi_graphics_driver.GdiGraphicsDriver` is no longer `final` and
+ * `fl.gdi_graphics_driver.GdiGraphicsDriver` is not `final` and
  * exposes `hdc_`/`lineWidth_`/`arcUnscaled()`/`pieUnscaled()` as
  * `protected` for exactly this reuse (see that module's own doc
  * comment on the class declaration).
@@ -325,9 +325,9 @@ final class GdiPlusGraphicsDriver : GdiGraphicsDriver
     /// unscaled FLTK-unit coordinates, needing the world-transform
     /// scale), `false` for `fillPolygonPath()`'s (`endPolygon()`/
     /// `endComplexPolygon()`, already-scaled device-pixel coordinates)
-    /// -- see `beginGraphics()`'s own doc comment for the bug this
-    /// distinction fixes. This one shared function used to always
-    /// pass `true`, silently double-scaling every vertex-path fill.
+    /// -- see `beginGraphics()`'s own doc comment for why the
+    /// distinction matters: always passing `true` would silently
+    /// double-scale every vertex-path fill.
     private void fillPath(GpPath* path, bool applyScale)
     {
         auto g = beginGraphics(true, applyScale);

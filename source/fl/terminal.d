@@ -1349,7 +1349,7 @@ class Terminal : FlGroup
         {
             initSizes();
             updateScreenXywh();
-            displayModified();
+            redraw(); // the scrollbars changed size
         }
         scrollbar.redraw();
     }
@@ -1453,7 +1453,7 @@ class Terminal : FlGroup
         if (hrows == historyRows()) return;
         ring_.resize(dispRows(), dispCols(), hrows, currentStyle_);
         updateScreen(false);
-        displayModified();
+        redraw();
     }
 
     int historyUse() const => ring_.histUse();
@@ -1504,8 +1504,8 @@ class Terminal : FlGroup
     // API: Text font/size/color
     // ------------------------------------------------------------
 
-    void textfont(Font val) { currentStyle_.fontface(val); updateScreen(true); displayModified(); }
-    void textsize(Fontsize val) { currentStyle_.fontsize(val); updateScreen(true); refitDispToScreen(); displayModified(); }
+    void textfont(Font val) { currentStyle_.fontface(val); updateScreen(true); redraw(); }
+    void textsize(Fontsize val) { currentStyle_.fontsize(val); updateScreen(true); refitDispToScreen(); redraw(); }
 
     Font textfont() const => currentStyle_.fontface();
     Fontsize textsize() const => currentStyle_.fontsize();
@@ -1825,8 +1825,12 @@ class Terminal : FlGroup
 
     private void repeatChar(char c, int rep)
     {
-        rep = clamp(rep, 1, dispCols());
-        while (rep-- > 0 && cursor_.col() < dispCols()) printChar(c);
+        // Plots c rep times, not past the end of the line; neither processes
+        // control characters nor moves the cursor.
+        immutable int row = cursor_.row();
+        immutable int col = cursor_.col();
+        rep = clamp(rep, 1, dispCols() - col);
+        foreach (n; 0 .. rep) plotChar(c, row, col + n);
     }
 
     protected void insertCharEol(char c, int drow, int dcol, int rep)
@@ -1979,11 +1983,19 @@ class Terminal : FlGroup
         else cursorDown(1, true);
     }
 
+    /// An unsupported or malformed escape sequence: drop the pending
+    /// sequence first so the error character isn't swallowed by it, then show it.
+    private void notImplemented()
+    {
+        escseq_.reset();
+        handleUnknownChar();
+    }
+
     private void handleEsc()
     {
         if (!ansi_) { handleUnknownChar(); return; }
-        if (escseq_.escMode() == 0x1b) { handleUnknownChar(); }
-        if (escseq_.parse(0x1b) == EscapeSeq.fail) { handleUnknownChar(); return; }
+        if (escseq_.escMode() == 0x1b) { escseq_.reset(); handleUnknownChar(); }
+        if (escseq_.parse(0x1b) == EscapeSeq.fail) { escseq_.reset(); handleUnknownChar(); return; }
     }
 
     /**
@@ -2133,7 +2145,7 @@ class Terminal : FlGroup
             case 'b': // REP -- TODO
             case 'd': // VPA -- TODO
             case 'e': // relative line pos -- TODO
-                handleUnknownChar();
+                notImplemented();
                 break;
             case 'f': // CUP, same as 'H'
                 goto case 'H';
@@ -2142,7 +2154,7 @@ class Terminal : FlGroup
                 {
                 case 0: clearTabstop(); break;
                 case 3: clearAllTabstops(); break;
-                default: handleUnknownChar(); break;
+                default: notImplemented(); break;
                 }
                 break;
             case 'm': handleSGR(); break; // SGR -- set character attributes
@@ -2150,11 +2162,11 @@ class Terminal : FlGroup
             case 'u': restoreCursor(); break;
             case 'q': // set cursor style -- TODO?, matching FLTK
             case 'r': // set scroll region -- TODO
-                handleUnknownChar();
+                notImplemented();
                 break;
             case 't': handleDECRARA(); break; // DECRARA
             default:
-                handleUnknownChar();
+                notImplemented();
                 break;
             }
         }
@@ -2168,10 +2180,10 @@ class Terminal : FlGroup
             case 'E': cursorCrlf(); break;
             case 'H': setTabstop(); break;
             case 'M': cursorUp(1, true); break; // RI -- reverse index (up w/scroll)
-            case '7': handleUnknownChar(); break; // save cursor & attrs -- TODO
-            case '8': handleUnknownChar(); break; // restore cursor & attrs -- TODO
+            case '7': notImplemented(); break; // save cursor & attrs -- TODO
+            case '8': notImplemented(); break; // restore cursor & attrs -- TODO
             default:
-                handleUnknownChar();
+                notImplemented();
                 break;
             }
         }
@@ -2189,7 +2201,8 @@ class Terminal : FlGroup
         if (tot == 0) { currentStyle_.sgrReset(); return; }
 
         int rgbcode, rgbmode, r, g, b;
-        for (int i = 0; i < tot; i++)
+        bool bad = false; // unsupported code: stop and show the error character
+        for (int i = 0; i < tot && !bad; i++)
         {
             int val = escseq_.val(i);
             bool skipRest = false;
@@ -2201,7 +2214,7 @@ class Terminal : FlGroup
                 break;
             case 1:
                 if (val == 2) { rgbmode++; skipRest = true; }
-                else { rgbcode = rgbmode = 0; handleUnknownChar(); }
+                else bad = true;
                 break;
             case 2:
                 r = clamp(val, 0, 255);
@@ -2223,6 +2236,7 @@ class Terminal : FlGroup
             default:
                 break;
             }
+            if (bad) break;
             if (skipRest) continue;
 
             if (val < 10)
@@ -2235,9 +2249,9 @@ class Terminal : FlGroup
                 case 3: currentStyle_.sgrItalic(true); break;
                 case 4: currentStyle_.sgrUnderline(true); break;
                 case 5: currentStyle_.sgrBlink(true); break;
-                case 6: handleUnknownChar(); break;
+                case 6: bad = true; break;
                 case 7: currentStyle_.sgrInverse(true); break;
-                case 8: handleUnknownChar(); break;
+                case 8: bad = true; break;
                 case 9: currentStyle_.sgrStrike(true); break;
                 default: break;
                 }
@@ -2251,9 +2265,9 @@ class Terminal : FlGroup
                 case 23: currentStyle_.sgrItalic(false); break;
                 case 24: currentStyle_.sgrUnderline(false); break;
                 case 25: currentStyle_.sgrBlink(false); break;
-                case 26: handleUnknownChar(); break;
+                case 26: bad = true; break;
                 case 27: currentStyle_.sgrInverse(false); break;
-                case 28: handleUnknownChar(); break;
+                case 28: bad = true; break;
                 case 29: currentStyle_.sgrStrike(false); break;
                 default: break;
                 }
@@ -2276,9 +2290,10 @@ class Terminal : FlGroup
             }
             else
             {
-                handleUnknownChar();
+                bad = true;
             }
         }
+        if (bad || rgbmode) notImplemented(); // also an RGB sequence cut short
     }
 
     /// Ported from handle_DECRARA() -- FLTK's own body is just a
@@ -2301,7 +2316,10 @@ class Terminal : FlGroup
         case '\n': handleLf(); return;
         case '\t': cursorTabRight(); return;
         case 0x1b: handleEsc(); return;
-        default: handleUnknownChar(); return;
+        default:
+            if (ansi_) escseq_.reset();
+            handleUnknownChar();
+            return;
         }
     }
 
@@ -2314,14 +2332,11 @@ class Terminal : FlGroup
     {
         if (redrawStyle_ == RedrawStyle.rateLimited)
         {
-            if (!redrawModified_)
+            redrawModified_ = true;
+            if (!redrawTimer_)
             {
-                if (!redrawTimer_)
-                {
-                    fl.core.addTimeout(0.01, &redrawTimerCb);
-                    redrawTimer_ = true;
-                }
-                redrawModified_ = true;
+                fl.core.addTimeout(0.01, &redrawTimerCb);
+                redrawTimer_ = true;
             }
         }
         else if (redrawStyle_ == RedrawStyle.perWrite)
@@ -2366,7 +2381,8 @@ class Terminal : FlGroup
     void plotChar(const(char)[] text, int drow, int dcol)
     {
         Utf8Char* u8c = u8cDispRow(drow) + dcol;
-        if (text.length < 1 || text.length > Utf8Char.maxUtf8 || cast(int) text.length != utf8Len(text[0]))
+        immutable int u8len = text.length < 1 ? -1 : utf8Len(text[0]); // -1: invalid UTF-8
+        if (text.length < 1 || text.length > Utf8Char.maxUtf8 || u8len < 0 || cast(int) text.length != u8len)
         {
             handleUnknownChar(drow, dcol);
             return;
@@ -2436,7 +2452,12 @@ class Terminal : FlGroup
         {
             while (i < buf.length && pub_.isContinuation(buf[i]))
             {
-                if (!pub_.append(buf[i .. i + 1])) { mod |= handleUnknownChar() != 0; break; }
+                if (!pub_.append(buf[i .. i + 1]))
+                {
+                    if (ansi_) escseq_.reset();
+                    mod |= handleUnknownChar() != 0;
+                    break;
+                }
                 i++;
             }
             if (pub_.isComplete()) utf8CacheFlush();
@@ -2452,6 +2473,7 @@ class Terminal : FlGroup
             int clen = utf8Len(buf[i]);
             if (clen == -1)
             {
+                if (ansi_) escseq_.reset();
                 mod |= handleUnknownChar() != 0;
                 i++;
             }
@@ -2460,7 +2482,12 @@ class Terminal : FlGroup
                 size_t remaining = buf.length - i;
                 if (cast(size_t) clen > remaining)
                 {
-                    if (!pub_.append(buf[i .. $])) { mod |= handleUnknownChar() != 0; utf8CacheClear(); }
+                    if (!pub_.append(buf[i .. $]))
+                    {
+                        if (ansi_) escseq_.reset();
+                        mod |= handleUnknownChar() != 0;
+                        utf8CacheClear();
+                    }
                     break;
                 }
                 printChar(buf[i .. i + clen]);
@@ -2487,15 +2514,16 @@ class Terminal : FlGroup
 
     int handleUnknownChar()
     {
-        if (!showUnknown_) return 0;
-        escseq_.reset();
+        // With ansi() on, a sequence in progress may swallow the error
+        // character, so callers reset escseq_ first.
+        if (!showUnknown_ || errorChar_.length == 0) return 0;
         printChar(errorChar_);
         return 1;
     }
 
     int handleUnknownChar(int drow, int dcol)
     {
-        if (!showUnknown_) return 0;
+        if (!showUnknown_ || errorChar_.length == 0) return 0;
         Utf8Char* u8c = u8cDispRow(drow) + dcol;
         u8c.textUtf8(errorChar_, currentStyle_);
         return 1;
@@ -2635,11 +2663,18 @@ class Terminal : FlGroup
         if (isFrameBox(box()))
         {
             fl_color(color());
-            fl_rectf(scrn_.x(), scrn_.y(), scrn_.w(), scrn_.h());
+            fl_rectf(scrn_.x() - margin_.left(),
+                     scrn_.y() - margin_.top(),
+                     scrn_.w() + margin_.left() + margin_.right(),
+                     scrn_.h() + margin_.top() + margin_.bottom());
         }
-        pushClip(scrn_.x(), scrn_.y(), scrn_.w(), scrn_.h());
-        drawBuff(scrn_.y());
-        popClip();
+        if (damage() & ~damageChild) // child-only damage (the scrollbars) leaves the buffer alone
+        {
+            pushClip(scrn_.x(), scrn_.y(), scrn_.w(), scrn_.h());
+            drawBuff(scrn_.y());
+            popClip();
+            displayModifiedClear();
+        }
     }
 
     private int wToCol(int W) const => W / currentStyle_.charwidth();
@@ -2883,10 +2918,14 @@ class Terminal : FlGroup
     void redrawStyle(RedrawStyle val)
     {
         redrawStyle_ = val;
-        if (redrawStyle_ != RedrawStyle.rateLimited && redrawTimer_)
+        if (redrawStyle_ != RedrawStyle.rateLimited)
         {
-            fl.core.removeTimeout(&redrawTimerCb);
-            redrawTimer_ = false;
+            if (redrawTimer_)
+            {
+                fl.core.removeTimeout(&redrawTimerCb);
+                redrawTimer_ = false;
+            }
+            redrawModified_ = false;
         }
     }
 

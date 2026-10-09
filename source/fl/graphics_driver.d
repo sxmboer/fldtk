@@ -5,7 +5,7 @@
  * hierarchy" call this port made for `fl.platform_x11`/`fl.draw`'s own
  * X11 rendering: that call was correct as long as there was only ever
  * one concrete backend (X11/Xlib) to draw with, so a driver abstraction
- * would have had nothing to abstract over. That's no longer true.
+ * would have had nothing to abstract over. With several backends it does.
  * `Fl_SVG_File_Surface` and `Fl_EPS_File_Surface` (see `PORTING.md`'s
  * "Printing / off-screen surfaces" section) both need to intercept the
  * exact same drawing calls every widget already makes (`fl_rect()`,
@@ -284,7 +284,7 @@ abstract class GraphicsDriver
      * above; `PostscriptGraphicsDriver`, `SvgGraphicsDriver` (base64-PNG
      * `<image>` elements), `GlGraphicsDriver`, and `GdiGraphicsDriver`
      * (real `StretchDIBits()`/`AlphaBlend()` compositing) all override it
-     * for real now.
+     * for real.
      */
     void drawImage(const(ubyte)* buf, int x, int y, int w, int h, int d, int l) { }
 

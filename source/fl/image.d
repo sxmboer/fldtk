@@ -13,7 +13,7 @@
  * PNM file readers (Milestone 3) build on this. JPEG/PNG/SVG (real
  * external-library codecs) were deliberately out of scope for this
  * pass -- see CONVENTIONS.md's "Deferred: external-library-backed features"
- * section. **Correction: JPEG, PNG, and SVG are all done now** (`fl.
+ * section. JPEG, PNG, and SVG are all done (`fl.
  * jpeg_image`, `fl.png_image`, `fl.svg_image` -- see PORTING.md's own
  * rows for each); no external-codec gap remains for `fl.image` itself.
  *
@@ -322,6 +322,10 @@ class Image
  */
 class RGBImage : Image
 {
+    /// Makes sure the pixel array is present; a no-op except for lazily
+    /// rasterized subclasses (SvgImage).
+    void normalize() {}
+
     /// The raw pixel data: dataH() rows of dataW()*d() bytes each
     /// (or ld() bytes each if ld() is set for row padding).
     const(ubyte)[] array;
@@ -422,17 +426,16 @@ class RGBImage : Image
      * the live `fl.core.currentScale()`), then blits that result 1:1
      * via `fl.draw.drawImageFixed()`.
      *
-     * **Bug fix**: this used to resample straight to `w()`/`h()`
-     * whenever those differed from `dataW()`/`dataH()` (i.e. only when
-     * an explicit `Image.scale()` call had been made), completely
-     * ignoring the live screen scale, and then hand that already-
-     * downscaled buffer to plain `fl.draw.drawImage()` -- which
-     * resamples *again* on top, to fit the actual device-pixel box.
+     * Resampling straight to `w()`/`h()` whenever those differ from
+     * `dataW()`/`dataH()` (i.e. only when an explicit `Image.scale()`
+     * call had been made) would ignore the live screen scale, and hand
+     * that already-downscaled buffer to plain `fl.draw.drawImage()` --
+     * which resamples *again* on top, to fit the actual device-pixel
+     * box.
      * Two lossy nearest-neighbor passes compound (downscale-then-
      * upscale), producing a visibly blockier result than FLTK's
      * single exact/near-exact resample from full native resolution.
-     * Confirmed as the root cause of a real, user-reported bug:
-     * `fluid`'s widget-panel icons (32x32 native XPMs -- see `fl.pixmap.
+     * This is what made `fluid`'s widget-panel icons (32x32 native XPMs -- see `fl.pixmap.
      * Pixmap.draw()`'s identical fix and its own doc comment for the
      * full mechanism -- 32x32-native RGB images hit the exact same
      * shape) turned pixelated when the display was scaled to 200%,
@@ -441,7 +444,7 @@ class RGBImage : Image
      * Image::copy()` then hits its own exact-size fast path against --
      * zero resampling at all, not just one pass instead of two.
      *
-     * The resample step itself now also forces bilinear (via a
+     * The resample step itself also forces bilinear (via a
      * temporary `rgbScaling()` override, mirroring FLTK's own
      * `draw_rgb()` `scaling_algorithm()` trick exactly -- see
      * `scalingAlgorithm()`'s own doc comment), rather than whatever
@@ -472,6 +475,7 @@ class RGBImage : Image
                 auto keep = rgbScaling();
                 rgbScaling(scalingAlgorithm());
                 scaledCache_ = copy(wantW, wantH);
+                scaledCache_.normalize(); // a copied SvgImage has no pixels until rasterized
                 rgbScaling(keep);
             }
             if (scaledCache_ !is null && scaledCache_.array.length != 0)
@@ -676,74 +680,91 @@ class RGBImage : Image
     /**
      * Ported from `Fl_RGB_Image::copy_bilinear_(int, int)` -- a real
      * bilinear resample (4-tap interpolation between the 2x2 nearest
-     * source pixels), used by `copy(int,int)` for the final pass once
-     * `copyScaleDown2h()`/`copyScaleDown2v()` have brought the source
-     * within 2x of the target in both dimensions. The `d() == 4`
-     * (RGBA) premultiply-before-blend/unpremultiply-after branches are
-     * ported verbatim -- interpolating straight, unpremultiplied alpha
-     * would bleed a fully-transparent neighbor's color into the
-     * result.
+     * source pixels, pixel-center mapping, 8-bit fixed-point weights
+     * with precomputed per-row/column offsets), used by `copy(int,int)`
+     * for the final pass once `copyScaleDown2h()`/`copyScaleDown2v()`
+     * have brought the source within 2x of the target in both
+     * dimensions. Deliberately differs from FLTK for `d() == 4`: color
+     * channels are premultiplied by alpha before blending and
+     * unpremultiplied after, since interpolating straight alpha would
+     * bleed a fully-transparent neighbor's color into the result.
      */
     private RGBImage copyBilinear(int W, int H) const
     {
-        int D = d();
-        int lineD = ld() ? ld() : dataW() * D;
-        auto newArray = new ubyte[W * H * D];
+        immutable int D = d();
+        immutable int SW = dataW();
+        immutable int SH = dataH();
+        immutable size_t SLD = ld() ? ld() : cast(size_t) SW * D;
+        auto newArray = new ubyte[cast(size_t) W * H * D];
 
-        immutable float xscale = (dataW() - 1) / cast(float) W;
-        immutable float yscale = (dataH() - 1) / cast(float) H;
-        foreach (dy; 0 .. H)
+        // Per destination column/row: the two source samples and the
+        // weight of the second one (0..256), mapping pixel centers so it
+        // works for both scaling up and down.
+        static void mapAxis(int dstN, int srcN, int unit, size_t[] off0, size_t[] off1, uint[] weight1)
         {
-            float oldy = dy * yscale;
-            if (oldy >= dataH()) oldy = cast(float)(dataH() - 1);
-            immutable float yfract = oldy - cast(uint) oldy;
-
-            foreach (dx; 0 .. W)
+            foreach (i; 0 .. dstN)
             {
-                size_t dstOff = cast(size_t) dy * W * D + dx * D;
+                float sx = ((i + 0.5f) * srcN) / cast(float) dstN - 0.5f;
+                int x0 = cast(int) sx;
+                if (sx < 0.0f && cast(float) x0 != sx) x0--; // floor for negatives
+                float fx = sx - x0;
+                if (x0 < 0) { x0 = 0; fx = 0.0f; }
+                else if (x0 >= srcN - 1) { x0 = srcN - 1; fx = 0.0f; }
+                int x1 = x0 < srcN - 1 ? x0 + 1 : x0;
+                int wgt = cast(int)(fx * 256.0f + 0.5f);
+                if (wgt < 0) wgt = 0; else if (wgt > 256) wgt = 256;
+                off0[i] = cast(size_t) x0 * unit;
+                off1[i] = cast(size_t) x1 * unit;
+                weight1[i] = wgt;
+            }
+        }
+        auto x0Off = new size_t[W], x1Off = new size_t[W];
+        auto wx1 = new uint[W];
+        auto y0Off = new size_t[H], y1Off = new size_t[H];
+        auto wy1 = new uint[H];
+        mapAxis(W, SW, D, x0Off, x1Off, wx1);
+        mapAxis(H, SH, cast(int) SLD, y0Off, y1Off, wy1);
 
-                float oldx = dx * xscale;
-                if (oldx >= dataW()) oldx = cast(float)(dataW() - 1);
-                immutable float xfract = oldx - cast(uint) oldx;
+        foreach (y; 0 .. H)
+        {
+            auto row0 = array[y0Off[y] .. $];
+            auto row1 = array[y1Off[y] .. $];
+            immutable uint wy = wy1[y];
+            immutable uint wy0 = 256 - wy;
+            size_t dst = cast(size_t) y * W * D;
 
-                immutable uint leftx = cast(uint) oldx;
-                immutable uint lefty = cast(uint) oldy;
-                immutable uint rightx = cast(uint)(oldx + 1 >= dataW() ? oldx : oldx + 1);
-                immutable uint righty = lefty;
-                immutable uint dleftx = leftx;
-                immutable uint dlefty = cast(uint)(oldy + 1 >= dataH() ? oldy : oldy + 1);
-                immutable uint drightx = rightx;
-                immutable uint drighty = dlefty;
+            foreach (x; 0 .. W)
+            {
+                immutable uint wx = wx1[x];
+                immutable uint wx0 = 256 - wx;
+                auto p00 = row0[x0Off[x] .. $];
+                auto p10 = row0[x1Off[x] .. $];
+                auto p01 = row1[x0Off[x] .. $];
+                auto p11 = row1[x1Off[x] .. $];
 
-                ubyte[4] left, right, downleft, downright;
-                left[0 .. D] = array[cast(size_t) lefty * lineD + leftx * D .. cast(size_t) lefty * lineD + leftx * D + D];
-                right[0 .. D] = array[cast(size_t) righty * lineD + rightx * D .. cast(size_t) righty * lineD + rightx * D + D];
-                downleft[0 .. D] = array[cast(size_t) dlefty * lineD + dleftx * D .. cast(size_t) dlefty * lineD + dleftx * D + D];
-                downright[0 .. D] = array[cast(size_t) drighty * lineD + drightx * D .. cast(size_t) drighty * lineD + drightx * D + D];
-
-                if (D == 4)
+                // Blend alpha with the color channels premultiplied, so a
+                // transparent neighbor's color doesn't bleed into the result.
+                uint[4] v;
+                foreach (c; 0 .. D)
                 {
+                    uint s00 = p00[c], s10 = p10[c], s01 = p01[c], s11 = p11[c];
+                    if (D == 4 && c < 3)
+                    {
+                        s00 = s00 * p00[3] / 255; s10 = s10 * p10[3] / 255;
+                        s01 = s01 * p01[3] / 255; s11 = s11 * p11[3] / 255;
+                    }
+                    uint top = s00 * wx0 + s10 * wx;
+                    uint bot = s01 * wx0 + s11 * wx;
+                    v[c] = (top * wy0 + bot * wy + 32768) >> 16;
+                }
+                if (D == 4 && v[3] != 0)
                     foreach (c; 0 .. 3)
                     {
-                        left[c] = cast(ubyte)(left[c] * left[3] / 255.0f);
-                        right[c] = cast(ubyte)(right[c] * right[3] / 255.0f);
-                        downleft[c] = cast(ubyte)(downleft[c] * downleft[3] / 255.0f);
-                        downright[c] = cast(ubyte)(downright[c] * downright[3] / 255.0f);
+                        uint u = v[c] * 255 / v[3];
+                        v[c] = u > 255 ? 255 : u;
                     }
-                }
-
-                immutable float leftf = 1 - xfract;
-                immutable float rightf = xfract;
-                immutable float upf = 1 - yfract;
-                immutable float downf = yfract;
-
-                foreach (c; 0 .. D)
-                    newArray[dstOff + c] = cast(ubyte)((left[c] * leftf + right[c] * rightf) * upf +
-                        (downleft[c] * leftf + downright[c] * rightf) * downf);
-
-                if (D == 4 && newArray[dstOff + 3])
-                    foreach (c; 0 .. 3)
-                        newArray[dstOff + c] = cast(ubyte)(newArray[dstOff + c] / (newArray[dstOff + 3] / 255.0f));
+                foreach (c; 0 .. D) newArray[dst + c] = cast(ubyte) v[c];
+                dst += D;
             }
         }
         return new RGBImage(newArray, W, H, D);

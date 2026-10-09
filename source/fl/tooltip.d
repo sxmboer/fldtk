@@ -327,19 +327,28 @@ private final class TooltipBox : MenuWindow
                 + (topWin !is null ? topWin.y() + yoff : 0);
         }
 
-        int scrX, scrY, scrW, scrH;
-        fl.core.screenXYWH(scrX, scrY, scrW, scrH, ox, oy);
-        if (ox + ww > scrX + scrW) ox = scrX + scrW - ww;
-        if (ox < scrX) ox = scrX;
-        if (currentTooltipH_ > 30)
+        // Use the widget window's screen (and so its scale); only clamp when
+        // the mouse is on that same screen.
+        auto tipTop = currentWidget_ !is null ? currentWidget_.topWindow() : null;
+        if (tipTop !is null) rawScreenNum(tipTop.screenNum());
+        int mx, my;
+        int nscreen = fl.core.getMouse(mx, my);
+        if (tipTop is null || screenNum() == nscreen)
         {
-            if (oy + hh > scrY + scrH) oy -= 23 + hh;
+            int scrX, scrY, scrW, scrH;
+            fl.core.screenXYWH(scrX, scrY, scrW, scrH, nscreen);
+            if (ox + ww > scrX + scrW) ox = scrX + scrW - ww;
+            if (ox < scrX) ox = scrX;
+            if (currentTooltipH_ > 30)
+            {
+                if (oy + hh > scrY + scrH) oy -= 23 + hh;
+            }
+            else
+            {
+                if (oy + hh > scrY + scrH) oy -= (4 + hh + currentTooltipH_);
+            }
+            if (oy < scrY) oy = scrY;
         }
-        else
-        {
-            if (oy + hh > scrY + scrH) oy -= (4 + hh + currentTooltipH_);
-        }
-        if (oy < scrY) oy = scrY;
 
         resize(ox, oy, ww, hh);
     }

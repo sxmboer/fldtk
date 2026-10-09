@@ -8,30 +8,23 @@
  *    header documents a `Fl_Native_File_Chooser_Driver` abstract base
  *    with the FLTK-backend driver (`Fl_Native_File_Chooser_FLTK_Driver`,
  *    itself just a thin wrapper around `Fl_File_Chooser` -- this port's
- *    `fl.file_chooser.FileChooser`) as ONE of several implementations
+ *    `fl.file_chooser.FileChooser`) as one of several implementations
  *    selectable at runtime: GTK (`Fl_Native_File_Chooser_GTK.cxx`,
- *    ~1060 lines, `dlopen()`s `libgtk` and drives `GtkFileChooserDialog`
- *    directly), Kdialog/Zenity (spawn `kdialog`/`zenity` as a
- *    subprocess and parse its stdout). None of the infrastructure those
- *    three need (`dlopen`/`dlsym` bindings against GTK's C API, or a
- *    subprocess-spawning-and-parsing layer) exists anywhere in this
- *    port, and building it is a real, separate effort -- **deferred**,
- *    not "not applicable": a real native-desktop-look chooser is a
- *    legitimate future improvement, just out of scope for this pass
- *    (see `PORTING.md`'s row for this file). This class *is* named
- *    `NativeFileChooser`, matching FLTK's public-facing type, since
- *    from a caller's perspective this already faithfully implements
- *    the *documented fallback behavior*: "Otherwise, FLTK's own dialog
- *    ... opens" (`Fl_Native_File_Chooser.H`'s own class doc comment) --
- *    which is exactly what happens today on every Linux desktop this
- *    port targets that lacks Zenity/KDE+kdialog/GTK, and will keep
- *    happening (as the fallback) once those backends are added later.
- *    No separate `Fl_Native_File_Chooser_Driver` abstract base is
- *    ported either, matching this project's established "concrete
- *    implementation, add the abstraction when a second backend
- *    actually needs it" convention (see `fl.platform_x11`'s own module
- *    comment) -- adding the GTK/Kdialog/Zenity backends later is the
- *    point at which introducing that split would earn its keep.
+ *    `dlopen()`s `libgtk` and drives `GtkFileChooserDialog` directly),
+ *    Kdialog/Zenity (spawn `kdialog`/`zenity` and parse its stdout).
+ *    **On Linux this is permanent, not a gap**: there is no single
+ *    native look there, and detecting the desktop would mean depending
+ *    on both GTK and Qt/KDE, which this project does not do. The
+ *    FLTK-styled dialog is the intended Linux behavior, and the class is
+ *    named `NativeFileChooser`, matching FLTK's public-facing type,
+ *    because it implements the documented fallback ("Otherwise, FLTK's
+ *    own dialog ... opens", `Fl_Native_File_Chooser.H`'s class doc
+ *    comment). The Windows-native and macOS-native backends are not
+ *    ported either; this dialog is used on every platform (see
+ *    `PORTING.md`'s row for this file). No separate
+ *    `Fl_Native_File_Chooser_Driver` abstract base is ported, matching
+ *    this project's "concrete implementation until a second backend
+ *    needs the abstraction" convention.
  *
  *  - **`strnew()`/`strfree()`/`strapp()`/`chrcat()` are not ported.**
  *    FLTK's `Fl_Native_File_Chooser_Driver` static helpers exist

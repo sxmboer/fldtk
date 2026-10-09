@@ -20,7 +20,7 @@
  * submenu array, not the whole bar. A top-level item with no submenu
  * (a menubar "button") is picked directly with no popup at all, same
  * as FLTK. Observably the same behavior; structurally, one call
- * that used to flow through the shared engine now happens in this
+ * that FLTK routes through the shared engine happens in this
  * module instead.
  *
  * Other deviations, matching fl.menu_button's already-documented ones:
@@ -264,12 +264,84 @@ class MenuBar : Menu_
                 redraw();
             }
         }
+        else if (!fl.core.eventButtons())
+        {
+            // No mouse button is down (a synthesized push): nothing to
+            // track, pick the item right away.
+            result = target;
+        }
         else
         {
-            result = target;
+            // A plain top-level item is a button in the bar: drawn
+            // pressed while the mouse button is held, and picked only if
+            // the button is released over it. Ported from
+            // `Menu_State::handle_mouse_events()` (`Fl_Menu.cxx`), whose
+            // menubar case keeps `current_item` on whichever bar item is
+            // under the mouse (none once the mouse leaves the bar, a
+            // submenu title opening its menu) and picks it on release
+            // (`in_menubar && current_item && !current_item->submenu()`).
+            currentPulldownTarget_ = target;
+            redraw();
+            pressing_ = true;
+            switchTo_ = null;
+            auto oldGrab = fl.core.grab();
+            fl.core.grab(this);
+            {
+                // Released on every way out, including a menu bar deleted
+                // while the item was held.
+                scope (exit) fl.core.grab(oldGrab);
+                while (pressing_)
+                {
+                    fl.core.wait();
+                    if (tracker.deleted()) return 1;
+                }
+            }
+            result = switchTo_ is null ? currentPulldownTarget_ : null;
+            currentPulldownTarget_ = null;
+            redraw();
+            if (switchTo_ !is null)
+            {
+                auto next = switchTo_;
+                switchTo_ = null;
+                return doPulldown(next);
+            }
+            if (result is null) return 1;
         }
         picked(result);
         return 1;
+    }
+
+    /// Whether a plain top-level item is being held down (`doPulldown()`'s
+    /// press-tracking loop), and the submenu title the mouse was dragged
+    /// onto, which ends that loop and opens its menu instead.
+    private bool pressing_;
+    /// ditto
+    private const(MenuItem)* switchTo_;
+
+    /// One drag or release step of the press-tracking loop: the item
+    /// under the mouse becomes the pressed one (none outside the bar),
+    /// and a submenu title ends the press to open its menu.
+    private void trackPress()
+    {
+        const(MenuItem)* hovered;
+        int ey = fl.core.eventY();
+        if (ey >= y() && ey < y() + h())
+        {
+            int foundX, foundW;
+            hovered = itemAtX(fl.core.eventX(), foundX, foundW);
+            if (hovered !is null && !hovered.selectable()) hovered = null;
+        }
+        if (hovered !is null && hovered.submenu())
+        {
+            switchTo_ = hovered;
+            pressing_ = false;
+            return;
+        }
+        if (hovered !is currentPulldownTarget_)
+        {
+            currentPulldownTarget_ = hovered;
+            redraw();
+        }
     }
 
     /// Shared hover-switch check: if a dropdown is currently open
@@ -321,6 +393,17 @@ class MenuBar : Menu_
 
         case Event.push:
             return doPulldown(null);
+
+        case Event.drag:
+            if (!pressing_) return 0;
+            trackPress();
+            return 1;
+
+        case Event.release:
+            if (!pressing_) return 0;
+            trackPress();
+            pressing_ = false;
+            return 1;
 
         case Event.shortcut:
             if (visibleR())

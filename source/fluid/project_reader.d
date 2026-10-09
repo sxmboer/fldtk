@@ -120,6 +120,12 @@ class Reader
     /// initialized for any `.fl` file that sets none of them.
     ProjectSettings settings;
 
+    /// Every leading-Options keyword the file actually contained. The
+    /// fields above hold defaults for anything absent, so a caller
+    /// merging this file into an open project (`File/Insert`) uses this
+    /// to apply only what the file set, as FLTK's reader does.
+    bool[string] optionsSeen;
+
     this(string source)
     {
         text = source;
@@ -359,6 +365,7 @@ class Reader
         layoutCurrentSuite = "";
         layoutCurrentPreset = 0;
         hasSnap = false;
+        optionsSeen = null;
 
         // Leading Options: flat `key [value]` pairs, in any order,
         // ending the moment a word isn't a known Option keyword.
@@ -373,6 +380,7 @@ class Reader
                 pos = saved;
                 break;
             }
+            optionsSeen[word] = true;
             // `i18n_type`/`i18n_include`/`shell_commands`/`snap`/etc are
             // interpreted for real (ported from `fluid::proj::I18n::
             // read()`, `Fd_Shell_Command_List::read()`, `Layout_List::
@@ -572,7 +580,7 @@ class Reader
             node.instanceName = instanceName;
             open = readToken();
         }
-        assert(open == "{", "fluid: expected '{' to start " ~ typeName ~ "'s property list");
+        if (open != "{") throw new Exception("fluid: expected '{' to start " ~ typeName ~ "'s property list");
         while (true)
         {
             string propName = readToken();
@@ -581,7 +589,7 @@ class Reader
             if (propName == "parent_properties")
             {
                 string open2 = readToken();
-                assert(open2 == "{", "fluid: expected '{' to start parent_properties");
+                if (open2 != "{") throw new Exception("fluid: expected '{' to start parent_properties");
                 while (true)
                 {
                     string innerName = readToken();
@@ -604,7 +612,7 @@ class Reader
         if (node.canHaveChildren())
         {
             open = readToken();
-            assert(open == "{", "fluid: expected '{' to start " ~ typeName ~ "'s children");
+            if (open != "{") throw new Exception("fluid: expected '{' to start " ~ typeName ~ "'s children");
             while (true)
             {
                 Node child = parseNode(node);

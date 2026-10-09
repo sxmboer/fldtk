@@ -11,8 +11,11 @@
  * `-h`/`--help` note further down for why that specific piece deviates
  * on purpose rather than being copied literally:
  *
- *     fluid [ -c [ -o code-filename ] [ --dub-header ] ] [ filename.fl ]
- *     fluid ( -mb | -mbs ) [ -c ] [ -o code-filename ] filename.fl
+ *     fluid [ -c | -cs [ -s strings-filename ] ] [ -o code-filename ] [ --dub-header ] [ filename.fl ]
+ *     fluid ( -m | --merge-back-if-safe | --merge-back-info ) [ -c ] [ -o code-filename ] filename.fl
+ *
+ * Every option has a short and a long spelling (`-c`/`--compile`, ...);
+ * `fluid --help` lists them.
  *
  * -- i.e. the default is the interactive GUI editor (`fluid` or
  * `fluid file.fl` opens the editor, empty or pre-loaded), and `-c`
@@ -21,14 +24,16 @@
  * `fluid -c -o <output.d> <input.fl>`, matching real
  * FLTK usage rather than a positional-args shortcut.
  *
- * `-cs`/`-u` are ported from `fluid/app/args.h`/`.cxx`'s own flag set,
+ * `--strings`/`-u` are ported from `fluid/app/args.h`/`.cxx`'s own flag set,
  * the two FLTK flags that actually map onto
- * something this port has: `-cs` (also write the i18n strings file,
+ * something this port has: `--strings` with `-c`, i.e. `-cs` (also write the i18n strings file,
  * via `fluid.string_writer`) and `-u` (load, normalize, and resave the
  * `.fl` file -- the "read-modify-write round-trip" `project_writer.d`'s
  * own doc comment names). `-o`
  * names the generated `.d` file, defaulting to the input's own
- * basename with a `.d` extension.
+ * basename with a `.d` extension. `-s` names the strings file (or, starting
+ * with '.', its extension), defaulting to the input's own basename with an
+ * extension chosen by the project's i18n type; it only matters with `-cs`/`--strings`.
  *
  * `--dub-header` (a deliberate fldtk-only convenience, no FLTK
  * equivalent): prepends a dub single-file-package comment
@@ -42,17 +47,17 @@
  * project file already says -- see `compile.d`'s `compileFile()` doc
  * comment for why there's no equivalent "force it off" case.
  *
- * `-mb`/`--merge-back` and `-mbs`/`--merge-back-if-safe` are the
- * headless entry points to MergeBack (`fluid.mergeback`), the two
- * options FLTK's `mergeback.cxx` lists as TODO. `-mb` merges edits
- * made in the generated `.d` file back into the `.fl` project and
- * saves it; `-mbs` does so only if there are no conflicts (exit status
- * 1 otherwise). `-o` names the code file to read, defaulting to the
+ * `-m`/`--merge-back`, `-mb`/`--merge-back-if-safe` and `-mi`/`--merge-back-info`
+ * are the headless entry points to MergeBack (`fluid.mergeback`), the
+ * counterparts of FLTK's `-mb=apply` and `-mb=info`. `-m` merges edits
+ * made in the generated `.d` file back into the `.fl` project and saves
+ * it; `--merge-back-if-safe` does so only if there are no conflicts
+ * (exit status 1 otherwise); `--merge-back-info` only reports what would
+ * be merged. `-o` names the code file to read, defaulting to the
  * one most recently written for the project, else the default `-c`
  * location; combined with `-c` the merge runs first, then the project
  * is compiled, so a build script can fold external edits in before
- * regenerating. Both are matched by hand before `getopt()` runs:
- * `config.bundling` would otherwise read `-mb` as `-m -b`.
+ * regenerating.
  *
  * `-h`/`--help` deliberately means something different here than
  * FLTK's own SYNOPSIS line, a real, reasoned deviation, not an
@@ -67,10 +72,11 @@
  * serves to confuse. So `-h` prints this file's own usage text instead
  * (exit 0, not an error) -- the flag earns a real, useful meaning
  * instead of a dead one.
- * Deliberately NOT ported: `-v`/`--version` (this project has no
- * version-number concept at all yet -- no `dub.sdl` `version` field, no
- * release tagging -- inventing one just to answer this flag isn't this
- * file's call to make), `-d` (`Fluid.debug_external_editor`'s own gated
+ * `-v`/`--version` prints `fluid vX.Y.Z` and exits, with fldtk's own
+ * version (`FL_MAJOR_VERSION`/..., see `fl.enumerations`), as FLTK's own
+ * Fluid prints its FLTK version.
+ *
+ * Deliberately NOT ported: `-d` (`Fluid.debug_external_editor`'s own gated
  * `printf()` tracing was never ported, see
  * `fluid.external_code_editor`'s own doc comment), `--autodoc`
  * (`autodoc.h`/`.cxx` itself was deliberately not ported, see
@@ -85,169 +91,112 @@
 module fluid.app;
 
 import std.stdio : writefln, stderr;
-import std.getopt : getopt, config, GetOptException;
+import fl.enumerations : FL_MAJOR_VERSION, FL_MINOR_VERSION, FL_PATCH_VERSION;
+static import fl.core;
+import fluid.compile : CommandLine, parseCommandLine, compileFile, normalizeProject, mergeBackProject;
 
-import fluid.compile : printCompileUsage, compileFile, normalizeProject, mergeBackProject;
-
-/// Ported in spirit from FLTK's own usage text, minus the `-h
-/// header-filename` half -- see this module's own top comment on why
-/// `-h` means "show this text" here instead. Shared by every call site
-/// that needs it (an explicit `-h`/`--help`/`-help`, and the two
-/// missing-argument error paths below) rather than duplicated per site.
-/// The `-c`/`-cs`/`-u` lines themselves come from `compile.d`'s
-/// own `printCompileUsage()` -- shared with `bootstrap.d`, which prints
-/// the exact same three lines and nothing else (no GUI mode to
-/// describe) -- this just adds the one line only the full GUI binary
-/// has anything to say about.
-private void printUsage(string prog)
+/// Applies `--bg`, `--fg`, `--scheme` and `--scaling-factor`, which style
+/// the editor itself and don't touch the generated code.
+private void applyEditorStyle(const ref CommandLine cl)
 {
-    printCompileUsage(prog);
-    stderr.writefln("       %s -mb [-c] [-o code-filename] <input.fl>    (merge edits made in the generated .d file back into the .fl file)", prog);
-    stderr.writefln("       %s -mbs [-c] [-o code-filename] <input.fl>   (same, but only if there are no conflicts)", prog);
-    stderr.writefln("       %s -h | --help | -help                 (show this text)", prog);
+    version (linux)
+    {
+        ubyte r, g, b;
+        if (cl.bg.length && fl.core.flParseColor(cl.bg, r, g, b)) fl.core.background(r, g, b);
+        if (cl.fg.length && fl.core.flParseColor(cl.fg, r, g, b)) fl.core.foreground(r, g, b);
+    }
+    if (cl.scheme.length) fl.core.scheme(cl.scheme);
+    if (cl.scalingFactor != 1.0f) fl.core.normalizedScreenScale(-1, cl.scalingFactor);
 }
 
+/// The first line of `--help`; the option list below it is generated
+/// from the option descriptions in `compile.d`'s `parseCommandLine()`.
+private enum usageLine = "usage: fluid [options] [filename.fl]\n"
+    ~ "Without -c, -u, or a merge option: opens the interactive editor.\n"
+    ~ "fldtk's standard switches (-geometry, -display, -name, -title, ...) are accepted as well.\n";
+
 /**
- * Uses `std.getopt`: a hand-rolled sequential scan that only looks for `-o`/
- * `--dub-header` in the narrow window right after `-c`/`-cs` would silently
- * drop
- * `fluid -c file.fl --dub-header` -- the flag placed *after* the
- * filename -- since such a scan stops advancing the moment it sees a
- * token that isn't a recognized flag. `getopt()` scans
- * the *whole* argument list regardless of where positional arguments
- * fall, so `-c`/`-o`/`--dub-header` (any subset, any order, before or
- * after `file.fl`) all resolve correctly, and mutates `args` down to
- * just the program name plus whatever wasn't consumed as an option --
- * `args[1]`, if present, is always the input file.
+ * The command line is parsed by `compile.d`'s `parseCommandLine()`, shared
+ * with `bootstrap.d`: one `std.getopt` call with `"short|long"` option
+ * strings, so every option works in both spellings, anywhere on the line
+ * (before or after the input file), and `--help` lists them from their
+ * descriptions. `std.getopt` has no multi-letter single-dash options, so
+ * a word like `-cs`, `-mb` or `-scheme` that names an option is rewritten
+ * to its long form first (`compile.d`'s `longSpelling()`). `-bg`, `-fg`,
+ * `--scheme` and `-sf`/`--scaling-factor` style the editor itself and
+ * don't touch the generated code. Whatever the parser doesn't know is
+ * handed to `fl.core.args()`, which takes FLTK's other standard switches
+ * (`-geometry`, `-display`, `-name`, `-title`, ...).
  *
- * `-c`/`-s` are registered as separate single-letter flags with
- * `config.bundling` enabled specifically so `-cs` keeps meaning
- * "compile, also write strings" exactly as before (bundling glues
- * consecutive single-letter flags after one dash together, so `-cs`
- * parses as `-c -s`) -- observably identical to the old hardcoded
- * `"-cs"` string check, just derived from real flag composition
- * instead of a special-cased literal.
- *
- * `-u`/`-h`/`--help`/`-help` stay outside `getopt()` entirely: `-u`
- * is a genuinely separate mode, not composable with `-c`/`-o`/
- * `--dub-header` at all (this port's own established constraint, see
- * this module's own top comment), so it's resolved before `getopt()`
- * ever runs; `-h`/`--help` are `getopt()`'s own built-in recognized
- * spellings (its `helpWanted` result flag), but `-help` (single dash)
- * isn't one of those two, so it's still checked by hand alongside them.
+ * `-h`/`--help` means "show usage" here, unlike FLTK's `-h
+ * header-filename`: generated D has no header file for it to name.
  */
 void main(string[] args)
 {
-    string prog = args.length ? args[0] : "fluid";
+    CommandLine cl;
+    if (!parseCommandLine(args, cl, usageLine, true))
+        return;
 
-    if (args.length >= 2 && args[1] == "-help")
+    // What is left are fldtk's own switches (-bg, -fg, -scheme,
+    // -scaling_factor, ...), then the .fl file. They style Fluid itself
+    // and have no effect on the generated code.
+    int fileIndex;
+    if (fl.core.args(args, fileIndex) == 0)
     {
-        printUsage(prog);
+        stderr.writefln("fluid: Unrecognized option %s\nTry 'fluid --help'.", args[fileIndex]);
+        return;
+    }
+    cl.inPath = fileIndex < cast(int) args.length ? args[fileIndex] : null;
+
+    if (cl.showVersion)
+    {
+        writefln("fluid v%d.%d.%d", FL_MAJOR_VERSION, FL_MINOR_VERSION, FL_PATCH_VERSION);
         return;
     }
 
-    if (args.length >= 2 && args[1] == "-u")
+    if (cl.update)
     {
-        // Standalone only, matching this port's own established -u
-        // behavior -- FLTK allows "-u" combined with "-c"/"-cs" (
-        // normalize, then also compile) but this port has never
-        // supported that combination and isn't widening it here, a
-        // real, separate follow-up if ever needed.
-        if (args.length < 3)
+        if (cl.inPath.length == 0)
         {
-            printUsage(prog);
+            stderr.writefln("fluid: -u needs a .fl file");
             return;
         }
-        normalizeProject(args[2]);
+        normalizeProject(cl.inPath);
         return;
     }
 
-    // -mb/-mbs, matched by hand -- see this module's top comment.
-    bool mergeBack = takeFlag(args, ["-mb", "--merge-back"]);
-    bool mergeBackIfSafe = takeFlag(args, ["-mbs", "--merge-back-if-safe"]);
-    if (mergeBack && mergeBackIfSafe)
+    if (cl.wantsMerge())
     {
-        stderr.writefln("fluid: -mb and -mbs cannot be combined");
-        printUsage(prog);
-        return;
-    }
-
-    bool compile;
-    bool alsoWriteStrings;
-    string outPath;
-    bool dubHeaderFlag;
-    try
-    {
-        auto helpInfo = getopt(args,
-            config.bundling,
-            "c", &compile,
-            "s", &alsoWriteStrings,
-            "o", &outPath,
-            "dub-header", &dubHeaderFlag);
-        if (helpInfo.helpWanted)
+        if (cl.inPath.length == 0)
         {
-            printUsage(prog);
+            stderr.writefln("fluid: merging needs a .fl file");
             return;
         }
-    }
-    catch (GetOptException e)
-    {
-        stderr.writefln("fluid: %s", e.msg);
-        printUsage(prog);
-        return;
-    }
-
-    string inPath = args.length >= 2 ? args[1] : null;
-
-    if (mergeBack || mergeBackIfSafe)
-    {
-        if (inPath.length == 0)
-        {
-            printUsage(prog);
-            return;
-        }
-        int status = mergeBackProject(inPath, outPath, mergeBackIfSafe);
+        int status = mergeBackProject(cl.inPath, cl.output, cl.mergeMode());
         if (status != 0)
         {
             import core.stdc.stdlib : exit;
 
             exit(status);
         }
-        if (!compile)
+        if (!cl.compile)
             return;
     }
 
-    if (!compile)
+    if (!cl.compile)
     {
         import fluid.gui_main : runEditor;
 
-        runEditor(inPath.length ? [inPath] : []);
+        applyEditorStyle(cl);
+        runEditor(cl.inPath.length ? [cl.inPath] : []);
         return;
     }
 
-    if (inPath.length == 0)
+    if (cl.inPath.length == 0)
     {
-        printUsage(prog);
+        stderr.writefln("fluid: -c needs a .fl file");
         return;
     }
 
-    compileFile(inPath, outPath, alsoWriteStrings, dubHeaderFlag);
-}
-
-/// Removes every argument after the program name that equals one of
-/// `names` and returns whether any was present.
-private bool takeFlag(ref string[] args, string[] names)
-{
-    string[] kept = args.length ? [args[0]] : [];
-    bool found;
-    foreach (a; args.length ? args[1 .. $] : [])
-    {
-        bool match;
-        foreach (n; names)
-            if (a == n) match = true;
-        if (match) found = true;
-        else kept ~= a;
-    }
-    args = kept;
-    return found;
+    compileFile(cl.inPath, cl.output, cl.strings, cl.dubHeader, cl.stringsName);
 }

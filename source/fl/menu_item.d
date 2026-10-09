@@ -30,8 +30,7 @@
  *    `_FL_IMAGE_LABEL` pointer-punning mechanism.
  *  - `measure()`/`draw()` take a `MenuStyle` struct (textfont/
  *    textsize/textcolor/selectionColor/downBox) instead of FLTK's
- *    `const Fl_Menu_*` -- fl.menu_ doesn't exist yet (see PORTING.md),
- *    but more importantly, FLTK's own `popup()`/`pulldown()` are
+ *    `const Fl_Menu_*` -- FLTK's own `popup()`/`pulldown()` are
  *    designed to work with a null Fl_Menu_* (a standalone popup with
  *    no owning widget at all) -- a plain style struct is actually a
  *    closer match to that "optional style source" spirit than a

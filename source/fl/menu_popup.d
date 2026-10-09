@@ -285,10 +285,9 @@ private final class MenuLevelWindow : MenuWindow
         // `regrab()`), since that's the sole dispatch target for every
         // mouse event while grabbed, regardless of which real level
         // window the pointer is actually over. See `levelAtRoot()`'s
-        // own doc comment for the full story (a real, user-reported
-        // navigation bug: hovering back onto an already-open parent
-        // level, or re-entering any level after the pointer left the
-        // app's own windows, silently did nothing).
+        // own doc comment for the full story (hovering back onto an
+        // already-open parent level, or re-entering any level after the
+        // pointer left the app's own windows, must keep navigating).
         switch (e)
         {
         case Event.push:

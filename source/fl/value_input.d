@@ -313,7 +313,7 @@ unittest
 
 unittest
 {
-    // input_.parent() is real now -- contains()/damage()/window() all
+    // input_.parent() is real -- contains()/damage()/window() all
     // correctly walk up through the ValueInput itself. Headless-safe:
     // pure widget-tree bookkeeping, no display needed.
     import fl.group : FlGroup;

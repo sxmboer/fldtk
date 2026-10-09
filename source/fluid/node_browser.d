@@ -31,8 +31,10 @@ import fl;
 
 import fluid.app_prefs : appPrefs;
 import fluid.node : Node;
-import fluid.pixmaps : pixmapFor;
+import fluid.pixmaps : pixmapFor, lockPixmap, protectedPixmap, invisiblePixmap;
 import fluid.widget_node : WidgetNode;
+import fluid.window_node : WindowNode;
+import fluid.node : Access;
 import fluid.class_node : ClassNode;
 import fluid.function_node : FunctionNode;
 import fluid.code_block_node : CodeBlockNode;
@@ -81,12 +83,9 @@ private string truncatedComment(string s, size_t maxChars = 80)
 /// FLTK's default 256-entry palette, `colorTable[72] == 0x7f0000`),
 /// not a placeholder value -- confirmed by reading the actual packed
 /// RGB rather than assumed from the bare number. `commentFont =
-/// helvetica` (**not** `darkGreen`, despite what `settings_panel.fl`'s
-/// own FLTK "Reset" button callback literally assigns --
-/// `Node_Browser::comment_font = FL_DARK_GREEN;` is a real FLTK
-/// bug, a color constant assigned to a font field, differing from this
-/// same file's own static initializer default two lines away; not
-/// replicated here, see `FLTK_ISSUES.md`).
+/// helvetica`, matching both `Node_Browser.cxx`'s static initializer
+/// and `settings_panel.fl`'s "Reset" button (FLTK `4cf6dd285` fixed
+/// that button, which used to assign `FL_DARK_GREEN`).
 Color labelColor = cast(Color) 72;
 Font labelFont = helvetica;
 Color classColor = foregroundColor;
@@ -321,10 +320,54 @@ final class NodeBrowserItem : TreeItem
         return isSelected() ? contrast(c, tree().selectionColor()) : c;
     }
 
+    /// FLTK: `Node::is_public()` -- 0 private, 1 public, 2 protected. Only
+    /// private and protected get an icon (`drawOverlayIcons()`). Only a
+    /// widget or a function has an access level here: FLTK's declaration and
+    /// declaration-block visibility picks the header or source file for the
+    /// code, and generated D has no such split, so those rows are public.
+    private static int publicLevel(Node n)
+    {
+        if (auto w = cast(WidgetNode) n) return cast(int) w.access;
+        if (auto f = cast(FunctionNode) n) return cast(int) f.access;
+        return 1;
+    }
+
+    /// FLTK: the tags `Node_Browser::item_draw()` draws on top of the type
+    /// icon: a lock for a private node, a "protected" mark for a protected
+    /// one, and an "invisible" mark for a hidden widget (except in a Tabs or
+    /// Wizard, where only one child shows at a time).
+    private void drawOverlayIcons()
+    {
+        auto prefs = tree().prefs();
+        auto typeIcon = usericon();
+        int iconW = typeIcon !is null ? typeIcon.w() : 0;
+        int iconH = typeIcon !is null ? typeIcon.h() : 16;
+        int x = labelX() - prefs.labelmarginleft() - iconW + 1;
+        int y = ((this.y() + h() / 2) | 1) - (iconH >> 1);
+
+        switch (publicLevel(node_))
+        {
+        case 0: if (lockPixmap !is null) lockPixmap.draw(x, y); break;
+        case 2: if (protectedPixmap !is null) protectedPixmap.draw(x, y); break;
+        default: break;
+        }
+
+        auto wn = cast(WidgetNode) node_;
+        if (wn !is null && cast(WindowNode) wn is null && wn.hidden && invisiblePixmap !is null)
+        {
+            string parentType = node_.parent !is null ? node_.parent.typeName : "";
+            if (parentType.length > 3 && parentType[0 .. 3] == "Fl_") parentType = parentType[3 .. $];
+            if (parentType != "Tabs" && parentType != "Wizard")
+                invisiblePixmap.draw(x, y);
+        }
+    }
+
     override protected int drawItemContent(bool render)
     {
         auto prefs = tree().prefs();
         Color bg = drawbgcolor();
+
+        if (render) drawOverlayIcons();
 
         if (render && (bg != tree().color() || isSelected()))
         {
@@ -385,14 +428,13 @@ final class NodeBrowserItem : TreeItem
             // quoted label (`labelColor`/`labelFont`) -- both shown
             // whenever each is present, not one-or-the-other.
             //
-            // **User-reported, deliberate divergence from FLTK.**
+            // **Deliberate divergence from FLTK.**
             // FLTK's own `Node_Browser::item_draw()` only ever shows
             // one of the two: the instance name if set, falling back to a
             // quoted label only when there's no name at all (`c = l->
             // name(); if (!c.empty()) { draw name } else if (l->label())
-            // { draw label }`) -- fldtk originally ported that exact rule
-            // faithfully too. Changed here at the user's own explicit
-            // request: an instance name is only ever set when generated
+            // { draw label }`) -- this port shows both
+            // instead: an instance name is only ever set when generated
             // code needs to reference that specific widget by variable
             // name, so most widgets in a typical project have a label but
             // no name at all -- FLTK's own "name wins when set" rule
@@ -620,6 +662,13 @@ final class NodeBrowser : Tree
         }
     }
 
+    /// Whether `n`'s row is collapsed in the tree (FLTK's `Node::folded_`).
+    bool isFolded(Node n)
+    {
+        auto item = n in itemOf;
+        return item !is null && !item.isOpen();
+    }
+
     /// Every currently-selected node, walking `itemOf` and checking
     /// each item's own `isSelected()` -- the source of truth for "what
     /// is selected" is `fl.tree.Tree`'s own per-item state, not a
@@ -671,10 +720,10 @@ final class NodeBrowser : Tree
 
 unittest
 {
-    // User-reported gap: the project tree's rows didn't match FLTK's
-    // own format at all -- no bold class name, no comment line, no
-    // separator, and an angle-bracketed placeholder (`<Fl_Button>`)
-    // where FLTK shows the class name plainly. Exercises
+    // The project tree's rows follow FLTK's own format: bold class
+    // name, comment line, separator, and the class name shown plainly
+    // rather than as an angle-bracketed placeholder (`<Fl_Button>`).
+    // Exercises
     // `NodeBrowserItem` end to end via `NodeBrowser.build()`, the real
     // integration path.
     import fluid.window_node : WindowNode;

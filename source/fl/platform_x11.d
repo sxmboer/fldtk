@@ -180,6 +180,11 @@ private
     Atom clipboardAtom_;
     Atom targetsAtom_;
     Atom utf8StringAtom_;
+    Atom textPlainAtom_;
+    Atom textPlainUtf8Atom_;
+    Atom textPlainUtf8LowerAtom_;
+    Atom netActiveWindow_;
+    Atom netSupportingWmCheck_;
     Atom netWmName_;
     Atom netWmIconName_;
     Atom netWmPid_;
@@ -543,6 +548,11 @@ void openDisplay()
     clipboardAtom_ = XInternAtom(display_, "CLIPBOARD", False);
     targetsAtom_ = XInternAtom(display_, "TARGETS", False);
     utf8StringAtom_ = XInternAtom(display_, "UTF8_STRING", False);
+    textPlainAtom_ = XInternAtom(display_, "text/plain", False);
+    textPlainUtf8Atom_ = XInternAtom(display_, "text/plain;charset=UTF-8", False);
+    textPlainUtf8LowerAtom_ = XInternAtom(display_, "text/plain;charset=utf-8", False); // Firefox/Thunderbird
+    netActiveWindow_ = XInternAtom(display_, "_NET_ACTIVE_WINDOW", False);
+    netSupportingWmCheck_ = XInternAtom(display_, "_NET_SUPPORTING_WM_CHECK", False);
     imageBmpAtom_ = XInternAtom(display_, "image/bmp", False);
     imagePngAtom_ = XInternAtom(display_, "image/png", False);
     timestampAtom_ = XInternAtom(display_, "TIMESTAMP", False);
@@ -579,6 +589,8 @@ void openDisplay()
     haveXfixes_ = XFixesQueryExtension(display_, &xfixesEventBase_, &xfixesErrorBase_) != 0;
 
     screen_ = XDefaultScreen(display_);
+    // Active-window changes arrive as root property changes (see appActivateCheck()).
+    XSelectInput(display_, XRootWindow(display_, screen_), PropertyChangeMask);
     visual_ = XDefaultVisual(display_, screen_);
     depth_ = XDefaultDepth(display_, screen_);
     colormap_ = XDefaultColormap(display_, screen_);
@@ -1456,7 +1468,17 @@ package(fl) int dnd()
 {
     FlWindow sourceFlWin = fl.core.firstWindow();
     if (sourceFlWin is null) return 0;
-    sourceFlWin.cursor(CursorShape.move);
+    // The pointer is implicitly grabbed by the window holding the pressed
+    // widget, and while that grab lasts X shows that window's cursor
+    // everywhere -- so the move cursor goes on that window (usually, but
+    // not always, `firstWindow()`), and is flushed before the nested
+    // loop below starts waiting.
+    FlWindow cursorWin = sourceFlWin;
+    if (auto pw = fl.core.pushed())
+        if (auto top = pw.topWindow())
+            cursorWin = top;
+    cursorWin.cursor(CursorShape.move);
+    XFlush(display_);
     Window sourceWindow = sourceFlWin.xid();
     fl.core.localGrab_ = (e) => grabFunc(e);
     Window targetWindow = 0;
@@ -1546,8 +1568,9 @@ package(fl) int dnd()
                     sendClientMessage(targetWindow, xdndEnter_, sourceWindow,
                         cast(c_long)(dndVersion << 24), xdndUriList_, utf8StringAtom_, XA_STRING);
                 else
+                    // "text/plain" first: Firefox requires it for text drops.
                     sendClientMessage(targetWindow, xdndEnter_, sourceWindow,
-                        cast(c_long)(dndVersion << 24), utf8StringAtom_, XA_STRING, 0);
+                        cast(c_long)(dndVersion << 24), textPlainAtom_, utf8StringAtom_, XA_STRING);
             }
         }
 
@@ -1600,7 +1623,8 @@ package(fl) int dnd()
 
     fl.core.localGrab_ = null;
     fl.core.dispatch(Event.release, sourceFlWin);
-    sourceFlWin.cursor(CursorShape.default_);
+    cursorWin.cursor(CursorShape.default_);
+    if (cursorWin !is sourceFlWin) sourceFlWin.cursor(CursorShape.default_);
     return 1;
 }
 
@@ -2584,13 +2608,11 @@ private void sendSizeHints(FlWindow win, Window xid)
         hints.flags = PMinSize | PMaxSize | PWinGravity;
     }
 
-    // `win.forcePosition()` used to have no effect at all -- `Flag.
-    // forcePosition` was being *set* (by `resize()`'s own move-tracking
-    // and `fl.core.transientScaleDisplay()`'s scale indicator, which
-    // needs its exact centered position honored) but nothing ever
-    // *read* it back, so a window manager (fvwm, in the reported case)
-    // was always free to auto-place the window whichever open spot it
-    // liked instead. Ported from `sendxjunk()`'s own `if
+    // `Flag.forcePosition` is set by `resize()`'s own move-tracking and
+    // by `fl.core.transientScaleDisplay()`'s scale indicator, which needs
+    // its exact centered position honored; without reading it here a
+    // window manager is free to auto-place the window wherever it likes.
+    // Ported from `sendxjunk()`'s own `if
     // (force_position()) { hints->flags |= USPosition; hints->x =
     // s*w->x(); hints->y = s*w->y(); }` -- `x()`/`y()` scaled the same
     // way every other dimension in this function already is.
@@ -3043,30 +3065,77 @@ package(fl) void screenWorkArea(out int x, out int y, out int w, out int h, int 
     h = cast(int)(workArea_.h / s);
 }
 
+/// Physical size of one monitor, from the RandR 1.5 monitor list.
+private struct RandrMonitor
+{
+    int x, y, w, h;
+    int mmW, mmH;
+}
+
+private RandrMonitor[] randrMonitors_;
+private bool randrQueried_;
+
+/**
+ * Reads the RandR monitor list once. Stays empty when the server has no
+ * RandR 1.5 or newer, in which case `screenDpi()` uses its older formula.
+ * `XRRGetMonitors()` is used rather than `XRRSizes()`, which makes the X
+ * server probe all outputs again.
+ */
+private void initRandrMonitors()
+{
+    if (randrQueried_) return;
+    randrQueried_ = true;
+
+    import fl.xrandr : XRRQueryVersion, XRRGetMonitors, XRRFreeMonitors;
+
+    int major, minor;
+    if (!XRRQueryVersion(display_, &major, &minor)) return;
+    if (major < 1 || (major == 1 && minor < 5)) return;
+
+    int n;
+    auto info = XRRGetMonitors(display_, XRootWindow(display_, screen_), True, &n);
+    if (info is null) return;
+    foreach (i; 0 .. n)
+        randrMonitors_ ~= RandrMonitor(info[i].x, info[i].y, info[i].width, info[i].height,
+            info[i].mwidth, info[i].mheight);
+    XRRFreeMonitors(info);
+}
+
 /**
  * Horizontal/vertical dots-per-inch of monitor `n` (clamped like
- * `screenXYWH()` above). Ported from `Fl_X11_Screen_Driver::screen_dpi()`'s
- * non-XRandR fallback path only (`src/drivers/X11/
- * Fl_X11_Screen_Driver.cxx`): `screens_[n].w`/`.h` (monitor `n`'s own
- * pixel size, from Xinerama) divided by the *default* X screen's
- * physical size in millimeters (`XDisplayWidthMM()`/`XDisplayHeightMM()`)
- * -- matching FLTK's own documented limitation verbatim ("There's no
- * way to use different DPI for different Xinerama screens", hence
- * reusing one physical-size measurement for every monitor rather than a
- * true per-monitor one). XRandR's own, more accurate per-monitor
- * physical-size query isn't a dependency of this port; `0.0` if the
- * millimeter dimension reports zero (a virtual/headless display),
- * matching FLTK's own `mm ? ... : 0.0f` guard.
+ * `screenXYWH()` above), or `0.0` when its physical size is unknown.
+ *
+ * Each monitor gets its own DPI: the RandR 1.5 monitor with the same
+ * position and size as Xinerama monitor `n` supplies the millimeters
+ * (`initRandrMonitors()`). FLTK's `Fl_X11_Screen_Driver::screen_dpi()`
+ * reads only the primary monitor's millimeters and gives every monitor
+ * that value's DPI.
+ *
+ * Without a matching RandR monitor, or when it reports 0 mm, this uses
+ * FLTK's older formula: monitor `n`'s pixel size divided by the default X
+ * screen's millimeter size (`XDisplayWidthMM()`/`XDisplayHeightMM()`),
+ * which is only right for a single monitor.
  */
 package(fl) void screenDpi(out float h, out float v, int n)
 {
     openDisplay();
     initScreens();
+    initRandrMonitors();
     if (n < 0 || n >= screens_.length) n = 0;
+    auto s = screens_[n];
+
+    foreach (m; randrMonitors_)
+        if (m.x == s.x && m.y == s.y && m.w == s.w && m.h == s.h && m.mmW > 0 && m.mmH > 0)
+        {
+            h = m.w * 25.4f / m.mmW;
+            v = m.h * 25.4f / m.mmH;
+            return;
+        }
+
     int mm = XDisplayWidthMM(display_, screen_);
-    h = mm ? screens_[n].w * 25.4f / mm : 0.0f;
+    h = mm ? s.w * 25.4f / mm : 0.0f;
     mm = XDisplayHeightMM(display_, screen_);
-    v = mm ? screens_[n].h * 25.4f / mm : 0.0f;
+    v = mm ? s.h * 25.4f / mm : 0.0f;
 }
 
 /**
@@ -3272,7 +3341,7 @@ package(fl) bool getKey(Keysym k)
  * a fully blank/invisible cursor, built via a plain-Xlib bitmap-cursor
  * technique rather than FLTK's usual route for it (`Fl_Window::
  * cursor()`'s `fallback_cursor()`, needing real `Fl_Image` support --
- * real now, see below, but overkill for a plain blank bitmap).
+ * real, see below, but overkill for a plain blank bitmap).
  * `CursorShape.nwse`/`nesw` (see this function's own `nwse`/`nesw`
  * special case near its top) are built from the same hand-drawn-bitmap
  * `fallback_cursor()`/image-cursor route FLTK uses, since FLTK has no
@@ -3568,7 +3637,7 @@ package(fl) void setCursor(FlWindow win, CursorShape c)
         // reusing FLTK's *other*, more common path for this shape
         // (`fallback_cursor()`'s `Fl_Pixmap`/`Fl_RGB_Image`-based
         // route through the image-cursor `cursor(const Fl_RGB_Image*,
-        // int, int)` overload, real now -- see `nwse`/`nesw`'s own
+        // int, int)` overload, real -- see `nwse`/`nesw`'s own
         // handling near the top of this function) -- that route would
         // be overkill for what's actually needed here: a blank bitmap
         // has no real "shape" data to speak of, so the plain-Xlib
@@ -3802,6 +3871,73 @@ private void sendWmFullscreenMonitorsEvent(Window xid, int top, int bottom, int 
  * expected 32-bit-item format, matching `get_xwinprop()`'s own `-1`
  * returns.
  */
+/// True when the window manager supports EWMH: the root's
+/// `_NET_SUPPORTING_WM_CHECK` names a child window that points back to
+/// itself. Ported from `Fl_X11_Screen_Driver::ewmh_supported()`; cached.
+private bool ewmhSupported()
+{
+    static int result = -1;
+    if (result != -1) return result == 1;
+    result = 0;
+
+    bool readWindow(Window w, out Window value)
+    {
+        Atom actualType;
+        int actualFormat;
+        c_ulong nitems, bytesAfter;
+        void* data;
+        if (XGetWindowProperty(display_, w, netSupportingWmCheck_, 0, 64, False, AnyPropertyType,
+                &actualType, &actualFormat, &nitems, &bytesAfter, &data) != Success || data is null)
+            return false;
+        scope(exit) XFree(data);
+        if (actualFormat != 32 || nitems != 1) return false;
+        value = (cast(Window*) data)[0];
+        return true;
+    }
+
+    Window child, back;
+    if (readWindow(XRootWindow(display_, screen_), child) && readWindow(child, back))
+        result = child == back ? 1 : 0;
+    return result == 1;
+}
+
+private bool appHasActiveWindow_ = false;
+
+/// Sends `Event.appActivate`/`appDeactivate` when `_NET_ACTIVE_WINDOW`
+/// moves between one of our windows and a foreign one. Ported from
+/// `Fl_x.cxx`'s `PropertyNotify` handling; needs an EWMH window manager.
+private void appActivateCheck()
+{
+    if (!ewmhSupported()) return;
+
+    Window active = None;
+    Atom actualType;
+    int actualFormat;
+    c_ulong nitems, bytesAfter;
+    void* data;
+    if (XGetWindowProperty(display_, XRootWindow(display_, screen_), netActiveWindow_, 0, 1, False,
+            AnyPropertyType, &actualType, &actualFormat, &nitems, &bytesAfter, &data) == Success
+        && data !is null)
+    {
+        if (actualFormat == 32 && nitems >= 1) active = (cast(Window*) data)[0];
+        XFree(data);
+    }
+
+    if (active != None && find(active) !is null)
+    {
+        if (!appHasActiveWindow_)
+        {
+            appHasActiveWindow_ = true;
+            fl.core.dispatch(Event.appActivate, null);
+        }
+    }
+    else if (appHasActiveWindow_)
+    {
+        appHasActiveWindow_ = false;
+        fl.core.dispatch(Event.appDeactivate, null);
+    }
+}
+
 private bool getNetWmState(Window xid, out Atom[] states)
 {
     Atom actualType;
@@ -5060,6 +5196,7 @@ private void processNextEvent()
         break;
 
     case PropertyNotify:
+        appActivateCheck();
         // Externally-triggered maximize/fullscreen state sync (e.g.
         // the user double-clicking the title bar), the direct
         // equivalent of FLTK's `case PropertyNotify:` (Fl_x.cxx).
@@ -5209,10 +5346,14 @@ private void processNextEvent()
                         PropModeReplace, cast(const(ubyte)*)targets.ptr, 2);
                     replyEv.xselection.property = req.property;
                 }
-                else if (req.target == utf8StringAtom_ || req.target == XA_STRING)
+                else if (req.target == utf8StringAtom_ || req.target == XA_STRING
+                    || req.target == textPlainAtom_ || req.target == textPlainUtf8Atom_
+                    || req.target == textPlainUtf8LowerAtom_)
                 {
                     string text = fl.core.clipboardContents(clipboardIdx);
-                    XChangeProperty(display_, req.requestor, req.property, req.target, 8,
+                    // Answer the text/plain variants as UTF8_STRING (Firefox's DnD asks for them).
+                    Atom replyType = req.target == XA_STRING ? XA_STRING : utf8StringAtom_;
+                    XChangeProperty(display_, req.requestor, req.property, replyType, 8,
                         PropModeReplace, cast(const(ubyte)*) text.ptr, cast(int) text.length);
                     replyEv.xselection.property = req.property;
                 }
@@ -5372,7 +5513,7 @@ private void processNextEvent()
             }
             else
             {
-                // image/png: a native decoder exists now (fl.png_image,
+                // image/png: a native decoder exists (fl.png_image,
                 // see PORTING.md's FL/Fl_PNG_Image.H row) -- same shape
                 // as the BMP branch just above.
                 auto bytes = (cast(ubyte*) data)[0 .. nitems].idup;
@@ -5435,10 +5576,11 @@ private void processNextEvent()
 
             int mb = ev.xbutton.button;
             bool shiftDown = (fl.core.eState_ & stateShift) != 0;
-            if (mb == 4 && !shiftDown) { fl.core.eDy_ = -1; fl.core.dispatch(Event.mouseWheel, rec.widget); }
-            else if (mb == 5 && !shiftDown) { fl.core.eDy_ = 1; fl.core.dispatch(Event.mouseWheel, rec.widget); }
-            else if (mb == 6 || (mb == 4 && shiftDown)) { fl.core.eDx_ = -1; fl.core.dispatch(Event.mouseWheel, rec.widget); }
-            else if (mb == 7 || (mb == 5 && shiftDown)) { fl.core.eDx_ = 1; fl.core.dispatch(Event.mouseWheel, rec.widget); }
+            fl.core.eDxF_ = 0; fl.core.eDyF_ = 0;
+            if (mb == 4 && !shiftDown) { fl.core.eDy_ = -1; fl.core.eDyF_ = -1; fl.core.dispatch(Event.mouseWheel, rec.widget); }
+            else if (mb == 5 && !shiftDown) { fl.core.eDy_ = 1; fl.core.eDyF_ = 1; fl.core.dispatch(Event.mouseWheel, rec.widget); }
+            else if (mb == 6 || (mb == 4 && shiftDown)) { fl.core.eDx_ = -1; fl.core.eDxF_ = -1; fl.core.dispatch(Event.mouseWheel, rec.widget); }
+            else if (mb == 7 || (mb == 5 && shiftDown)) { fl.core.eDx_ = 1; fl.core.eDxF_ = 1; fl.core.dispatch(Event.mouseWheel, rec.widget); }
             else
             {
                 // X11 pseudo button numbers 4-7 are the wheel (handled
@@ -5559,9 +5701,9 @@ private void processNextEvent()
             // do_queued_events() pass keyed off fl_xmousewin==0 (that
             // indirection exists to distinguish "left this window for
             // one of our own subwindows" from "left FLTK entirely",
-            // which only matters once subwindows exist). Without
-            // subwindows, leaving the window's boundary always means
-            // leaving every widget under the pointer, so this can go
+            // which matters for subwindows). Here the event is
+            // delivered per X window, so leaving this window's boundary
+            // means leaving every widget under the pointer, and this goes
             // straight to fl.core.belowmouse(null) -- the same call
             // FLTK's own leave path bottoms out at, and it already
             // does the right thing: walk up from the current

@@ -46,12 +46,12 @@
  *
  *  - labelShortcut()/testShortcut() (Fl_Widget::label_shortcut()/
  *    test_shortcut(), src/fl_shortcut.cxx): the '&x'-in-label shortcut
- *    parsing/matching, now ported since something finally calls it
+ *    parsing/matching, ported since something finally calls it
  *    (fl.button, and Fl_Group's FL_SHORTCUT handling in fl.group). Not
  *    ported alongside it: fl_old_shortcut() (Forms-compat ASCII
  *    shortcut syntax, out of scope, see forms.H in PORTING.md).
  *    fl_shortcut_label() (human-readable "Ctrl+Alt+F1"-style rendering)
- *    is ported now too, as fl.core.flShortcutLabel() (see that
+ *    is ported too, as fl.core.flShortcutLabel() (see that
  *    module's row in PORTING.md for the per-platform key-name lookup
  *    it needed); fl.shortcut_button is its first caller.
  *
@@ -64,7 +64,7 @@
  * `Fl_Widget::draw_backdrop()`/`fl_normal_label()`/`fl_normal_measure()`.
  *
  * do_callback()'s Fl_Widget_Tracker "was `this` deleted?" guard IS
- * ported now (fl.widget_tracker.WidgetTracker) -- see that module's own
+ * ported (fl.widget_tracker.WidgetTracker) -- see that module's own
  * comment for why it needed a real D-appropriate redesign rather than a
  * straight translation (a naive `bool` flag set inside `~this()` does
  * not work in D: `destroy()` wipes an object's fields back to `.init`
@@ -233,7 +233,7 @@ struct Label
     }
 
     /// Measures the size this label needs to draw at, in font/size,
-    /// including `image` (real now, matching FLTK's
+    /// including `image` (real, matching FLTK's
     /// `fl_normal_measure()`, src/fl_labeltype.cxx exactly): an
     /// `alignImageNextToText` image adds its width plus `spacing` and
     /// grows the height to fit if taller; otherwise (image above/below
@@ -424,6 +424,29 @@ abstract class Widget
     int handle(Event event)
     {
         return 0;
+    }
+
+    /// Sends event to this widget; a wrapper for handle(), used by groups
+    /// to deliver events to children. For a subwindow it first translates
+    /// the mouse coordinates and settles belowmouse()/DND state, so it,
+    /// rather than handle(), is the dispatch to use for any event.
+    final int send(Event event)
+    {
+        if (asWindow() is null) return handle(event);
+
+        if (event == Event.dndEnter || event == Event.dndDrag)
+            event = contains(fl.core.belowmouse()) ? Event.dndDrag : Event.dndEnter;
+
+        int savedX = fl.core.eX_; fl.core.eX_ -= x();
+        int savedY = fl.core.eY_; fl.core.eY_ -= y();
+        int ret = handle(event);
+        fl.core.eY_ = savedY;
+        fl.core.eX_ = savedX;
+
+        if (event == Event.enter || event == Event.dndEnter)
+            if (!contains(fl.core.belowmouse())) fl.core.belowmouse(this);
+
+        return ret;
     }
 
     bool isLabelCopied() const { return (flags_ & Flag.copiedLabel) != 0; }
@@ -1036,10 +1059,9 @@ abstract class Widget
     /// if this widget is inside one, otherwise the top-level window.
     /// For a Window widget itself, returns its *parent* window, not
     /// itself (FLTK's own doc note). Ported from
-    /// `Fl_Widget::window()` (`src/Fl_Window.cxx`). No subwindows exist
-    /// in this port yet, so in practice this always returns the
-    /// top-level window (or null outside one) -- but the walk itself is
-    /// faithful, so it'll keep working correctly once subwindows exist.
+    /// `Fl_Widget::window()` (`src/Fl_Window.cxx`). The walk
+    /// stops at the nearest enclosing window, which is a subwindow when
+    /// there is one.
     Window window() const
     {
         Rebindable!(const Widget) o = parent_;

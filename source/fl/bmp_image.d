@@ -174,7 +174,8 @@ class BMPImage : RGBImage
         int rowOrder = -1;
         bool use565 = false;
         int width, height, depth, compression, colorsUsed, repcount;
-        int bDepth = 3;
+        int bDepth = 3;       // bytes per pixel in the decoded image
+        bool useV3Alpha = false; // V3+ header with an alpha mask overrides BI_RGB
 
         if (infoSize < 40)
         {
@@ -215,6 +216,16 @@ class BMPImage : RGBImage
             rdr.readDword(); // colors_important
 
             repcount = infoSize - 40;
+
+            if (infoSize >= 56) // BITMAPV3INFOHEADER or later
+            {
+                rdr.readDword(); // red mask
+                rdr.readDword(); // green mask
+                rdr.readDword(); // blue mask
+                uint alphaMask = rdr.readDword();
+                useV3Alpha = compression == biRgb && alphaMask != 0;
+                repcount -= 16;
+            }
 
             if (compression == 0 && depth >= 8 && depth != 0 && width > 32 / depth)
             {
@@ -265,7 +276,17 @@ class BMPImage : RGBImage
         }
 
         if (depth == 16) use565 = (rdr.readDword() == 0xf800);
-        if (depth == 32) bDepth = 4;
+        // 32-bit BI_RGB is RGB0 (3 channels) unless a V3+ header gives an
+        // alpha mask; BI_BITFIELDS carries alpha. A bitmap inside an .ico
+        // is the exception: Windows stores icon alpha in plain BI_RGB data,
+        // so it always keeps its 4th channel.
+        bool skipPad32 = false;
+        if (depth == 32 && !haveMask)
+        {
+            bool inIco = icoHeight > 0 && icoWidth > 0;
+            if (compression == biRgb && !useV3Alpha && !inIco) skipPad32 = true;
+            else bDepth = 4;
+        }
 
         if (offbits) rdr.seek(cast(size_t) offbits);
         if (rdr.error)
@@ -489,7 +510,8 @@ class BMPImage : RGBImage
                     arr[p + 2] = rdr.readByte();
                     arr[p + 1] = rdr.readByte();
                     arr[p + 0] = rdr.readByte();
-                    arr[p + 3] = rdr.readByte();
+                    ubyte a = rdr.readByte();
+                    if (!skipPad32) arr[p + 3] = a;
                 }
                 break;
 

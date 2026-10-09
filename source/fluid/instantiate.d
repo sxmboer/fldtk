@@ -55,15 +55,19 @@ import fl;
 import std.path : buildPath;
 import std.format : format;
 import std.conv : to;
+import std.meta : AliasSeq;
 
 import fluid.node : Node;
 import fluid.widget_node : WidgetNode;
 import fluid.window_node : WindowNode;
 import fluid.group_node : GroupNode;
-import fluid.grid_node : GridNode;
+import fluid.grid_node : GridNode, GridCellInfo;
 import fluid.flex_node : FlexNode;
 import fluid.code_block_node : CodeBlockNode;
 import fluid.menu_item_node : MenuItemNode, SubmenuNode;
+import fluid.table_proxy : TableProxy;
+import fluid.scroll_proxy : ScrollProxy;
+import fluid.grid_proxy : GridProxy;
 import fluid.font_menu : fontMenuItems;
 import fluid.color_menu : colorMenuItems;
 
@@ -79,11 +83,32 @@ struct LiveTree
 {
     Widget[Node] widgetOf;
     Node[Widget] nodeOf;
+
+    /// Set for a design canvas's tree (`instantiate()`), where a nested
+    /// `WindowNode` becomes a subwindow built by `nestedWindowFactory`.
+    /// Clear for a standalone copy (live mode), which skips nested windows.
+    bool design;
 }
+
+/// Builds the live subwindow for a nested `WindowNode` in a design
+/// canvas, inside the currently open parent group. Set by `fluid.canvas`,
+/// which owns the canvas class (this module cannot construct it).
+__gshared Widget function(WindowNode, string projectDir) nestedWindowFactory;
 
 private alias WidgetCtor = Widget delegate(int x, int y, int w, int h, string label);
 
 private WidgetCtor[string] registry;
+
+/// The design canvas builds a `Scroll` as a `ScrollProxy`, which repaints
+/// the whole canvas window when it scrolls; a standalone copy (Live Resize)
+/// builds the plain widget.
+private Widget construct(WidgetCtor ctor, string typeName, bool design,
+    int x, int y, int w, int h, string label)
+{
+    if (design && (typeName == "Scroll" || typeName == "Fl_Scroll"))
+        return new ScrollProxy(x, y, w, h, label);
+    return ctor(x, y, w, h, label);
+}
 
 private void reg(string bareName, WidgetCtor ctor)
 {
@@ -96,7 +121,7 @@ static this()
     reg("Group", (x, y, w, h, l) => new FlGroup(x, y, w, h, l));
     reg("Tabs", (x, y, w, h, l) => new Tabs(x, y, w, h, l));
     reg("Wizard", (x, y, w, h, l) => new Wizard(x, y, w, h, l));
-    reg("Grid", (x, y, w, h, l) => new Grid(x, y, w, h, l));
+    reg("Grid", (x, y, w, h, l) => new GridProxy(x, y, w, h, l));
     // Fl_Flex has no (x,y,w,h,label) constructor overload (see
     // source/fl/flex.d) -- label applied separately, matching how every
     // other Widget subtype without a label-taking ctor would need to.
@@ -210,10 +235,11 @@ static this()
         return o;
     });
     registry["FileInput"] = registry["Fl_File_Input"];
-    // Tree/Help_View/Table: Fl_Group subclasses in C++ that FLUID itself
+    // Tree/Help_View: Fl_Group subclasses in C++ that FLUID itself
     // treats as leaf types (see factory.d's matching entries for the
     // full reasoning) -- their own fl.* constructors already call end()
     // internally, so no extra FlGroup.current() handling is needed here.
+    // Table is a real container (`TableProxy` calls end() itself).
     reg("Tree", (x, y, w, h, l) {
         auto o = new Tree(x, y, w, h, l);
         o.add("/A1/B1/C1");
@@ -246,7 +272,7 @@ static this()
         return o;
     });
     registry["FileBrowser"] = registry["Fl_File_Browser"];
-    reg("Table", (x, y, w, h, l) => new Table(x, y, w, h, l));
+    reg("Table", (x, y, w, h, l) => new TableProxy(x, y, w, h, l));
     // FLTK's own factory.cxx sets a 50% default value so a freshly-
     // dropped progress bar shows a visible fill instead of looking empty
     // (Fl_Progress's own default value is 0).
@@ -258,14 +284,27 @@ static this()
 
     reg("Menu_Button", (x, y, w, h, l) => new MenuButton(x, y, w, h, l));
     registry["MenuButton"] = (x, y, w, h, l) => new MenuButton(x, y, w, h, l);
-    reg("Choice", (x, y, w, h, l) => new Choice(x, y, w, h, l));
+    // FLTK's `Choice_Node::widget()`/`Input_Choice_Node::widget()` give
+    // a menu-less choice the one-item `dummymenu` ("CHOICE"), so it
+    // doesn't draw as a blank box; `applyMenuItems()` replaces it once
+    // the node has items.
+    reg("Choice", (x, y, w, h, l) {
+        auto c = new Choice(x, y, w, h, l);
+        c.menu([MenuItem("CHOICE"), MenuItem(null)]);
+        return c;
+    });
     // See factory.d's own matching entries' doc comment: `Menu_Bar`/
     // `Input_Choice` are `Menu_Manager_Node` subclasses in FLTK, the
     // same role `Menu_Button`/`Choice` already fill here.
     reg("Menu_Bar", (x, y, w, h, l) => new MenuBar(x, y, w, h, l));
     registry["MenuBar"] = (x, y, w, h, l) => new MenuBar(x, y, w, h, l);
-    reg("Input_Choice", (x, y, w, h, l) => new InputChoice(x, y, w, h, l));
-    registry["InputChoice"] = (x, y, w, h, l) => new InputChoice(x, y, w, h, l);
+    reg("Input_Choice", (x, y, w, h, l) {
+        auto ic = new InputChoice(x, y, w, h, l);
+        ic.menubutton().menu([MenuItem("CHOICE"), MenuItem(null)]);
+        ic.value("input");
+        return ic;
+    });
+    registry["InputChoice"] = registry["Input_Choice"];
 
     // "Function"/"code"/"class"/"comment"/"decl"/"MenuItem" (factory.d's
     // other non-widget entries) have no live-widget counterpart at all
@@ -406,13 +445,14 @@ shared static this()
  * `fl.overlay_window.OverlayWindow`) *is* the live embodiment of the
  * root window Node, so unlike every other node it is never constructed
  * via `registry`; its own properties are applied directly onto `into`
- * instead. Nested windows (a `WindowNode` anywhere below `root`) are
- * out of scope for Phase 1 (multi-window projects) and are skipped
- * with nothing rendered for them, rather than attempted.
+ * instead. A nested window (a `WindowNode` below `root`) becomes a
+ * subwindow with a canvas of its own, built through `nestedWindowFactory`
+ * inside its parent's group.
  */
 LiveTree instantiate(WindowNode root, Window into, string projectDir = ".")
 {
     LiveTree live;
+    live.design = true;
 
     // Don't assume ambient state -- every Widget ctor auto-adds itself
     // to FlGroup.current(), so a stray leftover group (e.g. from the
@@ -499,12 +539,9 @@ LiveTree instantiate(WindowNode root, Window into, string projectDir = ".")
 /// building its children (an FLTK-internal scrollbar-layout-timing
 /// nuance with no confirmed fldtk equivalent need -- not replicated,
 /// a possible source of a slightly-off initial scrollbar until the
-/// first resize, not a structural gap); `Table_Node` builds a private
-/// `Fl_Table_Proxy` directly instead of walking children through the
-/// shared `propagate_live_mode()` at all (its own real children, if
-/// any, go through the generic path here instead -- Table support in
-/// this port has no proxy-widget layer to begin with, matching
-/// `canvas.d`'s own "concrete, not polymorphic" stance).
+/// first resize, not a structural gap); a `Table`
+/// is built as a `TableProxy` and its children go through the generic
+/// path here, like any other group's.
 Widget instantiateStandalone(Node n, ref LiveTree live, string projectDir = ".")
 {
     if (auto wn = cast(WindowNode) n)
@@ -540,7 +577,7 @@ Widget instantiateStandalone(Node n, ref LiveTree live, string projectDir = ".")
     FlGroup.current(null);
     auto widget = (*ctor)(x, y, w, h, leaf.hasLabel ? leaf.label : null);
     applyProperties(leaf, widget, projectDir);
-    applyMenuItems(leaf, widget);
+    applyMenuItems(leaf, widget, false, projectDir);
     live.widgetOf[n] = widget;
     live.nodeOf[widget] = n;
 
@@ -565,6 +602,66 @@ Widget instantiateStandalone(Node n, ref LiveTree live, string projectDir = ".")
     return widget;
 }
 
+/// The scroll position a widget's live coordinates are shifted by: a
+/// scrolled `Scroll` moves every child by `-xposition()`/`-yposition()`,
+/// while a node's coordinates are the unscrolled ones (what the generated
+/// program passes to the constructor). This sums the positions of every
+/// `Scroll` above `w`, so `node = live + offset` and `live = node - offset`.
+void scrollOffsetAbove(Widget w, out int offX, out int offY)
+{
+    offX = 0; offY = 0;
+    for (auto p = w.parent(); p !is null; p = p.parent())
+        if (auto sc = cast(Scroll) p)
+        {
+            offX += sc.xposition();
+            offY += sc.yposition();
+        }
+}
+
+/// `scrollOffsetAbove()` for a widget about to be added to `group`:
+/// includes `group` itself if it is a `Scroll`.
+void scrollOffsetWithin(FlGroup group, out int offX, out int offY)
+{
+    scrollOffsetAbove(group, offX, offY);
+    if (auto sc = cast(Scroll) group)
+    {
+        offX += sc.xposition();
+        offY += sc.yposition();
+    }
+}
+
+/// Copies `w`'s live geometry onto `wn`, undoing any scroll offset.
+void geometryFromLive(WidgetNode wn, Widget w)
+{
+    int offX, offY;
+    scrollOffsetAbove(w, offX, offY);
+    wn.x = w.x() + offX;
+    wn.y = w.y() + offY;
+    wn.w = w.w();
+    wn.h = w.h();
+    wn.hasXywh = true;
+}
+
+/// `geometryFromLive()` for every widget node below `n`. Moving or
+/// resizing a container moves its children live, but only the container
+/// itself is edited, so the children's nodes (and with them the property
+/// panel and the saved file) would otherwise keep their old coordinates.
+/// A nested window has its own canvas and coordinates and is left alone.
+void syncDescendantsFromLive(Node n, ref LiveTree live)
+{
+    foreach (c; n.children)
+    {
+        auto wn = cast(WidgetNode) c;
+        if (wn !is null && cast(WindowNode) c is null)
+        {
+            if (auto w = live.widgetOf.get(c, null))
+                geometryFromLive(wn, w);
+        }
+        if (cast(WindowNode) c is null)
+            syncDescendantsFromLive(c, live);
+    }
+}
+
 /// `package(fluid)`, not `private` -- `gui_main.d`'s Paste/Duplicate
 /// need to instantiate an arbitrary already-parsed subtree under an
 /// already-live parent `FlGroup` (the exact same recursive walk
@@ -574,8 +671,15 @@ Widget instantiateStandalone(Node n, ref LiveTree live, string projectDir = ".")
 /// was its only caller.
 package(fluid) void instantiateChild(Node n, ref LiveTree live, string projectDir)
 {
-    if (cast(WindowNode) n)
-        return; // nested windows: out of scope for Phase 1, skip
+    if (auto nested = cast(WindowNode) n)
+    {
+        // A standalone copy (live mode) has no nested canvases.
+        if (!live.design || nestedWindowFactory is null) return;
+        auto sub = nestedWindowFactory(nested, projectDir);
+        live.widgetOf[n] = sub;
+        live.nodeOf[sub] = n;
+        return;
+    }
 
     // A `codeblock {}` has no live widget of its own (it's purely a
     // `code_writer.d`-level codegen wrapper -- see `code_block_node.d`'s
@@ -614,10 +718,10 @@ package(fluid) void instantiateChild(Node n, ref LiveTree live, string projectDi
     // unlike instantiateOne() below, deliberately does NOT touch
     // FlGroup.current() itself, since doing so here would defeat that
     // auto-parenting for every sibling still to come in this same walk.
-    auto widget = (*ctor)(x, y, w, h, wn.hasLabel ? wn.label : null);
+    auto widget = construct(*ctor, wn.typeName, live.design, x, y, w, h, wn.hasLabel ? wn.label : null);
 
     applyProperties(wn, widget, projectDir);
-    applyMenuItems(wn, widget);
+    applyMenuItems(wn, widget, false, projectDir);
 
     live.widgetOf[n] = widget;
     live.nodeOf[widget] = n;
@@ -663,6 +767,89 @@ private void applyGridOwnProperties(GridNode gn, Grid g)
     foreach (i, v; gn.colWidths) g.colWidth(cast(int) i, v);
     foreach (i, v; gn.colWeights) g.colWeight(cast(int) i, v);
     foreach (i, v; gn.colGaps) g.colGap(cast(int) i, v);
+}
+
+/// Re-applies a `Flex`'s margins, gap and per-child fixed sizes to the
+/// live flex and lays it out, so editing the flex or one of its
+/// children (for instance its "fixed" size) shows at once.
+private void syncFlexToLive(FlexNode fn, ref LiveTree live)
+{
+    auto flex = cast(Flex) live.widgetOf.get(fn, null);
+    if (flex is null) return;
+    applyFlexOwnProperties(fn, flex);
+    foreach (i; 0 .. flex.children())
+        flex.fixed(flex.child(i), 0); // forget every fixed size, then restore those the node has
+    applyFlexFixedSizes(fn, flex);
+    flex.layout();
+    flex.redraw();
+}
+
+/// Pushes container layout state from the node model to the live
+/// container after a property-panel edit. For a `Flex` or a child of
+/// one, see `syncFlexToLive()`. For a `Grid` node its dimensions, margins, gaps
+/// and row/column arrays; for a child of a grid its cell (row, column,
+/// spans, alignment, minimum size), moving the widget within the grid as
+/// FLTK's `Grid_Child_Tab::grid_child_cb()` does (a taken target cell
+/// makes the child a transient widget over it). The child's node is then
+/// set to what the grid actually did, since it can refuse a change
+/// (out of range, a span past the edge). Returns `true` if that
+/// differs from what the node held, so the panel should show the
+/// stored values again.
+bool syncLayoutToLive(WidgetNode wn, ref LiveTree live)
+{
+    if (auto fn = cast(FlexNode) wn)
+    {
+        syncFlexToLive(fn, live);
+        return false;
+    }
+    if (auto fn = cast(FlexNode) wn.parent)
+    {
+        syncFlexToLive(fn, live);
+        return false;
+    }
+
+    if (auto gn = cast(GridNode) wn)
+    {
+        if (auto grid = cast(Grid) live.widgetOf.get(gn, null))
+        {
+            applyGridOwnProperties(gn, grid);
+            grid.layout();
+            grid.redraw();
+        }
+        return false;
+    }
+
+    auto gn = cast(GridNode) wn.parent;
+    if (gn is null) return false;
+    auto grid = cast(GridProxy) live.widgetOf.get(gn, null);
+    auto child = live.widgetOf.get(wn, null);
+    auto wanted = wn in gn.cellOf;
+    if (grid is null || child is null || wanted is null) return false;
+
+    GridCellInfo cur;
+    if (!grid.cellInfo(child, cur) || cur.row != wanted.row || cur.col != wanted.col)
+        grid.moveCell(child, wanted.row, wanted.col, 2);
+
+    // Span, alignment and minimum size belong to a real cell only.
+    if (auto cell = grid.cell(child))
+    {
+        if (wanted.rowspan > 0 && cell.row() + wanted.rowspan <= grid.rows())
+            cell.rowspan(cast(short) wanted.rowspan);
+        if (wanted.colspan > 0 && cell.col() + wanted.colspan <= grid.cols())
+            cell.colspan(cast(short) wanted.colspan);
+        cell.alignment(cast(GridAlign) wanted.alignRaw);
+        if (wanted.minW >= 0 && wanted.minH >= 0)
+            cell.minimumSize(wanted.minW, wanted.minH);
+    }
+    grid.needLayout(true);
+    grid.layout();
+    grid.redraw();
+
+    GridCellInfo actual;
+    if (!grid.cellInfo(child, actual)) return false;
+    bool changed = actual != *wanted;
+    *wanted = actual;
+    return changed;
 }
 
 /// Places every already-instantiated child into its recorded grid cell
@@ -734,10 +921,54 @@ Widget instantiateOne(WidgetNode wn, string projectDir = ".")
     int h = wn.hasXywh ? wn.h : 20;
 
     FlGroup.current(null);
-    auto widget = (*ctor)(x, y, w, h, wn.hasLabel ? wn.label : null);
+    auto widget = construct(*ctor, wn.typeName, true, x, y, w, h, wn.hasLabel ? wn.label : null);
     applyProperties(wn, widget, projectDir);
-    applyMenuItems(wn, widget);
+    applyMenuItems(wn, widget, false, projectDir);
+    // A grid needs its row/column count before any child can be placed.
+    if (auto gn = cast(GridNode) wn)
+        if (auto grid = cast(Grid) widget)
+            applyGridOwnProperties(gn, grid);
     return widget;
+}
+
+/// The widget classes whose text font and size a node can set: the ones
+/// FLTK's `Widget_Node::textstuff()` overrides cover (inputs, valuator
+/// text, menus, browsers, text displays, counters, spinners, help views,
+/// terminals). Each has its own unrelated `textfont()`/`textsize()`.
+private alias TextStuffTypes = AliasSeq!(Input_, ValueOutput, ValueInput, ValueSlider,
+    Menu_, Browser_, Counter, Spinner, TextDisplay, HelpView, Terminal, InputChoice);
+
+/// Reads `w`'s text font and size; `false` if `w` has none.
+package(fluid) bool getTextStuff(Widget w, out Font font, out int size)
+{
+    foreach (T; TextStuffTypes)
+        if (auto t = cast(T) w)
+        {
+            font = t.textfont();
+            size = t.textsize();
+            return true;
+        }
+    return false;
+}
+
+private void setTextFont(Widget w, Font font)
+{
+    foreach (T; TextStuffTypes)
+        if (auto t = cast(T) w)
+        {
+            t.textfont(font);
+            return;
+        }
+}
+
+private void setTextSize(Widget w, int size)
+{
+    foreach (T; TextStuffTypes)
+        if (auto t = cast(T) w)
+        {
+            t.textsize(size);
+            return;
+        }
 }
 
 /// Applies the Phase 1 property subset from `n` onto the already-
@@ -759,7 +990,26 @@ Widget instantiateOne(WidgetNode wn, string projectDir = ".")
 /// construction time".
 void applyProperties(WidgetNode n, Widget w, string projectDir = ".", bool applyXywh = true)
 {
-    if (applyXywh && n.hasXywh) w.resize(n.x, n.y, n.w, n.h);
+    // A grid or flex child's rectangle belongs to its parent's layout (a
+    // grid child's cell, or the cell it sits over as a transient widget),
+    // not to the node, whose x/y/w/h is only what the widget was created
+    // with: re-applying it would pull the child out of its place.
+    bool gridOwnsXywh = false;
+    if (auto grid = cast(Grid) w.parent())
+    {
+        GridCellInfo cellInfo;
+        gridOwnsXywh = (cast(GridProxy) grid !is null)
+            ? (cast(GridProxy) grid).cellInfo(w, cellInfo)
+            : grid.cell(w) !is null;
+    }
+    else if (cast(Flex) w.parent() !is null)
+        gridOwnsXywh = true;
+    if (applyXywh && n.hasXywh && !gridOwnsXywh)
+    {
+        int offX, offY;
+        scrollOffsetAbove(w, offX, offY);
+        w.resize(n.x - offX, n.y - offY, n.w, n.h);
+    }
 
     // Unconditional, unlike most other fields below -- `n.label` is
     // already "" whenever `!n.hasLabel` (every writer of these two
@@ -850,34 +1100,26 @@ void applyProperties(WidgetNode n, Widget w, string projectDir = ".", bool apply
     if (n.labelcolorRaw >= 0) w.labelcolor(cast(Color) n.labelcolorRaw);
     if (auto in_ = cast(Input_) w)
     {
-        if (n.textfont >= 0) in_.textfont(cast(Font) n.textfont);
-        if (n.textsize >= 0) in_.textsize(n.textsize);
         if (n.textcolorRaw >= 0) in_.textcolor(cast(Color) n.textcolorRaw);
     }
     else if (auto vout = cast(ValueOutput) w)
     {
-        if (n.textfont >= 0) vout.textfont(cast(Font) n.textfont);
-        if (n.textsize >= 0) vout.textsize(n.textsize);
         if (n.textcolorRaw >= 0) vout.textcolor(cast(Color) n.textcolorRaw);
     }
     else if (auto vin = cast(ValueInput) w)
     {
-        if (n.textfont >= 0) vin.textfont(cast(Font) n.textfont);
-        if (n.textsize >= 0) vin.textsize(n.textsize);
         if (n.textcolorRaw >= 0) vin.textcolor(cast(Color) n.textcolorRaw);
     }
     else if (auto vslider = cast(ValueSlider) w)
     {
-        if (n.textfont >= 0) vslider.textfont(cast(Font) n.textfont);
-        if (n.textsize >= 0) vslider.textsize(n.textsize);
         if (n.textcolorRaw >= 0) vslider.textcolor(cast(Color) n.textcolorRaw);
     }
     else if (auto menu = cast(Menu_) w)
     {
-        if (n.textfont >= 0) menu.textfont(cast(Font) n.textfont);
-        if (n.textsize >= 0) menu.textsize(n.textsize);
         if (n.textcolorRaw >= 0) menu.textcolor(cast(Color) n.textcolorRaw);
     }
+    if (n.textfont >= 0) setTextFont(w, cast(Font) n.textfont);
+    if (n.textsize >= 0) setTextSize(w, n.textsize);
     if (n.hLabelMargin >= 0) w.horizontalLabelMargin(n.hLabelMargin);
     if (n.vLabelMargin >= 0) w.verticalLabelMargin(n.vLabelMargin);
     if (n.imageSpacing >= 0) w.labelImageSpacing(n.imageSpacing);
@@ -920,6 +1162,14 @@ void applyProperties(WidgetNode n, Widget w, string projectDir = ".", bool apply
         {
             try { v = to!double(raw); return true; }
             catch (Exception) { return false; }
+        }
+        // `slider_size`: the slider knob's size (a fraction of the track).
+        if (n.hasSliderSize)
+        {
+            double sliderSizeValue;
+            if (auto slider = cast(Slider) w)
+                if (tryParseDouble(n.sliderSizeRaw, sliderSizeValue))
+                    slider.sliderSize(sliderSizeValue);
         }
         auto valuator = cast(Valuator) w;
         auto spinner = cast(Spinner) w;
@@ -1064,6 +1314,14 @@ void applyProperties(WidgetNode n, Widget w, string projectDir = ".", bool apply
                     n.scaleDeimageH > 0 ? n.scaleDeimageH : img.dataH(), false, true);
             w.deimage(img);
         }
+    // `Widget.image()` doesn't redraw by itself; a changed image or scale
+    // (the Image Options dialog) shows at once, as FLTK's scale callbacks
+    // redraw the widget and its parent.
+    if (n.hasImage || n.hasDeimage)
+    {
+        w.redraw();
+        if (w.parent() !is null) w.parent().redraw();
+    }
 
     // resizableFlag: added alongside panels/widget_panel.fl's own
     // "Attributes:" section. `w.parent()` is already the ambient live group by this
@@ -1091,17 +1349,21 @@ void applyProperties(WidgetNode n, Widget w, string projectDir = ".", bool apply
 /// -- the two cases are genuinely different problems) rendered as an
 /// empty menu on the canvas even though the very same project already
 /// generates a correctly populated D `MenuItem[]` array. No-op for
-/// anything that isn't a `Menu_` (every ordinary leaf/group widget) or
-/// has no `MenuItemNode` children at all, so safe to call unconditionally
-/// right after `applyProperties()`.
+/// anything that isn't a `Menu_` (every ordinary leaf/group widget), so
+/// safe to call unconditionally right after `applyProperties()`.
+///
+/// `rebuild` distinguishes the two FLTK call sites: at construction a
+/// node with no items keeps the widget's own starting menu (a `Choice`'s
+/// "CHOICE" placeholder), while a rebuild after the node's items changed
+/// (FLTK's `Menu_Base_Node::build_menu()`, run on every add, move,
+/// delete, or item property edit) clears the menu when no items are left.
 ///
 /// A `MenuItemNode`'s own `callback` text can't be applied here (raw D
 /// source, the same standing "no D-expression interpreter" limitation
-/// `shortcutRaw`/setup code already have -- see this module's own top
-/// comment) -- every live menu item's callback is `null`, appearance/
-/// selection only, matching every other live-canvas simplification in
-/// this module.
-void applyMenuItems(WidgetNode n, Widget w)
+/// setup code has -- see this module's own top comment) -- every live
+/// menu item's callback is `null`. Its shortcut is applied
+/// (`menuItemShortcut()`).
+void applyMenuItems(WidgetNode n, Widget w, bool rebuild = false, string projectDir = ".")
 {
     // `InputChoice` is a `Group` FLTK too (embeds a real `Input` +
     // `MenuButton` rather than being a `Menu_` itself), so its own menu
@@ -1137,8 +1399,16 @@ void applyMenuItems(WidgetNode n, Widget w)
 
     MenuItem[] items;
     Node[] itemNodes;
-    appendMenuItems(n, items, itemNodes);
-    if (items.length == 0) return;
+    appendMenuItems(n, items, itemNodes, projectDir);
+    // FLTK's `Menu_Base_Node::build_menu()` clears the menu when the last
+    // item is gone, so a deleted item doesn't linger on the canvas.
+    if (items.length == 0)
+    {
+        if (!rebuild) return;
+        m.menu(null);
+        w.redraw();
+        return;
+    }
 
     // `fl.menu_item`'s own item-array walk relies on a trailing
     // null-text sentinel to know where the array ends, same as
@@ -1146,6 +1416,7 @@ void applyMenuItems(WidgetNode n, Widget w)
     // function's own comment for why this isn't optional.
     items ~= MenuItem(null);
     m.menu(items);
+    w.redraw();
 }
 
 /// Same walk `applyMenuItems()` uses to populate a live `Menu_`'s items,
@@ -1164,7 +1435,7 @@ package(fluid) Node[] menuItemNodeMap(WidgetNode n)
 {
     MenuItem[] items;
     Node[] itemNodes;
-    appendMenuItems(n, items, itemNodes);
+    appendMenuItems(n, items, itemNodes, null);
     return itemNodes;
 }
 
@@ -1181,7 +1452,12 @@ package(fluid) Node[] menuItemNodeMap(WidgetNode n)
 /// there's something to close", since a missing sentinel here is
 /// exactly the "consumes the rest of the array" hazard that function's
 /// own doc comment describes.
-private void appendMenuItems(WidgetNode n, ref MenuItem[] items, ref Node[] itemNodes)
+///
+/// An item with an image shows it, with its label beside it when it has one
+/// (`Menu_Base_Node::build_menu()`'s image/`Fl_Multi_Label` branch), scaled
+/// as the node says. A null `projectDir` loads no images (the node map
+/// needs only the nodes).
+private void appendMenuItems(WidgetNode n, ref MenuItem[] items, ref Node[] itemNodes, string projectDir)
 {
     foreach (c; n.children)
     {
@@ -1191,38 +1467,65 @@ private void appendMenuItems(WidgetNode n, ref MenuItem[] items, ref Node[] item
         if (mi.labeltype.length)
             if (auto p = mi.labeltype in labeltypeMap)
                 labeltype = *p;
-        items ~= MenuItem(mi.hasLabel ? mi.label : null, 0, null, menuItemFlags(mi),
+        // A null label marks the end of a menu level, so an unlabeled
+        // item shows FLTK's own "(nolabel)" placeholder instead
+        // (`Menu_Base_Node::build_menu()`).
+        Image img;
+        if (projectDir !is null && mi.hasImage && mi.imageFilename.length)
+        {
+            img = loadImageFile(buildPath(projectDir, mi.imageFilename));
+            if (img !is null && (mi.scaleImageW || mi.scaleImageH))
+                img.scale(mi.scaleImageW > 0 ? mi.scaleImageW : img.dataW(),
+                    mi.scaleImageH > 0 ? mi.scaleImageH : img.dataH(), false, true);
+        }
+        bool hasLabel = mi.hasLabel && mi.label.length;
+        items ~= MenuItem(hasLabel ? mi.label : (img !is null ? "" : "(nolabel)"), menuItemShortcut(mi), null, menuItemFlags(mi),
             labeltype,
             mi.labelfont >= 0 ? cast(Font) mi.labelfont : 0,
             mi.labelsize >= 0 ? mi.labelsize : 0,
             mi.labelcolorRaw >= 0 ? cast(Color) mi.labelcolorRaw : 0);
+        if (img !is null) items[$ - 1].image(img);
         itemNodes ~= mi;
         if (mi.canHaveChildren())
         {
-            appendMenuItems(mi, items, itemNodes);
+            appendMenuItems(mi, items, itemNodes, projectDir);
             items ~= MenuItem(null);
             itemNodes ~= null;
         }
     }
 }
 
-/// FLTK: `Menu_Item_Node::flags()` (`Menu_Node.cxx`) -- combines
-/// `hotspotFlag` (reused as "divider" for a menu item, `FL_MENU_DIVIDER`),
-/// `headline_` (`FL_MENU_HEADLINE`), `canHaveChildren()` (`FL_SUBMENU` --
-/// FLTK computes this dynamically from `can_have_children()` too,
-/// rather than storing it, since it's really a property of which
-/// concrete node class this is, `Submenu_Node` vs. plain
-/// `Menu_Item_Node`), and `typeName` (`FL_MENU_TOGGLE`/`FL_MENU_RADIO`
-/// -- FLTK bakes these into the generated widget's own `type()` at
-/// creation time via `Checkbox_Menu_Item_Node`/`Radio_Menu_Item_Node`'s
-/// `make()` overrides; this port's `typeName` field already carries the
-/// same "which `.fl` keyword created this" signal, see `menu_item_node.d`'s
-/// own doc comment for why no dedicated D subclass was needed for these
-/// two) into the live `MenuFlags` word. The live-canvas counterpart of
-/// `code_writer.d`'s own identically-named `menuItemFlags()`.
+/// The item's shortcut as the integer `MenuItem` takes, from the `.fl`
+/// file's decimal or `0x` hex form; 0 for none or for a submenu, whose
+/// shortcut field FLTK disables (`Submenu_Node::is_button() == 0`). Shown
+/// in the canvas menu as in FLTK's `build_menu()`; the canvas window
+/// keeps the key itself from reaching the menu (`ProjectCanvas.
+/// onShortcut`).
+private int menuItemShortcut(MenuItemNode mi)
+{
+    import std.conv : to, ConvException;
+    import std.string : strip, startsWith;
+
+    if (!mi.hasShortcut || mi.canHaveChildren()) return 0;
+    auto raw = mi.shortcutRaw.strip();
+    try
+        return (raw.startsWith("0x") || raw.startsWith("0X"))
+            ? cast(int) to!uint(raw[2 .. $], 16) : cast(int) to!uint(raw);
+    catch (ConvException)
+        return 0;
+}
+
+/// FLTK: `Menu_Item_Node::flags()` (`Menu_Node.cxx`) -- the live
+/// `MenuFlags` word for one item, built from the same node properties as
+/// `code_writer.d`'s identically-named `menuItemFlags()`.
 private MenuFlags menuItemFlags(MenuItemNode mi)
 {
+    import std.string : strip;
+
     MenuFlags flags;
+    if (mi.hasValue && mi.valueRaw.strip() != "0") flags |= menuValue;
+    if (mi.deactivated) flags |= menuInactive;
+    if (mi.hidden) flags |= menuInvisible;
     if (mi.hotspotFlag) flags |= menuDivider;
     if (mi.headline_) flags |= menuHeadline;
     if (mi.canHaveChildren()) flags |= menuSubmenu;
@@ -1258,25 +1561,50 @@ shared static this()
 /// reuse this directly to live-apply an edit, matching `boxtypeMap`'s
 /// own visibility widening for the same "one copy, two consumers"
 /// reason.
+///
+/// A file that can't be opened, or isn't a readable image, is reported
+/// through `onImageLoadError` with FLTK's own messages
+/// (`Image_Asset_Map::find_or_create()`, `proj/Image_Asset_Map.cxx`).
 package(fluid) Image loadImageFile(string path)
 {
+    import std.file : exists, isFile;
+    import std.format : format;
     import std.path : extension;
     import std.string : toLower;
 
+    if (!exists(path) || !isFile(path))
+    {
+        if (onImageLoadError !is null)
+            onImageLoadError(format("Can't open image file:\n%s\n%s", path, "No such file or directory"));
+        return null;
+    }
+
+    Image img;
     switch (path.extension.toLower)
     {
-    case ".png": return new PngImage(path);
-    case ".jpg": case ".jpeg": return new JpegImage(path);
-    case ".gif": return new GifImage(path);
-    case ".bmp": return new BMPImage(path);
-    case ".xpm": return new XPMImage(path);
-    case ".xbm": return new XBMImage(path);
-    case ".ico": return new ICOImage(path);
-    case ".svg": case ".svgz": return new SvgImage(path);
-    case ".pnm": case ".pbm": case ".pgm": case ".ppm": return new PNMImage(path);
-    default: return null;
+    case ".png": img = new PngImage(path); break;
+    case ".jpg": case ".jpeg": img = new JpegImage(path); break;
+    case ".gif": img = new GifImage(path); break;
+    case ".bmp": img = new BMPImage(path); break;
+    case ".xpm": img = new XPMImage(path); break;
+    case ".xbm": img = new XBMImage(path); break;
+    case ".ico": img = new ICOImage(path); break;
+    case ".svg": case ".svgz": img = new SvgImage(path); break;
+    case ".pnm": case ".pbm": case ".pgm": case ".ppm": img = new PNMImage(path); break;
+    default: break;
     }
+    if (img is null || img.w() == 0 || img.h() == 0)
+    {
+        if (onImageLoadError !is null)
+            onImageLoadError(format("Can't read image file:\n%s\nunrecognized image format", path));
+        return null;
+    }
+    return img;
 }
+
+/// Receives `loadImageFile()`'s error messages; `gui_main.d` shows them.
+/// Unset (headless use, unit tests), errors are silent.
+package(fluid) void delegate(string) onImageLoadError;
 
 unittest
 {
@@ -1319,6 +1647,44 @@ unittest
     FlGroup.current(null);
 }
 
+unittest
+{
+    // The Image Options scale fields: a node's scale reaches the live image.
+    import fluid.widget_node : WidgetNode;
+    import std.file : getcwd;
+    import std.path : buildPath;
+
+    FlGroup.current(null);
+
+    auto n = new WidgetNode();
+    n.typeName = "Fl_Box";
+    n.x = 0; n.y = 0; n.w = 100; n.h = 100;
+    n.hasXywh = true;
+    n.hasImage = true;
+    n.imageFilename = buildPath(getcwd(), "source/test/desktop/checkers-32.png");
+
+    auto win = new Window(200, 200);
+    win.begin();
+    auto box = new Box(0, 0, 100, 100);
+    win.end();
+
+    applyProperties(n, box, ".");
+    assert(box.image() !is null);
+    assert(box.image().w() == 32 && box.image().h() == 32);
+
+    n.scaleImageW = 64;
+    n.scaleImageH = 48;
+    applyProperties(n, box, ".");
+    assert(box.image().w() == 64 && box.image().h() == 48);
+
+    n.scaleImageW = 0;
+    n.scaleImageH = 0;
+    applyProperties(n, box, ".");
+    assert(box.image().w() == 32 && box.image().h() == 32);
+
+    FlGroup.current(null);
+}
+
 /// Per-type default geometry for a freshly-created widget -- this
 /// port's counterpart to FLTK's `Widget_Node::ideal_size()` and its
 /// ~12 per-type overrides (`nodes/Widget_Node.cxx`, `nodes/Button_Node.
@@ -1338,24 +1704,16 @@ unittest
 /// size) is real too -- see `fluid.snap_action.betterSize()`,
 /// applied at the very end of this function.
 ///
-/// Container types (`Group`/`Tabs`/`Wizard`/`Pack`/`Scroll`/`Tile`) also
-/// skip FLTK's `Group_Node::ideal_size()` parent-relative halving
-/// (`w = parent->w()/2` when dropped into another true widget) --
-/// always returns its own flat `140x140` "no applicable parent" branch
-/// instead, since threading the *target* parent's own live size into
-/// this lookup would need a real signature change for a cosmetic
-/// refinement.
+/// Containers (`Group`/`Tabs`/`Wizard`/`Pack`/`Scroll`/`Tile`/`Flex`/
+/// `Grid`) take half the size of the parent they go into
+/// (`parentW`/`parentH`, `Group_Node::ideal_size()`), or 140x140 when
+/// there is no parent size to go on.
 ///
-/// Everything not explicitly listed here falls back to `120x100`,
-/// matching FLTK's own `Widget_Node::ideal_size()` base-class
-/// default exactly (confirmed: no `ideal_size` override exists
-/// anywhere in `nodes/Menu_Node.cxx`/`Grid_Node.cxx` either, so
-/// `Slider`/`Scrollbar`/`ValueSlider`/`ValueInput`/`Spinner`/`Terminal`/
-/// `Output`/`Input`/`FloatInput`/`IntInput`/`TextDisplay`/`TextEditor`/
-/// `MenuButton`/`MenuBar`/`Choice`/`InputChoice`/`ShortcutButton`/
-/// `Grid`/`Flex` all genuinely use the plain default FLTK too, not
-/// a fldtk gap).
-package(fluid) void idealSizeFor(string typeName, out int w, out int h)
+/// Everything not explicitly listed here (`Terminal` and any type
+/// without a node of its own in FLTK) falls back to `120x100`,
+/// FLTK's `Widget_Node::ideal_size()` default.
+package(fluid) void idealSizeFor(string typeName, out int w, out int h,
+    int parentW = 0, int parentH = 0)
 {
     import fluid.layout_suite : layoutList;
     import fluid.snap_action : betterSize;
@@ -1392,12 +1750,21 @@ package(fluid) void idealSizeFor(string typeName, out int w, out int h)
 
     switch (typeName)
     {
-    case "Group": case "Tabs": case "Wizard":
-    case "Pack": case "Scroll": case "Tile":
-        w = 140; h = 140;
+    case "Group": case "Tabs": case "Wizard": case "Pack": case "Scroll":
+    case "Tile": case "Flex": case "Grid":
+        // `Group_Node::ideal_size()`: half the parent, else 140x140.
+        if (parentW > 0 && parentH > 0)
+        {
+            w = parentW / 2;
+            h = parentH / 2;
+        }
+        else
+        {
+            w = 140; h = 140;
+        }
         break;
 
-    case "Button":
+    case "Button": case "RepeatButton": case "ShortcutButton":
         h = layout.labelsize + 8;
         w = layout.labelsize * 4 + 8;
         break;
@@ -1415,6 +1782,24 @@ package(fluid) void idealSizeFor(string typeName, out int w, out int h)
         break;
     case "HelpView": case "Table":
         w = 160; h = 120;
+        break;
+
+    case "Slider": case "ValueSlider": case "Scrollbar":
+        w = layout.labelsize + 8;
+        h = 4 * w;
+        break;
+    case "Input": case "Output": case "FloatInput": case "IntInput":
+    case "MenuBar": case "MenuButton": case "Choice": case "InputChoice":
+        h = layout.textsizeNotNull() + 8;
+        w = layout.textsizeNotNull() * 6 + 8;
+        break;
+    case "ValueInput": case "Spinner":
+        h = layout.textsizeNotNull() + 8;
+        w = layout.textsizeNotNull() * 4 + 8;
+        break;
+    case "TextDisplay": case "TextEditor":
+        h = layout.textsizeNotNull() * 4 + 8;
+        w = layout.textsizeNotNull() * 10 + 8;
         break;
 
     case "Counter":
@@ -1461,24 +1846,13 @@ package(fluid) void idealSizeFor(string typeName, out int w, out int h)
     betterSize(w, h);
 }
 
-/// The default label a newly-created widget of `typeName` should start
-/// with -- ported from each FLTK `..._Node::widget()` factory
-/// override's own literal label argument (`Fl_Button(x,y,w,h,"Button")`
-/// and similar), found by grepping every `return new Fl_...(x, y, w,
-/// h, "...")` call across the real `fluid/nodes/*.cxx` tree rather than
-/// assumed. `gui_main.d`'s `insertWidget()` uses this to give a new
-/// node a real default label per type, matching every entry in FLTK's
-/// own table: `Button` family/
-/// `Counter`/`ValueSlider`/`Box`/`Slider`/`ValueInput`/`ValueOutput`/`Input`/
-/// `Output`/`Spinner`/`FileInput`/`Progress` all pass a literal
-/// label. `File_Input`'s own
-/// registry constructor (`instantiate.d`'s own `static this()`) already
-/// had an inline "file:" fallback for the *live-widget* rendering, but
-/// this function -- the *Node-level*, persisted-to-`.fl` default a
-/// fresh `addWidget()` call seeds -- never had a matching entry, so a
-/// freshly-dropped File_Input's label field itself stayed empty even
-/// though the canvas happened to show "file:" anyway via that separate
-/// fallback.
+/// The label a newly-created widget of `typeName` starts with: the
+/// literal label each FLTK `..._Node::widget()` factory passes to its
+/// widget's constructor (`Fl_Button(x,y,w,h,"Button")` and so on, in
+/// `fluid/nodes/factory.cxx`, `factory.h`, `Button_Node.cxx` and
+/// `Menu_Node.h`). `Float_Input`/`Int_Input` are `Fl_Input` subtypes in
+/// FLTK, created by `Input_Node::widget()`, so they share "input:". Types
+/// whose factory passes no label get none.
 package(fluid) string defaultLabelFor(string typeName)
 {
     import fluid.code_writer : stripFlPrefix;
@@ -1497,7 +1871,7 @@ package(fluid) string defaultLabelFor(string typeName)
         return "counter:";
     case "Spinner":
         return "spinner:";
-    case "Input":
+    case "Input": case "FloatInput": case "IntInput":
         return "input:";
     case "Output":
         return "output:";
@@ -1505,8 +1879,38 @@ package(fluid) string defaultLabelFor(string typeName)
         return "file:";
     case "Box": case "Progress":
         return "label";
+    case "MenuButton":
+        return "menu";
+    case "Choice":
+        return "choice:";
+    case "InputChoice":
+        return "input choice:";
     default:
         return "";
+    }
+}
+
+/// The name a newly-created code-group node of `typeName` (the `.fl`
+/// keyword) starts with, from each FLTK `..._Node::make()`
+/// (`fluid/nodes/Function_Node.cxx`, `Window_Node.cxx`). The C++ snippets
+/// are given in their D form: `make_window()` becomes `makeWindow()`,
+/// `printf("Hello, World!\n");` becomes `writeln("Hello, World!");`, and
+/// a declaration block's `#if 1` ... `#endif` becomes `version (all)`
+/// with no end code (`code_writer.d`'s `writeDeclBlockNode()` supplies
+/// the braces). Empty for every other type.
+package(fluid) string defaultNameFor(string typeName)
+{
+    switch (typeName)
+    {
+    case "Function": return "makeWindow()";
+    case "code": return `writeln("Hello, World!");`;
+    case "codeblock": return "if (test())";
+    case "decl": return "int x;";
+    case "declblock": return "version (all)";
+    case "data": return "myInlineData";
+    case "comment": return "my comment";
+    case "class": case "widget_class": return "UserInterface";
+    default: return "";
     }
 }
 
@@ -1521,10 +1925,19 @@ unittest
 
     // Unknown/generic-default types (every type FLTK itself never
     // overrides ideal_size() for either).
-    idealSizeFor("Slider", w, h);
+    idealSizeFor("Terminal", w, h);
     assert(w == 120 && h == 100);
     idealSizeFor("SomeTypeThatDoesNotExist", w, h);
     assert(w == 120 && h == 100);
+
+    // Menu bars and inputs are one text line high; sliders are 4x as
+    // tall as wide; containers halve their parent.
+    idealSizeFor("MenuBar", w, h);
+    assert(h < 40);
+    idealSizeFor("Slider", w, h);
+    assert(h > w);
+    idealSizeFor("Group", w, h, 400, 300);
+    assert(w >= 200 && h >= 150 && w < 240 && h < 190);
 }
 
 unittest
@@ -1692,8 +2105,32 @@ unittest
     auto emptyChoiceNode = new WidgetNode();
     emptyChoiceNode.typeName = "Choice";
     auto emptyChoice = instantiateOne(emptyChoiceNode);
-    applyMenuItems(emptyChoiceNode, emptyChoice); // no-op: no MenuItemNode children
+    applyMenuItems(emptyChoiceNode, emptyChoice); // keeps the "CHOICE" placeholder
+    assert((cast(Choice) emptyChoice).size() == 2);
+    assert((cast(Choice) emptyChoice).text(0) == "CHOICE");
+    // A rebuild after the last item is gone clears the menu instead.
+    applyMenuItems(emptyChoiceNode, emptyChoice, true);
     assert((cast(Choice) emptyChoice).size() == 0);
+
+    // An unlabeled item shows "(nolabel)" rather than ending the menu,
+    // and the items after it still appear.
+    import fluid.menu_owner_node : MenuOwnerNode;
+    auto ncNode = new MenuOwnerNode();
+    ncNode.typeName = "Choice";
+    auto unlabeled = new MenuItemNode();
+    unlabeled.typeName = "MenuItem";
+    ncNode.addChild(unlabeled);
+    auto labeled = new MenuItemNode();
+    labeled.typeName = "MenuItem";
+    labeled.label = "After";
+    labeled.hasLabel = true;
+    labeled.deactivated = true;
+    ncNode.addChild(labeled);
+    auto nc = cast(Choice) instantiateOne(ncNode);
+    assert(nc.size() == 3);
+    assert(nc.text(0) == "(nolabel)");
+    assert(nc.text(1) == "After");
+    assert((nc.menu()[1].flags & menuInactive) != 0);
 
     FlGroup.current(null);
 }

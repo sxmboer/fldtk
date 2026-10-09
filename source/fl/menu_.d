@@ -935,7 +935,7 @@ unittest
 
 unittest
 {
-    // Regression test for a real, user-reported bug: calling
+    // Regression test: calling
     // multiLabel() on an item, then add()ing more siblings into the
     // *same* submenu afterward (exactly `fluid.gui_main`'s own `&New`
     // menu construction order -- add a leaf, immediately set its icon

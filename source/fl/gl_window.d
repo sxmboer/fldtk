@@ -36,7 +36,7 @@
  * `modeOpengl3`'s GL1/GL3 context-program switching is real too
  * (`fl.gl_window_driver.switchToGl1()`/`switchBack()`, called from
  * `drawBegin()`/`drawEnd()`). `gl_start()`/`gl_finish()` (drawing GL
- * directly into a non-`Fl_Gl_Window`) are real now too, see `fl.gl`'s
+ * directly into a non-`Fl_Gl_Window`) are real too, see `fl.gl`'s
  * own doc comment -- unrelated to `GlWindow` itself, ported there.
  *
  * `flush()` itself is still simplified relative to FLTK's

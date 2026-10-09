@@ -204,6 +204,9 @@ class Input_ : Widget
     // expand()/expandpos(): text-to-screen-representation machinery
     // -------------------------------------------------------------
 
+    /// Placeholder text drawn while the input is empty.
+    private string placeholder_;
+
     /// Ported from Fl_Input_::expand(const char*, char*). Renders
     /// value_[p..] into buf (control chars as ^X, tabs expanded,
     /// FL_SECRET_INPUT masking, word-wrap truncation), stopping at
@@ -305,9 +308,9 @@ class Input_ : Widget
         {
             while (p < e)
             {
-                int l = utf8Len(byteAt(p));
-                if (l >= 1) n += lSecret_;
-                p += (l < 1) ? 1 : l;
+                int l = utf8Len1(byteAt(p));
+                n += lSecret_;
+                p += l;
             }
         }
         else
@@ -500,7 +503,27 @@ class Input_ : Widget
                 drawBox(box(), X - fl.core.boxDx(box()), Y - fl.core.boxDy(box()),
                     W + fl.core.boxDw(box()), H + fl.core.boxDh(box()), color());
             }
+            // An empty input shows its placeholder in a washed-out color.
+            if (placeholder_.length)
+            {
+                Color fg = textcolor();
+                Color bg = color();
+                if (!activeR())
+                {
+                    fg = fldraw.inactive(fg);
+                    bg = fldraw.inactive(bg);
+                }
+                fldraw.fl_color(fldraw.colorAverage(fg, bg, .5f));
+                fldraw.fl_font(textfont(), textsize());
+                fldraw.fl_draw(placeholder_, X, Y, W, H, alignLeft | alignInside);
+            }
             return;
+        }
+        // Clear a previously drawn placeholder once drawActive is set.
+        if (size() == 0 && placeholder_.length && doMu)
+        {
+            drawBox(box(), X - fl.core.boxDx(box()), Y - fl.core.boxDy(box()),
+                W + fl.core.boxDw(box()), H + fl.core.boxDh(box()), color());
         }
 
         int selstart, selend;
@@ -1384,6 +1407,11 @@ class Input_ : Widget
         }
         return cast(int)(neg ? -result : result);
     }
+
+    /// The text shown, in a lighter color, while the input is empty.
+    string placeholder() const { return placeholder_; }
+    /// Sets the placeholder text shown while the input is empty.
+    void placeholder(string text) { placeholder_ = text; }
 
     /// Ported from Fl_Input_::dvalue() -- a lenient atof()-style parse.
     double dvalue() const

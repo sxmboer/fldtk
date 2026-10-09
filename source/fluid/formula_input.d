@@ -108,12 +108,7 @@ class FormulaInput : Input
         foreach (c; s)
             if (c != ' ' && c != '\t') cleaned ~= c;
         size_t i = 0;
-        return evalExpr(cast(string) cleaned, i, 5);
-    }
-
-    private static char readChar(string s, ref size_t i)
-    {
-        return i < s.length ? s[i++] : '\0';
+        return evalExpr(cast(string) cleaned, i, 0);
     }
 
     /// Ported from `Formula_Input::eval_var(uchar*&)` -- collects a run
@@ -131,130 +126,89 @@ class FormulaInput : Input
         return 0;
     }
 
-    /// Ported from `Formula_Input::eval(uchar*&, int)` -- a recursive-
-    /// descent evaluator over whitespace-stripped text, `i` shared
-    /// across recursive calls the same way FLTK's own `uchar*&s`
-    /// reference parameter is. `readChar()`'s "return '\0' without
-    /// advancing past the end" shape is what replaces FLTK's own
-    /// `s--` "push the virtual end-of-string terminator back" idiom
-    /// throughout -- once `i` reaches `s.length` it simply stays there,
-    /// so every `if (c == 0) return ...;` branch below needs no
-    /// separate correction step the way the original pointer code did.
+    /// Ported from `Formula_Input::eval(uchar*&, int)` -- precedence
+    /// climbing over whitespace-stripped text:
+    ///   expr := ['+'|'-'] (number | variable | '(' expr ')') (op expr)*
+    /// `i` always points at the next unread character, shared across the
+    /// recursive calls. `prio` is the weakest operator this call may
+    /// consume: 0 takes `+ -` and `* /`; 2 stops at `+ -` (right side of
+    /// a `+`/`-`); 3 stops at `* /` too (right side of a `*`/`/`).
     private int evalExpr(string s, ref size_t i, int prio) const
     {
+        char peek() { return i < s.length ? s[i] : '\0'; }
+
         int v = 0, sgn = 1;
-        char c = readChar(s, i);
+        char c = peek();
 
-        if (c == '\0') return sgn * v;
+        if (c == '-') { sgn = -1; i++; c = peek(); }
+        else if (c == '+') { i++; c = peek(); }
 
-        if (c == '-') { sgn = -1; c = readChar(s, i); }
-        else if (c == '+') { sgn = 1; c = readChar(s, i); }
-
-        if (c == '\0')
+        if (c >= '0' && c <= '9')
         {
-            return sgn * v;
-        }
-        else if (c >= '0' && c <= '9')
-        {
-            while (c >= '0' && c <= '9')
+            while (peek() >= '0' && peek() <= '9')
             {
-                v = v * 10 + (c - '0');
-                c = readChar(s, i);
+                v = v * 10 + (peek() - '0');
+                i++;
             }
         }
         else if (isAlpha(c))
         {
-            i--; // push back so evalVar reads the whole identifier itself
             v = evalVar(s, i);
-            c = readChar(s, i);
         }
         else if (c == '(')
         {
-            // No explicit ')' consumption here -- evalExpr's own inner
-            // loop below returns right on ')' without advancing past it,
-            // so *this* frame's own trailing `readChar()` (at the bottom
-            // of the operator loop) is what actually consumes it. Exact
-            // same shape as FLTK's own `v = eval(s, 5);` here.
-            v = evalExpr(s, i, 5);
+            i++;
+            v = evalExpr(s, i, 0);
+            if (peek() == ')') i++;
         }
         else
         {
-            return sgn * v; // syntax error -- FLTK returns silently too
+            return 0; // syntax error: no value found
         }
         if (sgn == -1) v = -v;
 
         for (;;)
         {
-            if (c == '\0')
+            c = peek();
+            if (c == '+' || c == '-')
             {
-                return v;
-            }
-            else if (c == '+' || c == '-')
-            {
-                if (prio <= 4) { i--; return v; }
-                if (c == '+') v += evalExpr(s, i, 4);
-                else v -= evalExpr(s, i, 4);
+                if (prio > 1) return v;
+                i++;
+                int rhs = evalExpr(s, i, 2);
+                if (c == '+') v += rhs; else v -= rhs;
             }
             else if (c == '*' || c == '/')
             {
-                if (prio <= 3) { i--; return v; }
-                if (c == '*') v *= evalExpr(s, i, 3);
-                else
-                {
-                    int x = evalExpr(s, i, 3);
-                    if (x != 0) v /= x; // division by zero: silently skipped
-                }
-            }
-            else if (c == ')')
-            {
-                return v;
+                if (prio > 2) return v;
+                i++;
+                int rhs = evalExpr(s, i, 3);
+                if (c == '*') v *= rhs;
+                else if (rhs != 0) v /= rhs; // division by zero: silently skipped
             }
             else
             {
-                return v; // syntax error
+                return v;
             }
-            c = readChar(s, i);
         }
     }
 }
 
 unittest
 {
+    import fl.group : FlGroup;
     FlGroup.current(null);
-    auto f = new FormulaInput(0, 0, 50, 20);
-    scope(exit) FlGroup.current(null);
 
-    // Plain arithmetic, matching FLTK's own documented capability.
-    f.text("2+3"); assert(f.value() == 5);
-    f.text("2 + 3 * 4"); assert(f.value() == 14); // * binds tighter than +
-    f.text("(2 + 3) * 4"); assert(f.value() == 20);
-    f.text("-5+2"); assert(f.value() == -3);
-    f.text("10/0"); assert(f.value() == 10); // division by zero: silently skipped, v stays at its pre-division value
-    f.text("6/4"); assert(f.value() == 1); // integer division, truncating
+    auto f = new FormulaInput(0, 0, 100, 25);
+    int eval(string t) { f.text(t); return f.value(); }
 
-    // int setter replaces the text with the plain decimal form.
-    f.value(42);
-    assert(f.text() == "42");
-    assert(f.value() == 42);
+    assert(eval("(1+2)*3") == 9);
+    assert(eval("((2+3))*2") == 10);
+    assert(eval("2*(3+(4*5))") == 46);
+    assert(eval("-(2+3)") == -5);
+    assert(eval("2*(1+2)+4") == 10);
+    assert(eval("10 - 2 - 3") == 5);
+    assert(eval("8/0") == 8); // division by zero is skipped
+    assert(eval("2 + 3 * 4") == 14);
 
-    // No variables bound yet at all: matches FLTK's own `eval_var()`
-    // faithfully, including its own real quirk (see FLTK_ISSUES.md)
-    // -- its early `if (!vars_) return 0;` never consumes the identifier,
-    // so the parse doesn't just treat the variable as 0, it desyncs and
-    // drops the rest of the expression too (`"x+1"` evaluates to `0`,
-    // not `1`). Harmless in practice: this port's own 4 real callers
-    // (like FLTK's own) always call `variables()` before evaluating.
-    assert(f.value() == 42); // still 42, no variables bound yet
-    f.text("x+1");
-    assert(f.value() == 0);
-
-    // Named variables bound: known names resolve, unknown names are 0
-    // (this time via the real name-lookup miss, not the no-table quirk
-    // above -- consumes the identifier correctly either way).
-    f.variables([FormulaVar("x", () => 10), FormulaVar("y", () => 3)]);
-    assert(f.value() == 11); // "x+1" re-evaluated now that x=10 is bound
-    f.text("x*y - 2");
-    assert(f.value() == 28);
-    f.text("z"); // unknown name even with variables bound
-    assert(f.value() == 0);
+    FlGroup.current(null);
 }

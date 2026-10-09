@@ -9,7 +9,7 @@
  * Faithful, complete port, and draws real pixels entirely now: draw()'s
  * box/label/color calls (drawBox(), fl.widget's drawLabel(), fl.draw's
  * contrast()/inactive()) and its pushClip()/popClip() calls
- * (real now too) are all real, so the two-region (filled-portion-vs-
+ * (real too) are all real, so the two-region (filled-portion-vs-
  * rest) split is actually clipped -- each region confines its drawBox()
  * to its own portion instead of drawing across the widget's full
  * bounds.

@@ -1,5 +1,5 @@
 /*
- * The real body of `fluid`'s headless `-c`/`-cs`/`-u`/`-mb`/`-mbs` flags -- factored
+ * The real body of `fluid`'s headless `-c`/`-s`/`-u`/`-m` flags -- factored
  * out of `fluid.app`'s own `main()` so it has exactly one
  * implementation, shared by two different binaries: the full
  * interactive `fluid` app (`app.d`, still the only place the GUI
@@ -33,18 +33,156 @@ import fluid.layout_suite : LayoutList;
 import fluid.raw_cpp_guard : looksLikeRawCpp;
 import fluid.i18n : I18nType, I18nSettings;
 
-/// Shared usage text for the headless `-c`/`-cs`/`-u` flags -- printed
-/// by both `app.d` (alongside its own GUI-mode usage line) and
-/// `bootstrap.d` (which only ever runs in this mode). Kept in one
-/// place so the two callers' text can't drift apart.
-void printCompileUsage(string prog)
+/// What to do with a project's MergeBack data (`-m`, `--merge-back-if-safe`,
+/// `--merge-back-info`).
+enum MergeMode { merge, ifSafe, info }
+
+/// The command line shared by `fluid` (`app.d`) and `fluid-bootstrap`
+/// (`bootstrap.d`), filled in by `parseCommandLine()`.
+struct CommandLine
 {
-    stderr.writefln("usage: %s [-c [-o code-filename] [--dub-header]] filename.fl", prog);
-    stderr.writefln("       %s -cs [-o code-filename] [--dub-header] <input.fl>   (also write the i18n strings file)", prog);
-    stderr.writefln("       %s -u <input.fl>                       (load, normalize, and resave the .fl file)", prog);
-    stderr.writefln("       --dub-header: prepend a dub single-file-package comment");
-    stderr.writefln("           (dependency \"fldtk\" path=\"...\") to the generated .d file,");
-    stderr.writefln("           so it can be built directly via `dub build --single`/`dub run --single`.");
+    bool compile;           /// -c: generate the .d file
+    bool strings;           /// -cs, --strings: also write the i18n strings file
+    bool update;            /// -u: load, normalize and resave the .fl file
+    bool mergeBack;         /// -m: merge edits from the generated file back
+    bool mergeBackIfSafe;   /// only when nothing conflicts
+    bool mergeBackInfo;     /// only report what would be merged
+    bool dubHeader;         /// --dub-header
+    bool showVersion;       /// -v
+    string output;          /// -o: code file name
+    string stringsName;     /// -s: strings file name, or its extension if it starts with '.'
+    string bg, fg;          /// -bg/-fg: the editor's colors
+    string scheme;          /// --scheme: the editor's FLTK scheme
+    float scalingFactor = 1.0f; /// -sf: scale the editor's windows
+    string inPath;          /// the .fl file, or null
+
+    /// The merge to run, if any.
+    bool wantsMerge() const { return mergeBack || mergeBackIfSafe || mergeBackInfo; }
+    MergeMode mergeMode() const
+    {
+        return mergeBackInfo ? MergeMode.info : mergeBackIfSafe ? MergeMode.ifSafe : MergeMode.merge;
+    }
+}
+
+// The option strings, `"short|long"`, shared by the `getopt()` call and the
+// spelling pass in `parseCommandLine()`.
+private enum optCompile = "c|compile";
+private enum optCompileStrings = "cs|compile-strings";
+private enum optStrings = "strings";
+private enum optStringsFile = "s|strings-file";
+private enum optOutput = "o|output";
+private enum optDubHeader = "dub-header";
+private enum optUpdate = "u|update";
+private enum optMerge = "m|merge-back";
+private enum optMergeIfSafe = "mb|merge-back-if-safe";
+private enum optMergeInfo = "mi|merge-back-info";
+private enum optVersion = "v|version";
+private enum optBackground = "bg|background";
+private enum optForeground = "fg|foreground";
+private enum optScheme = "scheme";
+private enum optScalingFactor = "sf|scaling-factor";
+
+private immutable string[] allOptions = [optCompile, optCompileStrings, optStrings, optStringsFile, optOutput,
+    optDubHeader, optUpdate, optMerge, optMergeIfSafe, optMergeInfo, optVersion,
+    optBackground, optForeground, optScheme, optScalingFactor];
+
+/// `std.getopt` matches only single-letter options after one dash. FLTK
+/// programs write `-scheme`, and fluid has `-cs`, `-mb`, `-bg`, ...: a
+/// single-dash word that names one of the options above (either spelling)
+/// is rewritten to its long form, `--name`.
+private string longSpelling(string arg)
+{
+    import std.algorithm : splitter;
+    import std.array : array;
+
+    if (arg.length < 3 || arg[0] != '-' || arg[1] == '-') return arg;
+    foreach (opt; allOptions)
+    {
+        auto names = opt.splitter('|').array;
+        foreach (n; names)
+            if (n == arg[1 .. $]) return "--" ~ names[$ - 1];
+    }
+    return arg;
+}
+
+/// Parses `args` (consuming every option, so `args[1]` is the input file
+/// if any). Short and long spellings come from one `"short|long"` option
+/// string each, and `--help` lists them with the descriptions given here.
+/// A single-dash multi-letter spelling (`-cs`, `-mb`, `-scheme`) is
+/// accepted too, see `longSpelling()`.
+/// With `allowUnknown`, options this parser doesn't know stay in `args`
+/// for the caller (`fluid` hands them to `fl.core.args()`, which takes
+/// FLTK's own `-geometry`, `-display`, ...) and `cl.inPath` is left for it
+/// to set; otherwise an unknown option is an error. Returns false after
+/// printing help or an error, meaning the caller should just exit.
+bool parseCommandLine(ref string[] args, out CommandLine cl, string usageLine, bool allowUnknown = false)
+{
+    import std.getopt : getopt, config, defaultGetoptPrinter, GetOptException;
+
+    string prog = args.length ? args[0] : "fluid";
+    string[] spelled = args.length ? [args[0]] : [];
+    foreach (a; args.length ? args[1 .. $] : [])
+        spelled ~= a == "-help" ? "--help" : longSpelling(a); // -help: FLTK's spelling
+    args = spelled;
+
+    CommandLine c; // the handlers below can't capture the `out` parameter
+    try
+    {
+        auto info = getopt(args, config.passThrough,
+            optCompile, "generate the D source file from the .fl project", &c.compile,
+            optCompileStrings, "generate the D source file and the i18n strings file", { c.compile = true; c.strings = true; },
+            optStrings, "with -c: also write the i18n strings file", &c.strings,
+            optStringsFile, "name of the i18n strings file, or its extension if it starts with '.' (with -cs or --strings)", &c.stringsName,
+            optOutput, "name of the generated D file (default: the project's code file, else <input>.d)", &c.output,
+            optDubHeader, "with -c: prepend a dub single-file-package comment so the file builds with `dub build --single`", &c.dubHeader,
+            optUpdate, "load, normalize and resave the .fl file", &c.update,
+            optMerge, "merge edits made in the generated file back into the .fl file", &c.mergeBack,
+            optMergeIfSafe, "like -m, but only when no block was also changed in the project (exit status 1 otherwise)", &c.mergeBackIfSafe,
+            optMergeInfo, "report what -m would merge, change nothing", &c.mergeBackInfo,
+            optVersion, "print the version", &c.showVersion,
+            optBackground, "color of the editor's windows, e.g. red or #c0c0c0", &c.bg,
+            optForeground, "color of the editor's text", &c.fg,
+            optScheme, "FLTK scheme of the editor: base, gtk+, gleam, oxy or plastic", &c.scheme,
+            optScalingFactor, "scale the editor's windows, 0.25 to 4.0", &c.scalingFactor);
+        if (info.helpWanted)
+        {
+            defaultGetoptPrinter(usageLine, info.options);
+            return false;
+        }
+    }
+    catch (GetOptException e)
+    {
+        stderr.writefln("%s: %s\nTry '%s --help'.", prog, e.msg, prog);
+        return false;
+    }
+    cl = c;
+
+    if (int(cl.mergeBack) + int(cl.mergeBackIfSafe) + int(cl.mergeBackInfo) > 1)
+    {
+        stderr.writefln("%s: --merge-back, --merge-back-if-safe and --merge-back-info cannot be combined", prog);
+        return false;
+    }
+    if (cl.update && (cl.compile || cl.wantsMerge()))
+    {
+        stderr.writefln("%s: -u cannot be combined with -c or merging", prog);
+        return false;
+    }
+    if (!(cl.scalingFactor >= 0.25f && cl.scalingFactor <= 4.0f))
+    {
+        stderr.writefln("%s: --scaling-factor must be between 0.25 and 4.0", prog);
+        return false;
+    }
+    if (!allowUnknown)
+    {
+        foreach (a; args[1 .. $])
+            if (a.length > 1 && a[0] == '-')
+            {
+                stderr.writefln("%s: Unrecognized option %s\nTry '%s --help'.", prog, a, prog);
+                return false;
+            }
+        cl.inPath = args.length >= 2 ? args[1] : null;
+    }
+    return true;
 }
 
 /// Where the generated `.d` file goes when no `-o` names it: the
@@ -90,7 +228,8 @@ private string projectText(Reader reader, Node[] roots)
 /// overrides `code_name` outright, there is no real use case for forcing
 /// the header *off* from the command line when the project file itself
 /// asked for it, so this only ever ORs, never overrides to `false`.
-void compileFile(string inPath, string outPath, bool alsoWriteStrings, bool forceDubHeader = false)
+void compileFile(string inPath, string outPath, bool alsoWriteStrings, bool forceDubHeader = false,
+    string stringsName = null)
 {
     bool outPathFromCommandLine = outPath.length != 0;
 
@@ -127,6 +266,9 @@ void compileFile(string inPath, string outPath, bool alsoWriteStrings, bool forc
 
         exit(1);
     }
+    // FLTK's batch-mode report of an unreadable inline-data file.
+    foreach (err; writer.dataErrors)
+        stderr.writef("FLUID ERROR: %s", err);
 
     write(outPath, code);
     writefln("fluid: %s -> %s", inPath, outPath);
@@ -136,7 +278,7 @@ void compileFile(string inPath, string outPath, bool alsoWriteStrings, bool forc
         rememberCodePath(absolutePath(inPath), absolutePath(outPath));
 
     if (alsoWriteStrings)
-        writeStringsFor(inPath, roots, reader.i18n);
+        writeStringsFor(inPath, roots, reader.i18n, stringsName);
 }
 
 /// `-u`: load, then immediately resave -- the same "normalize a hand-
@@ -160,19 +302,20 @@ void normalizeProject(string path)
     writefln("fluid: normalized %s", path);
 }
 
-/// `-mb`/`-mbs`: merges edits made directly in the generated `.d` file
+/// `-m`/`--merge-back-if-safe`/`--merge-back-info`: merges edits made directly in the generated `.d` file
 /// back into the `.fl` project and saves the project, without a GUI.
 /// `codePathArg` (`-o`) names the code file; without it the file most
 /// recently written for this project (`rememberCodePath()`) is used if
 /// it still exists, else the default location `-c` would write to.
-/// `onlyIfSafe` (`-mbs`) refuses to merge when a block was also changed
+/// `MergeMode.ifSafe` refuses to merge when a block was also changed
 /// in the project or the file has edits outside the editable blocks;
-/// plain `-mb` merges regardless and only warns. Returns the process
+/// `MergeMode.merge` (`-m`) merges regardless and only warns;
+/// `MergeMode.info` only reports. Returns the process
 /// exit status: 0 when the merge succeeded, nothing needed merging,
 /// MergeBack is not enabled or there is no code file yet (so a build
 /// script can run this before every `-c`), 1 for an unreadable tag or
-/// an unsafe merge under `-mbs`.
-int mergeBackProject(string inPath, string codePathArg, bool onlyIfSafe)
+/// an unsafe merge under `--merge-back-if-safe`.
+int mergeBackProject(string inPath, string codePathArg, MergeMode mode)
 {
     auto reader = new Reader(readText(inPath));
     auto roots = reader.readProject();
@@ -215,7 +358,7 @@ int mergeBackProject(string inPath, string codePathArg, bool onlyIfSafe)
             ~ "the project's text", codePath, mergeback.numPossibleOverride);
 
     int mergeable = mergeback.numChangedCode - mergeback.numUidNotFound;
-    if (onlyIfSafe && (mergeback.numChangedStructure || mergeback.numPossibleOverride))
+    if (mode == MergeMode.ifSafe && (mergeback.numChangedStructure || mergeback.numPossibleOverride))
     {
         stderr.writefln("fluid: %s: not merging (conflicts found, see above)", codePath);
         return 1;
@@ -223,6 +366,11 @@ int mergeBackProject(string inPath, string codePathArg, bool onlyIfSafe)
     if (mergeable <= 0)
     {
         writefln("fluid: %s: no external modifications to merge", codePath);
+        return 0;
+    }
+    if (mode == MergeMode.info)
+    {
+        writefln("fluid: %s: %d block(s) can be merged back; nothing changed", codePath, mergeable);
         return 0;
     }
     if (looksLikeRawCpp(roots))
@@ -239,9 +387,11 @@ int mergeBackProject(string inPath, string codePathArg, bool onlyIfSafe)
 }
 
 /// `-cs`'s own second output -- ported from FLTK's `Project::
-/// stringsfile_name()` (extension chosen by `i18n.type`, same
-/// basename as the input `.fl` file, same directory).
-private void writeStringsFor(string inPath, Node[] roots, I18nSettings i18n)
+/// stringsfile_name()`. With no `-s` name, the file is named like the input
+/// `.fl` file, in its directory, with an extension chosen by `i18n.type`.
+/// A `stringsName` starting with '.' replaces that extension. Any other
+/// `stringsName` is the file to write, used as given like `-o`.
+private void writeStringsFor(string inPath, Node[] roots, I18nSettings i18n, string stringsName = null)
 {
     import fluid.string_writer : writeStrings;
 
@@ -253,7 +403,12 @@ private void writeStringsFor(string inPath, Node[] roots, I18nSettings i18n)
     case I18nType.posix: ext = ".msg"; break;
     }
 
-    string stringsPath = buildPath(dirName(inPath), filenameSetExt(baseName(inPath), ext));
+    string stringsPath;
+    if (stringsName.length && stringsName[0] != '.')
+        stringsPath = stringsName;
+    else
+        stringsPath = buildPath(dirName(inPath),
+            filenameSetExt(baseName(inPath), stringsName.length ? stringsName : ext));
     if (writeStrings(roots, i18n, stringsPath) == 0)
         writefln("fluid: %s -> %s", inPath, stringsPath);
     else
@@ -262,7 +417,7 @@ private void writeStringsFor(string inPath, Node[] roots, I18nSettings i18n)
 
 unittest
 {
-    // -mb/-mbs end to end on real files, with the remembered-code-path
+    // -m/--merge-back-if-safe/--merge-back-info end to end on real files, with the remembered-code-path
     // record pointed at a private config directory; and -u keeping the
     // project's shell commands.
     import std.algorithm : canFind;
@@ -291,30 +446,33 @@ unittest
         ~ "      xywh {5 5 40 20}\n    }\n  }\n}\n");
 
     // No code file yet: nothing to do, not an error.
-    assert(mergeBackProject(fl, "", false) == 0);
+    assert(mergeBackProject(fl, "", MergeMode.merge) == 0);
 
     compileFile(fl, "", false);
     assert(exists(d));
-    assert(mergeBackProject(fl, "", false) == 0);
+    assert(mergeBackProject(fl, "", MergeMode.merge) == 0);
     assert(readText(fl).canFind("callback {run();}"));
 
     // An edit in the generated file is merged back.
     write(d, readText(d).replace("run();", "runFaster();"));
-    assert(mergeBackProject(fl, "", true) == 0);
+    // ...but the info mode only reports it.
+    assert(mergeBackProject(fl, "", MergeMode.info) == 0);
+    assert(readText(fl).canFind("run();") && !readText(fl).canFind("runFaster();"));
+    assert(mergeBackProject(fl, "", MergeMode.ifSafe) == 0);
     assert(readText(fl).canFind("runFaster();"));
 
-    // Now the project side changes too: -mbs refuses, -mb overrides.
+    // Now the project side changes too: --merge-back-if-safe refuses, -m overrides.
     write(fl, readText(fl).replace("runFaster();", "projectSide();"));
     write(d, readText(d).replace("runFaster();", "codeSide();"));
-    assert(mergeBackProject(fl, "", true) == 1);
+    assert(mergeBackProject(fl, "", MergeMode.ifSafe) == 1);
     assert(readText(fl).canFind("projectSide();"));
-    assert(mergeBackProject(fl, "", false) == 0);
+    assert(mergeBackProject(fl, "", MergeMode.merge) == 0);
     assert(readText(fl).canFind("codeSide();"));
 
     // Without `mergeback 1` nothing happens.
     string plain = buildPath(dir, "plain.fl");
     write(plain, "version 1.0000\nFunction {} {open\n} {\n}\n");
-    assert(mergeBackProject(plain, "", false) == 0);
+    assert(mergeBackProject(plain, "", MergeMode.merge) == 0);
 
     // -u keeps project shell commands.
     auto reader = new Reader("version 1.0000\nFunction {} {open\n} {\n}\n");

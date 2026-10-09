@@ -5,13 +5,7 @@
  *
  * The Linux/X11/Wayland half of `fl.printer`'s platform split -- see
  * that module's own (tiny) doc comment for why a `version()`-selected
- * dispatcher module now exists at all. **Correction (2026-09-15): this
- * used to be `fl.printer` itself**, on the reasoning that FLTK's own
- * `Fl_Posix_Printer_Driver` had no second implementation in this port to
- * justify a real split (the "no polymorphic driver hierarchy with only
- * one implementation" precedent also used for `fl.widget_surface.
- * CopySurface`/`fl.image_surface.ImageSurface`). That premise stopped
- * holding the moment Windows printing needed a real implementation:
+ * dispatcher module exists at all. A split is warranted because
  * FLTK's own `Fl_WinAPI_Printer_Driver` (`fl.printer_win32`, see
  * that module) shares essentially nothing with this file -- different
  * base class (`Fl_Paged_Device` directly, not `Fl_PostScript_File_
@@ -22,8 +16,7 @@
  * `HDC`, not PostScript piped to a subprocess). Two real, independent
  * implementations is exactly this project's own stated trigger for a
  * real split (see `fl.platform_x11`/`fl.platform_win32`'s identical
- * shape for the windowing layer) -- moved here unchanged apart from this
- * comment and the module/version declarations just below.
+ * shape for the windowing layer).
  *
  * `Fl_Printer` FLTK is a thin wrapper delegating to a platform-
  * specific driver (`Fl_Posix_Printer_Driver`, itself a
@@ -68,7 +61,7 @@
  *    `printSelection_.deactivate()` every time, matching FLTK's own
  *    `begin_job()`.
  *  - **Both "stacked pages" collate-preview `Fl_Group`s (9 `Fl_Box`es
- *    each, `print_collate_group[0]`/`[1]`) are ported now, and
+ *    each, `print_collate_group[0]`/`[1]`) are ported, and
  *    `printCollate_`'s own toggle callback (`cb_print_collate_button`)
  *    is wired up for real** -- see the next bullet for why this one
  *    differs from a strict port: FLTK's own Collate checkbox is
@@ -82,9 +75,7 @@
  *  - **Collate activates when it's actually meaningful, not never**
  *    (`PrintPanel.updateCollateState()`, called from `printCopies_`'s
  *    callback and from `prepareForJob()`) -- **deliberate deviation
- *    from FLTK, at the user's explicit request** after reviewing
- *    the faithfully-ported original (permanently-disabled) behavior.
- *    Collate only means anything when a job has more than one page
+ *    from FLTK**. Collate only means anything when a job has more than one page
  *    *and* more than one copy is requested; FLTK's own intent
  *    (visible in the dead code) was clearly to activate/deactivate on
  *    copy count, it just never got finished. This port completes that
@@ -93,13 +84,13 @@
  *    but is arguably a UX bug) or reactivating it on copy count alone
  *    (would allow "collate" on a 1-page job, which is meaningless).
  *  - **The Properties sub-panel's 4-button color/gray x portrait/
- *    landscape output-mode picker is ported now too** (`printOutputMode_`,
+ *    landscape output-mode picker is ported too** (`printOutputMode_`,
  *    a `Button[4]` with `type(radioButton)` for mutual exclusion within
  *    their shared `Fl_Group`, matching FLTK's own plain-`Fl_Button`-
  *    with-radio-type design rather than `fl.round_button`). The actual
  *    color-vs-gray XPM icons (`image_print_color`/`image_print_gray`,
  *    ported verbatim as `printColorXpm`/`printGrayXpm`, decoded once
- *    into `colorPixmap_`/`grayPixmap_`) are real now too. Note this is
+ *    into `colorPixmap_`/`grayPixmap_`) are real too. Note this is
  *    still cosmetic-only for output correctness:
  *    `PostscriptGraphicsDriver` has no grayscale-vs-color rendering
  *    mode, and neither does FLTK's own
@@ -725,7 +716,7 @@ private class PrintPanel
         prefs.set(printerName ~ "/output_mode", val);
     }
 
-    /// Deliberate deviation from FLTK, at the user's request:
+    /// Deliberate deviation from FLTK:
     /// `Fl_Posix_Printer_Driver::begin_job()`'s own dialog leaves
     /// Collate permanently `deactivate()`d -- the code that would
     /// reactivate it (`cb_print_copies()`'s `else` branch) is dead,

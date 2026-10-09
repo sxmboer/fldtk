@@ -220,8 +220,15 @@ void shellDupCmd()
 
 void shellRemoveCmd()
 {
+    import std.format : format;
+    import fl.ask : choice;
+
     if (selectedIndex_ < 0) return;
     auto cmd = shellCommandList.list[selectedIndex_];
+    // FLTK's Delete button callback (`settings_panel.fl`) asks first.
+    if (choice(format("Delete the shell command\n\"%s\"?\n\nThis can not be undone.", cmd.name),
+            "Delete", "Cancel", null) == 1)
+        return;
     shellCommandList.remove(selectedIndex_);
     if (selectedIndex_ >= cast(int) shellCommandList.list.length)
         selectedIndex_ = cast(int) shellCommandList.list.length - 1;

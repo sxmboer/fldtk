@@ -35,8 +35,7 @@
  * exactly that reason; see that module's own comment at the field
  * declarations for the full reasoning.
  *
- * A few gaps remain, each also flagged as a `// TODO:` comment at
- * its point of use:
+ * Parity notes against FLTK:
  *
  * - **IME/marked-text composition** (`Fl::compose()`): `fl.core.compose()` is
  *   real and `handleKey()` calls it first, matching FLTK's own

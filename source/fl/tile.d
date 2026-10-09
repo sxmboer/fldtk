@@ -31,11 +31,10 @@
  *    confirms: read-only). Ported as plain `int` parameters -- an
  *    unread `ref` is unobservable at every call site, so dropping it
  *    changes nothing.
- *  - `set_cursor()`'s `window()->cursor(...)` call is real end to end
- *    now: `Widget.window()` (fl.widget) walks the parent chain for
- *    real (was an always-null stub), `Window.cursor()` forwards to
- *    `fl.platform_x11.setCursor()` (an `XDefineCursor()` call), which
- *    is real too -- so hovering a drag handle now actually changes the
+ *  - `set_cursor()`'s `window()->cursor(...)` call is real end to end:
+ *    `Widget.window()` (fl.widget) walks the parent chain,
+ *    `Window.cursor()` forwards to `fl.platform_x11.setCursor()` (an
+ *    `XDefineCursor()` call) -- so hovering a drag handle changes the
  *    system cursor to indicate the resize direction, matching FLTK.
  *  - The deprecated 4-arg `position(int,int,int,int)` (a >=1.4.0
  *    back-compat shim for move_intersection()) and the trivial 2-arg

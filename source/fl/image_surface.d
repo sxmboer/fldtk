@@ -5,9 +5,9 @@
  *
  * Deliberately minimal, matching this port's "no polymorphic hierarchy
  * for a single implementation" precedent (see `fl.platform_x11`'s own
- * top comment; `fl.graphics_driver.GraphicsDriver` is no longer an
+ * top comment; `fl.graphics_driver.GraphicsDriver` is not an
  * example of that precedent -- `Fl_SVG_File_Surface`/
- * `Fl_PostScript_File_Device` gave it real second/third consumers, see
+ * `Fl_PostScript_File_Device` are real second/third consumers, see
  * that module's own doc comment): FLTK
  * splits this across an abstract `Fl_Image_Surface` (public API) plus a
  * per-platform
@@ -156,9 +156,8 @@ class SurfaceDevice
      * (surface_) surface_->end_current();` -- without this guard,
      * `surface_` would still point at the just-deleted object, so that
      * call would dispatch a virtual method through a dangling pointer.
-     * Found for real via the user's own `gdb` backtrace: `popCurrent()`
-     * crashed inside `current_.doEndCurrent()` on a destroyed
-     * `ImageSurface`, tracing directly to this guard being missing.
+     * Without the guard `popCurrent()` crashes inside
+     * `current_.doEndCurrent()` on a destroyed `ImageSurface`.
      * No `GC.inFinalizer()` concern (see CONVENTIONS.md's own note on that
      * hazard) -- this only nulls a static reference, never dereferences
      * another object.
@@ -438,9 +437,8 @@ class ImageSurface : WidgetSurface
     /// `deleteOffscreen()`), never reaches into another GC-managed
     /// object.
     ///
-    /// **`doEndCurrent()`'s guard added 2026-08-10** (found while
-    /// porting `fl.widget_surface.CopySurface`, which needs the exact
-    /// same guard for a real reason -- see that class's own doc
+    /// **`doEndCurrent()`'s guard** (`fl.widget_surface.CopySurface`
+    /// needs the exact same guard -- see that class's own doc
     /// comment): `shapedwindow.d`/`test/device.cxx` both faithfully
     /// transliterate FLTK's own `delete surf; SurfaceDevice.
     /// popCurrent();` ordering (destroying a still-*current* surface

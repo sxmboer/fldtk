@@ -690,7 +690,6 @@ class FileChooser
 
     void hide()
     {
-        removeTimeout(&updatePreviewTimeout);
         previewBox.image(null);
         window.hide();
     }
@@ -967,8 +966,9 @@ class FileChooser
 
             fileName.value(pathname);
 
-            removeTimeout(&updatePreviewTimeout);
-            addTimeout(1.0, &updatePreviewTimeout);
+            // FLTK waits one second before updating the preview; this
+            // updates it at once.
+            updatePreview();
 
             if (callback_) callback_(this);
 
@@ -978,8 +978,6 @@ class FileChooser
                 okButton.deactivate();
         }
     }
-
-    private void updatePreviewTimeout() { updatePreview(); }
 
     private void fileNameCB()
     {
@@ -1343,9 +1341,10 @@ class FileChooser
                 }
                 else
                 {
-                    // Try loading as an image. Only XBM/XPM/PNM are
-                    // recognized (see SharedImage's own module comment
-                    // for why); anything else falls through to the
+                    // Try loading as an image. XBM/XPM/PNM are always
+                    // recognized; PNG/JPEG/GIF/BMP/ICO/SVG only once the
+                    // program has called `registerImages()` (see
+                    // SharedImage's own module comment); anything else falls through to the
                     // text-preview path below, matching exactly what
                     // FLTK itself does when Fl_Shared_Image::get()
                     // returns null for any reason (an unregistered
@@ -1362,6 +1361,13 @@ class FileChooser
                 }
             }
             catch (Exception) { /* stat() failed -- falls to text-preview path, matching FLTK */ }
+        }
+        // A file that was not an image is still being previewed as text;
+        // the wait cursor set for the image attempt ends here.
+        if (!set && window !is null)
+        {
+            window.cursor(Cursor.default_);
+            check();
         }
 
         auto oldImage = cast(SharedImage) previewBox.image();

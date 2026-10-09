@@ -8,11 +8,12 @@
  * worker function (see `gui_main.d`'s `groupSelectedCmd()`/
  * `ungroupSelectedCmd()`).
  *
- * **Not ported**: the menu-item-grouping branch both `group_cb()`/
- * `ungroup_cb()` dispatch to first (`Menu_Node.cxx`'s own
- * `group_selected_menuitems()`/`ungroup_selected_menuitems()`) --
- * `fluid.menu_item_node.MenuItemNode` is only parsed/round-tripped and
- * edited as a node, never grouped here.
+ * Menu items, which `group_cb()`/`ungroup_cb()` hand to `Menu_Node.cxx`'s
+ * `group_selected_menuitems()`/`ungroup_selected_menuitems()`, are
+ * grouped into and out of submenus by `groupSelectedMenuItems()`/
+ * `ungroupSelectedMenuItems()`; they touch only the `Node` tree, since a
+ * menu item has no live widget of its own (the caller rebuilds the live
+ * menu).
  */
 module fluid.group_ungroup;
 
@@ -24,6 +25,8 @@ import fluid.window_node : WindowNode;
 import fluid.flex_node : reindexFlexIfNeeded;
 import fluid.factory : createNode;
 import fluid.instantiate : LiveTree, instantiateOne;
+import fluid.menu_item_node : MenuItemNode, SubmenuNode;
+import fluid.menu_owner_node : MenuOwnerNode;
 
 /// Whether `n` is a genuine widget container in FLTK's `Group_Node`
 /// sense -- `dynamic_cast<Group_Node*>(qq)` there, which also accepts a
@@ -34,13 +37,13 @@ import fluid.instantiate : LiveTree, instantiateOne;
 /// `Node.canHaveChildren()`: that's also `true` for `FunctionNode`/
 /// `ClassNode`/`CodeBlockNode`/`DeclBlockNode`/`MenuOwnerNode`, none of
 /// which are widget containers a `Group`/`Ungroup` should ever promote
-/// a widget into or out of -- `MenuOwnerNode` in particular is exactly
-/// the case FLTK routes to the separate, not-ported
-/// `group_selected_menuitems()`/`ungroup_selected_menuitems()` (see
-/// this module's own top comment); using `canHaveChildren()` here would
-/// silently fall through into the wrong path for a selected menu item
-/// instead of correctly refusing it.
-private bool isContainerNode(Node n)
+/// a widget into or out of -- `MenuOwnerNode` in particular holds menu
+/// items, which FLTK groups through the separate
+/// `group_selected_menuitems()`/`ungroup_selected_menuitems()`
+/// (`groupSelectedMenuItems()`/`ungroupSelectedMenuItems()` here);
+/// using `canHaveChildren()` here would treat it as a widget group.
+/// Also `gui_main.d`'s placement rule for a new Code node.
+package(fluid) bool isContainerNode(Node n)
 {
     return cast(GroupNode) n !is null || cast(WindowNode) n !is null;
 }
@@ -94,6 +97,63 @@ package(fluid) void fixGroupSize(WidgetNode g, bool shrink = false)
 
     walk(g);
     g.x = X; g.y = Y; g.w = R - X; g.h = B - Y;
+}
+
+/// `&Edit/&Group` on a menu item -- ported from
+/// `group_selected_menuitems()` (`nodes/Menu_Node.cxx`). Creates a new
+/// submenu, labeled "submenu", right after `q` in `q`'s own menu or
+/// submenu, then moves every selected sibling into it, in order. Returns
+/// the new submenu, or `null` if `q`'s parent isn't a menu or submenu
+/// (FLTK: "Can't create a new submenu here.").
+SubmenuNode groupSelectedMenuItems(MenuItemNode q)
+{
+    Node qq = q.parent;
+    if (qq is null || (cast(MenuOwnerNode) qq is null && cast(SubmenuNode) qq is null))
+        return null;
+
+    auto n = cast(SubmenuNode) createNode("Submenu");
+    n.typeName = "Submenu";
+    n.label = "submenu";
+    n.hasLabel = true;
+    qq.insertChildAfter(q, n);
+
+    Node[] moving;
+    foreach (child; qq.children)
+        if (child !is n && child.selected_)
+            moving ~= child;
+    foreach (c; moving)
+    {
+        qq.removeChild(c);
+        n.addChild(c);
+    }
+    return n;
+}
+
+/// `&Edit/Ung&roup` on a menu item -- ported from
+/// `ungroup_selected_menuitems()` (`nodes/Menu_Node.cxx`). Moves every
+/// selected child of `q`'s submenu out to just before that submenu, in
+/// order, and deletes the submenu if that leaves it empty. Returns
+/// `false` if `q` isn't inside a submenu (FLTK: "Only menu items inside
+/// a submenu can be ungrouped.").
+bool ungroupSelectedMenuItems(MenuItemNode q)
+{
+    auto qq = cast(SubmenuNode) q.parent;
+    if (qq is null || qq.parent is null) return false;
+    Node grandparent = qq.parent;
+
+    Node[] moving;
+    foreach (child; qq.children)
+        if (child.selected_)
+            moving ~= child;
+    foreach (c; moving)
+    {
+        qq.removeChild(c);
+        grandparent.addChild(c);
+        c.moveBefore(qq);
+    }
+    if (qq.children.length == 0)
+        grandparent.removeChild(qq);
+    return true;
 }
 
 /// `&Edit/&Group` -- ported from `group_cb()` (`nodes/Group_Node.cxx`).
@@ -404,4 +464,34 @@ unittest
     assert(!ungroupSelected(a, empty));
     assert(win.children == [a]); // unchanged
     assert(fn.children == [win]); // unchanged
+}
+
+unittest
+{
+    // Group: the selected items of a menu move into a new submenu that
+    // sits right after the current item.
+    auto owner = new MenuOwnerNode();
+    MenuItemNode[] items;
+    foreach (i; 0 .. 4)
+    {
+        auto mi = new MenuItemNode();
+        mi.typeName = "MenuItem";
+        owner.addChild(mi);
+        items ~= mi;
+    }
+    items[1].selected_ = true;
+    items[2].selected_ = true;
+    auto sub = groupSelectedMenuItems(items[2]);
+    assert(sub !is null && sub.label == "submenu");
+    assert(owner.children == cast(Node[]) [items[0], sub, items[3]]);
+    assert(sub.children == cast(Node[]) [items[1], items[2]]);
+
+    // Ungroup: the selected items move out to just before the submenu,
+    // and the emptied submenu goes away.
+    assert(ungroupSelectedMenuItems(items[2]));
+    assert(owner.children == cast(Node[]) [items[0], items[1], items[2], items[3]]);
+    assert(items[1].parent is owner);
+
+    // Only an item inside a submenu can be ungrouped.
+    assert(!ungroupSelectedMenuItems(items[0]));
 }

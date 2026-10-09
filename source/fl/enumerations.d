@@ -22,14 +22,10 @@ module fl.enumerations;
 // (1.0.0), not the FLTK release it happens to be ported from at any
 // given time (currently 1.5.0, tracked separately -- see CONVENTIONS.md's
 // "Reference source" section and `fltk_version.dat` in the FLTK
-// checkout). **Corrected 2026-09-04** (user-reported: `test/fltk-
-// versions.d` looked "inconsistent" against fldtk's and Fluid's own
-// identity because this used to literally echo the FLTK checkout's
-// version number, 1.5.0, as if fldtk itself were release 1.5.0 of
-// something -- it isn't; it's a separate, complete reimplementation,
-// versioned on its own terms starting at 1.0.0): these three constants
-// are fldtk's own semantic version, independent of whichever FLTK
-// release a given module's own doc comment says it was ported from.
+// checkout). fldtk is a separate, complete reimplementation, versioned on
+// its own terms starting at 1.0.0: these three constants are fldtk's own
+// semantic version, independent of whichever FLTK release a given
+// module's own doc comment says it was ported from.
 // Since this port compiles everything into one D module (no separate
 // header-vs-shared-library skew the way a C/C++ program linking an old
 // .so against new headers could have), fl.core.version_()/

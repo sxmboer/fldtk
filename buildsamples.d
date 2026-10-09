@@ -274,8 +274,8 @@ int main(string[] args)
                 // A .fl sitting next to a hand-written .d of the same
                 // name is not a generator input -- it is the Fluid-
                 // editable counterpart of a file that is maintained by
-                // hand (source/test/checkers_pieces.fl/.d is the one
-                // such pair). Generating it would put a second module
+                // hand (although no such pairs exist anymore with fluid -c being fully functional).
+                // Generating it would put a second module
                 // of the same name in generated/, and which of the two
                 // dmd picked up would come down to -I order.
                 if (exists(buildPath(catDir, baseName(fl).stripExtension() ~ ".d")))

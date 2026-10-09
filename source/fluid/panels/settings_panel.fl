@@ -58,13 +58,11 @@ Tab icons (`../icons/*_64.png` in FLTK) are real, copied into
 pixmaps (relative to this very directory, not FLTK's sibling
 `icons/`, since this port's icons live under `panels/pixmaps/`
 alongside everything else `code_writer.d`'s `writeOneImage()` embeds).
-Not ported: FLTK's own custom Fluid-app `@fd_beaker`/`@fd_user`/
-`@fd_project`/`@fd_file` `fl_add_symbol()` glyphs (hand-drawn C++
-callback functions registered under those symbol names, `fluid/app/
-Snap_Action.cxx`) -- the Layout tab's storage-location menu items keep
-their FLTK text minus that leading symbol. `@fd_zoom` (`fluid/rsrcs
-/pixmaps.cxx`) is a real, ported `fl.symbols` glyph
-(`fluid.pixmaps`'s own `fdZoom()`) -- the Shell tab's
+FLTK's custom `@fd_beaker`/`@fd_user`/`@fd_project`/`@fd_file` glyphs
+(`fluid/app/Snap_Action.cxx`) and `@fd_zoom` (`fluid/rsrcs/pixmaps.cxx`)
+are real `fl.symbols` glyphs (`fluid.pixmaps`'s own `fdBeaker()`/
+`fdUser()`/`fdProject()`/`fdFile()`/`fdZoom()`); the Layout tab's
+storage-location menu items and suite names use the first four -- the Shell tab's
 "open the big code editor" button uses FLTK's real `@+1fd_zoom`
 label, which fits
 the button's real 22x22 size, unlike a plain `"Zoom..."` text label. A separate, simpler
@@ -472,12 +470,11 @@ project's own established convention (`fluid.node_browser`'s
 FLTK's own sparser "only at app exit or dialog Close" cadence -- a
 deliberate consistency choice, not a fidelity gap: FLTK's own real
 call sites are `Fluid.cxx`'s app-exit path and `cb_Close()`, both just
-batching writes that would otherwise happen this same way. One
-already-established simplification carried over from the User tab:
-the "FLUID Built-In"/"User Preference"/"Store in .fl Project File"/
-"Store in External File" storage menu items keep FLTK's text minus
-its leading `@fd_beaker`/`@fd_user`/`@fd_project`/`@fd_file` symbol
-(`fl_add_symbol()` glyphs, not ported -- the User tab omits them too).}
+batching writes that would otherwise happen this same way. The
+"FLUID Built-In"/"User Preference"/"Store in .fl Project File"/
+"Store in External File" storage menu items keep FLTK's leading
+`@fd_beaker`/`@fd_user`/`@fd_project`/`@fd_file` symbol
+(`fluid.pixmaps` registers the glyphs).}
                 xywh {10 60 340 480}
                 scale_image {36 24}
                 image {pixmaps/layout_64.png}
@@ -548,7 +545,7 @@ rebuildLayoutMenu();}
                       }
                     MenuItem {}
                       {
-                        label {FLUID Built-In}
+                        label {@fd_beaker  FLUID Built-In}
                         callback {layoutList[layoutList.currentSuiteIndex()].storage = ToolStore.internal;
 layoutSaveUser();
 layoutRefreshTab();
@@ -558,7 +555,7 @@ rebuildLayoutMenu();}
                       }
                     MenuItem {}
                       {
-                        label {User Preference}
+                        label {@fd_user  User Preference}
                         callback {layoutList[layoutList.currentSuiteIndex()].storage = ToolStore.user;
 layoutSaveUser();
 layoutRefreshTab();
@@ -567,7 +564,7 @@ rebuildLayoutMenu();}
                       }
                     MenuItem {}
                       {
-                        label {Store in .fl Project File}
+                        label {@fd_project  Store in .fl Project File}
                         callback {layoutList[layoutList.currentSuiteIndex()].storage = ToolStore.project;
 layoutSaveUser();
 layoutRefreshTab();
@@ -576,7 +573,7 @@ rebuildLayoutMenu();}
                       }
                     MenuItem {}
                       {
-                        label {Store in External File}
+                        label {@fd_file  Store in External File}
                         callback {layoutList[layoutList.currentSuiteIndex()].storage = ToolStore.file;
 layoutSaveUser();
 layoutRefreshTab();
@@ -1551,11 +1548,13 @@ case I18nType.posix:
                           {
                             label {GNU gettext}
                             labelsize 12
+                            deactivate
                           }
                         MenuItem {}
                           {
                             label {POSIX catgets}
                             labelsize 12
+                            deactivate
                           }
                       }
                     Box {}
@@ -2171,7 +2170,7 @@ bool builtin = suite.storage == ToolStore.internal;
 
 MenuItem[] suiteItems;
 foreach (i; 0 .. layoutList.size())
-    suiteItems ~= MenuItem(layoutList[i].name);
+    suiteItems ~= MenuItem(layoutList[i].menuLabel);
 suiteItems ~= MenuItem(null);
 layoutChoice.menu(suiteItems);
 layoutChoice.value(layoutList.currentSuiteIndex());

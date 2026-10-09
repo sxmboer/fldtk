@@ -964,11 +964,6 @@ private int fakeXWm(FlWindow win, out int X, out int Y, out int bt, out int bx, 
  * parent redraw can paint straight over a live child subwindow's
  * pixels -- real, visible corruption `WS_CHILD` support alone doesn't
  * fix without this.
- *
- * `WM_GETMINMAXINFO` itself isn't wired up in `wndProc()` yet, so
- * `getSizeRange()`'s min/max (already consulted by `fakeXWm()` to pick
- * the border-vs-thick-frame style) isn't enforced live during an
- * interactive resize drag.
  */
 void createWindow(FlWindow win)
 {
@@ -1000,10 +995,9 @@ void createWindow(FlWindow win)
         style |= WS_POPUP;
         // Ported from `makeWindow()`'s own `wintype 0` case (`Fl_win32.cxx`:
         // "No border (used for menus)") -- keeps a borderless top-level
-        // (tooltips, popup menus) out of the taskbar/Alt-Tab list. Missing
-        // entirely before (found via the user's own report: a tooltip
-        // popping up put a taskbar button up showing the tooltip's own
-        // text, as if it were a real named window) -- any top-level
+        // (tooltips, popup menus) out of the taskbar/Alt-Tab list. Without it a tooltip
+        // popping up puts a taskbar button up showing the tooltip's own
+        // text, as if it were a real named window: any top-level
         // `HWND` with no `WS_EX_TOOLWINDOW` gets a taskbar button by
         // default regardless of `WS_POPUP`/lack of a caption; nothing
         // about being borderless alone suppresses it.
@@ -1242,20 +1236,14 @@ void createWindow(FlWindow win)
     // platform including Windows.
     // `win.output()` is a
     // deliberate deviation from FLTK, not a faithful port --
-    // `Fl_win32.cxx`'s own `makeWindow()` has no
-    // `output()` check anywhere, and a window like `fl.core.
-    // transientScaleDisplay()`'s Ctrl-+/Ctrl--/Ctrl-0 transient
-    // scale-percentage popup keeps its default
-    // *bordered* state on both this port and real FLTK (neither
-    // ever calls `border(false)` on it), so it never qualifies for the
-    // `WS_EX_TOOLWINDOW` branch either way -- real FLTK
-    // most likely has this identical gap (a genuine
-    // `FLTK_ISSUES.md` candidate, not filed with FLTK without
-    // review per this project's own process). An `output()` widget is
-    // by definition non-interactive/display-only (`Widget.output()`'s
-    // own doc comment), so "never steals activation" is the correct
-    // behavior for it regardless of border state, and worth having
-    // even where FLTK itself doesn't yet.
+    // `Fl_win32.cxx`'s own `makeWindow()` has no `output()` check.
+    // An `output()` widget is by definition non-interactive/
+    // display-only (`Widget.output()`'s own doc comment), so "never
+    // steals activation" is the correct behavior for it regardless of
+    // border state. A borderless window, such as `fl.core.
+    // transientScaleDisplay()`'s scale-percentage popup (`shape()`
+    // calls `border(false)`), already qualifies through
+    // `WS_EX_TOOLWINDOW`, as in FLTK.
     bool showNoActivate = fl.core.grab() !is null || (exStyle & WS_EX_TOOLWINDOW) != 0 || win.output();
     ShowWindow(hwnd, bornIconic ? SW_SHOWMINNOACTIVE
         : (showNoActivate ? SW_SHOWNOACTIVATE : SW_SHOWNORMAL));
@@ -1672,12 +1660,10 @@ bool setCursorImage(FlWindow win, const(RGBImage) image, int hotx, int hoty)
  * rectangles, not a bitmap, so this walks the mask one scanline at a
  * time, run-length-encoding each row's contiguous set-bit spans into
  * `CreateRectRgn()` calls unioned together via `CombineRgn(..., RGN_OR)`
- * (the standard Win32 "bitmap to region" technique -- FLTK's own
- * Windows driver, `Fl_WinAPI_Window_Driver`, has no `shape()` override
- * at all and inherits `Fl_Window_Driver::shape()`'s plain "not
- * supported on this platform" no-op, so there's no real FLTK
- * function to port verbatim here; this is a from-scratch, standard-
- * technique implementation instead). `SetWindowRgn()` takes ownership of
+ * (the standard Win32 "bitmap to region" technique, which FLTK's own
+ * `Fl_WinAPI_Window_Driver::shape()` also uses via its static
+ * `bitmap2region()`; this function was written independently, not
+ * ported from it). `SetWindowRgn()` takes ownership of
  * the region handle on success, matching `imageToIcon()`'s own
  * `CreateIconIndirect()`-owns-nothing-further precedent for "the OS now
  * owns this handle" resource handoffs; `DeleteObject()`s it back out on
@@ -3066,9 +3052,12 @@ private extern (Windows) LRESULT wndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LP
 
         case WM_MOUSEWHEEL:
         {
-            short delta = cast(short) HIWORD(wParam);
-            fl.core.eDx_ = 0;
-            fl.core.eDy_ = delta > 0 ? -1 : 1;
+            // Hi-res deltas: WHEEL_DELTA (120) is one line; finer wheels and
+            // touchpads send fractions, accumulated into whole lines.
+            float delta = -(cast(short) HIWORD(wParam)) / 120.0f;
+            if (delta == 0) return 0;
+            if (fl.core.eventState(stateShift)) fl.core.setWheelDelta(delta, 0);
+            else fl.core.setWheelDelta(0, delta);
             fl.core.dispatch(Event.mouseWheel, win);
             return 0;
         }
@@ -3082,9 +3071,10 @@ private extern (Windows) LRESULT wndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LP
         // matching X11 button 7 -> `eDx_ = 1` exactly.
         case WM_MOUSEHWHEEL:
         {
-            short delta = cast(short) HIWORD(wParam);
-            fl.core.eDy_ = 0;
-            fl.core.eDx_ = delta > 0 ? 1 : -1;
+            float delta = (cast(short) HIWORD(wParam)) / 120.0f;
+            if (delta == 0) return 0;
+            if (fl.core.eventState(stateShift)) fl.core.setWheelDelta(0, delta);
+            else fl.core.setWheelDelta(delta, 0);
             fl.core.dispatch(Event.mouseWheel, win);
             return 0;
         }
@@ -3898,7 +3888,7 @@ package(fl) void setSpot(int fontFace, int fontSize, int X, int Y, int W, int H,
 /// no real key message (`keyEvent()`'s Ctrl-`+` lookup) leave both at
 /// their defaults and get the left/main-keyboard keysym.
 ///
-/// NumLock/keypad remap is real now (see
+/// NumLock/keypad remap is real (see
 /// `numpadOriginalKeysym()`'s own doc comment) -- this function only
 /// needs to cover the *live*, NumLock-on numpad case, since Windows
 /// itself already reports these VK codes only while NumLock is active
@@ -4948,14 +4938,12 @@ package(fl) void setIcons(FlWindow win)
 // as text-only ("DND is text-only... `COMPOUND_TEXT`/other charset
 // target variants aren't negotiated either"), deliberately narrower than
 // FLTK's own XDND (which also negotiates other MIME types).
-// **Correction: the two Windows-only fallback branches this section
-// used to list as not-ported gaps are both real now** (`CF_HDROP`
-// dropped-file-lists, and the legacy `CF_TEXT`/CP1252 fallback) -- see
-// `fillCurrentDragData()`'s own doc comment for the full writeup of each.
-// Both stay within this port's existing text-only *delivery* scope
-// (everything still arrives as a plain `Event.paste` string, just from
-// three different source formats now instead of one), so porting them
-// doesn't widen the MIME-negotiation gap the paragraph above describes.
+// The two Windows-only fallback branches (`CF_HDROP` dropped-file-lists,
+// and the legacy `CF_TEXT`/CP1252 fallback) are real -- see
+// `fillCurrentDragData()`'s own doc comment for each.
+// Both stay within this port's text-only *delivery* scope
+// (everything arrives as a plain `Event.paste` string, from
+// three different source formats), so they don't widen the MIME-negotiation gap the paragraph above describes.
 //
 // **`FLEnum`/`IEnumFORMATETC` is deliberately not ported at all**:
 // checked FLTK's actual `FLDataObject::EnumFormatEtc()` body, not

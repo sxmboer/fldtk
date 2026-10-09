@@ -146,9 +146,9 @@ unittest
 // `Event.drag` case, where `checkAll()` now runs, and `drawOverlay()`,
 // where `drawAll()` now runs).
 //
-// **Scope, narrower than FLTK's full 33-class roster**:
-// window edge/margin (8), group edge/margin (8), sibling alignment (8),
-// widget-ideal-size resize feedback (2), and grid snapping
+// **Scope: all 30 snap actions FLTK registers (`Snap_Action::list[]`)**:
+// window edge/margin (8), group edge/margin (8), tabs margin (2), sibling
+// alignment (8), widget-ideal-size resize feedback (2), and grid snapping
 // (`SnapGrid`/`SnapWindowGrid`/`SnapGroupGrid`, ported from
 // `Fd_Snap_Grid`/`_Window_Grid`/`_Group_Grid`, plus the `drawGrid()`
 // crosshair-cluster helper -- `Snap_Action.cxx`'s own file-static
@@ -159,8 +159,6 @@ unittest
 // across the real `fluid/` tree), so these two -- despite
 // being the smallest, least fanned-out class in FLTK's own file --
 // are what "size hints" concretely means, not a separate feature.
-// **Still deliberately deferred**: tabs-margin snapping
-// (`Fd_Snap_*_Tabs_Margin`, 2 classes -- needs `Fl_Tabs` detection).
 // ===========================================================================
 
 /// Ported from `fluid::app::Snap_Data`. Live `fl.widget.Widget`
@@ -281,6 +279,7 @@ private enum fdBottom = 16;
 private bool inWindow(SnapData d) { return d.wgt !is null && d.wgt.parent() is d.win; }
 private bool inGroup(SnapData d) { return d.wgt !is null && d.wgt.parent() !is null && d.wgt.parent() !is d.win; }
 private FlGroup parentOf(SnapData d) { return cast(FlGroup) d.wgt.parent(); }
+private bool inTabs(SnapData d) { return d.wgt !is null && cast(Tabs) d.wgt.parent() !is null; }
 
 // ---- drawing helpers -- ported from Snap_Action.cxx's own file-static
 // draw_h_arrow()/draw_v_arrow()/draw_left_brace()/draw_right_brace()/
@@ -541,12 +540,12 @@ private final class SnapRightGroupMargin : SnapRight
     }
 }
 
-private final class SnapTopGroupMargin : SnapTop
+private class SnapTopGroupMargin : SnapTop
 {
     override void check(ref SnapData d)
     {
         clr();
-        if (inGroup(d)) checkY(d, d.by, parentOf(d).y() + layoutList.current().topGroupMargin);
+        if (inGroup(d) && !inTabs(d)) checkY(d, d.by, parentOf(d).y() + layoutList.current().topGroupMargin);
     }
     override void draw(ref SnapData d)
     {
@@ -555,17 +554,41 @@ private final class SnapTopGroupMargin : SnapTop
     }
 }
 
-private final class SnapBottomGroupMargin : SnapBottom
+private class SnapBottomGroupMargin : SnapBottom
 {
     override void check(ref SnapData d)
     {
         clr();
-        if (inGroup(d)) checkY(d, d.bt, parentOf(d).y() + parentOf(d).h() - layoutList.current().bottomGroupMargin);
+        if (inGroup(d) && !inTabs(d)) checkY(d, d.bt, parentOf(d).y() + parentOf(d).h() - layoutList.current().bottomGroupMargin);
     }
     override void draw(ref SnapData d)
     {
         drawBottomBrace(parentOf(d));
         drawVArrow((d.bx + d.br) / 2, d.bt, parentOf(d).y() + parentOf(d).h() - 1);
+    }
+}
+
+// ---- tabs snapping --------------------------------------------------------
+
+/// Ported from `Fd_Snap_Top_Tabs_Margin` -- the widget top meets the top
+/// of its `Tabs` parent plus the layout's tabs margin (the room the tab
+/// bar takes). Inside a `Tabs`, this replaces the group margin.
+private final class SnapTopTabsMargin : SnapTopGroupMargin
+{
+    override void check(ref SnapData d)
+    {
+        clr();
+        if (inTabs(d)) checkY(d, d.by, parentOf(d).y() + layoutList.current().topTabsMargin);
+    }
+}
+
+/// Ported from `Fd_Snap_Bottom_Tabs_Margin`.
+private final class SnapBottomTabsMargin : SnapBottomGroupMargin
+{
+    override void check(ref SnapData d)
+    {
+        clr();
+        if (inTabs(d)) checkY(d, d.bt, parentOf(d).y() + parentOf(d).h() - layoutList.current().bottomTabsMargin);
     }
 }
 
@@ -912,6 +935,8 @@ static this()
         new SnapRightGroupMargin(),
         new SnapTopGroupMargin(),
         new SnapBottomGroupMargin(),
+        new SnapTopTabsMargin(),
+        new SnapBottomTabsMargin(),
         new SnapWindowGrid(),
         new SnapGroupGrid(),
         new SnapSiblingsLeftSame(),

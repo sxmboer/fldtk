@@ -7,8 +7,9 @@
  * real (`checkpoint()`/`undo()`/`redo()`, `settingsToggleVisibility()`,
  * `showAboutPanel()`). A `WindowNode` nested *inside* another window's
  * own widget tree (as opposed to a top-level project window) is a
- * separate, still-unported case -- see `instantiate.d`'s own top
- * comment.
+ * subwindow with its own `ProjectCanvas`, built inside its parent
+ * window's canvas and registered in `canvases_` too
+ * (`registerNestedCanvases()`).
  *
  * `&Edit` menu: Cut/Copy/Paste/Duplicate/Select All/
  * Select None are real -- `cutSelected()`/`copySelected()`/
@@ -29,10 +30,9 @@
  * modules build on three `fluid.node.Node` primitives,
  * `prevSibling()`/`nextSibling()`/`moveBefore()`, trivial here since
  * this port's `Node` is a real tree rather than FLTK's flat
- * doubly-linked list. See each module's own doc comment for the one
- * deliberate scope cut both share: the menu-item-grouping branch
- * `group_cb()`/`ungroup_cb()` themselves dispatch to first
- * (`Menu_Node.cxx`) isn't ported.
+ * doubly-linked list. Group/Ungroup on a menu item groups it into or out
+ * of a submenu (`Menu_Node.cxx`'s `group_selected_menuitems()`/
+ * `ungroup_selected_menuitems()`).
  * `fluid.flex_node.FlexNode.
  * fixedSizeTuples` stores *positional* child indices, which a reorder
  * would otherwise silently point at the wrong child -- `fluid.
@@ -88,8 +88,9 @@ import fl;
 
 import fluid.node : Node;
 import fluid.widget_node : WidgetNode;
-import fluid.window_node : WindowNode;
+import fluid.window_node : WindowNode, isNestedWindow, outermostWindow;
 import fluid.group_node : GroupNode;
+import fluid.code_writer : stripFlPrefix;
 import fluid.project_reader : Reader;
 import fluid.project_writer : ProjectWriter;
 import fluid.raw_cpp_guard : looksLikeRawCpp;
@@ -99,15 +100,23 @@ import widget_panel : make_widget_panel, wireEditHooks, widgetPanelLoad = load,
     widgetPanelCurrent = current, refreshCodeFromNode, widgetPanelOnBeforeEdit = onBeforeEdit,
     widgetPanelOnEdited = onEdited, widgetPanelOnOpenExternalEditor = onOpenExternalEditor,
     widgetPanelOnBeforeTextEdit = onBeforeTextEdit,
-    overlayCb, okCb, liveModeCb, wLiveMode, thePanel, widgetTabs, tabsWizard, overlayButton;
+    overlayCb, okCb, liveModeCb, wLiveMode, thePanel, widgetTabs, tabsWizard, overlayButton,
+    vCodeInput2, wCallback, userDataInput;
 import fluid.factory : createNode;
-import fluid.instantiate : instantiateOne, instantiateChild, instantiateStandalone, idealSizeFor, defaultLabelFor, LiveTree, loadImageFile, applyMenuItems, applyProperties;
+import fluid.instantiate : instantiateOne, instantiateChild, instantiateStandalone, idealSizeFor, defaultLabelFor, defaultNameFor, LiveTree, loadImageFile, applyMenuItems, applyProperties, scrollOffsetWithin, getTextStuff, onImageLoadError;
 import fluid.menu_owner_node : MenuOwnerNode;
-import fluid.menu_item_node : MenuItemNode;
+import fluid.menu_item_node : MenuItemNode, SubmenuNode;
+import fluid.grid_node : GridNode, GridCellInfo;
+import fluid.flex_node : FlexNode;
+import fluid.grid_proxy : GridProxy;
+import fluid.layout_edit : flexInsertChildAt, gridInsertChildAt, gridInsertChildAtNextFreeCell,
+    applyFlexOrderToLive, syncLayoutFromLive, syncAllLayoutsFromLive;
+import fluid.snap_action : betterSize;
+import std.algorithm.comparison : min, max;
 import fluid.layout_suite : layoutList, LayoutSuite, LayoutList;
 import fluid.align_widget : AlignHow, alignWidgets;
 import fluid.node_order : moveSelectedEarlier, moveSelectedLater, sortSelected;
-import fluid.group_ungroup : groupSelected, ungroupSelected, fixGroupSize;
+import fluid.group_ungroup : isContainerNode, groupSelected, ungroupSelected, fixGroupSize, groupSelectedMenuItems, ungroupSelectedMenuItems;
 import fluid.i18n : I18nSettings, I18nType;
 import fluid.project_settings : ProjectSettings;
 import fluid.edit_session : EditSession;
@@ -124,7 +133,7 @@ import codeview_panel : codeviewToggleVisibility, codeviewRefresh, codeviewPanel
 import settings_panel : settingsToggleVisibility, settingsShowShellTab, settingsShowLayoutTab,
     layoutRefreshTabIfOpen, layoutSaveUser;
 import function_panel : makeWidgetBin, widgetBinPanel, binButtonCb, codeButtonCb, widgetBinToggleVisibility;
-import fluid.bin_button : BinButton;
+import fluid.bin_button : BinButton, onWindowDropped;
 import fluid.shell_process;
 import shell_run_window : makeShellRunWindow, showShellRunWindow, shellRunWindow,
     shellRunTerminal, shellRunButton;
@@ -133,7 +142,12 @@ import fluid.shell_settings : onProjectShellCommandChanged, onShellListChanged;
 import fluid.code_node : CodeNode;
 import fluid.decl_node : DeclNode;
 import fluid.data_node : DataNode;
+import fluid.comment_node : CommentNode;
 import fluid.function_node : FunctionNode;
+import fluid.code_block_node : CodeBlockNode;
+import fluid.decl_block_node : DeclBlockNode;
+import fluid.class_node : ClassNode;
+import fluid.widget_class_node : WidgetClassNode;
 import fluid.external_code_editor : ExternalCodeEditor;
 import fluid.pixmaps : loadPixmaps, pixmapFor;
 
@@ -305,25 +319,16 @@ private ProjectCanvas canvasFor(Node n)
     return wn is null ? null : canvases_.get(wn, null);
 }
 
-/// After a `MenuItemNode`/`SubmenuNode` is added to, removed from, or
-/// moved anywhere under a live `MenuOwnerNode`'s own subtree, that
-/// widget's `.menu()` array needs rebuilding from scratch --
-/// `instantiate.d`'s `applyMenuItems()` was, until now, only ever run
-/// at construction time (`instantiateOne()`/`instantiateChild()`/
-/// `instantiateStandalone()`), never again afterward, so a `Choice`/
-/// `MenuButton`/`MenuBar`/`InputChoice` that's already live on the
-/// canvas silently kept showing its stale dropdown after any edit to
-/// its own menu items -- including the newly-real `Submenu`/
-/// `CheckMenuItem`/`RadioMenuItem`/`MenuItem` creation this enables
-/// (see `addNode()`), and, discovered the same way, plain deletion too
-/// (see `removeNodes()`). `n` can be the item itself (post-add, its
-/// `.parent` chain is already correct) or its former parent (post-
-/// remove, since `Node.removeChild()` clears the removed node's own
-/// `.parent` -- see that function's own doc comment) -- either way this
-/// walks upward past any nesting `SubmenuNode`s to the one real
-/// `MenuOwnerNode` that owns a live widget. A no-op when `n` has no
-/// such ancestor (an ordinary widget/group edit) or that ancestor has
-/// no live widget yet (nothing open on the canvas for it).
+/// Rebuilds the live menu of the `MenuOwnerNode` that `n` sits under,
+/// after a menu item was added, deleted, pasted, duplicated, or moved --
+/// FLTK's `Menu_Manager_Node` reruns `build_menu()` from its own
+/// `add_child()`/`move_child()`/`remove_child()` overrides. `n` can be
+/// the item itself or, after a removal (`Node.removeChild()` clears the
+/// removed node's `.parent`), its former parent; either way this walks up
+/// past any `SubmenuNode`s to the owner. A no-op when `n` has no such
+/// ancestor or that ancestor has no live widget. Property edits made in
+/// the Widget Properties panel rebuild through that panel's own
+/// `refreshLiveMenuOf()`.
 private void refreshLiveMenu(Node n)
 {
     for (Node p = n; p !is null; p = p.parent)
@@ -333,7 +338,7 @@ private void refreshLiveMenu(Node n)
         auto cv = canvasFor(owner);
         if (cv is null) return;
         auto w = cv.liveTree().widgetOf.get(owner, null);
-        if (w !is null) applyMenuItems(owner, w);
+        if (w !is null) applyMenuItems(owner, w, true, projectDir_());
         return;
     }
 }
@@ -462,6 +467,11 @@ private string[] recentMenuPaths_;
 /// branch that calls this.
 void runEditor(string[] args)
 {
+    // Ported from FLTK's own `fl_register_images();` call (`Fluid.cxx`):
+    // without it the file chooser's preview and `SharedImage.get()` only
+    // recognize XBM/XPM/PNM, not PNG/JPEG/GIF/BMP/ICO/SVG.
+    registerImages();
+
     // Ported from FLTK's own `loadPixmaps();` call in `make_main_
     // window()` (`Fluid.cxx`) -- populates `fluid.pixmaps`' per-node-
     // type icon table once at startup, before anything that might
@@ -483,8 +493,8 @@ void runEditor(string[] args)
     // Z/..., Alt-mnemonics) reachable regardless of which top-level
     // window currently has focus, via `fl.menu_.Menu_.global()`'s
     // already-real `fl.core.addHandler()` registration. Without this,
-    // a shortcut typed while `canvas_`/`panel_` (separate top-level
-    // windows from this one, `shelf_`) has focus never reaches this
+    // a shortcut typed while a design canvas or the properties panel
+    // (separate top-level windows from this one, `shelf_`) has focus never reaches this
     // menu at all -- `fl.core.handle()`'s own `Event.shortcut`
     // dispatch only walks the *current* event's own window chain, and
     // FLTK's real Fluid relies on exactly this `.global()` call,
@@ -496,21 +506,15 @@ void runEditor(string[] args)
     // in the canvas.
     menu.global();
     // Order/shortcuts/dividers match `fluid/app/Menu.cxx`'s real
-    // `main_menu[]` &File group exactly. `&Insert...`/`Sa&ve A Copy...`/
-    // `&Revert...` are real, planned features with no implementation yet
-    // (each independently portable, just not done) -- present below as
-    // deactivated placeholders (`menuInactive`), same pattern as
-    // `&Edit`'s/`&Layout`'s own placeholder items just below, so this
-    // menu's layout and divider
-    // grouping don't need revisiting again once each lands. `&Print...`
-    // is real (`printSnapshots()` below).
+    // `main_menu[]` &File group exactly. `&Print...` is real
+    // (`printSnapshots()` below).
     menu.add("&File/&New", stateCtrl + 'n', (w) { if (confirmDiscardChanges()) newProject(); });
     menu.add("&File/&Open...", stateCtrl + 'o', (w) { if (confirmDiscardChanges()) openProject(); });
-    menu.add("&File/&Insert...", stateCtrl + 'i', null, menuInactive | menuDivider);
+    menu.add("&File/&Insert...", stateCtrl + 'i', (w) { insertProject(); }, menuDivider);
     menu.add("&File/&Save", stateCtrl + 's', (w) { saveProject(); });
     menu.add("&File/Save &As...", stateCtrl + stateShift + 's', (w) { saveProjectAs(); });
-    menu.add("&File/Sa&ve A Copy...", 0, null, menuInactive);
-    menu.add("&File/&Revert...", 0, null, menuInactive | menuDivider);
+    menu.add("&File/Sa&ve A Copy...", 0, (w) { saveProjectCopy(); });
+    menu.add("&File/&Revert...", 0, (w) { revertProject(); }, menuDivider);
     menu.add("&File/New &From Template...", stateCtrl + stateShift + 'n', (w) { if (confirmDiscardChanges()) newFromTemplate(); });
     menu.add("&File/Save As &Template...", 0, (w) { saveAsTemplate(); }, menuDivider);
     menu.add("&File/&Print...", stateCtrl + 'p', (w) { printSnapshots(); });
@@ -559,17 +563,8 @@ void runEditor(string[] args)
     // `sortSelectedCmd()`/`earlierSelectedCmd()`/
     // `laterSelectedCmd()` (`fluid.node_order`) and `groupSelectedCmd()`/
     // `ungroupSelectedCmd()` (`fluid.group_ungroup`); see each module's
-    // own doc comment. Still not (yet) ported, so not wired to
-    // anything: `Pr&operties...`. `Hide Restricted` is real too, see its own
-    // `.add()` call below. Present as deactivated placeholders
-    // anyway: these are
-    // real, planned features (not permanent exclusions like the
-    // Forms-compat items CONVENTIONS.md documents), so the
-    // position/shortcut/divider is locked in
-    // via `menuInactive` (grays the item out and makes it
-    // unselectable/non-shortcut-reachable, matching FLTK's own
-    // `FL_MENU_INACTIVE` semantics exactly), with a real callback
-    // dropped in the moment the underlying mechanism exists. `f + n` is
+    // own doc comment. `Pr&operties...` is `editSelected()`. `Hide Restricted` is real too, see its own
+    // `.add()` call below. `f + n` is
     // this port's `FL_F(n)` -- `fl.enumerations.f == 0xffbd`, "f + n
     // for function key n", matching FLTK's own encoding.
     menu.add("&Edit/&Undo", stateCtrl + 'z', (w) { undo(); });
@@ -581,7 +576,7 @@ void runEditor(string[] args)
     menu.add("&Edit/&Delete", deleteKey, (w) { deleteSelected(); }, menuDivider);
     menu.add("&Edit/Select &All", stateCtrl + 'a', (w) { selectAll(); });
     menu.add("&Edit/Select &None", stateCtrl + stateShift + 'a', (w) { selectNone(); }, menuDivider);
-    menu.add("&Edit/Pr&operties...", fl.enumerations.f + 1, null, menuInactive);
+    menu.add("&Edit/Pr&operties...", fl.enumerations.f + 1, (w) { editSelected(); });
     menu.add("&Edit/&Sort", 0, (w) { sortSelectedCmd(); });
     menu.add("&Edit/&Earlier", fl.enumerations.f + 2, (w) { earlierSelectedCmd(); });
     menu.add("&Edit/&Later", fl.enumerations.f + 3, (w) { laterSelectedCmd(); });
@@ -627,11 +622,8 @@ void runEditor(string[] args)
     // set of type names is exactly `fluid.instantiate`'s registry
     // (identical to `fluid.factory`'s, see that module's own comment on
     // why the two stay in lockstep), minus "Window"/"DoubleWindow"
-    // (a `WindowNode` nested inside another window's own widget tree
-    // isn't rendered by the canvas at all -- see `instantiate.d`'s
-    // `instantiateChild()` -- so offering them here
-    // would silently create a dead-end node the canvas can't show) and
-    // minus FLTK's own Submenu/Menu_Item/Checkbox_Menu_Item/
+    // (a window needs `createWindowNode()`'s own placement rule, below)
+    // and minus FLTK's own Submenu/Menu_Item/Checkbox_Menu_Item/
     // Radio_Menu_Item entries (menu-item-editing nodes with no
     // `addNode()`/`addWidget()` target-selection support in this port
     // yet -- a real, separate follow-up, not silently dropped).
@@ -696,20 +688,6 @@ void runEditor(string[] args)
         int idx = menu.add(path, 0, (w) { addNode(typeName); });
         addIcon(idx, typeName);
     }
-    // Deactivated placeholder for a real FLTK `New_Menu` leaf whose
-    // node type isn't registered in `fluid.factory`'s registry yet --
-    // `createNode()` throws on an unknown type name, so this can't be
-    // wired to `addNode()`/`addWidget()` the way `newNodeItem()`/
-    // `newWidgetItem()` are; still gets the same icon+"..." treatment
-    // for visual consistency with every other &New leaf (FLTK's
-    // own `fill_in_New_Menu()` icon-labels every leaf regardless of
-    // whether this port has gotten around to implementing it).
-    void newDeadItem(string path, string typeName)
-    {
-        int idx = menu.add(path, 0, null, menuInactive);
-        addIcon(idx, typeName);
-    }
-
     // The palette's "Code" group -- project-structure nodes, not canvas
     // widgets, so these route through `addNode()`, not `addWidget()`
     // (see that function's own doc comment for the target-selection
@@ -729,11 +707,9 @@ void runEditor(string[] args)
     //
     // `&Window` mimics what FLTK does when clicking on window, via
     // `createWindowNode()` -- not `newWidgetItem()`/`addWidget()` like
-    // every sibling here, since a window nested inside another window's
-    // canvas has no live-rendering path (`instantiate.d`'s
-    // `instantiateChild()` already skips `WindowNode`s) and needs FLTK's own real placement
-    // rule (a function ancestor, or a "Please select a function"
-    // message) rather than `addWidget()`'s generic "current selection
+    // every sibling here, since it needs FLTK's own real placement
+    // rule (a function or window ancestor, or the node creation assistant)
+    // rather than `addWidget()`'s generic "current selection
     // or project root" fallback. See `createWindowNode()`'s own doc
     // comment for the full port of `Window_Node::make()`'s logic.
     {
@@ -762,10 +738,8 @@ void runEditor(string[] args)
     newWidgetItem("&New/&Valuators/&Dial", "Dial");
     newWidgetItem("&New/&Valuators/Cloc&k", "Clock");
     // Not FLTK -- see `fluid.factory`'s own matching registry
-    // comment for why this exists at all (added at the user's explicit
-    // request, after asking about `Fl_Clock`/`Fl_Clock_Output`'s real
-    // difference). Placed right next to Clock since FLTK has no
-    // menu precedent of its own to match for this one.
+    // comment for why this exists. Placed right next to Clock since FLTK
+    // has no menu precedent of its own to match for this one.
     newWidgetItem("&New/&Valuators/Clock &Output", "ClockOutput");
     newWidgetItem("&New/&Valuators/Ad&juster", "Adjuster");
     newWidgetItem("&New/&Valuators/&Counter", "Counter");
@@ -891,10 +865,31 @@ void runEditor(string[] args)
         overlayButton.redraw();
     };
     // Every field in this dialog already applies its own edit live, as
-    // you type -- FLTK's own "apply everything on OK" sweep
-    // (`widget_panel_callbacks.cxx`'s `set_cb()`) has nothing left to
-    // do here, so Close really is just Close.
-    okCb = (w) { thePanel.hide(); };
+    // you type, so FLTK's "apply everything on OK" sweep (`set_cb()`) has
+    // nothing left to apply. What remains of it is its code check: the
+    // widget's code, callback and user data must have balanced brackets
+    // and quotes (`c_check()`, `fluid.code_check`), or FLTK reports the
+    // error and keeps the panel open.
+    // Image load errors (`fluid.instantiate.loadImageFile()`), each shown
+    // once per loaded project: the live canvas re-applies every property
+    // on each edit, which would otherwise repeat the message.
+    onImageLoadError = (msg) {
+        if (msg in reportedImageErrors_) return;
+        reportedImageErrors_[msg] = true;
+        fl.message(msg);
+    };
+
+    okCb = (w) {
+        import fluid.code_check : codeCheck;
+
+        if (tabsWizard.value() is widgetTabs)
+        {
+            if (auto d = codeCheck(vCodeInput2.buffer().text())) { fl.message("Error in code: " ~ d); return; }
+            if (auto d = codeCheck(wCallback.buffer().text())) { fl.message("Error in callback: " ~ d); return; }
+            if (auto d = codeCheck(userDataInput.value())) { fl.message("Error in user_data: " ~ d); return; }
+        }
+        thePanel.hide();
+    };
 
     // Live Resize -- ported from FLTK's own `live_mode_cb()`
     // (`widget_panel_callbacks.cxx`): clones the single selected
@@ -902,7 +897,7 @@ void runEditor(string[] args)
     // window, letting the user verify `resizable()`/layout settings
     // behave the way the real generated app would (the design canvas
     // itself deliberately never reflows children on resize during
-    // editing -- see the "&Layout/Synchronized Resize" placeholder's
+    // editing -- see the "&Layout/Synchronized Resize" toggle's
     // own comment above). Matches FLTK's exact wrapper-window
     // construction (a small non-resizing "Exit Live Resize" bar pinned
     // to the bottom-left via a hidden resizable dummy `Box`, green
@@ -997,7 +992,7 @@ void runEditor(string[] args)
     // setters use internally, applied here to data
     // the tree doesn't own itself.
     widgetPanelOnEdited = () {
-        if (auto cv = activeCanvas()) cv.redraw();
+        if (auto cv = activeCanvas()) { cv.redraw(); cv.redrawOverlay(); }
         browser_.recalcTree();
         browser_.redraw();
     };
@@ -1049,15 +1044,25 @@ void runEditor(string[] args)
     // that never touches `callback_` at all (`BinButton.handle()`'s own
     // `Event.drag` case calls `fl.copy()`/`fl.dnd()` directly), but fatal for the Code group, which has no
     // canvas/drag path at all.
+    // Dropping the Window button on the desktop creates a window there
+    // (`Bin_Window_Button`); a window nested in another keeps its place
+    // inside its parent.
+    onWindowDropped = (int x, int y) {
+        auto win = createWindowNode();
+        if (win is null || isNestedWindow(win)) return;
+        win.x = x;
+        win.y = y;
+        if (auto cv = canvases_.get(win, null)) cv.position(x, y);
+    };
     binButtonCb = (w) {
         auto btn = cast(BinButton) w;
         if (btn is null) return;
         // "Window" needs its own dedicated placement rule (a function
-        // ancestor, FLTK's own "Please select a function" message
-        // otherwise) rather than `addWidget()`'s generic one -- see
+        // ancestor, else the node creation assistant) rather than `addWidget()`'s generic one -- see
         // `createWindowNode()`'s own doc comment. Every other bin
         // button still goes through the shared `addWidget()` path.
         if (btn.typeName() == "Window") createWindowNode();
+        else if (isMenuItemTypeName(btn.typeName())) addNode(btn.typeName());
         else addWidget(btn.typeName());
     };
     // The palette's "Code" group (Function/Class/comment/Code/
@@ -1418,23 +1423,13 @@ private void saveWindowPosition(Window w, string prefsGroup, bool saveVisibility
 /// `proj_filename` is null (`if (!proj_filename) basename =
 /// "Untitled.fl";`) -- nothing more than an empty-filename display rule.
 ///
-/// Must NOT auto-insert a `Function {}
-/// {}` wrapping a single `Window`, even though `code_writer.d`
-/// needs *something* to generate against -- that's never FLTK's
-/// behavior (confirmed above), and doing so would break the state machine: a fresh/New project would start with a Window
-/// node that couldn't be deleted cleanly (deleting it would leave `canvas_`/
-/// `projectRoot_` unable to reconcile with `openLoadedProject()`'s own
-/// "always a real root `WindowNode`" assumption), and deleting the
-/// wrapping Function would cascade away the Window with it. `code_writer.d` generating no `main()` for a
-/// truly empty project is *correct*, not a gap -- it matches what real
-/// Fluid would also produce from an empty `.fl` file. The empty-tree
-/// state itself is fully supported:
-/// `loadProject()` already has a real, exercised "no top-level window
-/// at all" path (`findRootWindow()` returning `null`, see that
-/// function's own comment) that leaves `canvas_`/`projectRoot_` both
-/// `null` and shows the node browser/properties panel with nothing
-/// loaded -- this function reaches that exact same state directly,
-/// instead of manufacturing fake content to avoid it.
+/// Must NOT auto-insert a `Function {}` wrapping a single `Window`,
+/// even though `code_writer.d` needs *something* to generate against --
+/// that's never FLTK's behavior (confirmed above). `code_writer.d`
+/// generating no `main()` for a truly empty project is *correct*, not a
+/// gap -- it matches what real Fluid would also produce from an empty
+/// `.fl` file. The empty-tree state is fully supported: no canvas is
+/// open, and the node browser and properties panel show nothing loaded.
 private void newProject()
 {
     closeProject();
@@ -1513,7 +1508,7 @@ private void newFromTemplate()
     if (path.length == 0)
         return; // nothing actually selected
 
-    loadProject(path, true);
+    loadProject(path, true, templateInstance.value());
 }
 
 /// `&File/Save As &Template...` -- ported from FLTK's
@@ -1521,9 +1516,8 @@ private void newFromTemplate()
 /// `newFromTemplate()`'s own dialog in "save" mode: an extra "New
 /// Template" row prepended to the list (no `data()`, matching
 /// FLTK's own `template_browser->add("New Template")` and this
-/// port's now-real per-row `Browser.data()` use in `template_panel.fl`
-/// -- see that file's own "Correction" note for why this needed fixing
-/// first), and `templateName` (shown by default already) is where the
+/// port's per-row `Browser.data()` use in `template_panel.fl`),
+/// and `templateName` (shown by default already) is where the
 /// save name comes from -- `templateInstance`/`templateDelete`/
 /// `templateSubmit`'s label all already default to what save mode
 /// wants from `makeTemplatePanel()`'s own construction (`templateName`
@@ -1613,6 +1607,7 @@ private void saveAsTemplate()
             return;
     }
 
+    syncLayoutsFromLive();
     auto text = new ProjectWriter().generate(projectRoots_, projectI18n_, shellCommandList.list, "", layoutList,
         false, projectDubHeader_, projectSettings_);
     try
@@ -1620,7 +1615,7 @@ private void saveAsTemplate()
     catch (Exception e)
     {
         stderr.writefln("fluid: could not write %s: %s", flPath, e.msg);
-        fl.message(format("Could not write %s:\n%s", flPath, e.msg));
+        fl.alert(format("Error writing %s: %s", flPath, e.msg));
         return;
     }
 
@@ -1633,10 +1628,96 @@ private void saveAsTemplate()
     fl.png_image.writePng(flPath.setExtension("png"), screenshot);
 }
 
+/// `&File/&Revert...` -- ported from `Application::revert_project()`
+/// (`Fluid.cxx`): reloads the project file, replacing the current
+/// design, after confirming when there are unsaved changes. A project
+/// never saved has no file to revert to.
+private void revertProject()
+{
+    if (projectPath_.length == 0) return;
+    if (dirty_ && fl.ask.choice("This user interface has been changed. Really revert?",
+            "Cancel", "Revert", null) == 0)
+        return;
+    loadProject(projectPath_);
+}
+
 private void openProject()
 {
     string path = fileChooser("Open .fl file", "*.fl", projectPath_);
     if (path.length) loadProject(path);
+}
+
+/// `&File/&Insert...` -- ported from `Application::merge_project_file()`
+/// (`Fluid.cxx`): merges another `.fl` file's nodes into the open project,
+/// placed as a paste would be. With nothing open it loads the file
+/// instead, as FLTK does.
+private void insertProject()
+{
+    string path = fileChooser(projectRoots_.length ? "Merge Project File" : "Open Project File",
+        "*.fl", projectPath_);
+    if (path.length) mergeProject(path);
+}
+
+private void mergeProject(string path)
+{
+    import std.algorithm.searching : any, startsWith;
+    import std.format : format;
+
+    if (projectRoots_.length == 0)
+    {
+        loadProject(path);
+        return;
+    }
+
+    string source;
+    try
+        source = readText(path);
+    catch (Exception e)
+    {
+        stderr.writefln("fluid: could not read %s: %s", path, e.msg);
+        fl.message(format("Can't read %s: %s", path, e.msg));
+        return;
+    }
+    Reader reader;
+    Node[] roots;
+    try
+    {
+        reader = new Reader(source);
+        roots = reader.readProject();
+    }
+    catch (Exception e)
+    {
+        stderr.writefln("fluid: could not parse %s: %s", path, e.msg);
+        fl.message(format("Can't read %s: %s", path, e.msg));
+        return;
+    }
+
+    checkpoint();
+
+    // Options the file sets are applied to the open project, as in FLTK's
+    // reader; the file name and every option the file lacks stay as they are.
+    bool seen(string keyword) { return (keyword in reader.optionsSeen) !is null; }
+    if (reader.optionsSeen.keys.any!(k => k.startsWith("i18n_")))
+        projectI18n_ = reader.i18n;
+    if (seen("use_FL_COMMAND")) projectSettings_.useFlCommand = true;
+    if (seen("mergeback"))
+    {
+        projectSettings_.writeMergebackData = reader.settings.writeMergebackData;
+        updateMergebackMenu();
+    }
+    if (seen("code_name")) codeFileName_ = reader.codeFileName;
+    if (seen("dub_header")) projectDubHeader_ = reader.dubHeader;
+    applyFileShellAndLayouts(reader.shellCommands, reader.layoutSuites, reader.layoutCurrentSuite,
+        reader.layoutCurrentPreset, reader.hasSnap, seen("shell_commands"), reader.hasSnap);
+
+    auto placed = placeParsedNodes(roots);
+    if (placed.length == 0) return;
+    // A merged window gets its own canvas, like a loaded one; a window
+    // nested in another window's tree has none (see `instantiateUnderLiveParent()`).
+    foreach (wn; findAllWindowRoots(placed))
+        if (enclosingWindowNode(wn.parent) is null)
+            showWindowCanvas(wn);
+    selectPlacedNodes(placed);
 }
 
 /// `asTemplate = true` (used by `newFromTemplate()` below) loads
@@ -1645,9 +1726,12 @@ private void openProject()
 /// seeded from the template's content, not an in-place edit of the
 /// template file itself; a plain `loadProject()` call would silently
 /// let "Save" overwrite the user's own template library.
-private void loadProject(string path, bool asTemplate = false)
+private void loadProject(string path, bool asTemplate = false, string instance = null)
 {
+    import std.array : replace;
     import std.format : format;
+
+    reportedImageErrors_ = null;
 
     string source;
     try
@@ -1655,9 +1739,16 @@ private void loadProject(string path, bool asTemplate = false)
     catch (Exception e)
     {
         stderr.writefln("fluid: could not read %s: %s", path, e.msg);
-        fl.message(format("Could not read %s:\n%s", path, e.msg));
+        if (asTemplate)
+            fl.alert(format("Error reading template file \"%s\":\n%s", path, e.msg));
+        else
+            fl.message(format("Can't read %s: %s", path, e.msg));
         return;
     }
+    // A template's `@INSTANCE@` becomes the Instance Name given in the
+    // template dialog (`Application::new_project_from_template()`).
+    if (instance.length)
+        source = source.replace("@INSTANCE@", instance);
 
     Node[] roots;
     I18nSettings i18n;
@@ -1686,7 +1777,7 @@ private void loadProject(string path, bool asTemplate = false)
     catch (Exception e)
     {
         stderr.writefln("fluid: could not parse %s: %s", path, e.msg);
-        fl.message(format("Could not parse %s:\n%s", path, e.msg));
+        fl.message(format("Can't read %s: %s", path, e.msg));
         return;
     }
 
@@ -1727,31 +1818,8 @@ private void loadProject(string path, bool asTemplate = false)
     dirty_ = false;
     updateShelfTitle();
 
-    // Swap in this project's own `ToolStore.project` shell commands --
-    // matches FLTK's own `Fd_Shell_Command_List::read(Project_
-    // Reader*)`'s `clear(Tool_Store::PROJECT)`-then-reload shape.
-    // `ToolStore.user` entries are untouched (not this project's data).
-    shellCommandList.clear(ToolStore.project);
-    foreach (cmd; shellCommands)
-        shellCommandList.add(cmd);
-    rebuildShellMenu();
-
-    // Swap in this project's own `ToolStore.project` layout suites --
-    // matches FLTK's own `Layout_List::read(Project_Reader*)`'s
-    // shape exactly (`readSnap()`'s own doc comment in `project_reader
-    // .d`), mirroring the shell-command swap-in just above. A project
-    // with no `snap {...}` block at all (`hasSnap == false`, the common
-    // case) leaves the current suite/preset selection untouched.
-    layoutList.removeAll(ToolStore.project);
-    foreach (suite; layoutSuites)
-        layoutList.add(suite);
-    if (hasSnap)
-    {
-        if (layoutCurrentSuite.length) layoutList.currentSuite(layoutCurrentSuite);
-        layoutList.currentPreset(layoutCurrentPreset);
-    }
-    layoutRefreshTabIfOpen();
-    rebuildLayoutMenu();
+    applyFileShellAndLayouts(shellCommands, layoutSuites, layoutCurrentSuite, layoutCurrentPreset, hasSnap,
+        true, true);
 
     if (projectPath_.length && history_ !is null)
     {
@@ -1761,6 +1829,41 @@ private void loadProject(string path, bool asTemplate = false)
 
     if (!asTemplate)
         mergebackCodeFiles(false);
+}
+
+/// Swaps in a loaded file's own `ToolStore.project` shell commands and
+/// layout suites -- matches FLTK's own `Fd_Shell_Command_List::read(
+/// Project_Reader*)`'s `clear(Tool_Store::PROJECT)`-then-reload shape and
+/// `Layout_List::read(Project_Reader*)`'s (`readSnap()`'s own doc comment
+/// in `project_reader.d`). `ToolStore.user` entries are untouched (not
+/// this project's data). `replaceShell`/`replaceLayouts` false leave that
+/// half alone, for merging a file that has no such block. A file with no
+/// `snap {...}` block at all (`hasSnap == false`, the common case) leaves
+/// the current suite/preset selection untouched.
+private void applyFileShellAndLayouts(ShellCommand[] shellCommands, LayoutSuite[] layoutSuites,
+    string layoutCurrentSuite, int layoutCurrentPreset, bool hasSnap, bool replaceShell, bool replaceLayouts)
+{
+    if (replaceShell)
+    {
+        shellCommandList.clear(ToolStore.project);
+        foreach (cmd; shellCommands)
+            shellCommandList.add(cmd);
+        rebuildShellMenu();
+    }
+
+    if (replaceLayouts)
+    {
+        layoutList.removeAll(ToolStore.project);
+        foreach (suite; layoutSuites)
+            layoutList.add(suite);
+        if (hasSnap)
+        {
+            if (layoutCurrentSuite.length) layoutList.currentSuite(layoutCurrentSuite);
+            layoutList.currentPreset(layoutCurrentPreset);
+        }
+        layoutRefreshTabIfOpen();
+        rebuildLayoutMenu();
+    }
 }
 
 /// Every top-level `WindowNode` reachable anywhere in `roots`' forest,
@@ -1776,10 +1879,9 @@ private void loadProject(string path, bool asTemplate = false)
 /// there's no "root window" concept FLTK at all, just however many
 /// top-level windows a project happens to declare. Stops descending
 /// once a `WindowNode` is found (its own children are that window's
-/// nested content, not additional top-level roots -- an actual
-/// subwindow nested inside another window's tree renders as part of
-/// that parent window's own live tree, not a separate top-level
-/// canvas, matching `instantiate.d`'s documented nested-window scope).
+/// nested content, not additional top-level roots -- a subwindow
+/// nested inside another window's tree is a canvas inside that
+/// window's canvas, not a separate top-level one).
 private WindowNode[] findAllWindowRoots(Node[] roots)
 {
     WindowNode[] result;
@@ -1802,11 +1904,30 @@ private WindowNode[] findAllWindowRoots(Node[] roots)
 /// guarding, from every project-mutating entry point.
 private void checkpoint()
 {
+    onceType_ = OnceType.always;
     if (projectRoots_.length == 0) return;
     undoStack_ ~= new ProjectWriter().generate(projectRoots_, projectI18n_, [], codeFileName_, null, true, projectDubHeader_, projectSettings_);
     redoStack_ = [];
     dirty_ = true;
     updateShelfTitle();
+}
+
+/// FLTK's `Undo::OnceType`: the kind of change a run of same-kind changes
+/// (one resize drag sends many resize events) is recording as one undo step.
+private enum OnceType { always, windowResize }
+
+/// The kind the last `checkpoint()` or `checkpointOnce()` recorded;
+/// `checkpoint()` resets it to `always`.
+private OnceType onceType_;
+
+/// FLTK's `Undo::checkpoint(OnceType)`: records an undo step only if the
+/// previous one was not for the same kind of change. Returns whether it did.
+private bool checkpointOnce(OnceType type)
+{
+    if (onceType_ == type) return false;
+    checkpoint();
+    onceType_ = type;
+    return true;
 }
 
 /// Reflects `dirty_`/`projectPath_` in the shelf window's own title
@@ -1822,16 +1943,27 @@ private void updateShelfTitle()
     shelf_.label("Fluid - " ~ name ~ (dirty_ ? " *" : ""));
 }
 
-/// Shows a Cancel/Discard confirmation if there are unsaved changes,
-/// returning `true` if it's safe to proceed (either nothing to lose,
-/// or the user confirmed discarding it) -- guards every action that
-/// would otherwise silently lose edits: `&File/&Quit`, `&File/&New`,
+/// Ported from `Application::confirm_project_clear()` (`Fluid.cxx`):
+/// with unsaved changes, asks whether to save first (Cancel / Save /
+/// Don't Save), returning `true` if it's safe to proceed. Save runs the
+/// normal save, and a cancelled Save As (or a failed write) leaves the
+/// project unsaved, which cancels the action too. Guards every action
+/// that would otherwise lose edits: `&File/&Quit`, `&File/&New`,
 /// `&File/&Open...`, and `&File/New from &Template...`.
 private bool confirmDiscardChanges()
 {
     if (!dirty_) return true;
-    return fl.ask.choice("This project has unsaved changes.\nDiscard them?",
-        "Cancel", "Discard", null) == 1;
+    switch (fl.ask.choice("This project has unsaved changes. Do you want to save\n"
+        ~ "the project file before proceeding?", "Cancel", "Save", "Don't Save"))
+    {
+    case 0:
+        return false;
+    case 1:
+        saveProject();
+        return !dirty_;
+    default:
+        return true;
+    }
 }
 
 /// Session tracker for `checkpointTextEdit()`.
@@ -1851,6 +1983,7 @@ private void checkpointTextEdit(Object key)
 private void undo()
 {
     textEditSession_.end();
+    onceType_ = OnceType.always;
     if (undoStack_.length == 0) return;
     redoStack_ ~= new ProjectWriter().generate(projectRoots_, projectI18n_, [], codeFileName_, null, true, projectDubHeader_, projectSettings_);
     string text = undoStack_[$ - 1];
@@ -1861,6 +1994,7 @@ private void undo()
 private void redo()
 {
     textEditSession_.end();
+    onceType_ = OnceType.always;
     if (redoStack_.length == 0) return;
     undoStack_ ~= new ProjectWriter().generate(projectRoots_, projectI18n_, [], codeFileName_, null, true, projectDubHeader_, projectSettings_);
     string text = redoStack_[$ - 1];
@@ -1960,6 +2094,11 @@ private void restoreFromText(string text)
 
     bool[WindowNode] matchedNew; // restored windows already claimed below
 
+    // Nested windows are rebuilt along with their parent window's
+    // canvas, so their old canvases are forgotten and registered again.
+    foreach (wn; canvases_.keys)
+        if (isNestedWindow(wn)) canvases_.remove(wn);
+
     // Reuse every still-corresponding window's own live canvas in
     // place. Deliberately does *not* route through `ensureCanvasVisible()`
     // when the canvas is already shown -- unlike `showWindowCanvas()`'s
@@ -1992,6 +2131,7 @@ private void restoreFromText(string text)
         cv.rebuildFrom(newWn, projectDir_());
         canvases_[newWn] = cv;
         wireCanvasCallbacks(newWn, cv);
+        registerNestedCanvases(cv);
         if (!cv.shown()) ensureCanvasVisible(cv);
     }
 
@@ -2041,6 +2181,16 @@ private void restoreFromText(string text)
 /// `Fluid.proj.tree.current` scope.
 private ProjectCanvas showWindowCanvas(WindowNode wn)
 {
+    // A nested window lives inside its top-level window's canvas: show
+    // that one, and make the nested window the active one.
+    auto top = outermostWindow(wn);
+    if (top !is wn)
+    {
+        showWindowCanvas(top);
+        activeWindow_ = wn;
+        return canvases_.get(wn, null);
+    }
+
     auto cv = canvases_.get(wn, null);
     bool freshlyCreated = cv is null;
     if (freshlyCreated)
@@ -2048,21 +2198,61 @@ private ProjectCanvas showWindowCanvas(WindowNode wn)
         cv = new ProjectCanvas(wn, projectDir_());
         canvases_[wn] = cv;
         wireCanvasCallbacks(wn, cv);
+        registerNestedCanvases(cv);
         // Carries the current "Hide Overlays"/"Hide Guides"/"Hide
         // Restricted"/"Show Ghosted Group Outlines" toggle state to a
         // freshly-opened window -- a brand-new `ProjectCanvas` otherwise
         // defaults back to its own class defaults, silently forgetting
         // whatever every other open window (or a previous session's
         // toggle) already agreed on.
-        cv.overlaysHidden = overlaysHidden_;
-        cv.showGuides = showGuides_;
-        cv.showRestricted = showRestricted_;
-        cv.showGhostedOutline = showGhostedOutline_;
-        cv.allowLayout = allowLayout_;
+        seedCanvasToggles(cv);
     }
     activeWindow_ = wn;
     ensureCanvasVisible(cv);
     return cv;
+}
+
+/// Gives a freshly created canvas the current "Hide Overlays"/"Hide
+/// Guides"/"Hide Restricted"/"Show Ghosted Group Outlines"/"Synchronized
+/// Resize" settings.
+private void seedCanvasToggles(ProjectCanvas cv)
+{
+    cv.overlaysHidden = overlaysHidden_;
+    cv.showGuides = showGuides_;
+    cv.showRestricted = showRestricted_;
+    cv.showGhostedOutline = showGhostedOutline_;
+    cv.allowLayout = allowLayout_;
+}
+
+/// Registers the canvases of the windows nested inside `cv`, at any depth
+/// (`instantiate()` builds them as subwindows of their parent's canvas),
+/// so that `canvasFor()` finds the right canvas for every node.
+private void registerNestedCanvases(ProjectCanvas cv)
+{
+    foreach (nested; cv.nestedCanvases())
+    {
+        auto wn = nested.rootNode;
+        if (canvases_.get(wn, null) !is nested)
+        {
+            canvases_[wn] = nested;
+            seedCanvasToggles(nested);
+        }
+        wireCanvasCallbacks(wn, nested);
+        registerNestedCanvases(nested);
+    }
+}
+
+/// Forgets the canvases of every nested window at or below `n`, before
+/// `n` is removed from the project (its live widgets go with it).
+private void dropNestedCanvases(Node n)
+{
+    if (auto wn = cast(WindowNode) n)
+        if (isNestedWindow(wn))
+        {
+            canvases_.remove(wn);
+            if (activeWindow_ is wn) activeWindow_ = null;
+        }
+    foreach (c; n.children) dropNestedCanvases(c);
 }
 
 /// Wires every per-canvas callback so it always marks `wn` as the
@@ -2082,9 +2272,11 @@ private void wireCanvasCallbacks(WindowNode wn, ProjectCanvas cv)
     cv.onDeleteRequested = () { activeWindow_ = wn; deleteSelected(); };
     cv.onWidgetDropped = (typeName, parent, x, y) { activeWindow_ = wn; dropWidget(typeName, parent, x, y); };
     cv.onBeforeGeometryEdit = () { activeWindow_ = wn; checkpoint(); };
+    cv.onBeforeWindowResize = () { activeWindow_ = wn; checkpointOnce(OnceType.windowResize); };
     cv.onGeometryEdited = () { activeWindow_ = wn; geometryEdited(); };
     cv.onOpenRequested = (n) { openNode(n); };
     cv.onContextMenu = (x, y) { activeWindow_ = wn; showCanvasContextMenu(cv, x, y); };
+    cv.onShortcut = () { activeWindow_ = wn; return canvasShortcut(cv); };
     cv.onImageDropped = (path, target, inactive) { activeWindow_ = wn; dropImage(path, target, inactive); };
 }
 
@@ -2206,28 +2398,33 @@ private void closeExternalEditors()
 /// node/widget pair instead of parsed wholesale.
 private void addWidget(string typeName)
 {
-    // Matches `Widget_Node::make()` exactly (`nodes/Widget_Node.cxx`):
-    // FLTK shows `fl_message("Please select a group widget or
-    // window")` and creates nothing when there's no valid container to
-    // place the new widget in. An empty project (no `WindowNode` yet)
-    // is a real, reachable state -- clicking a plain widget-bin button
-    // (Button, Box, ...) before any window exists deserves the same
-    // message `createWindowNode()` shows for the equivalent "no
-    // Function yet" case, not silence.
+    // Matches `Widget_Node::make()` (`nodes/Widget_Node.cxx`): a widget
+    // goes into a group or window. With none to put it in, the node
+    // creation assistant offers to create the missing Function and
+    // Window (`assistNodeCreation()`); declining creates nothing.
+    scope(exit) selectionOverride_ = null;
     Node anchorNode = currentSelection();
     Node parentNode = anchorNode;
-    if (parentNode is null || !parentNode.canHaveChildren())
+    if (parentNode is null || !isContainerNode(parentNode))
         parentNode = activeWindow_;
-    if (parentNode is null)
+    if (parentNode is null || !isContainerNode(parentNode))
     {
-        fl.message("Please select a group widget or window");
-        return;
+        if (!assistNodeCreation(typeName)) return;
+        anchorNode = parentNode = currentSelection();
     }
+    addWidgetIn(typeName, parentNode, anchorNode);
+}
 
+/// Creates a widget of `typeName` as a new child of the container
+/// `parentNode`, positioned relative to `anchorNode` (the selection).
+private void addWidgetIn(string typeName, Node parentNode, Node anchorNode)
+{
     checkpoint();
 
     int w, h;
-    idealSizeFor(typeName, w, h);
+    int pw, ph;
+    parentSizeOf(parentNode, pw, ph);
+    idealSizeFor(typeName, w, h, pw, ph);
     // Uses the canvas's own right-click point when this call came from
     // `showCanvasContextMenu()`'s popup (`popupX_`/`popupY_`, ported
     // from FLTK's own `popupx`/`popupy` -- `Window_Node::handle()`'s
@@ -2249,7 +2446,7 @@ private void addWidget(string typeName)
         bool newIsGroup = createNode(typeName).canHaveChildren();
         defaultPositionFor(parentNode, anchorNode, newIsGroup, px, py);
     }
-    insertWidget(typeName, parentNode, px, py, w, h);
+    insertWidget(typeName, parentNode, px, py, w, h, popupX_ >= 0);
 }
 
 /// Ported from `Widget_Node::make()`'s own position-selection algorithm
@@ -2336,10 +2533,23 @@ private int popupX_ = -1, popupY_ = -1;
 /// pair alone can't say which window it's relative to once more than
 /// one can be open.
 ///
-/// Not ported: FLTK's `in_this_only` (constrains which menu items
-/// even apply while the popup is open) -- it exists to scope certain
-/// FLTK-specific menu behaviors this port doesn't have an
-/// equivalent mechanism for at all; out of scope for this pass.
+/// `ProjectCanvas.onShortcut`'s target -- ported from
+/// `Window_Node::handle()`'s `FL_SHORTCUT` case: finds the main-menu item
+/// whose shortcut matches the current event and runs its callback.
+/// Returns 1 if one matched. The command acts on `activeWindow_`, which
+/// the caller sets to this canvas's window, which is also `inThisOnly_`
+/// while the command runs, as FLTK sets `in_this_only`.
+private int canvasShortcut(ProjectCanvas cv)
+{
+    if (menu_ is null || menu_.menu() is null) return 0;
+    auto m = menu_.menu().testShortcut();
+    if (m is null) return 0;
+    inThisOnly_ = activeWindow_;
+    scope (exit) inThisOnly_ = null;
+    if (m.callback() !is null) m.doCallback(cv);
+    return 1;
+}
+
 private void showCanvasContextMenu(ProjectCanvas cv, int x, int y)
 {
     if (menu_ is null || cv is null) return;
@@ -2349,10 +2559,40 @@ private void showCanvasContextMenu(ProjectCanvas cv, int x, int y)
 
     popupX_ = x;
     popupY_ = y;
-    auto m = fl.popup(items, cv.x() + x, cv.y() + y, null, fl.MenuStyle.defaults(), "New");
+    inThisOnly_ = activeWindow_;
+    scope (exit) inThisOnly_ = null;
+    auto m = fl.popup(items, cv.xRoot() + x, cv.yRoot() + y, null, fl.MenuStyle.defaults(), "New");
     if (m !is null) m.doCallback(cv);
     popupX_ = -1;
     popupY_ = -1;
+}
+
+/// The size of the live widget of `parent`, or 0x0 if it has none --
+/// what `Group_Node::ideal_size()` halves for a new container.
+private void parentSizeOf(Node parent, out int w, out int h)
+{
+    w = 0; h = 0;
+    if (parent is null) return;
+    auto cv = canvasFor(parent);
+    if (cv is null) return;
+    if (auto lw = parent in cv.liveTree().widgetOf)
+    {
+        w = (*lw).w();
+        h = (*lw).h();
+    }
+}
+
+/// Brings every grid and flex node in line with its live container
+/// (child rectangles, cells, order, fixed sizes) before the project is
+/// written, since a layout can have moved children without any
+/// per-edit sync having seen it (a window resize, for one).
+private void syncLayoutsFromLive()
+{
+    foreach (wn, cv; canvases_)
+    {
+        auto live = cv.liveTree();
+        syncAllLayoutsFromLive(wn, live);
+    }
 }
 
 /// `ProjectCanvas.onWidgetDropped`'s target (wired in
@@ -2370,10 +2610,22 @@ private void showCanvasContextMenu(ProjectCanvas cv, int x, int y)
 private void dropWidget(string typeName, Node parent, int x, int y)
 {
     if (parent is null) return;
+    // A menu item is a node of its menu owner/submenu, not a canvas
+    // widget: the drag already selected the drop target
+    // (`ProjectCanvas`'s `Event.dndEnter`/`dndDrag`), which is what
+    // `addNode()` nests under -- or, when it isn't in a menu, offers to
+    // create one (`assistNodeCreation()`).
+    if (isMenuItemTypeName(typeName))
+    {
+        addNode(typeName);
+        return;
+    }
     checkpoint();
     int w, h;
-    idealSizeFor(typeName, w, h);
-    insertWidget(typeName, parent, x, y, w, h);
+    int pw, ph;
+    parentSizeOf(parent, pw, ph);
+    idealSizeFor(typeName, w, h, pw, ph);
+    insertWidget(typeName, parent, x, y, w, h, true);
 }
 
 /// `ProjectCanvas.onImageDropped`'s target -- an external image file (a
@@ -2428,7 +2680,8 @@ private void dropImage(string absPath, Node target, bool inactive)
 /// already be `WidgetNode`-shaped (every entry both the "&New" menu and
 /// the widget palette offer is -- see their own comments on excluding
 /// "Window"/"DoubleWindow").
-private void insertWidget(string typeName, Node parentNode, int x, int y, int w, int h)
+private void insertWidget(string typeName, Node parentNode, int x, int y, int w, int h,
+    bool atPoint = false)
 {
     auto newNode = createNode(typeName);
     newNode.typeName = typeName;
@@ -2443,6 +2696,8 @@ private void insertWidget(string typeName, Node parentNode, int x, int y, int w,
         return; // defensive only, should never actually be null
     wn.hasXywh = true;
     wn.x = x; wn.y = y; wn.w = w; wn.h = h;
+    // FLTK's `Grid_Node::widget()` makes every new grid 3x3.
+    if (auto gridNode = cast(GridNode) wn) gridNode.hasDimensions = true;
 
     // `defaultLabelFor()` matches the small, real set of FLTK node
     // kinds whose own `widget()` factory override passes a default
@@ -2466,6 +2721,23 @@ private void insertWidget(string typeName, Node parentNode, int x, int y, int w,
     // first" -- `newNode` itself hasn't been added yet at this point).
     auto cv = canvasFor(parentNode);
 
+    // A container dropped into a Tabs fills the page area below the tab
+    // bar (`add_new_widget_from_user()`, `layout->top_tabs_margin`).
+    if (cast(GroupNode) wn !is null && cv !is null
+        && stripFlPrefix(parentNode.typeName) == "Tabs")
+    {
+        int margin = layoutList.current().topTabsMargin;
+        if (margin > 0)
+            if (auto tabs = parentNode in cv.liveTree().widgetOf)
+            {
+                wn.x = (*tabs).x();
+                wn.y = (*tabs).y() + margin;
+                wn.w = (*tabs).w();
+                wn.h = (*tabs).h() - margin;
+                x = wn.x; y = wn.y;
+            }
+    }
+
     if ((typeName == "MenuBar" || typeName == "Menu_Bar")
         && cast(WindowNode) parentNode !is null
         && parentNode.children.length == 0)
@@ -2482,12 +2754,24 @@ private void insertWidget(string typeName, Node parentNode, int x, int y, int w,
         auto parentGroup = cast(FlGroup) cv.liveTree().widgetOf.get(parentNode, null);
         if (parentGroup !is null)
         {
+            // The position handed in is where the widget appears on the
+            // canvas; the node stores it as if the Scroll above were not
+            // scrolled.
+            int offX, offY;
+            scrollOffsetWithin(parentGroup, offX, offY);
+            wn.x += offX;
+            wn.y += offY;
             auto widget = instantiateOne(wn, projectDir_());
             if (widget !is null)
             {
-                insertIntoGroup(parentGroup, widget, x, y);
+                if (offX != 0 || offY != 0)
+                    widget.resize(wn.x - offX, wn.y - offY, wn.w, wn.h);
+                applyLayoutFonts(wn, widget);
+                insertIntoGroup(parentGroup, widget, x, y, atPoint);
                 cv.liveTree().widgetOf[newNode] = widget;
                 cv.liveTree().nodeOf[widget] = newNode;
+                auto liveRef = cv.liveTree();
+                syncLayoutFromLive(parentNode, liveRef);
             }
         }
     }
@@ -2499,6 +2783,30 @@ private void insertWidget(string typeName, Node parentNode, int x, int y, int w,
     if (cv !is null) { cv.redraw(); cv.redrawOverlay(); }
 
     codeviewAutoRefresh();
+}
+
+/// Gives a new widget the current Layout preset's fonts, as
+/// `add_new_widget_from_user()` does: label size and font, and for
+/// widgets with text, text font and size. A value is stored on the node
+/// (so it is saved and generated) only where it differs from what the
+/// freshly built widget already has.
+private void applyLayoutFonts(WidgetNode wn, Widget live)
+{
+    auto layout = layoutList.current();
+    if (layout.labelsize > 0 && live.labelsize() != layout.labelsize)
+        wn.labelsize = layout.labelsize;
+    if (layout.labelfont >= 0 && live.labelfont() != cast(Font) layout.labelfont)
+        wn.labelfont = layout.labelfont;
+    Font font;
+    int size;
+    if (getTextStuff(live, font, size))
+    {
+        if (layout.textfont >= 0 && font != cast(Font) layout.textfont)
+            wn.textfont = layout.textfont;
+        if (layout.textsize > 0 && size != layout.textsize)
+            wn.textsize = layout.textsize;
+    }
+    applyProperties(wn, live, projectDir_());
 }
 
 /// Adds `widget` to `parentGroup` -- a plain append (`FlGroup.add()`) for
@@ -2514,66 +2822,31 @@ private void insertWidget(string typeName, Node parentNode, int x, int y, int w,
 ///   (this port's own `Fl_Group::insert(Fl_Widget&, int)` equivalent,
 ///   already real) instead of FLTK's own `Fl_Flex::insert()`
 ///   override, which does the identical thing.
-/// - **`Grid`**: FLTK's own `Grid_Node::insert_child_at()` (click-
-///   position-to-nearest-cell, using the grid's own margin/gap/computed
-///   row-height/col-width accumulation) is *not* ported -- a
-///   deliberately narrower simplification, not an oversight: this port
-///   only implements the *other* FLTK entry point, `Grid_Node::
-///   insert_child_at_next_free_cell()` (used when there's no specific
-///   drop position to go on), applied unconditionally here rather than
-///   only for the click-to-add case. Real click-position-aware Grid
-///   placement is a real, separate, bigger follow-up if ever needed --
-///   scanning for the first unoccupied `(row, col)` already fixes the
-///   actual reported gap (a dropped widget landing in *some* real,
-///   unoccupied cell instead of never being placed into the grid's own
-///   cell system at all, which is what a plain `FlGroup.add()` did
-///   before this).
+/// - **`Grid`**: with an explicit point (`atPoint`: a drop, or the
+///   canvas's right-click menu) the widget goes into the cell under it
+///   (`gridInsertChildAt()`, `Grid_Node::insert_child_at()`); otherwise
+///   into the first free cell (`gridInsertChildAtNextFreeCell()`,
+///   `Grid_Node::insert_child_at_next_free_cell()`).
 /// - **Everything else**: plain `FlGroup.add()` (append), unchanged.
-private void insertIntoGroup(FlGroup parentGroup, Widget widget, int x, int y)
+private void insertIntoGroup(FlGroup parentGroup, Widget widget, int x, int y, bool atPoint)
 {
+    // FLTK's `Table_Node::add_child()` warns once, on the first child.
+    if (auto table = cast(Table) parentGroup)
+        if (table.children() == 0)
+            fl.message("Inserting child widgets into an Fl_Table is not recommended.\n"
+                ~ "Please refer to the documentation on Fl_Table.");
     if (auto flex = cast(Flex) parentGroup)
     {
-        int closestIdx = -1;
-        int closestDist = flex.w() + flex.h();
-        foreach (i; 0 .. flex.children())
-        {
-            auto c = flex.child(i);
-            int d = (flex.horizontal() ? x - c.x() : y - c.y());
-            if (d < 0) d = -d;
-            if (d < closestDist) { closestDist = d; closestIdx = i; }
-        }
-        int tailD = (flex.horizontal()
-            ? x - (flex.x() + flex.w())
-            : y - (flex.y() + flex.h()));
-        if (tailD < 0) tailD = -tailD;
-        if (tailD < closestDist) { closestDist = tailD; closestIdx = flex.children(); }
-
-        if (closestIdx >= 0)
-            flex.insert(widget, closestIdx);
-        else
-            flex.add(widget); // defensive only -- closestIdx is always
-                               // set by the tail case above even with
-                               // zero existing children
+        if (atPoint) flexInsertChildAt(flex, widget, x, y);
+        else flex.add(widget);
         return;
     }
 
-    if (auto grid = cast(Grid) parentGroup)
+    if (auto grid = cast(GridProxy) parentGroup)
     {
-        foreach (r; 0 .. grid.rows())
-        {
-            foreach (c; 0 .. grid.cols())
-            {
-                if (grid.cell(r, c) is null)
-                {
-                    grid.widget(widget, r, c);
-                    return;
-                }
-            }
-        }
-        // Every existing cell is occupied -- FLTK grows the grid by
-        // one row and uses its first column; matched here exactly.
-        grid.layout(grid.rows() + 1, grid.cols());
-        grid.widget(widget, grid.rows() - 1, 0);
+        grid.add(widget);
+        if (atPoint) gridInsertChildAt(grid, widget, x, y);
+        else gridInsertChildAtNextFreeCell(grid, widget);
         return;
     }
 
@@ -2617,8 +2890,17 @@ private void insertIntoGroup(FlGroup parentGroup, Widget widget, int x, int y)
 /// with no `WindowNode`, e.g. right after `&File/&New` or right after
 /// adding a first `Function` -- see `addNode()`'s and
 /// `createWindowNode()`'s own callers).
+/// Image load error messages already shown for the current project.
+private bool[string] reportedImageErrors_;
+
+/// While a node-creation assistant builds the missing containers, the
+/// container the next creation step goes into; `currentSelection()` returns
+/// it instead of the real selection. Null otherwise.
+private Node selectionOverride_;
+
 private Node currentSelection()
 {
+    if (selectionOverride_ !is null) return selectionOverride_;
     if (auto cv = activeCanvas())
     {
         auto n = cv.primarySelection();
@@ -2628,71 +2910,340 @@ private Node currentSelection()
     return sel.length ? sel[$ - 1] : null;
 }
 
-private void addNode(string typeName)
+/// The widget palette's menu-structure types: nodes of a menu owner, not canvas widgets.
+private bool isMenuItemTypeName(string typeName)
 {
-    checkpoint();
+    return typeName == "MenuItem" || typeName == "CheckMenuItem"
+        || typeName == "RadioMenuItem" || typeName == "Submenu";
+}
 
-    auto newNode = createNode(typeName);
-    newNode.typeName = typeName;
-    // A freshly-created `Function` defaults to a real, non-empty
-    // signature rather than the generic empty-name placeholder every
-    // other Code-group node gets -- matches FLTK's own
-    // `Function_Node::make()` exactly (`o->name("make_window()")`,
-    // adapted from C++'s snake_case to this project's own D camelCase
-    // convention, e.g. `CubeViewUI.fl`'s own `makeWindow()`), including
-    // *why*: leaving `return_type` unset (D's counterpart:
-    // `FunctionNode.returnType` starts empty by construction, untouched
-    // here) is what makes `code_writer.d`'s `writePlainFunction()` (see
-    // its own doc comment) auto-infer the return type from this
-    // function's first widget child once one exists -- the classic
-    // "click Function, click Window, get a real `Window makeWindow()
-    // { ...; return w; }`" shape this whole feature is about. Every
-    // other Code-group type keeps the empty-name placeholder (a plain
-    // `Comment`/`Declaration`/etc. has no equivalent "generic starting
-    // point" FLTK gives it either).
-    newNode.instanceName = typeName == "Function" ? "makeWindow()" : "";
+/// Whether `p` may hold a new node of `typeName` (a `.fl` keyword), from
+/// each FLTK `..._Node::make()`'s placement walk (`nodes/Function_Node.
+/// cxx`, `Window_Node.cxx`, `Menu_Node.cxx`). FLTK's `is_code_block()`
+/// is true for a Function, Code Block or Widget Class, and
+/// `is_decl_block()` for a Declaration Block, Class or Widget Class.
+private bool acceptsNewNode(string typeName, Node p)
+{
+    bool codeBlock = cast(FunctionNode) p !is null || cast(CodeBlockNode) p !is null
+        || cast(WidgetClassNode) p !is null;
+    bool declBlock = cast(DeclBlockNode) p !is null || cast(ClassNode) p !is null
+        || cast(WidgetClassNode) p !is null;
+    switch (typeName)
+    {
+    case "Function": case "decl": case "data": case "declblock": case "class":
+        return declBlock;
+    case "widget_class":
+        return declBlock && cast(WidgetClassNode) p is null;
+    case "comment": case "codeblock":
+        return codeBlock;
+    case "code":
+        return codeBlock || isContainerNode(p);
+    case "Window":
+        // `Window_Node` counts as a code block, so a window can go
+        // inside another window (a subwindow), but not inside a widget class.
+        return (codeBlock || cast(WindowNode) p !is null) && cast(WidgetClassNode) p is null;
+    case "widget":
+        // `Widget_Node::make()`: a group widget or window.
+        return isContainerNode(p);
+    default:
+        if (isMenuItemTypeName(typeName))
+            return cast(MenuOwnerNode) p !is null || cast(SubmenuNode) p !is null;
+        return false;
+    }
+}
 
-    Node current = currentSelection();
-    if (current !is null && current.canHaveChildren())
+/// Whether a new node of `typeName` can only be created inside a parent
+/// `acceptsNewNode()` allows (`assistNodeCreation()` offers to create the
+/// missing container, and nothing is created if the user declines); every other kind goes to the top level when no such parent
+/// exists.
+private bool newNodeNeedsParent(string typeName)
+{
+    return typeName == "code" || typeName == "codeblock" || typeName == "Window"
+        || typeName == "widget" || isMenuItemTypeName(typeName);
+}
+
+/// Where a new node goes: the result of FLTK's `..._Node::make()`
+/// placement walk (see `findPlacement()`).
+private struct Placement
+{
+    bool ok;          /// false: no allowed parent, and the kind needs one
+    Node anchor;      /// insert after this node (or into it, see asLastChild); null: top of project
+    bool asLastChild; /// add as `anchor`'s last child
+}
+
+/// FLTK's `..._Node::make()` placement walk: starting from `current` --
+/// as its last child if it can hold children (`Strategy::AS_LAST_CHILD`),
+/// else right after it (`AFTER_CURRENT`) -- climb until reaching a parent
+/// `accepts` allows; the new node goes right after the ancestor the climb
+/// passed through. Without such a parent it goes right after `current`'s
+/// top-level node, or at the top of the project when `current` is null;
+/// if `needsParent`, the placement is refused instead. A `folded` current
+/// node is treated as a leaf: the new node goes after it, not into it.
+private Placement findPlacement(Node current, bool delegate(Node) accepts, bool needsParent, bool folded = false)
+{
+    bool asLastChild = current !is null && current.canHaveChildren() && !folded;
+    Node anchor = current;
+    Node p = asLastChild ? anchor : (anchor is null ? null : anchor.parent);
+    while (p !is null && !accepts(p))
     {
-        current.addChild(newNode);
+        anchor = p;
+        asLastChild = false;
+        p = p.parent;
     }
-    else if (current !is null && current.parent !is null)
-    {
-        // Matches FLTK's `Strategy::AFTER_CURRENT` half of
-        // `Node::add_new_widget_from_user()`: a selection that can't
-        // itself hold children (a `MenuItemNode`, a `Comment`, ...) still
-        // has the new node land as its own next sibling, not all the way
-        // up at the project root. Without this branch, selecting a plain
-        // `Menu Item` and adding another spliced the new item in as a
-        // sibling of the enclosing `Function` instead of the enclosing
-        // menu -- the single most common menu-building workflow
-        // (item, item, item) landed every item after the first in the
-        // wrong place entirely.
-        current.parent.insertChildAfter(current, newNode);
-    }
+    if (p is null && needsParent) return Placement(false);
+    return Placement(true, anchor, asLastChild);
+}
+
+/// Inserts `newNode` where `findPlacement()` said (FLTK's `Node::add()`).
+private void insertAtPlacement(Placement pl, Node newNode)
+{
+    import std.algorithm : countUntil;
+
+    if (pl.anchor is null)
+        projectRoots_ = newNode ~ projectRoots_;
+    else if (pl.asLastChild)
+        pl.anchor.addChild(newNode);
+    else if (pl.anchor.parent !is null)
+        pl.anchor.parent.insertChildAfter(pl.anchor, newNode);
     else
     {
-        import std.algorithm : countUntil;
-
-        // Walk up to whichever `projectRoots_` entry `current` sits
-        // under (a plain child's `.parent` chain always reaches one --
-        // `current` itself if nothing was selected under a root, i.e.
-        // `current is null`).
-        Node topLevel = current;
-        while (topLevel !is null && topLevel.parent !is null)
-            topLevel = topLevel.parent;
-
-        auto idx = topLevel is null ? -1 : projectRoots_.countUntil(topLevel);
+        auto idx = projectRoots_.countUntil(pl.anchor);
         if (idx >= 0)
             projectRoots_ = projectRoots_[0 .. idx + 1] ~ newNode ~ projectRoots_[idx + 1 .. $];
         else
             projectRoots_ ~= newNode;
     }
+}
 
-    if (cast(MenuItemNode) newNode !is null) refreshLiveMenu(newNode);
+/// Places a new node of `typeName` relative to the current selection
+/// (`findPlacement()`), taking an undo checkpoint first. Returns false,
+/// changing nothing, when the kind needs a parent and there is none.
+private bool placeNewNode(Node newNode, bool delegate(Node) accepts, bool needsParent)
+{
+    auto pl = findPlacement(currentSelection(), accepts, needsParent);
+    if (!pl.ok) return false;
+    checkpoint();
+    insertAtPlacement(pl, newNode);
+    return true;
+}
+
+/// The `acceptsNewNode()` kind of an existing node, for placing a pasted
+/// one: its `.fl` keyword, or "widget" for an ordinary widget.
+private string nodeKind(Node n)
+{
+    if (cast(MenuItemNode) n !is null) return n.typeName.length ? n.typeName : "MenuItem";
+    if (cast(WidgetClassNode) n !is null) return "widget_class";
+    if (cast(WindowNode) n !is null) return "Window";
+    if (cast(WidgetNode) n !is null) return "widget";
+    if (cast(FunctionNode) n !is null) return "Function";
+    if (cast(CodeBlockNode) n !is null) return "codeblock";
+    if (cast(CodeNode) n !is null) return "code";
+    if (cast(DataNode) n !is null) return "data";
+    if (cast(DeclNode) n !is null) return "decl";
+    if (cast(DeclBlockNode) n !is null) return "declblock";
+    if (cast(ClassNode) n !is null) return "class";
+    if (cast(CommentNode) n !is null) return "comment";
+    return "";
+}
+
+/// FLTK's message when a node of `kind` has no allowed parent.
+private string noParentMessage(string kind)
+{
+    if (kind == "widget") return "Please select a group widget or window";
+    if (isMenuItemTypeName(kind)) return "Please select a menu widget or a menu item";
+    return "Please select a function";
+}
+
+// ---------------------------------------------------------------------
+// Node creation assistants
+// ---------------------------------------------------------------------
+
+/// True while `assistNodeCreation()` builds containers, so the window it
+/// creates doesn't start an assistant of its own or clear the override.
+private bool assistRunning_;
+
+/// The `ClassNode` containing `n` (or `n` itself), or null.
+private ClassNode enclosingClassNode(Node n)
+{
+    for (; n !is null; n = n.parent)
+        if (auto k = cast(ClassNode) n) return k;
+    return null;
+}
+
+/// The `FunctionNode` containing `n` (or `n` itself), or null.
+private FunctionNode enclosingFunctionNode(Node n)
+{
+    for (; n !is null; n = n.parent)
+        if (auto f = cast(FunctionNode) n) return f;
+    return null;
+}
+
+/// A new, empty Function: a method as the last child of `current`'s class
+/// if `asMethod`, else a top-level one right after `current`'s top-level
+/// ancestor (at the end of the project when there is no selection).
+/// Ported from the `add_new_widget_from_user("function", ...)` calls of
+/// `Node::node_creation_assistant()`; unlike FLTK it does not open the
+/// Function's properties panel.
+private FunctionNode createFunctionFor(Node current, bool asMethod)
+{
+    auto fn = cast(FunctionNode) createNode("Function");
+    fn.typeName = "Function";
+    fn.instanceName = defaultNameFor("Function");
+
+    checkpoint();
+    if (asMethod)
+        enclosingClassNode(current).addChild(fn);
+    else
+    {
+        Node top = current;
+        while (top !is null && top.parent !is null) top = top.parent;
+        if (top is null)
+            projectRoots_ ~= fn;
+        else
+            insertAtPlacement(Placement(true, top, false), fn);
+    }
+    browser_.build(projectRoots_);
+    return fn;
+}
+
+/// Ported from `Code_Node`/`CodeBlock_Node`/`Window_Node`/`Widget_Node`/
+/// `Menu_Item_Node::node_creation_assistant()`: when a new node of
+/// `typeName` has no allowed parent, asks whether to create the missing
+/// containers instead of just refusing. A code, code block or window
+/// needs a Function (or a method of the selected class); a widget needs a
+/// Window, which needs a Function; a menu item needs a Menu Button, which
+/// needs a Window and a Function.
+///
+/// Returns true when the containers exist; `selectionOverride_` then names
+/// the one the node goes into, and the caller must clear it. The whole
+/// assisted creation is one undo step. Returns false, having changed
+/// nothing, when the user cancels.
+private bool assistNodeCreation(string typeName)
+{
+    import std.format : format;
+
+    Node cur = currentSelection();
+    bool inClass = enclosingClassNode(cur) !is null;
+    bool menuItem = isMenuItemTypeName(typeName);
+
+    // The dialog: b0 (Escape/close) cancels, b1 (Return) is the main
+    // choice, b2 the method variant when the selection is inside a class.
+    string text, create, createMethod;
+    switch (typeName == "widget" ? 1 : menuItem ? 2 : 0)
+    {
+    case 0: // code, code block, window
+        string what = typeName == "Window" ? "A window" : typeName == "code" ? "A code node" : "A code block";
+        text = what ~ " can only be created inside a function or a class method.\n\n"
+            ~ "Would you like to create a new function for it, or cancel and select an existing container?";
+        create = "Create a &Function";
+        createMethod = inClass ? format("Create a &Method in %s", enclosingClassNode(cur).instanceName) : null;
+        break;
+    case 1:
+        text = "A widget can only be created inside a window or group.\n\n"
+            ~ "Would you like to create a new window for it, or cancel and select an existing container?";
+        create = "Create a &Window";
+        break;
+    case 2:
+        text = "A menu item can only be created inside a menu widget or a submenu.\n\n"
+            ~ "Would you like to create a new menu widget for it, or cancel and select an existing container?";
+        create = "Create a &Menu";
+        break;
+    default:
+        assert(0);
+    }
+    int ret = fl.ask.choice(text, "&Cancel", create, createMethod);
+    if (ret == 0) return false;
+
+    size_t undoLen = undoStack_.length;
+    assistRunning_ = true;
+    scope(exit) assistRunning_ = false;
+
+    bool projectWasEmpty = projectRoots_.length == 0;
+
+    // The function that will hold the window: the one already above the
+    // selection, else a new method (selection inside a class) or function.
+    FunctionNode functionFor()
+    {
+        if (auto f = enclosingFunctionNode(cur)) return f;
+        return createFunctionFor(cur, inClass);
+    }
+
+    if (typeName != "widget" && !menuItem)
+    {
+        // code, code block, window: just the function
+        selectionOverride_ = createFunctionFor(cur, ret == 2);
+    }
+    else
+    {
+        // A window to hold the widget or menu, in a function if needed.
+        Node win = cur;
+        while (win !is null && cast(WindowNode) win is null) win = win.parent;
+        if (win is null)
+        {
+            selectionOverride_ = functionFor();
+            win = createWindowNode();
+            if (win is null) { selectionOverride_ = null; return false; }
+        }
+        selectionOverride_ = win;
+        if (menuItem)
+        {
+            // FLTK makes a Menu Bar for a submenu and a Menu Button otherwise.
+            addWidgetIn(typeName == "Submenu" ? "MenuBar" : "MenuButton", win, win);
+            selectionOverride_ = win.children[$ - 1];
+        }
+    }
+
+    // One undo step for everything created above (none, as for any first
+    // change to an empty project, which has nothing to undo back to).
+    size_t keep = projectWasEmpty ? undoLen : undoLen + 1;
+    if (undoStack_.length > keep) undoStack_ = undoStack_[0 .. keep];
+    return true;
+}
+
+private void addNode(string typeName)
+{
+    auto newNode = createNode(typeName);
+    newNode.typeName = typeName;
+    // FLTK's `..._Node::make()` gives each code-group node a starting
+    // name (see `defaultNameFor()`). A Function's return type stays unset
+    // so `code_writer.d`'s `writePlainFunction()` infers it from the
+    // function's first widget child.
+    newNode.instanceName = defaultNameFor(typeName);
+    // `Data_Node::make()` makes new inline data public.
+    if (auto dn = cast(DataNode) newNode) dn.visibility_ = 1;
+    // A widget class is a window too, so it gets a window's geometry
+    // (`add_new_widget_from_user()` resizes every `Window_Node`).
+    if (auto wcn = cast(WidgetClassNode) newNode) placeNewWindowGeometry(wcn);
+
+    scope(exit) selectionOverride_ = null;
+    if (!placeNewNode(newNode, (Node p) => acceptsNewNode(typeName, p), newNodeNeedsParent(typeName)))
+    {
+        // No allowed parent: offer to create the missing containers, then
+        // place the node in the last one created.
+        if (!assistNodeCreation(typeName)
+            || !placeNewNode(newNode, (Node p) => acceptsNewNode(typeName, p), true))
+            return;
+    }
+
+    if (auto menuItem = cast(MenuItemNode) newNode)
+    {
+        // `Menu_Item_Node::make()` labels a user-created item "item", or
+        // "submenu" for a submenu.
+        menuItem.label = cast(SubmenuNode) newNode !is null ? "submenu" : "item";
+        menuItem.hasLabel = true;
+        // `add_new_widget_from_user()` also gives menu items the preset's
+        // label font and size.
+        auto layout = layoutList.current();
+        if (layout.labelsize > 0 && layout.labelsize != normalSize)
+            menuItem.labelsize = layout.labelsize;
+        if (layout.labelfont >= 0 && layout.labelfont != cast(int) helvetica)
+            menuItem.labelfont = layout.labelfont;
+        refreshLiveMenu(newNode);
+    }
 
     browser_.build(projectRoots_);
+    // A widget class has its own canvas, so it exists before the selection is synced.
+    if (auto wcn = cast(WidgetClassNode) newNode) showWindowCanvas(wcn);
     if (auto cv = canvasFor(newNode)) cv.syncSelectionFrom([newNode]);
     browser_.syncSelection([newNode]);
     openNode(newNode);
@@ -2700,31 +3251,38 @@ private void addNode(string typeName)
     codeviewAutoRefresh();
 }
 
+/// Gives a new window-shaped node (a `Window` or a `widget_class`) its
+/// starting geometry, ported from `Window_Node::ideal_size()` plus the
+/// window branch of `add_new_widget_from_user()`: 480x320, at most 3/4 of
+/// the work area, snapped to the layout grid, centered on the shelf's
+/// screen.
+private void placeNewWindowGeometry(WindowNode win)
+{
+    int sx, sy, sw, sh;
+    fl.core.screenWorkArea(sx, sy, sw, sh, fl.core.screenNum(shelf_.x(), shelf_.y()));
+    int ww = min(480, sw * 3 / 4);
+    int wh = min(320, sh * 3 / 4);
+    betterSize(ww, wh);
+    win.x = sx + sw / 2 - ww / 2;
+    win.y = sy + sh / 2 - wh / 2;
+    win.w = ww;
+    win.h = wh;
+    win.hasXywh = true;
+}
+
 /// Ported from `Window_Node::make()` (`nodes/Window_Node.cxx`) --
 /// `&New/&Group/&Window`'s and the widget bin's own dedicated
-/// callback, deliberately *not* routed through `addWidget()`/
-/// `addNode()`'s generic target-selection rules the way every sibling
-/// item is. FLTK's own placement rule is stricter than either of
-/// those: walk up from the current selection until a "code block"
-/// ancestor is found (this port's equivalent, for now: a `FunctionNode`
-/// -- the only real container this port has that plays that role;
-/// FLTK's own check also matches `Class_Node`/`declblock`/etc. and
-/// explicitly excludes `Widget_Class_Node`, neither of which is
-/// relevant yet since this port has no window-inside-a-class-method
-/// creation path at all -- broaden this the same way once one exists).
-/// If none exists, FLTK shows `fl_message("Please select a
-/// function")` and creates nothing at all -- ported verbatim, since a
-/// window with no enclosing function has nowhere sensible to be
-/// written as D code either (`code_writer.d` only ever emits a
-/// `WindowNode`'s construction from inside a `FunctionNode`'s own
-/// body).
+/// callback. A window goes into a code block that isn't a widget class
+/// (a Function or Code Block, `acceptsNewNode()`), placed by
+/// `placeNewNode()`; with none above the selection, `assistNodeCreation()`
+/// offers to create a function (or method) for it.
 ///
-/// Default geometry (100x100) matches FLTK's own `new
-/// Fl_Window(100,100)` here exactly -- deliberately *not*
-/// `newProject()`'s own 400x300/`FLAT_BOX` defaults, which are that
-/// function's own, separate, more-convenient-for-a-blank-project
-/// choice, not `Window_Node::make()`'s.
-private void createWindowNode()
+/// Default geometry follows FLTK's `Window_Node::ideal_size()`: 480x320,
+/// capped at 3/4 of the work area, snapped to the layout grid and
+/// centered on the screen -- deliberately *not* `newProject()`'s own
+/// 400x300/`FLAT_BOX` defaults, which are that function's own, separate,
+/// more-convenient-for-a-blank-project choice.
+private WindowNode createWindowNode()
 {
     // `currentSelection()` (see its own doc comment just above
     // `addNode()`) covers both the "canvas already open" case and the
@@ -2734,29 +3292,31 @@ private void createWindowNode()
     // from a genuinely empty project too, see `newProject()`'s own doc
     // comment) has no live canvas of its own to select it *on*, only a
     // browser row.
-    Node current = currentSelection();
-    Node anchor = current;
-    while (anchor !is null && cast(FunctionNode) anchor is null)
-        anchor = anchor.parent;
-
-    if (anchor is null)
-    {
-        fl.message("Please select a function");
-        return;
-    }
-
-    checkpoint();
-
     auto win = new WindowNode();
     win.typeName = "Window";
     win.instanceName = "";
-    win.x = 0;
-    win.y = 0;
-    win.w = 100;
-    win.h = 100;
-    win.hasXywh = true;
+    placeNewWindowGeometry(win);
 
-    anchor.addChild(win);
+    scope(exit) if (!assistRunning_) selectionOverride_ = null;
+    if (!placeNewNode(win, (Node p) => acceptsNewNode("Window", p), true))
+    {
+        if (assistRunning_ || !assistNodeCreation("Window")
+            || !placeNewNode(win, (Node p) => acceptsNewNode("Window", p), true))
+            return null;
+    }
+
+    // A window inside another window is a subwindow: FLTK would place it
+    // at the centered screen position computed above, which is outside
+    // its parent, so it goes in the parent's top-left corner instead.
+    if (isNestedWindow(win))
+    {
+        auto parentWin = enclosingWindowNode(win.parent);
+        win.x = 10;
+        win.y = 10;
+        win.w = min(win.w, max(20, (parentWin.hasXywh ? parentWin.w : 400) - 20));
+        win.h = min(win.h, max(20, (parentWin.hasXywh ? parentWin.h : 300) - 20));
+        instantiateUnderLiveParent(win.parent, win);
+    }
 
     // `showWindowCanvas()` handles both "this is the project's very
     // first `WindowNode`" and "one already exists" identically -- it
@@ -2768,6 +3328,7 @@ private void createWindowNode()
     openNode(win);
 
     codeviewAutoRefresh();
+    return win;
 }
 
 /// This port's counterpart to FLTK's `Node::open()` ("what happens
@@ -2811,6 +3372,20 @@ private void createWindowNode()
 /// only calls `widgetPanelLoad()` directly, matching FLTK's own
 /// `selection_changed()` (updates `the_panel` if it's already visible,
 /// never forces it to the front on a plain click).
+/// `&Edit/Pr&operties...` -- ported from `Application::edit_selected()`
+/// (`Fluid.cxx`): opens the current node's editor, or says
+/// "Please select a widget" when nothing is selected.
+private void editSelected()
+{
+    auto n = currentSelection();
+    if (n is null)
+    {
+        fl.message("Please select a widget");
+        return;
+    }
+    openNode(n);
+}
+
 private void openNode(Node n)
 {
     if (auto wn = enclosingWindowNode(n))
@@ -2916,10 +3491,13 @@ private void removeNodes(Node[] roots)
     foreach (n; roots)
     {
         auto cv = canvasFor(n);
+        // A nested window's live subwindow belongs to its parent's canvas.
+        if (isNestedWindow(n)) cv = canvasFor(n.parent);
+        dropNestedCanvases(n);
 
         if (auto wn = cast(WindowNode) n)
         {
-            if (cv !is null)
+            if (cv !is null && !isNestedWindow(wn))
             {
                 cv.hide();
                 canvases_.remove(wn);
@@ -3079,28 +3657,76 @@ private void copySelected()
     clipboardText_ = new ProjectWriter().generate(roots, projectI18n_);
 }
 
+/// Places freshly parsed nodes (a paste or a merged file) in the project.
+/// Each node is placed the way FLTK's reader places it, through its
+/// kind's own `make()` placement walk (`add_new_widget_from_file()`):
+/// a menu item only into a menu, a widget only into a group or window,
+/// and so on, each refusal with FLTK's message and that node skipped.
+/// As in FLTK's `paste_from_clipboard()`, a selection that can hold
+/// children receives the nodes as its last children; otherwise each
+/// node goes after the previous one. With nothing selected, the nodes
+/// go into the active window. With `pasting`, a selected group that is
+/// folded in the project tree receives them after it, not inside it
+/// (`paste_from_clipboard()`'s `folded_` test). Returns the nodes that were
+/// placed.
+private Node[] placeParsedNodes(Node[] parsedRoots, bool pasting = false)
+{
+    Node current = currentSelection();
+    bool folded = pasting && current !is null && current.canHaveChildren() && browser_.isFolded(current);
+    if (current is null) current = activeWindow_;
+    bool afterCurrent = folded || !(current !is null && current.canHaveChildren());
+    Node[] placed;
+    foreach (root; parsedRoots)
+    {
+        string kind = nodeKind(root);
+        auto pl = findPlacement(current, (Node p) => acceptsNewNode(kind, p), newNodeNeedsParent(kind), afterCurrent);
+        // `Widget_Node::make()` also refuses to put a widget after a node
+        // that isn't a widget itself.
+        if (pl.ok && kind == "widget" && !pl.asLastChild
+            && (cast(WidgetNode) pl.anchor is null || cast(MenuItemNode) pl.anchor !is null))
+            pl.ok = false;
+        if (!pl.ok)
+        {
+            fl.message(noParentMessage(kind));
+            continue;
+        }
+        insertAtPlacement(pl, root);
+        if (root.parent !is null) instantiateUnderLiveParent(root.parent, root);
+        placed ~= root;
+        if (afterCurrent) current = root;
+    }
+    return placed;
+}
+
+/// Rebuilds the project tree and selects `placed` (the result of
+/// `placeParsedNodes()`) in the tree, canvas and properties panel.
+private void selectPlacedNodes(Node[] placed)
+{
+    browser_.build(projectRoots_);
+    auto cv = activeCanvas();
+    if (cv !is null)
+    {
+        cv.syncSelectionFrom(placed);
+        cv.redraw();
+        cv.redrawOverlay();
+    }
+    browser_.syncSelection(placed);
+    widgetPanelLoad(cv !is null ? cv.selected() : placed, cv !is null ? cv.liveTree() : LiveTree.init, projectDir_());
+
+    codeviewAutoRefresh();
+}
+
 /// `&Edit/&Paste` -- ported from FLTK's `paste_from_clipboard()`,
 /// re-expressed over `clipboardText_` instead of re-reading a temp
-/// file. Insertion target matches FLTK's own rule exactly: if the
-/// current selection can contain children, paste *into* it (as its
-/// last child); otherwise paste *after* it as a sibling (or, with
-/// nothing selected at all, into the project's own root window) --
-/// FLTK's own additional "unless it's folded in the browser" case
-/// isn't replicated (this port's node browser has no per-node
-/// collapsed-in-the-tree state to consult the way FLTK's own
-/// `folded_` flag does), a real, narrow, deliberate simplification.
-///
-/// A top-level Code-group target (`target.parent is null`, e.g. a
-/// selected `decl`/`comment`) is its own "paste after" case, spliced
-/// into `projectRoots_` directly rather than falling back to pasting
-/// *inside* the active window -- matches `duplicateSelected()`'s
-/// identical handling of the same shape (`topLevelSelection()`'s own
-/// doc comment). Also uses `currentSelection()` (browser-aware) instead
-/// of `activeCanvas().primarySelection()` alone, and doesn't require an
-/// active canvas up front -- both for the same reason `allSelectedNodes()`
-/// exists: selecting a Code-group node in the browser resolves
-/// `activeWindow_`/the active canvas to `null` (see that function's own
-/// doc comment).
+/// file. If the current selection can contain children, the nodes go
+/// *into* it (as its last children); otherwise *after* it. Each node is
+/// then placed by its kind's own placement walk (`findPlacement()`), so a
+/// node that can't live there climbs to a parent that allows it, or is
+/// refused with FLTK's message. A selected group that is folded in the
+/// project tree gets the nodes after it instead of inside it, as in FLTK
+/// (`folded_`). Uses `currentSelection()` (browser-aware) and
+/// doesn't require an active canvas: selecting a Code-group node in the
+/// browser leaves no active canvas.
 private void pasteFromClipboard()
 {
     import std.format : format;
@@ -3122,71 +3748,9 @@ private void pasteFromClipboard()
 
     checkpoint();
 
-    Node target = currentSelection();
-    Node parentNode;
-    bool asSibling, asTopLevelSibling;
-    if (target !is null && target.canHaveChildren())
-    {
-        parentNode = target;
-    }
-    else if (target !is null && target.parent !is null)
-    {
-        parentNode = target.parent;
-        asSibling = true;
-    }
-    else if (target !is null)
-    {
-        asTopLevelSibling = true;
-    }
-    else
-        parentNode = activeWindow_;
-
-    if (asTopLevelSibling)
-    {
-        import std.algorithm : countUntil;
-
-        auto idx = projectRoots_.countUntil(target);
-        auto insertAt = idx < 0 ? projectRoots_.length : idx + 1;
-        foreach (root; parsedRoots)
-        {
-            projectRoots_ = projectRoots_[0 .. insertAt] ~ root ~ projectRoots_[insertAt .. $];
-            insertAt++;
-        }
-    }
-    else if (parentNode !is null)
-    {
-        Node afterNode = target;
-        foreach (root; parsedRoots)
-        {
-            if (asSibling)
-            {
-                parentNode.insertChildAfter(afterNode, root);
-                afterNode = root; // keep a multi-node paste in relative order
-            }
-            else
-                parentNode.addChild(root);
-            instantiateUnderLiveParent(parentNode, root);
-        }
-    }
-    else
-    {
-        // No window, nothing selected at all -- no sane anchor to paste
-        // relative to; append directly to the project root list,
-        // matching `addNode()`'s own identical "no anchor" fallback.
-        projectRoots_ ~= parsedRoots;
-    }
-
-    browser_.build(projectRoots_);
-    auto cv = activeCanvas();
-    if (cv !is null)
-    {
-        cv.syncSelectionFrom(parsedRoots);
-        cv.redraw();
-        cv.redrawOverlay();
-    }
-    browser_.syncSelection(parsedRoots);
-    widgetPanelLoad(cv !is null ? cv.selected() : parsedRoots, cv !is null ? cv.liveTree() : LiveTree.init, projectDir_());
-
+    auto placed = placeParsedNodes(parsedRoots, true);
+    if (placed.length == 0) return;
+    selectPlacedNodes(placed);
     codeviewAutoRefresh();
 }
 
@@ -3266,8 +3830,7 @@ private void duplicateSelected()
 /// single-node `instantiateOne()` call, needed here since a pasted/
 /// duplicated subtree can be an arbitrarily deep Group. A no-op if
 /// `parentNode`'s window has no canvas, `parentNode` itself has no live
-/// widget (e.g. a nested window -- this port's canvas doesn't render
-/// those at all, see `instantiate.d`'s own top comment), or `n` isn't
+/// widget, or `n` isn't
 /// itself `WidgetNode`-shaped (a bare `Function`/`decl`/`class`
 /// selection has nothing to instantiate) -- the node still lands in
 /// the tree either way, just without a live counterpart, matching how
@@ -3275,6 +3838,12 @@ private void duplicateSelected()
 /// file.
 private void instantiateUnderLiveParent(Node parentNode, Node n)
 {
+    // A menu item has no live widget of its own; it shows in its menu.
+    if (cast(MenuItemNode) n !is null)
+    {
+        refreshLiveMenu(parentNode);
+        return;
+    }
     auto cv = canvasFor(parentNode);
     if (cv is null) return;
     auto parentGroup = cast(FlGroup) cv.liveTree().widgetOf.get(parentNode, null);
@@ -3289,49 +3858,94 @@ private void instantiateUnderLiveParent(Node parentNode, Node n)
     auto live = cv.liveTree();
     instantiateChild(n, live, projectDir_());
     parentGroup.end();
+    registerNestedCanvases(cv);
+
+    // A grid or flex places what was pasted: a grid gives it the next
+    // free cell, a flex puts it where the node order says.
+    if (auto grid = cast(GridProxy) parentGroup)
+    {
+        auto pasted = live.widgetOf.get(n, null);
+        GridCellInfo info;
+        if (pasted !is null && pasted.parent() is grid && !grid.cellInfo(pasted, info))
+            gridInsertChildAtNextFreeCell(grid, pasted);
+    }
+    else if (auto flexNode = cast(FlexNode) parentNode)
+        applyFlexOrderToLive(flexNode, live);
+    syncLayoutFromLive(parentNode, live);
 }
 
-/// `&Edit/Select &All` -- simplified relative to FLTK's own
-/// `select_all_cb()`, which operates within the *current selection's
-/// own parent* first (falling back outward to an ancestor, then the
-/// whole project, only if that scope has nothing left to select) --
-/// a shape built around FLTK's flat `Node::descendants()` walk
-/// that doesn't map cleanly onto this port's own tree. This selects
-/// every node in `activeWindow_` outright (matching what "Select All"
-/// means the moment nothing more specific is already selected,
-/// FLTK's own eventual fallback case) -- a real, deliberate
-/// simplification, not an oversight. Scoped to the active window, not
-/// the whole project: matches every other keyboard-shortcut-driven edit
-/// in this file, and matches FLTK too -- its own `Node::descendants()`
-/// walk is scoped by starting point, never spans multiple independent
-/// top-level windows either.
-private void selectAll()
+/// FLTK's `in_this_only` (`Node.cxx`): set to the canvas's window while a
+/// command runs from that window (a shortcut or its right-click menu), so
+/// Select All/None work inside that window even when the current selection
+/// is somewhere else. Null otherwise.
+private Node inThisOnly_;
+
+/// `&Edit/Select &All` -- ported from `select_all_cb()` (`Node.cxx`): selects
+/// every node below the current selection's parent that is not selected yet.
+/// If everything there is already selected, it moves out to the next parent,
+/// and so on, so repeating it selects the siblings, then the whole group, then
+/// the whole window. This port selects within the active window only (a
+/// canvas holds one window's selection), so the last step stops there.
+private void selectAll() { selectAllOrNone(true); }
+
+/// `&Edit/Select &None` -- ported from `select_none_cb()`: the same walk,
+/// deselecting what is selected.
+private void selectNone() { selectAllOrNone(false); }
+
+private void selectAllOrNone(bool select)
 {
+    import std.algorithm : canFind, remove;
+
     auto cv = activeCanvas();
     if (cv is null || activeWindow_ is null) return;
-    Node[] all;
-    void collect(Node n)
+
+    Node current = currentSelection();
+    Node p = current !is null ? current.parent : null;
+    if (inThisOnly_ !is null)
     {
-        all ~= n;
-        foreach (c; n.children) collect(c);
+        Node t = p;
+        while (t !is null && t !is inThisOnly_) t = t.parent;
+        if (t !is inThisOnly_) p = inThisOnly_;
     }
-    foreach (c; activeWindow_.children) collect(c);
-    if (all.length == 0) return;
 
-    cv.syncSelectionFrom(all);
-    browser_.syncSelection(all);
-    widgetPanelLoad(all, cv.liveTree(), projectDir_());
-    cv.redrawOverlay();
-}
+    bool inActiveWindow(Node n)
+    {
+        for (Node t = n; t !is null; t = t.parent)
+            if (t is activeWindow_) return true;
+        return false;
+    }
 
-/// `&Edit/Select &None`.
-private void selectNone()
-{
-    auto cv = activeCanvas();
-    if (cv is null) return;
-    cv.selectOnly(null);
-    browser_.syncSelection(null);
-    widgetPanelLoad([], cv.liveTree(), projectDir_());
+    Node[] sel = cv.selected().dup;
+    void walk(Node n, ref bool foundAny)
+    {
+        foreach (c; n.children)
+        {
+            bool isSel = sel.canFind(c);
+            if (select && !isSel) { sel ~= c; foundAny = true; }
+            else if (!select && isSel) { sel = sel.remove!(x => x is c); foundAny = true; }
+            walk(c, foundAny);
+        }
+    }
+
+    for (;;)
+    {
+        bool foundAny;
+        if (p !is null && inActiveWindow(p))
+        {
+            walk(p, foundAny);
+            if (foundAny) break;
+            p = p.parent;
+        }
+        else
+        {
+            walk(activeWindow_, foundAny);
+            break;
+        }
+    }
+
+    cv.syncSelectionFrom(sel);
+    browser_.syncSelection(sel);
+    widgetPanelLoad(sel, cv.liveTree(), projectDir_());
     cv.redrawOverlay();
 }
 
@@ -3392,6 +4006,9 @@ private void refreshAfterReorder(string snapshot)
     if (cv !is null)
     {
         browser_.syncSelection(cv.selected());
+        // Moved menu items change the order of the menu they sit in.
+        foreach (n; cv.selected())
+            if (cast(MenuItemNode) n !is null) refreshLiveMenu(n);
         cv.redraw();
         cv.redrawOverlay();
         widgetPanelLoad(cv.selected(), cv.liveTree(), projectDir_());
@@ -3439,8 +4056,9 @@ private void laterSelectedCmd()
 
 /// `&Edit/&Group` -- ported from `group_cb()` (`nodes/Group_Node.cxx`).
 /// See `fluid.group_ungroup.groupSelected()`'s own doc comment for the
-/// full mechanism (menu-item grouping, `Menu_Node.cxx`'s own separate
-/// `group_selected_menuitems()`, isn't ported). Reports FLTK's own two `fl_message()` guards (no
+/// full mechanism; a menu item goes to `groupSelectedMenuItems()`
+/// instead, as FLTK's `group_cb()` hands it to
+/// `group_selected_menuitems()`. Reports FLTK's own two `fl_message()` guards (no
 /// selection at all / selection isn't a widget) the same way FLTK
 /// does -- these aren't errors, just narrower preconditions than the
 /// menu item's own `menuInactive` gate already enforces structurally,
@@ -3454,6 +4072,12 @@ private void groupSelectedCmd()
     if (cast(WidgetNode) q is null) { fl.message("Only widgets and menu items can be grouped."); return; }
 
     string snapshot = new ProjectWriter().generate(projectRoots_, projectI18n_, [], codeFileName_, null, true, projectDubHeader_, projectSettings_);
+    if (auto mi = cast(MenuItemNode) q)
+    {
+        if (groupSelectedMenuItems(mi) is null) { fl.message("Can't create a new submenu here."); return; }
+        refreshAfterReorder(snapshot);
+        return;
+    }
     auto newGroup = groupSelected(cast(WidgetNode) q, cv.liveTree(), projectDir_());
     if (newGroup is null) { fl.message("Can't create a new group here."); return; }
 
@@ -3468,8 +4092,8 @@ private void groupSelectedCmd()
 }
 
 /// `&Edit/Ung&roup` -- ported from `ungroup_cb()` (`nodes/Group_Node.cxx`).
-/// See `groupSelectedCmd()`'s own doc comment on the not-ported
-/// menu-item-ungroup branch.
+/// A menu item goes to `ungroupSelectedMenuItems()`, as FLTK's
+/// `ungroup_cb()` hands it to `ungroup_selected_menuitems()`.
 private void ungroupSelectedCmd()
 {
     auto cv = activeCanvas();
@@ -3479,6 +4103,12 @@ private void ungroupSelectedCmd()
     if (cast(WidgetNode) q is null) { fl.message("Only widgets and menu items can be ungrouped."); return; }
 
     string snapshot = new ProjectWriter().generate(projectRoots_, projectI18n_, [], codeFileName_, null, true, projectDubHeader_, projectSettings_);
+    if (auto mi = cast(MenuItemNode) q)
+    {
+        if (!ungroupSelectedMenuItems(mi)) { fl.message("Only menu items inside a submenu can be ungrouped."); return; }
+        refreshAfterReorder(snapshot);
+        return;
+    }
     if (!ungroupSelected(cast(WidgetNode) q, cv.liveTree()))
     {
         fl.message("Only menu widgets inside a group can be ungrouped.");
@@ -3589,7 +4219,14 @@ private void geometryEdited()
 
     auto cv = activeCanvas();
     if (cv !is null)
+    {
+        if (cv.takeLayoutReordered())
+        {
+            browser_.build(projectRoots_);
+            browser_.syncSelection(cv.selected());
+        }
         widgetPanelLoad(cv.selected(), cv.liveTree(), projectDir_());
+    }
 
     codeviewAutoRefresh();
 }
@@ -3631,7 +4268,7 @@ private void revealAncestorTabs(Node s, LiveTree live)
 /// `selected` may contain more than one node (Ctrl/Shift-click, see
 /// `ProjectCanvas`'s own top comment), passed straight through to
 /// `widgetPanelLoad()` for `browser_`/`activeWindow_` bookkeeping's
-/// sake. Multi-select apply is real now: most of `widget_panel.fl`'s
+/// sake. Multi-select apply is real: most of `widget_panel.fl`'s
 /// field callbacks loop the whole selection, matching FLTK's own
 /// real multi-select shape -- a small, FLTK-confirmed set (widget
 /// name, Resizable, Hotspot, Border/Modal/Nonmodal) stays single-target
@@ -3690,13 +4327,33 @@ private void saveProject()
 
 private void saveProjectAs()
 {
+    string path = chooseSavePath("Save .fl file as");
+    if (path.length == 0) return;
+    projectPath_ = path;
+    writeProjectTo(path);
+}
+
+/// `&File/Sa&ve A Copy...` -- ported from `Application::save_project_file()`
+/// with `v == 2`: writes the project to another file without changing the
+/// project's own file name, modified state or recent-files list.
+private void saveProjectCopy()
+{
+    string path = chooseSavePath("Save a copy as");
+    if (path.length == 0) return;
+    writeProjectTo(path, true);
+}
+
+/// Asks for a `.fl` file name to save to, adding the extension when the
+/// typed name has none. Returns an empty string when cancelled.
+private string chooseSavePath(string title)
+{
     import std.file : exists;
     import std.format : format;
     import std.path : baseName;
     import fluid.path_util : ensureFlExtension;
 
-    string typed = fileChooser("Save .fl file as", "*.fl", projectPath_);
-    if (typed.length == 0) return;
+    string typed = fileChooser(title, "*.fl", projectPath_);
+    if (typed.length == 0) return null;
     // Typing `example` saves `example.fl` (FLTK's Fluid writes it as-is).
     string path = ensureFlExtension(typed);
     // The chooser's own "already exists, replace?" prompt ran against the
@@ -3705,12 +4362,13 @@ private void saveProjectAs()
     if (path != typed && exists(path)
         && fl.ask.choice(format("The file \"%s\" already exists.\nDo you want to replace it?", baseName(path)),
             "Cancel", "Replace", null) == 0)
-        return;
-    projectPath_ = path;
-    writeProjectTo(path);
+        return null;
+    return path;
 }
 
-private void writeProjectTo(string path)
+/// `copy` writes the file only: the project keeps its own file name and
+/// modified state, and the recent-files list is untouched.
+private void writeProjectTo(string path, bool copy = false)
 {
     if (projectRoots_.length == 0) return;
     // See `raw_cpp_guard.d`'s own module doc comment for the incident
@@ -3726,11 +4384,13 @@ private void writeProjectTo(string path)
             ~ "this editor would silently lose content -- not saved.");
         return;
     }
+    syncLayoutsFromLive();
     auto text = new ProjectWriter().generate(projectRoots_, projectI18n_, shellCommandList.list, codeFileName_,
         layoutList, false, projectDubHeader_, projectSettings_);
     try
     {
         write(path, text);
+        if (copy) return;
         dirty_ = false;
         updateShelfTitle();
         if (history_ !is null)
@@ -3740,7 +4400,11 @@ private void writeProjectTo(string path)
         }
     }
     catch (Exception e)
+    {
         stderr.writefln("fluid: could not write %s: %s", path, e.msg);
+        import std.format : format;
+        fl.alert(format("Error writing %s: %s", path, e.msg));
+    }
 }
 
 /// `&File/&Write Strings` -- ported from FLTK's `Project::write_
@@ -3780,7 +4444,7 @@ private void writeStringsFile()
     if (writeStrings(projectRoots_, projectI18n_, outPath) != 0)
     {
         stderr.writefln("fluid: could not write %s", outPath);
-        fl.message(format("Could not write %s", outPath));
+        fl.message(format("Can't write %s", outPath));
     }
     else
         showCompletionDialog(format("Wrote %s", outPath));
@@ -3812,6 +4476,7 @@ private void writeCodeFile()
         if (projectPath_.length == 0) return;
     }
 
+    syncLayoutsFromLive();
     string outPath = codeFilePath_();
     auto writer = new Writer();
     string code;
@@ -3831,6 +4496,8 @@ private void writeCodeFile()
         fl.message(format("Could not generate %s:\n%s", outPath, e.msg));
         return;
     }
+    foreach (err; writer.dataErrors)
+        fl.alert(err);
 
     try
     {
@@ -3842,7 +4509,7 @@ private void writeCodeFile()
     catch (Exception e)
     {
         stderr.writefln("fluid: could not write %s: %s", outPath, e.msg);
-        fl.message(format("Could not write %s:\n%s", outPath, e.msg));
+        fl.message(format("Can't write %s: %s", outPath, e.msg));
     }
 }
 
@@ -4340,6 +5007,11 @@ private void delegate(Widget) quitMenuCallback()
 /// FLTK's own narrower persistence scope exactly.
 private void doQuit()
 {
+    import fluid.shell_process : shellCommandRunning;
+
+    if (shellCommandRunning()
+        && fl.ask.choice("Previous shell command still running!", "Cancel", "Exit", null) == 0)
+        return;
     if (!confirmDiscardChanges()) return;
     saveWindowPosition(shelf_, "main_window_pos");
     saveWindowPosition(widgetBinPanel, "widgetbin_pos", false);
@@ -4512,10 +5184,8 @@ private string[] layoutSuiteMenuPaths_;
 /// (add/rename/remove/storage-switch/suite-select/load), from either
 /// this menu's own callbacks or the Settings dialog's.
 ///
-/// The "&Presets" pair (FLTK, Grid) look "oddly identical" because
-/// FLTK's own `@fd_beaker` icon symbol is reused identically for both;
-/// that icon symbol itself isn't ported here (`fl_add_symbol()` glyphs
-/// are omitted throughout, see `PORTING.md`'s `fluid/panels/` row).
+/// Each suite shows its storage location's symbol (`LayoutSuite.menuLabel`);
+/// the built-in "FLTK" and "Grid" suites both get the beaker.
 void rebuildLayoutMenu()
 {
     foreach_reverse (path; layoutSuiteMenuPaths_)
@@ -4529,7 +5199,7 @@ void rebuildLayoutMenu()
     {
         import std.array : replace;
 
-        string escaped = layoutList[i].name.replace("\\", "\\\\").replace("/", "\\/");
+        string escaped = layoutList[i].menuLabel.replace("\\", "\\\\").replace("/", "\\/");
         string path = "&Layout/&Presets/" ~ escaped;
         int idx = menu_.add(path, 0, layoutSuiteMenuCallback(i), menuRadio);
         if (layoutList.currentSuiteIndex() == i)
@@ -4603,12 +5273,9 @@ private HelpDialog helpDialog_;
 /// none of FLTK's own HTML doc tree, so that lookup only succeeds if the
 /// user points `FLTK_DOCDIR` at a real one); falls back to FLTK's
 /// own per-name special cases otherwise: a small canned page for
-/// "fluid.html" (adapted to describe this port's own single-`.d`-file
-/// output instead of FLTK's `.cxx`/`.h` pair -- see the Build
-/// commands section of CONVENTIONS.md; FLTK's own embedded flow-chart
-/// image is skipped, since no PNG asset for it has been ported into
-/// this project -- a real, narrow, separate gap, not silently dropped),
-/// and `fl.openUri()` to the real fltk.org docs page for everything
+/// "fluid.html" (describing this port's single-`.d`-module output
+/// instead of FLTK's `.cxx`/`.h` pair, with a D flow chart in place of
+/// FLTK's, `documentation/fluid_flow_chart.svg`), and `fl.openUri()` to the real fltk.org docs page for everything
 /// else, including "index.html" -- matching FLTK's own `fl_open_uri()`
 /// call for that case exactly (this port's `openUri()`, `fl.filename`'s
 /// real Linux port).
@@ -4628,20 +5295,38 @@ private void showHelp(string name)
     }
     else if (name == "fluid.html")
     {
+        // The flow chart, added to the shared-image pool under the name the
+        // page's `<img>` uses, as FLTK does with its PNG. It's an SVG, so it
+        // stays sharp at any display scale; `documentation/
+        // fluid_flow_chart_paths.svg` is `fluid_flow_chart.svg` with its text
+        // converted to outlines, since the SVG renderer draws no text.
+        if (SharedImage.find("embedded:/fluid_flow_chart.svg") is null)
+            new SvgImage("embedded:/fluid_flow_chart.svg",
+                cast(const(ubyte)[]) import("fluid_flow_chart_paths.svg"));
         helpDialog_.value(
             "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">\n"
-            ~ "<html><head><title>FLTK: Programming with FLUID</title></head><body>\n"
+            ~ "<html><head><title>fldtk: Programming with FLUID</title></head><body>\n"
             ~ "<h2>What is FLUID?</h2>\n"
             ~ "The Fast Light User Interface Designer, or FLUID, is a graphical editor "
-            ~ "that is used to produce FLTK source code. FLUID edits and saves its state "
+            ~ "that is used to produce D code with the fldtk library. FLUID edits and saves its state "
             ~ "in <code>.fl</code> files. These files are text, and you can (with care) "
             ~ "edit them in a text editor, perhaps to get some special effects.<p>\n"
-            ~ "FLUID can \"compile\" the <code>.fl</code> file into a single generated "
-            ~ "<code>.d</code> source file that defines all the objects from the "
-            ~ "<code>.fl</code> file. FLUID also supports localization (Internationalization) "
-            ~ "of label strings using message files.<p>\n"
-            ~ "<p>More information about FLTK itself is available online at <a href="
-            ~ "\"https://www.fltk.org/doc-1.5/fluid.html\">https://www.fltk.org/</a>"
+            ~ "FLUID can \"compile\" the <code>.fl</code> file into a single <code>.d</code> "
+            ~ "module that builds all the objects from the <code>.fl</code> file. Images and "
+            ~ "inline data files are embedded in it. There is no header file: other modules "
+            ~ "simply <code>import</code> the generated one. <code>.fl</code> files and the "
+            ~ "generated code are UTF-8, so labels can be written in any language directly.<p>\n"
+            ~ "A simple program can be made by putting all your code (including a <code>"
+            ~ "main()</code> function) into the <code>.fl</code> file, so the generated module "
+            ~ "is the whole program. Larger programs keep their own modules, such as "
+            ~ "<code>main.d</code>, that import the generated one; the D compiler compiles "
+            ~ "them and links them with <code>libfldtk</code> in one step. With MergeBack "
+            ~ "enabled for the project, code edited in the generated module can be merged "
+            ~ "back into the <code>.fl</code> file.<p>"
+            ~ "<img src=\"embedded:/fluid_flow_chart.svg\"></p>"
+            ~ "<p>fldtk follows FLTK closely and has no manual of its own. For general "
+            ~ "information, user manuals, widgets, etc., see the FLTK pages online at <a href="
+            ~ "\"https://www.fltk.org/\">https://www.fltk.org/</a>"
             ~ "</body></html>"
         );
     }
@@ -4656,4 +5341,44 @@ private void showHelp(string name)
         return;
     }
     helpDialog_.show();
+}
+
+unittest
+{
+    // The Image Options dialog's scale fields: typing a scale reaches the
+    // live widget's image through the panel's edit hooks.
+    import fluid.widget_node : WidgetNode;
+    import std.file : getcwd;
+    import std.path : buildPath;
+    import widget_panel : makeImagePanel, imagePanelWindow, imagePanelImageW;
+
+    FlGroup.current(null);
+
+    auto n = new WidgetNode();
+    n.typeName = "Fl_Box";
+    n.x = 0; n.y = 0; n.w = 100; n.h = 100;
+    n.hasXywh = true;
+    n.hasImage = true;
+    n.imageFilename = buildPath(getcwd(), "source/test/desktop/checkers-32.png");
+
+    auto win = new Window(200, 200);
+    win.begin();
+    auto box = new Box(0, 0, 100, 100);
+    win.end();
+
+    LiveTree live;
+    live.widgetOf[n] = box;
+    live.nodeOf[box] = n;
+
+    make_widget_panel();
+    widgetPanelLoad([cast(Node) n], live, ".");
+    makeImagePanel();
+    wireEditHooks(imagePanelWindow);
+
+    imagePanelImageW.text("64");
+    imagePanelImageW.doCallback();
+    assert(n.scaleImageW == 64, "model not updated");
+    assert(box.image() !is null, "no image applied");
+    assert(box.image().w() == 64, "live image not scaled");
+    FlGroup.current(null);
 }

@@ -116,6 +116,15 @@ class SharedImage : Image
         images_ ~= this;
     }
 
+    /// Adds `img` to the pool under `name`, so a later `get(name)`/
+    /// `find(name)` returns it -- what FLTK's in-memory image
+    /// constructors (`Fl_PNG_Image`, `Fl_JPEG_Image`, `Fl_SVG_Image`) do
+    /// with a non-null name: `new Fl_Shared_Image(name, this); si->add();`.
+    package(fl) static void addNamed(string name, Image img)
+    {
+        (new SharedImage(name, img)).add();
+    }
+
     private void update()
     {
         if (image_ !is null)
@@ -414,8 +423,8 @@ class SharedImage : Image
 /// same pluggable `add_handler()` chain rather than hardcoding them too
 /// (`fl_images_core.cxx`'s own `fl_check_images()`, which this is a
 /// ported reduction of). None of GIF/SVG/PNG/JPEG link an
-/// external codec in this port (see CONVENTIONS.md's "Correction
-/// (2026-08-12)" note for GIF/SVG; `fl.png_image`'s/`fl.jpeg_image`'s
+/// external codec in this port (see CONVENTIONS.md's "Correction"
+/// note for GIF/SVG; `fl.png_image`'s/`fl.jpeg_image`'s
 /// own module comments for PNG/JPEG -- both adapted from already-D
 /// `arsd.png`/`arsd.jpeg` rather than bound to libpng/libjpeg).
 /// Checked in FLTK's own order: GIF, BMP, ICO, PNG, JPEG, SVG.
@@ -435,7 +444,18 @@ private Image checkNativeFormats(string name, const(ubyte)[] header)
         return GifImage.animate ? cast(Image) new AnimGifImage(name) : cast(Image) new GifImage(name);
 
     if (header[0] == 'B' && header[1] == 'M')
-        return new BMPImage(name);
+    {
+        // Check the bits-per-pixel too, so a text file starting with "BM"
+        // isn't taken for a BMP.
+        uint biSize = header.length >= 18
+            ? header[14] | (header[15] << 8) | (header[16] << 16) | (cast(uint) header[17] << 24) : 0;
+        uint bitCount = 0;
+        if (biSize >= 40 && header.length >= 30) bitCount = header[28] | (header[29] << 8);
+        else if (biSize >= 12 && header.length >= 26) bitCount = header[24] | (header[25] << 8);
+        if (bitCount == 1 || bitCount == 4 || bitCount == 8
+            || bitCount == 16 || bitCount == 24 || bitCount == 32)
+            return new BMPImage(name);
+    }
     if (header[0] == 0 && header[1] == 0 && header[2] == 1 && header[3] == 0 && header[5] == 0)
         return new ICOImage(name);
 

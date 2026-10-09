@@ -46,7 +46,7 @@ module fluid.align_widget;
 import fluid.node : Node;
 import fluid.widget_node : WidgetNode;
 import fluid.window_node : WindowNode;
-import fluid.instantiate : LiveTree;
+import fluid.instantiate : LiveTree, scrollOffsetAbove;
 
 /// Mirrors FLTK's numeric "how" codes exactly (`app/Menu.cxx`'s
 /// `&Layout` submenu: `&Align` = 10-15, `&Space Evenly` = 20-21,
@@ -80,7 +80,11 @@ private void applyResize(WidgetNode wn, int x, int y, int w, int h, LiveTree liv
     wn.hasXywh = true;
 
     if (auto widget = live.widgetOf.get(wn, null))
-        widget.resize(x, y, w, h);
+    {
+        int offX, offY;
+        scrollOffsetAbove(widget, offX, offY);
+        widget.resize(x - offX, y - offY, w, h);
+    }
 }
 
 /// Applies alignment `how` to every `WidgetNode` in `selected`

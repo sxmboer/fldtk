@@ -23,31 +23,30 @@
 // matching how any other post-construction-only field in this dialect
 // is wired (see that .fl file's own top comment).
 //
-// Deliberately not ported: `Bin_Window_Button`, FLTK's separate
-// button class for dragging a new top-level window's floating preview
-// onto the desktop at the release point. This port's "Window" bin
-// button uses a different mechanism entirely: `binButtonCb`
-// (`gui_main.d`) special-cases `typeName() == "Window"` to call
-// `createWindowNode()` on click, matching FLTK's own
+// The "Window" button is FLTK's `Bin_Window_Button`: a click calls
+// `binButtonCb` (`gui_main.d`), which special-cases `typeName() ==
+// "Window"` to call `createWindowNode()`, matching FLTK's own
 // `Window_Node::make()` (walk up for a `Function`/code-block ancestor,
-// `fl_message("Please select a function")` if none exists) -- see that
-// function's own doc comment. `handle()`'s own `Event.drag` case
-// suppresses drag-and-drop specifically for the Window button: its
-// `typeName()` was never a real `fluid.instantiate`-registered widget
-// type, so dropping it the normal way reaches `gui_main.d`'s generic
-// `dropWidget()`/`insertWidget()`, which has no "Window" special case
-// and would silently create a structurally-nested `WindowNode` with no
-// live widget at all. Dragging the Window button behaves like an
-// ordinary click instead, matching FLTK's own lack of a
-// drag-and-drop counterpart for it.
+// `fl_message("Please select a function")` if none exists). Dragging it
+// shows a borderless preview window following the pointer, and releasing
+// calls `onWindowDropped` with the pointer's screen position, where
+// `gui_main.d` creates the window. There is no drag-and-drop payload for
+// it, since a window is not a widget a canvas can receive.
 
 module fluid.bin_button;
 
 import fl;
 
+/// Called when the Window button is dropped on the desktop, with the
+/// pointer's screen position. Set by `gui_main.d`.
+void delegate(int x, int y) onWindowDropped;
+
 final class BinButton : Button
 {
     private string typeName_;
+
+    /// The preview window dragged with the Window button; null otherwise.
+    private Window dragWin_;
 
     this(int x, int y, int w, int h, string label = null)
     {
@@ -72,11 +71,23 @@ final class BinButton : Button
 
         case Event.drag:
             ret = super.handle(event);
-            // "Window" has no DND drop target to receive it -- see this
-            // module's own top comment for the confusing broken state
-            // (a structurally-nested `WindowNode` with no live widget)
-            // that dragging it used to reach.
-            if (!fl.eventIsClick() && typeName_ != "Window")
+            if (typeName_ == "Window")
+            {
+                if (!fl.eventIsClick())
+                {
+                    if (dragWin_ is null)
+                    {
+                        FlGroup.current(null);
+                        dragWin_ = new Window(0, 0, 480, 320);
+                        dragWin_.border(false);
+                        dragWin_.setNonModal();
+                    }
+                    dragWin_.position(fl.eventXRoot() + 1, fl.eventYRoot() + 1);
+                    dragWin_.show();
+                }
+                return ret;
+            }
+            if (!fl.eventIsClick())
             {
                 // fake a drag outside of the widget
                 fl.eventX(x() - 1);
@@ -89,6 +100,21 @@ final class BinButton : Button
                 return 1;
             }
             return ret;
+
+        case Event.release:
+            if (dragWin_ !is null)
+            {
+                dragWin_.hide();
+                fl.core.deleteWidget(dragWin_);
+                dragWin_ = null;
+                int xr = fl.eventXRoot(), yr = fl.eventYRoot();
+                // Released over the button or not, this is a drop, not a click.
+                fl.eventX(x() - 1);
+                super.handle(event);
+                if (onWindowDropped !is null) onWindowDropped(xr, yr);
+                return 1;
+            }
+            break;
 
         default:
             break;

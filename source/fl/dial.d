@@ -11,7 +11,7 @@
  * less than the full widget bounds (same pattern already used by
  * fl.positioner).
  *
- * draw() is fully real now. The fillDial branch (type() == fillDial)
+ * draw() is fully real. The fillDial branch (type() == fillDial)
  * returns early after two fl_pie() calls plus, for certain round box
  * types, an outlining fl_arc(). The default (normalDial) and lineDial
  * branches draw the knob dot/pointer line indicator via the

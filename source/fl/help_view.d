@@ -16,8 +16,7 @@
  * `format_table()`) plus the TABLE/TR/TD/TH branches in `format()`'s
  * main layout pass and the TD/TH border/bgcolor rect in `draw()`. See
  * `formatTable()`'s own doc comment for the column-width algorithm and
- * `TextBlock.border`/`.bgcolor`'s doc comment (already present since
- * Milestone 1, unused until now) for the per-cell state it fills in.
+ * `TextBlock.border`/`.bgcolor`'s doc comment for the per-cell state it fills in.
  *
  * **Real `<img>` pixel rendering**: `getImage()` (ported from
  * `Impl::get_image()`), a fixed "broken
@@ -1113,7 +1112,7 @@ class HelpView : FlGroup
 
     /**
      * Ported from `Fl_Help_View::Impl::format()`. `<TABLE>`/`<TR>`/
-     * `<TD>`/`<TH>` are real now (Milestone 2, see this module's top
+     * `<TD>`/`<TH>` are real (Milestone 2, see this module's top
      * comment) -- `row` (0 == not currently inside a `<TR>`, matching
      * FLTK's own "block 0 is never a real row" sentinel) and
      * `cells`/`columns` (growable D arrays, not FLTK's fixed

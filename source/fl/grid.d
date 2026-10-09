@@ -509,7 +509,7 @@ class Grid : FlGroup
         return c;
     }
 
-    private void removeCell(int row, int col)
+    protected void removeCell(int row, int col)
     {
         auto cells = rowArray_[row].cells_;
         foreach (i, c; cells)

@@ -22,14 +22,10 @@
  *    does-all-rendering model this whole port already assumes elsewhere
  *    (fl.core's event-state globals are the same shape: plain module-
  *    level state, not `__gshared`, since only the UI thread touches it).
- *  - **`.svgz` (gzip-compressed SVG) is supported now (2026-08-18)**,
+ *  - **`.svgz` (gzip-compressed SVG) is supported**,
  *    via `std.zlib.UnCompress(HeaderFormat.gzip)` -- Phobos's own zlib
- *    binding, already linked (`dub.sdl`'s `"z"` `libs` entry) once
- *    `fl.png_image` started needing it for real PNG decode/encode.
- *    FLTK's own gate here is `HAVE_LIBZ`; this port's equivalent
- *    gate (CONVENTIONS.md's "Deferred: external-library-backed features"
- *    zlib-or-not question) was resolved the same day PNG landed, so
- *    this was just a matter of wiring it up. Ported from FLTK's own
+ *    binding, linked through `dub.sdl`'s `"z"` `libs` entry (also needed
+ *    by `fl.png_image`). FLTK's own gate here is `HAVE_LIBZ`. Ported from FLTK's own
  *    `svg_inflate()` (`src/Fl_SVG_Image.cxx`) in spirit, not letter --
  *    that function hand-rolls a chunked `z_stream`/`inflate()` loop
  *    purely because raw zlib's C API has no growable-output concept;
@@ -72,18 +68,10 @@ final class SvgImage : RGBImage
         init_(null, cast(const(ubyte)[]) null, filename);
     }
 
-    /// Loads an SVG image from in-memory text. FLTK registers a
-    /// non-null `sharedname` with `Fl_Shared_Image` (`new Fl_Shared_Image
-    /// (sharedname, this); si->add();`) so a later `Fl_Shared_Image::get
-    /// (sharedname)` finds this same instance. `fl.shared_image.SharedImage`
-    /// is a real, done port (not a missing subsystem) but its name-
-    /// registration constructor/`add()` are module-private -- deliberately
-    /// not exposed to other modules yet, since nothing needed cross-module
-    /// registration before this. Wiring `sharedname` through would need a
-    /// small `package(fl)`-visibility addition there; not done in this
-    /// pass, so `sharedname` is accepted for API parity but currently
-    /// unused beyond being a non-null/null check FLTK itself never
-    /// actually relies on for parsing.
+    /// Loads an SVG image from in-memory text. A non-empty `sharedname`
+    /// adds the image to the shared-image pool under that name, as FLTK
+    /// does (`new Fl_Shared_Image(sharedname, this); si->add();`), so a
+    /// later `SharedImage.get(sharedname)` finds this same instance.
     this(string sharedname, string svgData)
     {
         super(null, 0, 0, 4, 0);
@@ -167,6 +155,12 @@ final class SvgImage : RGBImage
             h(cast(int)(svgImage_.height + 0.5f));
             d(4);
             ld(0);
+        }
+
+        if (sharedname.length && w() && h())
+        {
+            import fl.shared_image : SharedImage;
+            SharedImage.addNamed(sharedname, this);
         }
     }
 
@@ -303,7 +297,7 @@ final class SvgImage : RGBImage
 
     /// Ensures the SVG has been rasterized at least once (at its current
     /// `w()`/`h()`) -- ported from `Fl_SVG_Image::normalize()`.
-    void normalize()
+    override void normalize()
     {
         if (array.length == 0) resize(w(), h());
     }

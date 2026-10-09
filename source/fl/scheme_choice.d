@@ -18,10 +18,8 @@
  * second, separate open window showing scheme-dependent boxtypes won't
  * repaint until its own next `Expose`), but correct for the common
  * single-window case, which is every consumer of this widget in this
- * repo so far (`smoke-tests/scheme.d` previously had to work around
- * this same gap with its own manual `win.redraw()` after calling
- * `fl.core.scheme()` directly -- that manual redraw is now redundant
- * whenever a `SchemeChoice` is used instead, but harmless).
+ * repo so far (calling `fl.core.scheme()` directly needs a manual
+ * `win.redraw()`; a `SchemeChoice` does not).
  */
 module fl.scheme_choice;
 

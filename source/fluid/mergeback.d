@@ -7,7 +7,8 @@
  * How it works. When a project has `ProjectSettings.writeMergebackData`
  * set, every node carries a unique `uid` in the `.fl` file, and
  * `fluid.code_writer.Writer` brackets each editable block of generated
- * code -- a `code {}` fragment, a widget callback, a menu-item callback
+ * code -- a `code {}` fragment, a widget callback, a menu-item callback,
+ * a widget's `setup` code
  * -- with two tag lines (`formatTag()`). A tag line is a `//` comment
  * holding the block kind, the owning node's `uid`, and a CRC32 of all
  * generated text since the previous tag. `Mergeback` re-reads a
@@ -32,6 +33,10 @@
  *    with `is_true_widget()`, which is false for menu items, so every
  *    menu callback edit is reported as "no node found" there; here any
  *    `WidgetNode`, menu items included, is a valid target.
+ *  - A widget's `setup` code is written with the widget's own name in
+ *    place of `o`; a merged-back edit gets `o` back. FLTK's `CODE0`,
+ *    `CODE1` and `FINALIZE` blocks are not written: `WidgetNode` has no
+ *    storage for them.
  *  - The whole code file is read into a string instead of walked with
  *    `fgets()`/`ftell()`, and a block's end is the start of the tag
  *    line that closes it (FLTK's `block_end` keeps a stale value
@@ -44,6 +49,7 @@ module fluid.mergeback;
 
 import std.file : exists, read;
 import std.format : format;
+import std.regex : regex, replaceAll;
 import std.string : indexOf, startsWith;
 import std.zlib : zlibCrc32 = crc32;
 
@@ -51,8 +57,10 @@ import fl.ask : choice, message;
 import fl.preferences : Preferences, rootUserL;
 
 import fluid.code_node : CodeNode;
+import fluid.group_node : GroupNode;
 import fluid.node : Node;
 import fluid.widget_node : WidgetNode;
+import fluid.window_node : WindowNode;
 
 /// Kind of code block a tag line refers to. FLTK's `Mergeback::Tag`;
 /// the numeric values are part of the tag encoding.
@@ -62,6 +70,14 @@ enum Tag : ubyte
     code,
     menuCallback,
     widgetCallback,
+    /// FLTK's extra code slots `code0` and `code1`, and `finalize`, have
+    /// no storage in `WidgetNode`; they are never written and an edit
+    /// inside one is not merged.
+    code0,
+    code1,
+    /// A widget's `setup` code.
+    setup,
+    finalize,
     unused_,
 }
 
@@ -157,7 +173,8 @@ private enum tagEnd = " ﬂ//\n";
 private enum upTriangle = "▲";    // marks: the text above can be edited
 private enum downTriangle = "▼";  // marks: the text below can be edited
 private static immutable string[8] trichar = ["--", "-~", "~-", "~~", "-=", "=-", "~=", "=~"];
-private static immutable string[4] tagLabel = ["----------", "-- code --", " callback ", " callback "];
+private static immutable string[8] tagLabel = ["----------", "-- code --", " callback ", " callback ",
+    "- code 0 -", "- code 1 -", "- setup --", " finalize "];
 
 /// Formats one tag line, including the trailing newline. Ported from
 /// `Mergeback::format_tag()`. `prevType` is the kind of the block that
@@ -175,7 +192,7 @@ string formatTag(Tag prevType, Tag nextType, ushort uid, uint crc)
     uint word = ((cast(uint) prevType << 16) & 0x00ff0000) | uid;
     for (int i = 30; i >= 0; i -= 3)
         result ~= trichar[(word >> i) & 7];
-    result ~= tagLabel[cast(uint) nextType % 4];
+    result ~= tagLabel[cast(uint) nextType % tagLabel.length];
     for (int i = 30; i >= 0; i -= 3)
         result ~= trichar[(crc >> i) & 7];
     result ~= " " ~ decoration ~ tagEnd;
@@ -305,6 +322,39 @@ private string stripOneNewline(string s)
     return s;
 }
 
+/// What the code writer calls widget `n` in generated code: its own name,
+/// else `w` for a window, `g<depth>` for an unnamed group (depth counted in
+/// groups, `n` included), else `o`. See `selfRef()` in `code_writer.d`.
+private string generatedName(WidgetNode n)
+{
+    if (n.instanceName.length) return n.instanceName;
+    if (cast(WindowNode) n) return "w";
+    if (cast(GroupNode) n)
+    {
+        int depth = 0;
+        for (Node p = n; p !is null; p = p.parent)
+            if (cast(GroupNode) p) depth++;
+        return format("g%d", depth);
+    }
+    return "o";
+}
+
+/// A widget's `setup` code refers to the widget as `o`; the code writer
+/// substitutes the widget's generated name (`translateOwnSlot()` in
+/// `code_writer.d`). This does the same, to compare with the file.
+private string setupToGenerated(WidgetNode n, string setup)
+{
+    string name = generatedName(n);
+    return name == "o" ? setup : replaceAll(setup, regex(`\bo\b`), name);
+}
+
+/// The reverse of `setupToGenerated()`, for text read back from the file.
+private string setupFromGenerated(WidgetNode n, string generated)
+{
+    string name = generatedName(n);
+    return name == "o" ? generated : replaceAll(generated, regex(`\b` ~ name ~ `\b`), "o");
+}
+
 /// Compares a generated code file against a project and merges edits
 /// back. Ported from `fluid::proj::Mergeback`.
 class Mergeback
@@ -358,6 +408,18 @@ class Mergeback
             if (auto cn = cast(CodeNode) n) { text = cn.instanceName; return true; }
             return false;
         }
+        if (type == Tag.setup)
+        {
+            if (auto wn = cast(WidgetNode) n)
+            {
+                // As the code writer emitted it, so the checksums compare.
+                text = wn.hasSetupCode ? setupToGenerated(wn, wn.setupCode) : "";
+                return true;
+            }
+            return false;
+        }
+        if (type != Tag.menuCallback && type != Tag.widgetCallback)
+            return false; // no storage for this kind of block
         if (auto wn = cast(WidgetNode) n) { text = wn.callback; return true; }
         return false;
     }
@@ -366,6 +428,12 @@ class Mergeback
     {
         if (type == Tag.code)
             n.instanceName = text;
+        else if (type == Tag.setup)
+        {
+            auto wn = cast(WidgetNode) n;
+            wn.setupCode = setupFromGenerated(wn, text);
+            wn.hasSetupCode = wn.setupCode.length > 0;
+        }
         else
             n.callback = text;
     }

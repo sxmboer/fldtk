@@ -256,8 +256,7 @@ private enum alignInsideBit = 0x10; // fl.enumerations.alignInside
 /// directory, usually `projectDir_`) back to the nearest ancestor
 /// directory containing a `dub.sdl` -- the fldtk checkout's own repo
 /// root -- for `generate()`'s dub single-file-package header. Falls
-/// back to `"."` (the same default the user's own hand-tested `B5.d`
-/// example used) if no `dub.sdl` is found in any ancestor, e.g. when
+/// back to `"."` (a reasonable default) if no `dub.sdl` is found in any ancestor, e.g. when
 /// generating code outside any fldtk checkout entirely -- a reasonable
 /// starting guess a user can hand-edit, not a hard failure, matching
 /// this being an opt-in convenience rather than a correctness-critical
@@ -358,6 +357,12 @@ class Writer
     /// caller. `settings` is the project's own
     /// `fluid.project_settings.ProjectSettings`, defaulting to no
     /// flags set.
+    /// Inline-data files that couldn't be read during the last
+    /// `generate()`, one message each -- FLTK's `Data_Node::write_code1()`
+    /// alerts these when writing code interactively and prints them in
+    /// batch mode; the caller decides which.
+    string[] dataErrors;
+
     string generate(Node[] roots, string projectDir = ".", I18nSettings i18n = I18nSettings.init,
         bool dubHeader = false, ProjectSettings settings = ProjectSettings.init)
     {
@@ -745,7 +750,21 @@ class Writer
     {
         writeNodeComment(dan);
         string varName = snakeToCamel(dan.instanceName);
-        auto bytes = cast(ubyte[]) read(buildPath(projectDir_, dan.filename));
+        // As in FLTK: no filename embeds no data, and a file that can't
+        // be read leaves an error in the generated source (FLTK's
+        // `#error`, a `static assert` here) instead of stopping codegen.
+        ubyte[] bytes;
+        if (dan.filename.length)
+        {
+            try
+                bytes = cast(ubyte[]) read(buildPath(projectDir_, dan.filename));
+            catch (Exception)
+            {
+                line(format(`static assert(false, "Can't include data from file. Can't open %s");`,
+                    dByteStringLiteral(cast(const(ubyte)[]) dan.filename)));
+                dataErrors ~= format("Can't include data from file. Can't open\n%s\n", dan.filename);
+            }
+        }
 
         if (dan.compressedFlag)
         {
@@ -1593,7 +1612,9 @@ class Writer
     /// FLTK's own scope exactly (it never offers a convenience
     /// overload for the `Fl_Group`-based case either), with `wcRelative`
     /// substituted directly into the `super()` call's own arguments
-    /// (FLTK's equivalent branch, `write_code1()`'s own `else`).
+    /// (FLTK's equivalent branch, `write_code1()`'s own `else`), plus a
+    /// trailing `position(x, y)`/`resize(x, y, w, h)` after `end()` for
+    /// the two relative modes.
     ///
     /// **Deliberately guarded by `windowShaped`, a real deviation**:
     /// FLTK's own `write_code2()` unconditionally casts `o` to
@@ -1625,8 +1646,7 @@ class Writer
         // only constructor body below can express. Mirrors
         // `writeClassNode()`'s own identical support for a plain
         // `ClassNode` exactly -- same two loops, same `writeDeclChild()`/
-        // `writeClassMethod()` calls -- `widget_class` just never had a
-        // real caller needing either until now.
+        // `writeClassMethod()` calls -- `widget_class` gets the same treatment.
         bool anyDecls;
         foreach (c; wcn.children)
             if (cast(DeclNode) c || cast(DeclBlockNode) c)
@@ -1671,6 +1691,16 @@ class Writer
             case 2: line(format("super(0, 0, %d, %d, label);", wcn.w, wcn.h)); break;
             }
             writeWidgetClassBody(wcn, windowShaped);
+            // Children were laid out from 0,0 above; move (and for
+            // `position_relative_rescale`, resize) the finished group
+            // to where the caller asked for it, as FLTK's
+            // `Widget_Class_Node::write_code1()` does after `end()`.
+            final switch (wcn.wcRelative)
+            {
+            case 0: break;
+            case 1: line("position(x, y);"); break;
+            case 2: line("resize(x, y, w, h);"); break;
+            }
             indent_--;
             line("}");
             blank();
@@ -1859,7 +1889,12 @@ class Writer
         n.setupSpan.start = pos();
         line("{");
         indent_++;
-        line(format("%s%d, %d%s);", ctorAssign(n, cls), n.w, n.h, labelArg));
+        // A window nested in another window is a subwindow at its own
+        // position; the (w, h) constructor would make it a top-level window.
+        if (isNestedWindow(n))
+            line(format("%s%d, %d, %d, %d%s);", ctorAssign(n, cls), n.x, n.y, n.w, n.h, labelArg));
+        else
+            line(format("%s%d, %d%s);", ctorAssign(n, cls), n.w, n.h, labelArg));
         writeCommonProps(n, v);
         // Matches FLTK's own `Window_Node::write_code1()` call
         // sites exactly (`set_modal()`/`set_non_modal()`, constructor-
@@ -1909,7 +1944,7 @@ class Writer
         if (n.resizableFlag && !hasResizableChild(n))
             line(format("%s.resizable(%s);", v, v));
         line(format("%s.end();", v));
-        if (inMainFunction_)
+        if (inMainFunction_ && !isNestedWindow(n))
             line(format("%s.show(args);", v));
         indent_--;
         line("}");
@@ -2189,7 +2224,9 @@ class Writer
     /// the one call site here that had been missed.
     private void writeMenuItemLiteral(MenuItemNode mi)
     {
-        string label = mi.hasLabel ? i18nWrap(mi.label) : "null";
+        // A null label ends the menu array, so an unlabeled item gets an
+        // empty string, as in FLTK's `Menu_Item_Node::write_item()`.
+        string label = mi.hasLabel && mi.label.length ? i18nWrap(mi.label) : `""`;
         string labeltype = mi.labeltype.length ? translateLabeltype(mi.labeltype) : "Labeltype.normalLabel";
         string labelfont = mi.labelfont >= 0 ? translateFont(mi.labelfont) : "0";
         int labelsize = mi.labelsize >= 0 ? mi.labelsize : 14;
@@ -2217,25 +2254,15 @@ class Writer
             label, shortcut, flags, labeltype, labelfont, labelsize, labelcolor));
     }
 
-    /// FLTK: `Menu_Item_Node::flags()` (`Menu_Node.cxx`) -- combines
-    /// `hotspot_` (reused as "divider" for a menu item, `FL_MENU_DIVIDER`),
-    /// `headline_` (`FL_MENU_HEADLINE`), `canHaveChildren()`
-    /// (`FL_SUBMENU` -- FLTK computes this dynamically from
-    /// `can_have_children()` too, rather than storing it, since it's
-    /// really a property of which concrete node class this is,
-    /// `Submenu_Node` vs. plain `Menu_Item_Node`), and `typeName`
-    /// (`FL_MENU_TOGGLE`/`FL_MENU_RADIO` -- FLTK bakes these into
-    /// the generated widget's own `type()` at creation time via
-    /// `Checkbox_Menu_Item_Node`/`Radio_Menu_Item_Node`'s `make()`
-    /// overrides; this port's `typeName` field already carries the same
-    /// "which `.fl` keyword created this" signal, see `menu_item_node.d`'s
-    /// own doc comment for why no dedicated D subclass was needed for
-    /// these two) into the generated `Fl_Menu_Item`'s own flags word.
-    /// Previously hardcoded to `0` here -- both `hotspotFlag`/`headline_`
-    /// were already real, round-tripped `MenuItemNode` properties with
-    /// no codegen consumer at all, a real, silent gap closed alongside
-    /// wiring the Headline UI that surfaced it; `Submenu`/
-    /// `CheckMenuItem`/`RadioMenuItem` support added them for real.
+    /// FLTK: `Menu_Item_Node::flags()` (`Menu_Node.cxx`) -- the generated
+    /// `MenuItem`'s flags word: `value` (`FL_MENU_VALUE`), `deactivate`
+    /// (`FL_MENU_INACTIVE`), `hide` (`FL_MENU_INVISIBLE`), `hotspotFlag`
+    /// (reused as "divider", `FL_MENU_DIVIDER`), `headline_`
+    /// (`FL_MENU_HEADLINE`), `canHaveChildren()` (`FL_SUBMENU`, a property
+    /// of the node class, `Submenu_Node` vs. plain `Menu_Item_Node`), and
+    /// `typeName` (`FL_MENU_TOGGLE`/`FL_MENU_RADIO`, which FLTK stores as
+    /// the item's `type()`; see `menu_item_node.d`'s doc comment for why
+    /// `typeName` carries it here).
     private string menuItemFlags(MenuItemNode mi)
     {
         string flags;
@@ -2244,6 +2271,9 @@ class Writer
             if (flags.length) flags ~= " | ";
             flags ~= f;
         }
+        if (mi.hasValue && mi.valueRaw.strip() != "0") add("menuValue");
+        if (mi.deactivated) add("menuInactive");
+        if (mi.hidden) add("menuInvisible");
         if (mi.hotspotFlag) add("menuDivider");
         if (mi.headline_) add("menuHeadline");
         if (mi.canHaveChildren()) add("menuSubmenu");
@@ -2358,7 +2388,7 @@ class Writer
         if (n.callback.length)
             writeCallback(n, v);
         if (n.hasSetupCode && n.setupCode.length)
-            emitSnippetLines(translateOwnSlot(n.setupCode, v));
+            writeTaggedBlock(Tag.setup, n.uid, translateOwnSlot(n.setupCode, v));
     }
 
     private void writeCallback(WidgetNode n, string v)
@@ -3787,6 +3817,73 @@ unittest
     assert(mb.analyse(structural) == 0);
     assert(mb.numChangedStructure == 1 && mb.numChangedCode == 0);
     assert(mb.apply(structural) == 0);
+}
+
+unittest
+{
+    // A widget's `setup` code is tagged for MergeBack too. The file shows
+    // the widget's own name where the project says `o`, so an edit is
+    // merged back with `o` again, for a named and for an unnamed widget.
+    import std.algorithm : canFind;
+    import fluid.mergeback : Mergeback;
+    import fluid.project_settings : ProjectSettings;
+
+    auto mainFn = new FunctionNode();
+    mainFn.typeName = "Function";
+
+    auto win = new WindowNode();
+    win.typeName = "Fl_Window";
+    win.instanceName = "win";
+    win.x = 0; win.y = 0; win.w = 200; win.h = 100;
+    win.hasXywh = true;
+    mainFn.addChild(win);
+
+    auto named = new WidgetNode();
+    named.typeName = "Fl_Button";
+    named.instanceName = "okButton";
+    named.x = 0; named.y = 0; named.w = 32; named.h = 32;
+    named.hasXywh = true;
+    named.setupCode = "o.tooltip(\"ok\");\no.deactivate();";
+    named.hasSetupCode = true;
+    win.addChild(named);
+
+    auto anon = new WidgetNode();
+    anon.typeName = "Fl_Button";
+    anon.x = 40; anon.y = 0; anon.w = 32; anon.h = 32;
+    anon.hasXywh = true;
+    anon.setupCode = "o.tooltip(\"anon\");";
+    anon.hasSetupCode = true;
+    win.addChild(anon);
+
+    ProjectSettings on;
+    on.writeMergebackData = true;
+    string text = new Writer().generate([mainFn], ".", I18nSettings.init, false, on);
+    assert(text.canFind("okButton.deactivate();"));
+
+    auto mb = new Mergeback([mainFn]);
+    assert(mb.analyse(text) == 0);
+    assert(mb.numChangedCode == 0 && mb.numChangedStructure == 0);
+
+    string edited = text
+        .replace("okButton.deactivate();", "okButton.activate();")
+        .replace("o.tooltip(\"anon\");", "o.tooltip(\"other\");");
+    assert(mb.analyse(edited) == 0);
+    assert(mb.numChangedCode == 2 && mb.numUidNotFound == 0 && mb.numPossibleOverride == 0);
+    assert(mb.apply(edited) == 1);
+    assert(named.setupCode == "o.tooltip(\"ok\");\no.activate();");
+    assert(anon.setupCode == "o.tooltip(\"other\");");
+
+    // Merged: the file analyses as already applied, and regenerating gives
+    // a file that analyses clean.
+    assert(mb.analyse(edited) == 0 && mb.numChangedCode == 0);
+    string regenerated = new Writer().generate([mainFn], ".", I18nSettings.init, false, on);
+    assert(mb.analyse(regenerated) == 0 && mb.numChangedCode == 0 && mb.numChangedStructure == 0);
+
+    // A setup edited in the project after generation is a possible override.
+    named.setupCode = "o.tooltip(\"project\");";
+    string editedAgain = regenerated.replace("okButton.activate();", "okButton.hide();");
+    assert(mb.analyse(editedAgain) == 0);
+    assert(mb.numChangedCode == 1 && mb.numPossibleOverride == 1);
 }
 
 unittest

@@ -15,7 +15,7 @@
  * resize()-triggers-redraw() override (see that method's doc comment
  * in fl.widget for the full explanation).
  *
- * draw() calls fl.draw's pushClip()/popClip() (real now -- only
+ * draw() calls fl.draw's pushClip()/popClip() (real -- only
  * reached when box() has a background AND spacing() leaves a gap to
  * fill, e.g. a _BOX boxtype with spacing() > 0), and draws real pixels
  * everywhere else too (its children, fl_rectf(), drawBox()).

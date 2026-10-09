@@ -4,7 +4,7 @@
  * Faithful, complete port. Fl_Box is FLTK's simplest widget: it
  * just draws its box and label, and eats FL_ENTER/FL_LEAVE so hovering
  * over one doesn't propagate to whatever's behind it. draw() forwards
- * to Widget.drawBox()/drawLabel(), both real now (see fl.widget's own
+ * to Widget.drawBox()/drawLabel(), both real (see fl.widget's own
  * top-of-file comment), so a Box paints real pixels -- box and label
  * both -- for every boxtype fl.draw's drawBoxAt() covers (see that
  * module's own note for which ones).

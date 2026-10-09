@@ -69,9 +69,9 @@
  * composition both resolve to real, correct UTF-8 text -- see that
  * module's `initXim()`/`ximActivate()` and the `KeyPress` case's own
  * doc comments for the full mechanism and its deliberate scope (no
- * on-screen preedit/candidate-window positioning, since no widget in
- * this port calls the FLTK equivalent of `setSpot()` yet --
- * out of scope for this core-layer pass, a widget-level follow-up).
+ * on-screen preedit/candidate-window positioning, since only
+ * `fl.text_display` reports a cursor spot via `setSpot()`, and
+ * `fl_set_spot()` never negotiates the separate status area).
  *
  * Ported from Fl::copy()/Fl::paste() (src/Fl.cxx) as copy()/paste()
  * below, backed by real X11 selection ownership. copy()
@@ -150,7 +150,7 @@
  *    FLTK has, and fixFocus() pins focus inside the current modal()
  *    window.
  *  - add_handler()/remove_handler()/add_system_handler()/
- *    remove_system_handler()/event_dispatch() are all real now
+ *    remove_system_handler()/event_dispatch() are all real
  *    (addHandler()/removeHandler()/addSystemHandler()/
  *    removeSystemHandler()/eventDispatch() below) -- fl.platform_x11's
  *    event loop calls sendSystemHandlers() on every raw XEvent before
@@ -174,9 +174,7 @@
  *    override both for real, so on Windows these are real too -- see
  *    `enableIm()`/
  *    `disableIm()`'s own doc comments. `first_window()` real (see
- *    `firstWindow()`'s own doc comment). Idle callbacks (`Fl::add_idle()`/
- *    `remove_idle()`, a separate mechanism from `add_fd()`) still aren't
- *    ported; no consumer needs them yet.
+ *    `firstWindow()`'s own doc comment).
  *
  * Ported from FL/core/options.H:
  *  - visible_focus()/visible_focus(int), and the general Fl_Option/
@@ -313,6 +311,8 @@ package(fl)
     /// need to close over anything.
     int delegate(Event) localGrab_;
     int eX_, eY_, eXRoot_, eYRoot_, eDx_, eDy_;
+    float eDxF_ = 0, eDyF_ = 0;       // hi-res wheel deltas
+    float eDxErr_ = 0.5f, eDyErr_ = 0.5f; // fraction carried between hi-res -> int conversions
     int eClicks_;
     bool eIsClick_;
     Keysym eKeysym_, eOriginalKeysym_;
@@ -350,6 +350,37 @@ int eventYRoot() { return eYRoot_; }
 int eventDx() { return eDx_; }
 /// ditto
 int eventDy() { return eDy_; }
+
+/// Horizontal mouse wheel/touchpad scroll delta of an FL_MOUSEWHEEL event
+/// in fractional lines; right is positive.
+float eventDxF() { return eDxF_; }
+/// Vertical counterpart of eventDxF(); down is positive.
+float eventDyF() { return eDyF_; }
+
+/// Sets the wheel state for one FL_MOUSEWHEEL event from hi-res deltas
+/// (in lines): eventDxF()/eventDyF() get the exact value, eventDx()/
+/// eventDy() the whole lines accumulated so far. Only one axis is
+/// non-zero per event.
+package(fl) void setWheelDelta(float dx, float dy)
+{
+    import std.math : floor;
+    eDxF_ = dx; eDyF_ = dy;
+    eDx_ = 0; eDy_ = 0;
+    if (dx != 0)
+    {
+        eDxErr_ += dx;
+        float i = floor(eDxErr_);
+        eDxErr_ -= i;
+        eDx_ = cast(int) i;
+    }
+    if (dy != 0)
+    {
+        eDyErr_ += dy;
+        float i = floor(eDyErr_);
+        eDyErr_ -= i;
+        eDy_ = cast(int) i;
+    }
+}
 
 /// Number of consecutive clicks; N-1 for N clicks.
 int eventClicks() { return eClicks_; }
@@ -534,10 +565,9 @@ string eventText() { return eText_; }
 /// `eventLength()` is derived from this, so setting a shorter/longer
 /// string already updates it too -- no separate setter needed.
 void eventText(string s) { eText_ = s; }
-/// TODO: FLTK distinguishes this from strlen(event_text()) because
-/// pasted/composed text may contain embedded nulls that a malloc'd
-/// buffer + explicit length can represent but a D string cannot as
-/// cleanly; not an issue while nothing populates eventText() yet.
+/// FLTK's `Fl::event_length()` exists apart from `strlen(event_text())`
+/// because pasted or composed text may contain embedded NULs; a D string
+/// carries its own length, so this is just that.
 size_t eventLength() { return eText_.length; }
 
 /// Ported from `Fl::clipboard_plain_text`/`Fl::clipboard_image`
@@ -1268,9 +1298,7 @@ private int scrollbarSize_ = 16;
  * `fl.text_display`'s `scrollbarSize(int)`, ...). Ported from
  * `Fl::scrollbar_size()`/`Fl::scrollbar_size(int)` (src/Fl.cxx); the
  * default matches FLTK's own `scrollbar_size_ = 16` initializer.
- * `fl.text_display` predates this global and used to fall back to a
- * locally-hardcoded 16px default with a TODO pointing here; it's been
- * updated to call this instead now that it exists.
+ * `fl.text_display` takes its default scrollbar size from this.
  */
 int scrollbarSize() { return scrollbarSize_; }
 void scrollbarSize(int w) { scrollbarSize_ = w; } /// ditto
@@ -1709,12 +1737,12 @@ Widget focus()
  * skips this entirely while grab() is active (see that function's own
  * doc comment), matching FLTK's `if (grab()) return;` guard.
  *
- * TODO: FLTK also (a) requests/releases an on-screen keyboard via
- * the screen driver depending on needsKeyboard(), (b) calls
- * compose_reset(), and (c) makes sure the focused widget's top-level
- * window has native input focus via the window driver. None of the
- * screen driver/compose_reset()/the window driver's own focus-syncing
- * exist yet, so those steps are skipped rather than faked.
+ * Calls composeReset() when focus actually moves, as FLTK does. Not
+ * ported: FLTK also requests/releases an on-screen keyboard through the
+ * screen driver depending on needsKeyboard(), and makes sure the
+ * focused widget's top-level window has native input focus via the
+ * window driver (`take_focus()`); this port has neither a screen-driver
+ * keyboard hook nor a window-driver focus step.
  */
 void focus(Widget o)
 {
@@ -1724,6 +1752,7 @@ void focus(Widget o)
     Widget p = focus_;
     if (o !is p)
     {
+        composeReset();
         focus_ = o;
         oldFocus_ = null;
         auto savedEvent = eNumber_;
@@ -1889,6 +1918,7 @@ package(fl) void resetForTest()
     eNumber_ = Event.noEvent;
     eState_ = 0;
     eX_ = 0; eY_ = 0; eXRoot_ = 0; eYRoot_ = 0; eDx_ = 0; eDy_ = 0;
+    eDxF_ = 0; eDyF_ = 0; eDxErr_ = 0.5f; eDyErr_ = 0.5f;
     eClicks_ = 0;
     eIsClick_ = false;
     eKeysym_ = 0;
@@ -1958,7 +1988,7 @@ package(fl) void callbackReason(CallbackReason reason)
  * Ported from `Fl_Option` (`FL/core/options.H`). Enumerator for global
  * FLTK options -- FLTK's own doc comment: "can be set system wide,
  * per user, or for the running application only." All three tiers are
- * real now (`option()`'s own doc comment has the full mechanism); the
+ * real (`option()`'s own doc comment has the full mechanism); the
  * enum itself and its defaults are ported faithfully, including options no
  * widget in this port consumes yet (there's no `Fl_Native_File_Chooser`/
  * `Fl_Printer`/scaling-zoom subsystem here) -- matching this project's
@@ -2159,6 +2189,8 @@ package(fl) string argTitle_;
 package(fl) string argGeometry_;
 package(fl) string argBg_;
 package(fl) string argFg_;
+/// `-scaling_factor` switch value; 1.0 when absent.
+package(fl) float argScalingFactor_ = 1.0f;
 package(fl) string argBg2_;
 
 /// `Fl_Window::show_next_window_iconic_` -- the direct equivalent of
@@ -2438,6 +2470,12 @@ int arg(string[] cmdArgs, ref int i)
     {
         argFg_ = v;
     }
+    else if (argMatch(s, "scaling", 2) || argMatch(s, "scaling_factor", 14))
+    {
+        import std.conv : to;
+        try argScalingFactor_ = v.to!float;
+        catch (Exception) argScalingFactor_ = 0; // atof() of junk is 0 too
+    }
     else if (argMatch(s, "scheme", 1))
     {
         scheme(v);
@@ -2502,6 +2540,7 @@ unittest
     showNextWindowIconic_ = false;
     argBg_ = null;
     argFg_ = null;
+    argScalingFactor_ = 1.0f;
     argBg2_ = null;
     resetForTest();
 
@@ -2605,6 +2644,7 @@ immutable string argsHelp =
     ~ " -nok[bd]\n"
     ~ " -not[ooltips]\n"
     ~ " -s[cheme] scheme\n"
+    ~ " -scaling[_factor] factor\n"
     ~ " -ti[tle] windowtitle\n"
     ~ " -to[oltips]";
 
@@ -2663,9 +2703,8 @@ AbortHandler abortHandler()
  * process out from under it is exactly the class of surprise this
  * project's own "sweep to remove `exit()` calls" was about (see
  * `fl.platform_x11.openDisplay()`, which already independently arrived
- * at "throw instead" for its own `XOpenDisplay()` failure before this
- * mechanism existed -- now routed through here instead, closing that
- * function's own long-standing TODO). The default still prints to
+ * at "throw instead" for its own `XOpenDisplay()` failure, which routes
+ * through here). The default still prints to
  * stderr first, matching FLTK's own always-prints behavior, then
  * throws a `FatalError` carrying the same message -- FLTK's own
  * doc comment on `Fl::fatal()` explicitly names throwing an exception
@@ -3214,13 +3253,12 @@ void boxBorderRadiusMax(int r)
 // ---------------------------------------------------------------------
 // Fl_Scheme (color-scheme reactivity) -- FL/Fl.H's scheme()/is_scheme()/
 // reload_scheme(), src/Fl_get_system_colors.cxx/src/fl_boxtype.cxx
-// (core-roadmap item 11, "Phase A": the mechanism itself, not yet
-// any of the four schemes' own boxtype *drawing* functions -- see
-// reloadScheme()'s own doc comment for what that means in practice
-// right now).
+// (core-roadmap item 11: the mechanism itself. The four schemes' own
+// boxtype *drawing* functions live in fl.draw's `drawBoxAt()`; the
+// "plastic" scheme's tiled window background is `plasticSchemeTile()`).
 // ---------------------------------------------------------------------
 //
-// Real now: scheme()/scheme(string)/isScheme()/reloadScheme()/
+// Provided: scheme()/scheme(string)/isScheme()/reloadScheme()/
 // getSystemScheme(), and a new boxtype alias table (resolveBoxtype()/
 // setBoxtype()) that reload_scheme() uses instead of FLTK's
 // Fl::set_boxtype(). DELIBERATE SIMPLIFICATION: FLTK's
@@ -3491,7 +3529,7 @@ void reloadScheme()
 
     // Set (or clear) the background tile for all open windows -- ported
     // from reload_scheme()'s own closing loop (needs firstWindow()/
-    // nextWindow(), both real now). Deliberately unconditional (runs
+    // nextWindow(), both real). Deliberately unconditional (runs
     // for every scheme, not just "plastic"): matches FLTK exactly,
     // and is how a window that *was* showing the plastic tile gets its
     // image/label/align cleanly reset back to normal when switching
@@ -3775,7 +3813,7 @@ Widget readqueue()
  *
  * Still not ported: raising the clicked window to the top on FL_PUSH
  * (single-window scope so far). The add_handler() chain and sendEvent()'s
- * subwindow coordinate-offset adjustment are both real now -- see
+ * subwindow coordinate-offset adjustment are both real -- see
  * addHandler()'s and sendEvent()'s own doc comments (core-roadmap
  * items 1 and 5).
  */
@@ -4066,7 +4104,7 @@ int handle(Event e, Widget window)
  * called with) -- `eX_`/`eY_` arrive already relative to *that* window's
  * own local origin (`fl.platform_x11`'s translation), which is correct
  * as-is only when `w` (the widget actually being dispatched to) lives in
- * that same window. Once subwindows exist, `w` can live in a *different*
+ * that same window. `w` can live in a *different*
  * (nested) window than the one that physically received the event --
  * e.g. a shortcut dispatched via `focus()`'s parent-chain walk, or a
  * modal-redirected click, can cross a subwindow boundary -- so `dx`/`dy`
@@ -5201,8 +5239,8 @@ private float currentScale_ = 1.0f;
 /// Reads the live drawing scale `currentScale(float)` below last set --
 /// see `currentScale_`'s own doc comment for the FLTK mechanism this
 /// mirrors. Every call site in `fl.draw`/`fl.image`/`fl.bitmap` that
-/// used to read `screenScale(0)` as a stand-in for "the scale of
-/// whatever window is currently being drawn" now calls this instead.
+/// needs "the scale of whatever window is currently being drawn" calls
+/// this, not `screenScale(0)`.
 float currentScale()
 {
     return currentScale_;
@@ -5236,7 +5274,7 @@ package(fl) void currentScale(float factor)
 /// file on purpose (so `fltk-options`, which ships with real FLTK,
 /// configures this port too); this feature has no FLTK counterpart
 /// at all, so it belongs in fldtk's own namespace, same reasoning
-/// `fluid/app_prefs.d` already used to deliberately diverge from
+/// `fluid/app_prefs.d` uses to diverge from
 /// FLTK Fluid's own `"fltk.org"`/`"fluid"` pair. Application
 /// `"core"` (not `"fluid"` or any other single app) since this is
 /// shared, global state for every fldtk application, not one app's own
@@ -5352,6 +5390,31 @@ package(fl) float baseScale(int n)
     if (isNaN(baseScale_[n]))
         baseScale_[n] = screenScale(n);
     return baseScale_[n];
+}
+
+/// Ported from `Fl::normalized_screen_scale(int)`: screen `n`'s scale in
+/// relation to its scale when the application started (the value shown
+/// in the transient popup during interactive scaling). `1.0` if scaling
+/// isn't supported or `n` is out of range.
+float normalizedScreenScale(int n)
+{
+    if (!screenScalingSupported() || n < 0 || n >= screenCount()) return 1.0f;
+    return screenScale(n) / baseScale(n);
+}
+
+/// Ported from `Fl::normalized_screen_scale(int, float)`: sets screen
+/// `n`'s scale to `factor` times its startup scale, rescaling its shown
+/// windows. `n == -1` applies to every screen.
+void normalizedScreenScale(int n, float factor)
+{
+    if (!screenScalingSupported() || factor <= 0) return;
+    if (n == -1)
+    {
+        foreach (sc; 0 .. screenCount())
+            rescaleAllWindowsFromScreen(sc, factor * baseScale(sc), screenScale(sc));
+    }
+    else if (n >= 0 && n < screenCount())
+        rescaleAllWindowsFromScreen(n, factor * baseScale(n), screenScale(n));
 }
 
 /// Explicitly seeds screen `n`'s `baseScale()` reference value -- called
@@ -6057,8 +6120,7 @@ int boxDw(Boxtype t) { return boxMetrics(t).dw; }
 int boxDh(Boxtype t) { return boxMetrics(t).dh; }
 
 /// True if boxtype t paints a solid background; false if it's an
-/// outline-only "frame" boxtype. See fl.widget's redrawLabel() TODO,
-/// which still needs this for the full redraw_label() port.
+/// outline-only "frame" boxtype. `Widget.redrawLabel()` uses it.
 bool boxBg(Boxtype t) { return boxMetrics(t).bg; }
 
 unittest
@@ -6706,14 +6768,12 @@ unittest
     // handle(): FL_KEYBOARD reaches a real modal() dialog's own focused
     // child (e.g. fl_input()'s Input field) correctly with zero special
     // casing, because grab() is null while a real modal() window is
-    // open (fl.ask no longer calls grab() at all -- see modal()'s own
+    // open (fl.ask never calls grab() -- see modal()'s own
     // doc comment) -- so the existing, unmodified `grab() ? grab() :
     // focus()` ternary already reaches focus() directly, exactly
     // matching FLTK's real behavior (FLTK's real modal dialogs
-    // never grab either). Regression coverage for the *old*,
-    // now-removed "prefer a focused descendant of grab()" workaround
-    // this test used to exercise -- that workaround is gone, and
-    // doesn't need to be, once fl.ask stopped grabbing.
+    // never grab either). A "prefer a focused descendant
+    // of grab()" workaround is unnecessary for the same reason.
     import fl.group : FlGroup;
 
     static class Leaf : Widget

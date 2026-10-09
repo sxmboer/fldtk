@@ -45,12 +45,11 @@
  *    the natural, type-safe D equivalent of "attach any caller value"
  *    -- same spirit as FLTK's `void*`, just checked by the
  *    compiler instead of cast blindly at every use site.
- *  - **Icon drawing (`openicon()`/`closeicon()`/`usericon()`) is real
- *    now** (2026-08-01, following `fl.image`'s own port): the
+ *  - **Icon drawing (`openicon()`/`closeicon()`/`usericon()`) is real**: the
  *    `if (prefs.openicon())`-style branches that pick between a custom
  *    icon and the built-in `[+]`/`[-]` glyph, `uiconW`'s real width
  *    contribution to the label's x-position, and `calcItemHeight()`'s
- *    user-icon height contribution are all ported faithfully now,
+ *    user-icon height contribution are all ported faithfully,
  *    matching `Fl_Tree_Item::draw()`/`calc_item_height()`/
  *    `event_on_user_icon()` exactly. The built-in `[+]`/`[-]` glyph
  *    itself (FLTK: `Fl_System_Driver::tree_draw_expando_button()`,
@@ -1060,20 +1059,17 @@ class TreeItem
                     }
                     if (render && hasChildren() && prefs.showcollapse())
                     {
-                        // Real prefs.openicon()/closeicon() are drawn now
-                        // when set (2026-08-01, following fl.image's own
-                        // port), falling back to the built-in glyph via
+                        // Real prefs.openicon()/closeicon() are drawn
+                        // when set, falling back to the built-in glyph via
                         // drawExpandoButton() otherwise -- matching
                         // FLTK's own is_open()/else branches exactly:
                         // an *open* item shows the "close" icon (click to
                         // close it) or, with no custom icon, a "-" glyph
                         // (drawExpandoButton()'s state=false); a *closed*
                         // item shows the "open" icon or a "+" glyph
-                        // (state=true). Bug fixed 2026-07-30
-                        // (user-reported): the built-in-glyph fallback
-                        // used to pass isOpen() directly, backwards from
-                        // FLTK -- an open (collapsible) item showed
-                        // "+" and a closed (expandable) one showed "-".
+                        // (state=true). Passing isOpen() directly would be
+                        // backwards from FLTK: an open (collapsible) item
+                        // would show "+" and a closed one "-".
                         if (isOpen())
                         {
                             if (prefs.closeicon() !is null)
@@ -1099,8 +1095,7 @@ class TreeItem
                             }
                         }
                     }
-                    // Real user-icon drawing (2026-08-01, following
-                    // fl.image's own port): the item's own usericon()
+                    // User-icon drawing: the item's own usericon()
                     // takes priority over the tree-wide prefs.usericon(),
                     // matching FLTK's exact if/else-if fallback.
                     if (render && usericon() !is null)
@@ -1498,8 +1493,7 @@ unittest
 
 unittest
 {
-    // Real icon sizing (2026-08-01, following fl.image's own port):
-    // calcItemHeight() grows to fit a tall usericon(), and eventOnUserIcon()'s
+    // Icon sizing: calcItemHeight() grows to fit a tall usericon(), and eventOnUserIcon()'s
     // uix math resolves using the real image width instead of never
     // resolving true. draw() with a custom prefs.openicon()/closeicon()
     // set is exercised too (headless: Image.draw() itself early-returns
@@ -1527,8 +1521,8 @@ unittest
     // labelXywh_ is populated by draw()'s geometry pass -- run it once
     // (render=false is enough to compute geometry without touching a
     // display) so eventOnUserIcon()'s uix math has real coordinates to
-    // work with, then confirm it no longer unconditionally returns
-    // false the moment a real icon is present.
+    // work with, then confirm it does not return
+    // false just because a real icon is present.
     int y = 0, xmax = 0;
     item.draw(0, y, 200, null, xmax, true, false);
     int uix = item.labelX() - tallIcon.w();

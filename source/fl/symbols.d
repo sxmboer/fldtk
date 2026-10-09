@@ -900,9 +900,8 @@ version (unittest)
         // a literal '@0,0'
         // substring inside ordinary text (e.g. "...1920x1080@0,0" from
         // a %d,%d-formatted coordinate) hits the '0' rotation-digit
-        // case with too few trailing characters. Previously this
-        // advanced p past label.length unconditionally, crashing the
-        // label[p .. $] slice below with a real
+        // case with too few trailing characters. Advancing p past
+        // label.length would crash the label[p .. $] slice below with a
         // core.exception.ArraySliceError.
         //
         // Not asserting a specific 0-vs-1 return here: clamping p to

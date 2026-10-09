@@ -12,35 +12,32 @@
  * header and `Fl_PostScript.cxx` is relevant here -- every function in
  * this module is a port of that branch specifically, not the Cairo one.
  *
- * **Both `Fl_EPS_File_Surface` and `Fl_PostScript_File_Device` are
- * covered; `Fl_Printer` is not.** `Fl_EPS_File_Surface` extends
- * `Fl_Widget_Surface` directly and its own `start_eps()` needs no
- * page/margin negotiation -- same shape as `fl.svg_file_surface.
- * SvgFileSurface`. `Fl_PostScript_File_Device` (`PostscriptFileDevice`
- * below) extends `Fl_Paged_Device` (`fl.paged_device.PagedDevice`,
- * real) and reuses `PostscriptGraphicsDriver` directly, no second
- * driver needed -- both its own `begin_job()` overloads are real: the
- * interactive one opens a real `Fl_Native_File_Chooser`
- * (`fl.native_file_chooser.NativeFileChooser`, already real -- an
- * earlier version of this comment wrongly called it an unported
- * blocker), the `File`-based one writes straight to a caller-owned
- * `File`. `Fl_Printer` (`FL/Fl_Printer.H`) is the one with genuinely
- * new, unported scope: on Linux it drives its own separate
- * `print_panel` dialog (a Fluid-generated form, not `Fl_Native_File_
- * Chooser`) before falling back to `Fl_PostScript_File_Device`'s
- * chooser or piping finished output through `popen("lp ...")` -- see
- * `FL/Fl_Printer.H`'s `PORTING.md` row for the full call chain.
+ * **`Fl_EPS_File_Surface` and `Fl_PostScript_File_Device` are both
+ * covered here; `Fl_Printer` is `fl.printer_posix`.**
+ * `Fl_EPS_File_Surface` extends `Fl_Widget_Surface` directly and its own
+ * `start_eps()` needs no page/margin negotiation -- same shape as
+ * `fl.svg_file_surface.SvgFileSurface`. `Fl_PostScript_File_Device`
+ * (`PostscriptFileDevice` below) extends `Fl_Paged_Device`
+ * (`fl.paged_device.PagedDevice`) and reuses `PostscriptGraphicsDriver`
+ * directly, no second driver needed -- both its `begin_job()` overloads
+ * are real: the interactive one opens a `Fl_Native_File_Chooser`
+ * (`fl.native_file_chooser.NativeFileChooser`), the `File`-based one
+ * writes straight to a caller-owned `File`. `Fl_Printer`
+ * (`FL/Fl_Printer.H`) drives its own `print_panel` dialog before falling
+ * back to the chooser or piping finished output through `lp`/`lpr` --
+ * see `fl.printer_posix` and `FL/Fl_Printer.H`'s `PORTING.md` row.
  *
- * **`PostscriptGraphicsDriver` implements exactly the primitive family
+ * **`PostscriptGraphicsDriver` implements the primitive family
  * `fl.graphics_driver.GraphicsDriver` declares** (see that module's own
  * doc comment for the authoritative list: color/rect/rectf/line/xyline/
  * yxline/polygon(3 or 4 points)/lineStyle/pushClip/popClip/arc/pie/the
- * vertex-path `end*()` family/plain text) -- same scope `fl.svg_file_
- * surface.SvgGraphicsDriver` covers, but note the two drivers' `arc()`/
- * `pie()`/vertex-path bodies are ported independently from their own
- * FLTK sources (`Fl_PostScript_Graphics_Driver::arc()`/`pie()` use a
- * different translate/scale convention than `Fl_SVG_Graphics_Driver`'s
- * own `arc_pie()`) -- do not derive one from the other.
+ * vertex-path `end*()` family/text/rotated text/images/bitmaps) -- same
+ * scope `fl.svg_file_surface.SvgGraphicsDriver` covers, but note the two
+ * drivers' `arc()`/`pie()`/vertex-path bodies are ported independently
+ * from their own FLTK sources (`Fl_PostScript_Graphics_Driver::arc()`/
+ * `pie()` use a different translate/scale convention than
+ * `Fl_SVG_Graphics_Driver`'s own `arc_pie()`) -- do not derive one from
+ * the other.
  *
  * **Simplification carried over from FLTK's own vertex-path
  * design, made larger here**: FLTK's `begin_line()`/`vertex()`/
@@ -64,32 +61,25 @@
  * (see `psCodeFor()`) -- ported faithfully, including the custom 2-byte
  * `Helvetica2B`-style Type 0 fonts `prologText2` below builds and the
  * `show_pos_width` operator that stretches glyph spacing to match the
- * width `fl.draw.width()` measured on screen. **Not ported**: the
+ * width `fl.draw.width()` measured on screen. Rotated text
+ * (`draw(int angle, ...)`) is real. **Not ported**: the
  * bitmap-fallback path (`transformed_draw_extra()`, FLTK's own
  * answer for `FL_FREE_FONT`-and-above fonts or any codepoint outside
- * that table -- draws is a captured screen bitmap instead of vector
- * text). A `draw()` call that hits either case draws nothing at all
- * rather than mis-render, matching this port's own documented-gap
- * convention (see `fl.svg_file_surface`'s "not yet ported: embedded
- * images" for the precedent). Also not ported for the same reason:
- * `rtl_draw()`'s bitmap-only implementation (no vector RTL text
- * FLTK either) and `draw(int angle, ...)` (rotated text -- no
- * caller in this port's `GraphicsDriver` dispatch surface yet, see that
- * module's own doc comment).
+ * that table -- it draws a captured screen bitmap instead of vector
+ * text) and `rtl_draw()`'s bitmap-only implementation. A `draw()` call
+ * that hits either case draws nothing at all rather than mis-render.
  *
- * **Not ported at all (images)**: `draw_image()`/`draw_pixmap()`/
- * `draw_bitmap()`/`draw_rgb()` and the RLE+ASCII85 image-encoding
- * machinery (`prepare_rle85()`/`write_rle85()`/`close_rle85()`,
- * `prolog_2_pixmap`, `prolog_3`) they depend on -- same "images
- * deferred" scope cut `fl.svg_file_surface` already made. Plain
- * (non-RLE) ASCII85 encoding *is* ported (`Ascii85Encoder` below),
- * since real vectorized text needs it independently of images.
+ * **Images**: `drawImage()`/`drawBitmap()` emit RGB, RGBA, gray and
+ * 1-bit data through the RLE+ASCII85 encoder (`Rle85Encoder`, over
+ * `Ascii85Encoder`), as FLTK's `draw_image()`/`draw_rgb()`/
+ * `draw_bitmap()` do. Not ported: `draw_pixmap()`'s colour-keyed
+ * transparency, so a `Pixmap`'s transparent colour prints opaque.
  */
 module fl.postscript;
 
 import std.stdio : File;
 import std.utf : decode;
-import fl.enumerations : Color, Font, freeFont, white, capSquare;
+import fl.enumerations : Color, Font, freeFont, white, capSquare, lineDashDotDot;
 import fl.graphics_driver : GraphicsDriver, Point;
 import fl.widget_surface : WidgetSurface;
 import fl.paged_device : PagedDevice, PageFormat, PageLayout, pageFormats, a4, landscape, reversed, media;
@@ -101,10 +91,7 @@ import fldraw = fl.draw;
  * `prolog` string (the `L`/`R`/`CL`/`FR`/`GS`/`GR`/`SP`/`LW`/`CF`/`SF`/
  * `FS`/`GL`/`SRGB` path/color/font primitives, plus the `A85RLE`/`CI`/
  * `GI`/`MI` image filters and `show_pos_width` text-width-stretching
- * operator). The image-filter definitions (`CI`/`GI`/`MI`) are dead
- * code here (no `draw_image()` dispatch exists to call them), kept
- * verbatim anyway rather than trimmed -- inert static text, and keeping
- * it byte-for-byte matched to FLTK costs nothing.
+ * operator).
  */
 private immutable string psProlog =
     "/L { /y2 exch def\n" ~
@@ -206,9 +193,8 @@ private immutable string psProlog =
  * among these) that let `PostscriptGraphicsDriver.draw()` emit real
  * vector text using `ISOLatin1Encoding` for codepoints <= 0x17F and a
  * hand-built `LatinExtA` encoding for the small set of extra characters
- * `psCodeFor()` recognizes. The `CII`/`GII` color/gray image
- * dictionaries in here are dead code for the same reason `CI`/`GI`/`MI`
- * are in `psProlog` -- kept verbatim rather than trimmed. `prolog_2_
+ * `psCodeFor()` recognizes, and the `CII`/`GII` color/gray image
+ * dictionaries `drawImage()` uses. `prolog_2_
  * pixmap` and `prolog_3` (FLTK's own lang_level==2-pixmap-only and
  * lang_level>2-only prologs, both image-only) are **not** ported --
  * this driver never raises `lang_level_` above FLTK's own default
@@ -378,9 +364,8 @@ private bool psCodeFor(uint utf, out uint code)
 /**
  * Plain (non-RLE) ASCII85 encoder, ported from `Fl_PostScript_Graphics_
  * Driver::prepare85()`/`write85()`/`close85()` (`Fl_PostScript_image.cxx`)
- * -- the RLE-wrapping half (`prepare_rle85()`/etc., used only for
- * bitmap images) isn't ported, see this module's own top comment.
- * Writes encoded output directly to `file` as bytes accumulate (no
+ * -- the RLE-wrapping half (`prepare_rle85()`/etc.) is `Rle85Encoder`
+ * below. Writes encoded output directly to `file` as bytes accumulate (no
  * caller needs the encoded bytes themselves, only the side effect of
  * having written them), matching FLTK's own "encode straight to
  * `output`" design.
@@ -469,8 +454,8 @@ private struct Ascii85Encoder
  * buffer and gets flushed with its own length-prefix byte) sitting on
  * top of `Ascii85Encoder` above -- needed for `PostscriptGraphicsDriver
  * .drawImage()`/`drawBitmap()`'s image-data payloads, which the
- * `CII`/`GII`/`MI` PostScript operators (already transcribed verbatim
- * into `psProlog`/`psProlog2`, just unused until now) expect to read
+ * `CII`/`GII`/`MI` PostScript operators (transcribed verbatim
+ * into `psProlog`/`psProlog2`) expect to read
  * via `currentfile A85RLE`.
  */
 private struct Rle85Encoder
@@ -769,12 +754,17 @@ class PostscriptGraphicsDriver : GraphicsDriver
         output_.writef("%d setlinecap\n", capValues[(effStyle >> 8) & 3]);
         output_.writef("%d setlinejoin\n", joinValues[(effStyle >> 12) & 3]);
 
-        const(ubyte)[] d = dashes;
-        if (d.length == 0 && (effStyle & 0xff) != 0)
-            d = fldraw.dashPatternFor(effStyle, w);
-
         output_.write("[");
-        foreach (v; d) output_.writef("%d ", v);
+        if (dashes.length)
+            foreach (v; dashes) output_.writef("%d ", v);
+        else if ((effStyle & 0xff) <= lineDashDotDot)
+        {
+            // Round and square caps (bit 0x200) use the shorter-dash table.
+            if (effStyle & 0x200)
+                foreach (v; fldraw.dashesCap[effStyle & 0xff]) output_.writef("%g ", w * v);
+            else
+                foreach (v; fldraw.dashesFlat[effStyle & 0xff]) output_.writef("%d ", w * v);
+        }
         output_.write("] 0 setdash\n");
     }
 
@@ -989,8 +979,7 @@ class PostscriptGraphicsDriver : GraphicsDriver
 
     /**
      * Draws an 8-bit-per-channel image via the `CII`/`GII` PostScript
-     * operators (already transcribed verbatim into `psProlog2`, unused
-     * until now). Ported from `Fl_PostScript_Graphics_Driver::draw_image
+     * operators (transcribed verbatim into `psProlog2`). Ported from `Fl_PostScript_Graphics_Driver::draw_image
      * (const uchar*,int,int,int,int,int,int)` + the callback-based
      * `draw_image()`/`draw_image_mono()` it delegates to for the actual
      * RLE85-encoded emission, collapsed into one function here since
@@ -1091,8 +1080,8 @@ class PostscriptGraphicsDriver : GraphicsDriver
     }
 
     /**
-     * Draws a 1-bit bitmap via the `MI` PostScript operator (already in
-     * `psProlog`, unused until now). Ported from
+     * Draws a 1-bit bitmap via the `MI` PostScript operator (in
+     * `psProlog`). Ported from
      * `Fl_PostScript_Graphics_Driver::draw_bitmap(Fl_Bitmap*,...)` --
      * including a real, faithfully-reproduced FLTK quirk: `bits` is
      * always the bitmap's *full* `dataW`x`dataH` data, `cx`/`cy`
@@ -1511,15 +1500,12 @@ class EpsFileSurface : WidgetSurface
         psDriver_.psUntranslate();
     }
 
-    /// **Known, deliberate gap, same shape as `fl.svg_file_surface.
-    /// SvgFileSurface`'s own**: `draw(Widget)`/`drawDecoratedWindow()`
-    /// (both inherited from `WidgetSurface`) aren't safe to use on a
-    /// real widget in general -- `PostscriptGraphicsDriver` doesn't
-    /// dispatch images at all yet, so any widget whose `draw()` touches
-    /// one (icons, `Label.image`) falls straight through to native
-    /// Xlib and mixes real window pixels into what should have been
-    /// pure EPS output. Drive the surface directly (see this module's
-    /// own unittest) until images are covered too.
+    /// **Known gap**: `draw(Widget)`/`drawDecoratedWindow()` (both
+    /// inherited from `WidgetSurface`) have not been exercised against
+    /// every image kind. `PostscriptGraphicsDriver` draws RGB, RGBA, gray
+    /// and 1-bit images, but a `Pixmap`'s transparent colour prints
+    /// opaque. Drive the surface directly (see this module's own
+    /// unittest) until that is confirmed.
 }
 
 /**
