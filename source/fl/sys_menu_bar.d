@@ -25,10 +25,9 @@
  * its own FLTK doc comment says "effective only under the MacOS
  * platform") and `isGlobal()` (always `false` with no driver, since a
  * `Fl_Sys_Menu_Bar` is never "global" without native integration).
- * `windowMenuStyle()`/`createWindowMenu()` aren't ported -- genuinely
- * macOS-only static configuration for a feature (the native Window
- * menu) that has no effect at all without a driver, and nothing in
- * this port's samples calls them uncommented.
+ * `windowMenuStyle()`/`createWindowMenu()` configure the native Window
+ * menu, which only exists with the macOS driver; as in FLTK without
+ * one, the style reads as `noWindowMenu` and both setters do nothing.
  */
 module fl.sys_menu_bar;
 
@@ -57,4 +56,25 @@ class SysMenuBar : MenuBar
     /// this bar as the one active system menu bar, and no driver
     /// exists in this port.
     bool isGlobal() const { return false; }
+
+    /// Ported from `Fl_Sys_Menu_Bar::window_menu_style_enum`.
+    enum WindowMenuStyle
+    {
+        noWindowMenu = 0,      /// no Window menu in the system menu bar
+        tabbingModeNone,       /// a Window menu, windows are never tabbed
+        tabbingModeAutomatic,  /// windows can be tabbed later
+        tabbingModePreferred,  /// windows are tabbed when created
+    }
+
+    /// The style of the native Window menu. Ported from
+    /// `Fl_Sys_Menu_Bar::window_menu_style()`; always `noWindowMenu`
+    /// without the macOS driver, as in FLTK.
+    static WindowMenuStyle windowMenuStyle() { return WindowMenuStyle.noWindowMenu; }
+    /// ditto -- does nothing without the macOS driver.
+    static void windowMenuStyle(WindowMenuStyle style) { }
+
+    /// Adds the native Window menu. Ported from
+    /// `Fl_Sys_Menu_Bar::create_window_menu()`; does nothing without the
+    /// macOS driver, as in FLTK.
+    static void createWindowMenu() { }
 }

@@ -1,6 +1,6 @@
 # fldtk
 
-**fldtk** (Full-D-tick) is a complete port of [FLTK](https://www.fltk.org/), the
+**fldtk** (Full-D-toolkit) is a complete port of [FLTK](https://www.fltk.org/), the
 Fast Light Toolkit GUI system, to the D programming language. It is not a binding layer: the
 toolkit is reimplemented as native D code, so the only things it links against are
 the system's own libraries (Xlib, OpenGL, ...), not a compiled FLTK. It also
@@ -8,7 +8,7 @@ includes a port of Fluid, FLTK's UI designer, which exports D source files
 instead of C++.
 
 fldtk has the look and feel of FLTK, and its API follows FLTK's closely,
-expressed in ordinary D: callbacks are delegates, labels are `string`s, memory is
+expressed in idiomatic D: callbacks are delegates, labels are `string`s, memory is
 garbage-collected, and `Fl_Widget` is `fl.widget.Widget`.
 
 ## Example
@@ -55,8 +55,13 @@ What is in the box:
 - FLTK's demo and example programs, ported to D (`source/test/`,
   `source/examples/`).
 
-The main known gaps are the Wayland driver, a Cairo backend, and complex-script
-text shaping (text is drawn through Xft; replacing it with Pango is planned).
+Linux builds include Cairo support (`CairoWindow` and the full Cairo API, the
+equivalent of FLTK's `FLTK_OPTION_CAIRO_WINDOW`) and the full Pango API; dub's
+`linux-no-cairo` configuration builds without both. On Windows they are opt-in,
+linked statically from libraries built with MSYS2. See [`BUILDING.md`](BUILDING.md). The main known gaps are the
+Wayland driver, drawing all of fldtk itself through Cairo (FLTK's
+`FLTK_GRAPHICS_CAIRO`), and complex-script text shaping (text is drawn through
+Xft; replacing it with Pango is planned).
 [`PORTING.md`](PORTING.md) tracks the port file by file: what is complete, what
 is partial and why, and what is deliberately left out. Suspected bugs in FLTK
 itself, found while porting, are collected in [`FLTK_ISSUES.md`](FLTK_ISSUES.md).
@@ -88,7 +93,7 @@ It should be mentioned that dmd and gdc have both been tested to work. ldc has n
 ## Contributing
 
 Bug reports and pull requests are welcome. Where fldtk behaves differently from
-FLTK, it may or may not have been by design. Deliberatre deviations from FLTK should
+FLTK, it may or may not have been by design. Deliberate deviations from FLTK should
 have been documented clearly in the source or in PORTING.md.
 
 ## License

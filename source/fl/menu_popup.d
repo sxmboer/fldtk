@@ -156,7 +156,7 @@ private final class MenuLevelWindow : MenuWindow
             Fontsize size = it.labelsize() ? it.labelsize() : style.textsize;
             fldraw.fl_font(font, size);
             string keyPart;
-            string full = fl.core.flShortcutLabel(cast(uint) it.shortcut(), keyPart);
+            string full = fl.core.fl_shortcut_label(cast(uint) it.shortcut(), keyPart);
             string modifiers = full[0 .. $ - keyPart.length];
             // Same "<=4 chars -> two right/left-justified columns,
             // otherwise right-justify the whole label" split FLTK
@@ -164,7 +164,7 @@ private final class MenuLevelWindow : MenuWindow
             // count rather than a real UTF-8 character count, since
             // every key name this port's platformKeyName()/uppercased-
             // character fallback can produce is ASCII (see fl.core's
-            // flShortcutLabel doc comment).
+            // fl_shortcut_label doc comment).
             if (keyPart.length <= 4)
             {
                 int mw = cast(int) fldraw.width(modifiers);
@@ -263,7 +263,7 @@ private final class MenuLevelWindow : MenuWindow
         Fontsize size = m.labelsize() ? m.labelsize() : style.textsize;
         fldraw.fl_font(font, size);
         string keyPart;
-        string full = fl.core.flShortcutLabel(cast(uint) m.shortcut(), keyPart);
+        string full = fl.core.fl_shortcut_label(cast(uint) m.shortcut(), keyPart);
         string modifiers = full[0 .. $ - keyPart.length];
         if (keyPart.length <= 4)
         {

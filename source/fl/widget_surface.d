@@ -21,17 +21,17 @@
  * minimal, polymorphic base class now -- see that module's own doc
  * comment.
  *
- * Not ported: `print_window_part()` (needs
- * `Fl_Screen_Driver::traverse_to_gl_subwindows()`, a real on-screen
- * capture-and-composite routine with GL-subwindow handling this port
- * has no caller for yet) and `printableRect()`'s real per-subclass
- * override (FLTK's own base-class body is trivial -- always
- * "fails" -- and stays that way here too, including in `fl.paged_
- * device.PagedDevice` itself, which faithfully doesn't override it
- * either, matching FLTK's own `Fl_Paged_Device`; `fl.postscript.
- * PostscriptFileDevice` (a real concrete subclass now) does give it a
- * real answer, same as FLTK's own `Fl_PostScript_File_Device` --
- * only `Fl_Printer`'s own override remains unported).
+ * `printableRect()` keeps FLTK's trivial base-class body (always
+ * "fails"), and `fl.paged_device.PagedDevice` doesn't override it either,
+ * matching `Fl_Paged_Device`; the concrete subclasses
+ * (`fl.postscript`, `fl.printer_win32`) give it a real answer.
+ *
+ * `printWindowPart()` reads the window's pixels through
+ * `fl.core.captureWindow()`, so it is Linux-only. As in FLTK, a
+ * double-buffered window is read from its offscreen buffer and any other
+ * window from the screen, where parts covered by another window come
+ * back black. GL subwindows are included only as far as `XGetImage()`
+ * returns their contents along with the parent's.
  */
 module fl.widget_surface;
 
@@ -110,11 +110,8 @@ class WidgetSurface : SurfaceDevice
     }
 
     /// Ported from `Fl_Widget_Surface::printable_rect()` -- FLTK's
-    /// own base-class body always "fails" (returns non-zero); neither
-    /// it nor `fl.paged_device.PagedDevice` override this (matching
-    /// FLTK's own `Fl_Paged_Device`, which doesn't either) -- only
-    /// `Fl_PostScript_File_Device`/`Fl_Printer` give it a real answer
-    /// FLTK, and neither is ported (see this module's own top
+    /// own base-class body always "fails" (returns non-zero); subclasses
+    /// that know their page size override it (see this module's own top
     /// comment).
     int printableRect(out int w, out int h) const
     {
@@ -127,11 +124,9 @@ class WidgetSurface : SurfaceDevice
      * Draws widget onto this surface at the current origin() (plus
      * deltaX/deltaY). Ported from `Fl_Widget_Surface::draw(Fl_Widget*,
      * int, int)` -- faithful line-for-line port apart from the GL-
-     * plugin detour FLTK takes for an `Fl_Gl_Window` (`Fl_Gl_Window`
-     * isn't ported at all yet, see `PORTING.md`'s deferred-external-
-     * library section, so that branch is simply never reachable here,
-     * same effective behavior as FLTK's own `drawn_by_plugin == 0`
-     * fallback path).
+     * plugin detour FLTK takes for an `Fl_Gl_Window`, which is not
+     * ported: every widget, a `GlWindow` included, takes FLTK's own
+     * `drawn_by_plugin == 0` path.
      */
     void draw(Widget widget, int deltaX = 0, int deltaY = 0)
     {
@@ -207,6 +202,41 @@ class WidgetSurface : SurfaceDevice
             if (c is null || !c.visible()) continue;
             if (c.asWindow() !is null) draw(c, c.x(), c.y());
             else traverse(c);
+        }
+    }
+
+    /**
+     * Draws the rectangle (x, y, w, h) of win's on-screen contents at
+     * (deltaX, deltaY) relative to the current origin(). Ported from
+     * `Fl_Widget_Surface::print_window_part()`: shows win, lets it
+     * repaint, reads its pixels back from the screen, then raises the
+     * window that was in front before, if that was another one. Does
+     * nothing if win isn't shown, or (Windows) if the readback isn't
+     * available. Coordinates are in FLTK units; the readback is taken
+     * at the window's screen scale and drawn back at (w, h).
+     */
+    void printWindowPart(Window win, int x, int y, int w, int h, int deltaX = 0, int deltaY = 0)
+    {
+        if (!win.shown()) return;
+        bool needPush = SurfaceDevice.surface() !is null;
+        if (needPush) SurfaceDevice.pushCurrent(null);
+        Window saveFront = firstWindow();
+        win.show();
+        check();
+        flush();
+        float s = screenScale(win.screenNum());
+        int px = cast(int)(x * s), py = cast(int)(y * s);
+        int pw = cast(int)((x + w) * s) - px, ph = cast(int)((y + h) * s) - py;
+        RGBImage img = captureWindow(win, px, py, pw, ph);
+        if (img !is null) img.scale(w, h, true, true);
+        if (saveFront !is null && saveFront !is win) saveFront.show();
+        if (needPush) SurfaceDevice.popCurrent();
+        if (img !is null)
+        {
+            needPush = !isCurrent();
+            if (needPush) SurfaceDevice.pushCurrent(this);
+            img.draw(deltaX, deltaY);
+            if (needPush) SurfaceDevice.popCurrent();
         }
     }
 

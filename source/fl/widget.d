@@ -51,14 +51,14 @@
  *    ported alongside it: fl_old_shortcut() (Forms-compat ASCII
  *    shortcut syntax, out of scope, see forms.H in PORTING.md).
  *    fl_shortcut_label() (human-readable "Ctrl+Alt+F1"-style rendering)
- *    is ported too, as fl.core.flShortcutLabel() (see that
+ *    is ported too, as fl.core.fl_shortcut_label() (see that
  *    module's row in PORTING.md for the per-platform key-name lookup
  *    it needed); fl.shortcut_button is its first caller.
  *
  * **`drawBackdrop()`/`Label.image`/`Label.deimage` are real**:
  * `drawBackdrop()` draws
  * `image()`/`deimage()` centered when `alignImageBackdrop` is set,
- * `Label.draw()`'s normalLabel branch composes `image` alongside text
+ * the normal label type's drawing function composes `image` alongside text
  * via `fl.draw`'s image-aware `fl_draw()` overload, and
  * `Label.measure()` sizes for it too -- all ported from
  * `Fl_Widget::draw_backdrop()`/`fl_normal_label()`/`fl_normal_measure()`.
@@ -81,6 +81,7 @@ import fl.enumerations;
 import fl.image : Image;
 import fl.group : FlGroup;
 import fl.window : Window;
+import fl.gl_window : GlWindow;
 import fl.core;
 import fl.widget_tracker : WidgetTracker;
 import fl.multi_label : MultiLabel;
@@ -110,13 +111,11 @@ struct Label
     ubyte spacing;
 
     /// Backing storage for `Labeltype.multiLabel` (fl.multi_label's
-    /// MultiLabel) -- see draw()/measure()'s dispatch below. FLTK's
-    /// equivalent mechanism is `Fl::set_labeltype()`'s per-type
-    /// function-pointer table plus `Fl_Multi_Label::label(Fl_Widget*)`
-    /// smuggling a `Fl_Multi_Label*` through the label's `const char*`
-    /// value slot; D's `text` is a real `string`, not a raw pointer
-    /// that can be reinterpreted, so multiLabel gets its own typed slot
-    /// instead.
+    /// MultiLabel), read by the label type's drawing and measuring
+    /// functions (see the label-type table below). FLTK smuggles the
+    /// `Fl_Multi_Label*` through the label's `const char*` value slot;
+    /// D's `text` is a real `string`, not a raw pointer that can be
+    /// reinterpreted, so multiLabel gets its own typed slot instead.
     MultiLabel multi;
 
     /// Backing storage for `Labeltype.iconLabel` -- see `fl.file_icon`'s
@@ -131,44 +130,13 @@ struct Label
      * Draws this label within (x,y,w,h) per alignment. Ported from
      * Fl_Label::draw() (src/fl_labeltype.cxx): applies the h/vMargin
      * inset on whichever edges alignment doesn't push the label
-     * against, then dispatches on type().
+     * against, then calls the drawing function registered for `type`
+     * (`fl.core.setLabeltype()`).
      *
-     * FLTK dispatches through a per-labeltype function-pointer
-     * table (`Fl::set_labeltype()`).
-     * `FL_SHADOW_LABEL`/`FL_ENGRAVED_LABEL`/`FL_EMBOSSED_LABEL` are
-     * each a macro (`#define FL_SHADOW_LABEL fl_define_FL_SHADOW_LABEL()`,
-     * `FL/Enumerations.H`) that performs the `Fl::set_labeltype()`
-     * registration as a side effect of merely being *referenced* -- so
-     * any program that names the constant at all (as every real caller
-     * must, to set `labeltype()` to it) gets the real effect with no
-     * separate opt-in step, FLTK's own `test/label.cxx` included.
-     * Those three
-     * cases call `fl.draw`'s callback-`fl_draw()` overload with
-     * `shadowLabelDraw()`/`engravedLabelDraw()`/
-     * `fl_embossed_label_draw()` (ported from `src/
-     * fl_engraved_label.cxx`) as the per-line drawing hook, each drawing
-     * the same text several times at small pixel offsets in different
-     * shades before the final normal-color pass -- exactly FLTK's
-     * own `innards()` trick. `normalLabel` keeps calling the plain
-     * (non-callback) overload, drawing plain text plus `image` (via
-     * `fl.draw`'s image-aware `fl_draw()` overload), matching
-     * FLTK's own `fl_normal_label()`. `multiLabel` dispatches into
-     * the `multi` field (see
-     * fl.multi_label) when set. `iconLabel` dispatches into `icon`
-     * (see fl.file_icon) when set. **`imageLabel`/`_FL_IMAGE_LABEL` is
-     * deliberately not ported**: FLTK's own doc comment on
-     * `Fl_Image::label(Fl_Widget*)` calls that whole mechanism
-     * "obsolete... please use Fl_Widget::image() or
-     * Fl_Widget::deimage() instead" -- it exists only to smuggle an
-     * `Fl_Image*` through the label's `value`/text pointer for
-     * pre-`image()`-field-era code, the same category of C-pointer-
-     * punning trick this port already declines to replicate for
-     * `MultiLabel`/`FileIcon` (real typed fields instead) elsewhere in
-     * this struct. Since `image`/`deimage` already draw for real via
-     * the `normalLabel` branch below, `imageLabel` would produce
-     * exactly the same pixels through a redundant second mechanism --
-     * not worth porting. `noLabel`/`freeLabeltype` still draw nothing
-     * (`fl_no_label`'s equivalent).
+     * Draws nothing when the label has no text, image, `multi` or
+     * `icon`: those two typed fields carry what FLTK passes through the
+     * label's `const char*` value (an `Fl_Multi_Label*` or
+     * `Fl_File_Icon*`), so they count as content here.
      */
     void draw(int x, int y, int w, int h, Align alignment) const
     {
@@ -190,95 +158,176 @@ struct Label
         default: break;
         }
 
-        switch (type)
-        {
-        case Labeltype.normalLabel:
-            fldraw.fl_font(font, size);
-            fldraw.fl_color(color);
-            fldraw.fl_draw(text, X, Y, W, H, alignment, cast(Image) image, spacing);
-            break;
-        case Labeltype.shadowLabel:
-            fldraw.fl_font(font, size);
-            fldraw.fl_color(color);
-            fldraw.fl_draw(text, X, Y, W, H, alignment,
-                (s, n, x1, y1) { fldraw.shadowLabelDraw(s, n, x1, y1); }, cast(Image) image, spacing);
-            break;
-        case Labeltype.engravedLabel:
-            fldraw.fl_font(font, size);
-            fldraw.fl_color(color);
-            fldraw.fl_draw(text, X, Y, W, H, alignment,
-                (s, n, x1, y1) { fldraw.engravedLabelDraw(s, n, x1, y1); }, cast(Image) image, spacing);
-            break;
-        case Labeltype.embossedLabel:
-            fldraw.fl_font(font, size);
-            fldraw.fl_color(color);
-            fldraw.fl_draw(text, X, Y, W, H, alignment,
-                (s, n, x1, y1) { fldraw.embossedLabelDraw(s, n, x1, y1); }, cast(Image) image, spacing);
-            break;
-        case Labeltype.multiLabel:
-            if (multi !is null) multi.draw(X, Y, W, H, alignment, &this);
-            break;
-        case Labeltype.iconLabel:
-            // Matches FLTK's Fl_File_Icon::labeltype(o,...) exactly:
-            // always active=true (default parameter) regardless of the
-            // widget's real active state -- the caller (Widget.drawLabel())
-            // already pre-dims `color` via inactive() when inactive,
-            // same as FLTK's Fl_Widget::draw_label() does to `l1.color`
-            // before reaching here.
-            if (icon !is null) icon.draw(X, Y, W, H, color);
-            break;
-        default:
-            break;
-        }
+        auto f = labeltypeDraw(type);
+        if (f !is null) f(&this, X, Y, W, H, alignment);
     }
 
-    /// Measures the size this label needs to draw at, in font/size,
-    /// including `image` (real, matching FLTK's
-    /// `fl_normal_measure()`, src/fl_labeltype.cxx exactly): an
-    /// `alignImageNextToText` image adds its width plus `spacing` and
-    /// grows the height to fit if taller; otherwise (image above/below
-    /// text, the default) it adds its height plus `spacing` and grows
-    /// the width to fit if wider. An `alignImageBackdrop` image is
-    /// ignored here, same as FLTK -- it doesn't affect layout, see
-    /// `Widget.drawBackdrop()`. `multiLabel` dispatches into `multi`
-    /// (see fl.multi_label).
+    /// Measures the size this label needs, by calling the measuring
+    /// function registered for `type`, or the normal one (text plus
+    /// image) if the type has none. Ported from `Fl_Label::measure()`.
+    /// Unlike FLTK's, w and h are not a requested size on the way in.
     void measure(out int w, out int h) const
     {
-        if (type == Labeltype.multiLabel)
+        if (text.length == 0 && image is null && multi is null && icon is null) return;
+        auto f = labeltypeMeasure(type);
+        if (f is null) f = (l, ref int w2, ref int h2) { flNormalMeasure(l, w2, h2); };
+        f(&this, w, h);
+    }
+}
+
+// ---------------------------------------------------------------------
+// The label-type table (src/fl_labeltype.cxx)
+// ---------------------------------------------------------------------
+
+/// Draws a label of one label type within (x, y, w, h). FLTK's
+/// `Fl_Label_Draw_F`, as a delegate (see `fl.draw.BoxDrawFunc`).
+alias LabelDrawFunc = void delegate(const(Label)* label, int x, int y, int w, int h, Align alignment);
+
+/// Measures a label of one label type. FLTK's `Fl_Label_Measure_F`.
+alias LabelMeasureFunc = void delegate(const(Label)* label, ref int w, ref int h);
+
+/// FLTK's `MAX_LABELTYPE`: the table's size, so the free slots run
+/// from `Labeltype.freeLabeltype` up to 15.
+package(fl) enum maxLabeltype = 16;
+
+// One table for the whole process, like FLTK's static `table[]`/
+// `measure[]` (D module variables are otherwise thread-local).
+private __gshared LabelDrawFunc[maxLabeltype] labelDraw_;
+private __gshared LabelMeasureFunc[maxLabeltype] labelMeasure_;
+private __gshared bool labelTableReady_;
+
+/// Fills the table with the built-in label types. FLTK starts its table
+/// with only normal and no-label drawing and registers the others the
+/// first time a program names them (`fl_define_FL_SHADOW_LABEL()` and
+/// friends, `Fl_Multi_Label::label()`, `Fl_File_Icon::label()`); fldtk
+/// registers them all up front. `imageLabel` (FLTK's `_FL_IMAGE_LABEL`,
+/// reachable only through the deprecated `Fl_Image::label()`) draws
+/// nothing; use `Widget.image()` instead.
+private void initLabelTable()
+{
+    import std.functional : toDelegate;
+    labelDraw_[] = toDelegate(&flNoLabel);
+    labelMeasure_[] = null;
+    labelDraw_[Labeltype.normalLabel] = toDelegate(&flNormalLabel);
+    labelDraw_[Labeltype.shadowLabel] = toDelegate(&flShadowLabel);
+    labelDraw_[Labeltype.engravedLabel] = toDelegate(&flEngravedLabel);
+    labelDraw_[Labeltype.embossedLabel] = toDelegate(&flEmbossedLabel);
+    labelDraw_[Labeltype.multiLabel] = toDelegate(&multiLabeltype);
+    labelMeasure_[Labeltype.multiLabel] = toDelegate(&multiMeasure);
+    labelDraw_[Labeltype.iconLabel] = toDelegate(&FileIcon.labeltype);
+    labelTableReady_ = true;
+}
+
+private LabelDrawFunc labeltypeDraw(Labeltype t)
+{
+    if (!labelTableReady_) initLabelTable();
+    return t < maxLabeltype ? labelDraw_[t] : null;
+}
+
+private LabelMeasureFunc labeltypeMeasure(Labeltype t)
+{
+    if (!labelTableReady_) initLabelTable();
+    return t < maxLabeltype ? labelMeasure_[t] : null;
+}
+
+/// Backs `fl.core.setLabeltype()`.
+package(fl) void registerLabeltype(Labeltype t, LabelDrawFunc f, LabelMeasureFunc m)
+{
+    if (!labelTableReady_) initLabelTable();
+    if (t >= maxLabeltype) return;
+    labelDraw_[t] = f;
+    labelMeasure_[t] = m;
+}
+
+/// Puts the built-in label types back (`fl.core.resetForTest()`).
+package(fl) void resetLabelTable()
+{
+    labelTableReady_ = false;
+}
+
+/// FLTK's `fl_no_label()`: draws nothing.
+private void flNoLabel(const(Label)* o, int x, int y, int w, int h, Align a) {}
+
+/// FLTK's `fl_normal_label()`: the text, plus the image.
+private void flNormalLabel(const(Label)* o, int x, int y, int w, int h, Align a)
+{
+    fldraw.fl_font(o.font, o.size);
+    fldraw.fl_color(o.color);
+    fldraw.fl_draw(o.text, x, y, w, h, a, cast(Image) o.image, o.spacing);
+}
+
+/// FLTK's `fl_normal_measure()`: the text's size, grown by the image
+/// beside or below it (an `alignImageBackdrop` image doesn't count).
+private void flNormalMeasure(const(Label)* o, ref int w, ref int h)
+{
+    if (o.text.length != 0)
+    {
+        fldraw.fl_font(o.font, o.size);
+        fldraw.fl_measure(o.text, w, h);
+    }
+    else
+    {
+        w = 0;
+        h = 0;
+    }
+    if (o.image !is null)
+    {
+        int iw = o.image.w(), ih = o.image.h();
+        if (o.alignment & alignImageBackdrop)
         {
-            if (multi !is null) multi.measure(w, h, &this);
-            else { w = 0; h = 0; }
-            return;
+            // Ignore backdrop image for layout calculation.
         }
-        if (text.length != 0)
+        else if (o.alignment & alignImageNextToText)
         {
-            fldraw.fl_font(font, size);
-            fldraw.fl_measure(text, w, h);
+            w += iw + o.spacing;
+            if (ih > h) h = ih;
         }
         else
         {
-            w = 0;
-            h = 0;
-        }
-        if (image !is null)
-        {
-            int iw = image.w(), ih = image.h();
-            if (alignment & alignImageBackdrop)
-            {
-                // Ignore backdrop image for layout calculation.
-            }
-            else if (alignment & alignImageNextToText)
-            {
-                w += iw + spacing;
-                if (ih > h) h = ih;
-            }
-            else
-            {
-                if (iw > w) w = iw;
-                h += ih + spacing;
-            }
+            if (iw > w) w = iw;
+            h += ih + o.spacing;
         }
     }
+}
+
+// FLTK's fl_shadow_label()/fl_engraved_label()/fl_embossed_label()
+// (src/fl_engraved_label.cxx): the text drawn several times at small
+// offsets in different shades, then once in the label color.
+private void flShadowLabel(const(Label)* o, int x, int y, int w, int h, Align a)
+{
+    fldraw.fl_font(o.font, o.size);
+    fldraw.fl_color(o.color);
+    fldraw.fl_draw(o.text, x, y, w, h, a,
+        (s, n, x1, y1) { fldraw.shadowLabelDraw(s, n, x1, y1); }, cast(Image) o.image, o.spacing);
+}
+
+private void flEngravedLabel(const(Label)* o, int x, int y, int w, int h, Align a)
+{
+    fldraw.fl_font(o.font, o.size);
+    fldraw.fl_color(o.color);
+    fldraw.fl_draw(o.text, x, y, w, h, a,
+        (s, n, x1, y1) { fldraw.engravedLabelDraw(s, n, x1, y1); }, cast(Image) o.image, o.spacing);
+}
+
+private void flEmbossedLabel(const(Label)* o, int x, int y, int w, int h, Align a)
+{
+    fldraw.fl_font(o.font, o.size);
+    fldraw.fl_color(o.color);
+    fldraw.fl_draw(o.text, x, y, w, h, a,
+        (s, n, x1, y1) { fldraw.embossedLabelDraw(s, n, x1, y1); }, cast(Image) o.image, o.spacing);
+}
+
+// FLTK's multi_labeltype()/multi_measure() (src/Fl_Multi_Label.cxx),
+// reading the MultiLabel from Label.multi instead of the value pointer.
+private void multiLabeltype(const(Label)* o, int x, int y, int w, int h, Align a)
+{
+    if (o.multi !is null) o.multi.draw(x, y, w, h, a, o);
+}
+
+private void multiMeasure(const(Label)* o, ref int w, ref int h)
+{
+    if (o.multi !is null) o.multi.measure(w, h, o);
+    else { w = 0; h = 0; }
 }
 
 /**
@@ -1108,6 +1157,12 @@ abstract class Widget
     Window asWindow() { return null; }
     const(Window) asWindow() const { return null; }
 
+    /// Returns this object as a `GlWindow`, or `null` if it isn't one --
+    /// a cheaper test than `cast(GlWindow)`. Ported from
+    /// `Fl_Widget::as_gl_window()`.
+    GlWindow asGlWindow() { return null; }
+    const(GlWindow) asGlWindow() const { return null; } /// ditto
+
     bool useAccentsMenu() const { return (flags_ & Flag.macUseAccentsMenu) != 0; }
 
     void shortcutLabel(bool value)
@@ -1186,9 +1241,8 @@ abstract class Widget
 
     protected
     {
-        /// Draws box() at this widget's own bounds, in color(). Every
-        /// boxtype fl.core.boxTable has metrics for is a real, drawable
-        /// case in fl.draw.drawBoxAt().
+        /// Draws box() at this widget's own bounds, in color(), with
+        /// the function registered for it (fl.draw.drawBoxAt()).
         /// Ported from Fl_Widget::draw_box(): this 0-arg overload is the
         /// one FLTK's own version calls
         /// `draw_backdrop()` from right after drawing the box fill -- the

@@ -466,6 +466,7 @@ enum int NotUseful = 0;
 enum int WhenMapped = 1;
 enum int Always = 2;
 enum c_ulong CWOverrideRedirect = 1L << 9;
+enum c_ulong CWSaveUnder = 1L << 10;
 enum c_ulong CWColormap = 1L << 13;
 
 enum int InputOutput = 1;
@@ -899,6 +900,11 @@ int XMoveResizeWindow(Display* display, Window w, int x, int y, uint width, uint
 
 int XNextEvent(Display* display, XEvent* eventReturn);
 int XPending(Display* display);
+/// The function form of the `XQLength()` macro is
+/// `XEventsQueued(display, QueuedAlready)`: events already read from
+/// the connection but not yet handled.
+int XEventsQueued(Display* display, int mode);
+enum int QueuedAlready = 0;
 /// The X connection's underlying file descriptor -- a real exported
 /// function (used here instead of the `ConnectionNumber()` macro,
 /// which reaches into `Display`'s private `_XPrivDisplay` layout that

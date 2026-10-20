@@ -86,6 +86,11 @@ class JpegImage : RGBImage
             ld(errFormat);
             return;
         }
+        if (cast(size_t) width * height * 3 > maxSize())
+        {
+            ld(errFormat);
+            return;
+        }
 
         array = pixels;
         w(width);

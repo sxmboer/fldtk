@@ -1,29 +1,19 @@
 /*
  * Port of `FL/glut.H` + `src/glut_compatibility.cxx` (FLTK 1.5.0): GLUT emulation built on top of `fl.gl_window`.
  *
- * **Scope**: determined by grepping every `glut*`/`glu*` call site
- * across the 5 GLUT-dependent samples (`source/test/
- * glut_test.d`/`glpuzzle.d`/`fractals.d`/`fracviewer.d`, `source/
- * examples/OpenGL3_glut_test.d`), not assumed from the "thousands of
- * lines of freeglut teapot/font data" FLTK's own `src/*glut*`/
- * `src/freeglut_*` might suggest. **Zero** call sites for any `glutWire*`/
- * `glutSolid*`/`glutStroke*`/`glutBitmap*` primitive exist anywhere in
- * this port's sample tree, so `freeglut_geometry.cxx`/`freeglut_teapot*`/
- * `freeglut_stroke_roman.cxx`/`freeglut_stroke_mono_roman.cxx`/
- * `glut_font.cxx` (~7300 of the ~7800 FLTK lines under `src/
- * *glut*`/`src/freeglut_*`) are **deliberately not ported** -- a
- * confirmed, considered omission (see `PORTING.md`'s `FL/glut.H` row),
- * not an oversight or a gap left for later -- that stands unless a
- * future sample actually calls one of these primitives. What *is* needed,
- * and *is* ported here, in full (not just the subset any one sample
- * happens to call -- see CONVENTIONS.md on why partial,
- * demo-scoped "coverage" is exactly the failure mode to avoid): the
- * whole real `glut_compatibility.cxx` window/callback/menu emulation
- * layer, plus every non-commented-out declaration in `FL/glut.H`. The
- * only declarations skipped are ones FLTK's own `FL/glut.H` already
- * has commented out (spaceball/dial/tablet/button-box/window-status/
- * colormap functions -- never real, callable API even in real GLUT-on-
- * FLTK, not a scope cut made here). GLU (`gluLookAt()`/`gluPerspective()`/
+ * **Scope**: GLUT is a legacy API, and new code written against fldtk is
+ * unlikely to need it, so this is a minimal layer whose only purpose is to
+ * run this port's GLUT-based demos (`source/test/glut_test.d`/
+ * `glpuzzle.d`/`fractals.d`/`fracviewer.d`, `source/examples/
+ * OpenGL3_glut_test.d`). It may be removed in a future version. It covers
+ * the `glut_compatibility.cxx` window/callback/menu emulation those demos
+ * use. Not ported: the geometry/teapot/stroke-font/bitmap-font functions
+ * (`glutWire*`/`glutSolid*`/`glutStroke*`/`glutBitmap*`, from
+ * `freeglut_geometry.cxx`/`freeglut_teapot*`/`freeglut_stroke_*.cxx`/
+ * `glut_font.cxx`), `glutGetModifiers()`, and the declarations FLTK's own
+ * `FL/glut.H` already has commented out (spaceball/dial/tablet/
+ * button-box/window-status/colormap). See `PORTING.md`'s `FL/glut.H` row.
+ * GLU (`gluLookAt()`/`gluPerspective()`/
  * etc, needed by `fracviewer.d`'s camera and `glpuzzle.d`'s puzzle-piece
  * geometry) is a separate module, `fl.glu` -- see that module's own doc
  * comment.

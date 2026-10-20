@@ -69,7 +69,7 @@ shared static this()
 }
 
 /// Ported from `fl_eventname_str()` -- unlike `fontNameStr()`/
-/// `callbackReasonNameStr()` below, this is a plain associative-array
+/// `callbackReasonStr()` below, this is a plain associative-array
 /// lookup (matching FLTK's own `std::map`-based implementation),
 /// so it has no equivalent off-by-one boundary bug: every valid key
 /// (including future ones) is found or falls back correctly.
@@ -162,7 +162,7 @@ immutable string[] callbackReasonNames = [
  * were found together, in case they share a root cause (a copy-pasted
  * boundary-check pattern).
  */
-string callbackReasonNameStr(int reason)
+string callbackReasonStr(int reason)
 {
     if (reason < 0 || reason >= CallbackReason.user + 3 || callbackReasonNames[reason] is null)
         return "FL_REASON_" ~ reason.to!string;
@@ -180,9 +180,9 @@ unittest
     assert(fontNameStr(-1) == "FL_FONT_-1");
     assert(fontNameStr(99) == "FL_FONT_99");
 
-    assert(callbackReasonNameStr(CallbackReason.cancelled) == "FL_REASON_CANCELLED");
-    assert(callbackReasonNameStr(20) == "FL_REASON_20"); // unnamed gap slot
+    assert(callbackReasonStr(CallbackReason.cancelled) == "FL_REASON_CANCELLED");
+    assert(callbackReasonStr(20) == "FL_REASON_20"); // unnamed gap slot
     // The off-by-one: the *last* valid reason never returns its real name.
-    assert(callbackReasonNameStr(CallbackReason.user + 3) == "FL_REASON_" ~ (CallbackReason.user + 3).to!string);
-    assert(callbackReasonNameStr(CallbackReason.user + 2) == "FL_REASON_USER+2");
+    assert(callbackReasonStr(CallbackReason.user + 3) == "FL_REASON_" ~ (CallbackReason.user + 3).to!string);
+    assert(callbackReasonStr(CallbackReason.user + 2) == "FL_REASON_USER+2");
 }

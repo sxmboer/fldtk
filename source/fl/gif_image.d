@@ -54,10 +54,15 @@ class GifImage : Pixmap
     /// Ported from `Fl_GIF_Image::animate` -- switches whether
     /// `fl.shared_image`'s format-sniffing should hand a GIF file to
     /// `fl.anim_gif_image.AnimGifImage` instead of a plain `GifImage`.
-    /// (`fl.shared_image` does not use this flag to choose
-    /// a decoder, so it only matters to callers constructing the image
-    /// themselves.)
     static bool animate = false;
+
+    /// Whether the GIF file `name` has more than one frame. Ported from
+    /// `Fl_GIF_Image::is_animated()`.
+    static bool isAnimated(string name)
+    {
+        import fl.anim_gif_image : AnimGifImage;
+        return AnimGifImage.frameCount(name) > 1;
+    }
 
     /// Empty-shell constructor for `fl.anim_gif_image.AnimGifImage`'s
     /// use only -- mirrors FLTK's `protected Fl_GIF_Image()` and

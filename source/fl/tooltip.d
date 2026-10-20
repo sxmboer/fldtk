@@ -7,13 +7,11 @@
  *
  * Faithful port of the real behavior: hover-delay/show-delay/hide-delay
  * timers (fl.core.addTimeout()), the popup window itself (TooltipBox,
- * a borderless fl.menu_window.MenuWindow subclass reusing
- * Widget.Flag.menuWindow for override-redirect X11 treatment -- see
- * that flag's existing use in fl.menu_popup for why that alone is
- * enough; FLTK's *separate* TOOLTIP_WINDOW flag mostly just adds a
- * `_NET_WM_WINDOW_TYPE_MENU` EWMH hint to suppress compositor
- * animations, cosmetic polish this port skips, see fl_x.cxx's own
- * comment on it), current()/current(Widget) target tracking (via
+ * an fl.menu_window.MenuWindow subclass that calls setOverride() and
+ * setTooltipWindow() as Fl_TooltipBox does; the `_NET_WM_WINDOW_TYPE_MENU`
+ * hint FLTK's make_xid() adds for menu and tooltip windows, which only
+ * suppresses compositor animations, is not ported),
+ * current()/current(Widget) target tracking (via
  * fl.core.watchWidgetPointer() so a destroyed target widget can't
  * leave a dangling reference -- see currentWidget_'s own doc comment),
  * the "recently shown, pop up again fast" hover-chain logic, and
@@ -250,8 +248,8 @@ private final class TooltipBox : MenuWindow
     this()
     {
         super(0, 0);
-        clearBorder();
-        setFlag(Widget.Flag.menuWindow);
+        setOverride();
+        setTooltipWindow();
         end();
     }
 

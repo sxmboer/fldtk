@@ -39,6 +39,9 @@ enum ubyte doubleWindowTypeTag = 0xF1;
 
 class DoubleWindow : Window
 {
+    /// Ported from `Fl_Double_Window::as_double_window()`.
+    override DoubleWindow asDoubleWindow() { return this; }
+
     /// Same as Window(w, h, label), tagged type() doubleWindowTypeTag.
     this(int w, int h, string label = null)
     {

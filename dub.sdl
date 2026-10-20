@@ -2,7 +2,7 @@ name "fldtk"
 authors "Steef Boerrigter"
 copyright "Copyright 2026 Steef Boerrigter"
 license "BSL-1.0"
-description "Full-D-tick: A complete D port of FLTK (Fast Light Toolkit), including Fluid support for exporting D source"
+description "Full-D-toolkit: A complete D port of FLTK (Fast Light Toolkit), including Fluid support for exporting D source"
 
 // sourcePaths is the library's own code only (source/fl); importPaths is
 // its parent (source), since the modules there are named `fl.widget`,
@@ -12,11 +12,32 @@ sourcePaths "source/fl"
 importPaths "source"
 
 
-// Linux-specific configuration
+// Linux-specific configuration. Includes Cairo support -- fl.cairo_c (the
+// Cairo C API), fl.cairo and fl.cairo_window (Fl_Cairo.H/Fl_Cairo_Window.H),
+// the equivalent of FLTK's CMake option FLTK_OPTION_CAIRO_WINDOW -- and the
+// Pango C API (fl.pango_c, fl.pango_c_cairo, with the GLib subset it needs
+// in fl.glib_c). The FLDTK_HAVE_CAIRO/FLDTK_HAVE_PANGO versions and the
+// libraries are passed on to anything
+// depending on this package, so a dub project gets them automatically
+// (hence the FLDTK_ prefix: a bare HAVE_CAIRO could clash with a
+// dependent project's own version identifiers).
 configuration "linux-default" {
     platforms "linux"
     targetType "dynamicLibrary"
-    libs "X11" "Xft" "Xinerama" "fontconfig" "Xcursor" "Xfixes" "Xext" "GL" "GLU" "GLEW" "z"
+    versions "FLDTK_HAVE_CAIRO" "FLDTK_HAVE_PANGO"
+    libs "X11" "Xft" "Xinerama" "Xrandr" "fontconfig" "Xcursor" "Xfixes" "Xext" "GL" "GLU" "GLEW" "z" "cairo" "pangocairo-1.0" "pango-1.0" "gobject-2.0" "glib-2.0"
+}
+
+// The same library without Cairo or Pango support, needing nothing beyond the X11/GL
+// libraries every Linux desktop has. Built as the same libfldtk.so: Cairo
+// and Pango support only add modules, so a program that uses neither runs
+// against either build; one that does fails to link against this one.
+// `rdmd buildsamples.d --no-cairo` builds it; a dub project selects it with
+// `subConfiguration "fldtk" "linux-no-cairo"`. See BUILDING.md.
+configuration "linux-no-cairo" {
+    platforms "linux"
+    targetType "dynamicLibrary"
+    libs "X11" "Xft" "Xinerama" "Xrandr" "fontconfig" "Xcursor" "Xfixes" "Xext" "GL" "GLU" "GLEW" "z"
 }
 
 // Same library, built under another name and in another directory, so
@@ -30,7 +51,8 @@ configuration "linux-release" {
     targetType "dynamicLibrary"
     targetName "fldtk-release"
     targetPath "build/release"
-    libs "X11" "Xft" "Xinerama" "fontconfig" "Xcursor" "Xfixes" "Xext" "GL" "GLU" "GLEW" "z"
+    versions "FLDTK_HAVE_CAIRO" "FLDTK_HAVE_PANGO"
+    libs "X11" "Xft" "Xinerama" "Xrandr" "fontconfig" "Xcursor" "Xfixes" "Xext" "GL" "GLU" "GLEW" "z" "cairo" "pangocairo-1.0" "pango-1.0" "gobject-2.0" "glib-2.0"
 }
 
 // Windows-specific configuration.
@@ -46,6 +68,63 @@ configuration "windows-default" {
     platforms "windows"
     targetType "staticLibrary"
     libs "gdi32" "user32" "kernel32" "msvcrt120" "oldnames" "ole32" "gdiplus" "opengl32" "glu32" "msimg32" "shell32" "comdlg32" "imm32"
+}
+
+// The Windows library with Cairo and Pango support. Not the default on
+// Windows, because the static Cairo/Pango libraries have to be built
+// first; see BUILDING.md's "Cairo and Pango on Windows". Those are built
+// with MSYS2's UCRT64 GCC, which compiles against the Universal C
+// runtime (ucrtbase.dll), so this configuration links that runtime too
+// (-mscrtlib=vcruntime140 plus ucrtbase and legacy_stdio_definitions,
+// all from dmd's bundled import libraries) instead of the msvcrt120
+// windows-default uses: one C runtime per program. The extra system
+// libraries (dwrite ... advapi32) are the ones GLib, HarfBuzz and Pango's
+// DirectWrite backend call. The static libraries themselves, copied as
+// lib*.a into the libraries folder, come in through lflags, which dub
+// passes on to every program depending on fldtk; libz.a is not among
+// them, since phobos64.lib already contains zlib. The MinGW runtime
+// archives after them (libstdc++ for HarfBuzz and Pango's C++ code,
+// libmingwex, libgcc, ..., and MinGW's libucrt.a for the POSIX and
+// wrapper functions the Universal C runtime doesn't export) supply what
+// GCC-compiled code calls beyond the C runtime. phobos64.lib is named
+// ahead of all of them, because lld-link takes a symbol from the first
+// library on the command line that defines it, and two symbols defined
+// on both sides must come from Phobos: __alloca, which libgcc.a also
+// defines but with GCC's calling convention rather than the one dmd's
+// generated code expects (with libgcc.a's, every alloca() returns bad
+// memory, and druntime's command-line parsing crashes before main()),
+// and __local_stdio_printf_options, which Phobos's zlib needs from
+// Phobos rather than from libucrt.a. -lldmingw
+// runs lld-link in MinGW mode, which GCC's C++ COMDAT sections need and
+// which defines the __CTOR_LIST__ that fl.mingw_runtime runs the
+// libraries' constructors from; /IGNORE:4217 silences the "locally
+// defined symbol imported" warnings from MinGW objects compiled against
+// DLL-style (dllimport) headers. MSYS2's libpixman-1.a is built from the
+// same objects as its DLL, so they still mark pixman's functions
+// dllexport, which makes each program export them and lld-link write an
+// import library (<program>.lib) next to it; /IMPLIB:NUL discards that
+// file (lld-link has no /NOIMPLIB). Built as fldtk-cairo.lib, next to the plain fldtk.lib
+// rather than over it: a static library with Cairo support pulls Cairo
+// into every program linking it, whether or not the program uses Cairo.
+configuration "windows-cairo" {
+    platforms "windows"
+    targetType "staticLibrary"
+    targetName "fldtk-cairo"
+    versions "FLDTK_HAVE_CAIRO" "FLDTK_HAVE_PANGO"
+    dflags "-mscrtlib=vcruntime140"
+    libs "vcruntime140" "ucrtbase" "legacy_stdio_definitions" "oldnames" "kernel32" "user32" "gdi32" "ole32" "gdiplus" "opengl32" "glu32" "msimg32" "shell32" "comdlg32" "imm32" \
+        "dwrite" "usp10" "rpcrt4" "shlwapi" "dnsapi" "iphlpapi" "ws2_32" "winmm" "uuid" "advapi32"
+    lflags "$PACKAGE_DIR/libraries/libpangocairo-1.0.a" "$PACKAGE_DIR/libraries/libpangowin32-1.0.a" "$PACKAGE_DIR/libraries/libpango-1.0.a" \
+        "$PACKAGE_DIR/libraries/libcairo.a" "$PACKAGE_DIR/libraries/libpixman-1.a" "$PACKAGE_DIR/libraries/libpng16.a" \
+        "$PACKAGE_DIR/libraries/libharfbuzz.a" "$PACKAGE_DIR/libraries/libfreetype.a" "$PACKAGE_DIR/libraries/libgraphite2.a" \
+        "$PACKAGE_DIR/libraries/libbrotlidec.a" "$PACKAGE_DIR/libraries/libbrotlicommon.a" "$PACKAGE_DIR/libraries/libbz2.a" "$PACKAGE_DIR/libraries/libfribidi.a" \
+        "$PACKAGE_DIR/libraries/libgio-2.0.a" "$PACKAGE_DIR/libraries/libgobject-2.0.a" "$PACKAGE_DIR/libraries/libgmodule-2.0.a" "$PACKAGE_DIR/libraries/libglib-2.0.a" \
+        "$PACKAGE_DIR/libraries/libffi.a" "$PACKAGE_DIR/libraries/libpcre2-8.a" "$PACKAGE_DIR/libraries/libintl.a" "$PACKAGE_DIR/libraries/libiconv.a" \
+        "phobos64.lib" \
+        "$PACKAGE_DIR/libraries/libstdc++.a" "$PACKAGE_DIR/libraries/libmingwex.a" "$PACKAGE_DIR/libraries/libwinpthread.a" \
+        "$PACKAGE_DIR/libraries/libgcc_eh.a" "$PACKAGE_DIR/libraries/libgcc.a" \
+        "$PACKAGE_DIR/libraries/libucrt.a" "$PACKAGE_DIR/libraries/libuuid.a" \
+        "-lldmingw" "/IGNORE:4217" "/IMPLIB:NUL"
 }
 
 // buildfluid needs fluid to be defined as a sub package

@@ -65,8 +65,7 @@
  * up on Expose (creates the shared GC
  * in openDisplay(), points fl.draw at the right window before calling
  * its draw() -- see fl.draw's initGraphics()/setDrawable()); fl.draw
- * itself draws every boxtype this port's `boxTable` has metrics
- * for, plus real text --
+ * itself draws every boxtype, plus real text --
  * see that module's own row for the current, accurate picture.
  * WM_HINTS input-focus negotiation
  * still relies on
@@ -2088,6 +2087,15 @@ void createWindow(FlWindow win, XVisualInfo* visual = null, Colormap colormap = 
     {
         attr.override_redirect = True;
         mask |= CWOverrideRedirect;
+    }
+    // A window flagged with Window.setOverride() (fl.tooltip's box, for
+    // one) is override-redirect too, with save-under, as in make_xid()'s
+    // `if (win->override())` branch (Fl_x.cxx).
+    if (win.isOverride())
+    {
+        attr.override_redirect = True;
+        attr.save_under = True;
+        mask |= CWOverrideRedirect | CWSaveUnder;
     }
 
     Window root = isSubwindow ? parentWin.xid() : XRootWindow(display_, screen_);
@@ -4414,6 +4422,38 @@ private bool waitForEventOrTimeout(Duration maxWait = Duration.max)
     return true;
 }
 
+/**
+ * Whether an X event or an `fl.core.addFd()` descriptor is ready, without
+ * blocking and without handling anything. Backs `fl.core.ready()`;
+ * ported from `Fl_X11_Screen_Driver::poll_or_select()` (`Fl_x.cxx`)
+ * and `Fl_Unix_Screen_Driver::poll_or_select()`.
+ */
+package(fl) bool eventsReady()
+{
+    import core.sys.posix.sys.select : select, fd_set, FD_ZERO, FD_SET;
+    import core.sys.posix.sys.time : timeval;
+
+    if (display_ is null) return false;
+    if (XEventsQueued(display_, QueuedAlready)) return true;
+
+    fd_set rfds, wfds, efds;
+    FD_ZERO(&rfds);
+    FD_ZERO(&wfds);
+    FD_ZERO(&efds);
+    int xfd = XConnectionNumber(display_);
+    FD_SET(xfd, &rfds);
+    int maxfd = xfd;
+    foreach (ref e; fl.core.fdEntries())
+    {
+        if (e.when & fdRead) FD_SET(e.fd, &rfds);
+        if (e.when & fdWrite) FD_SET(e.fd, &wfds);
+        if (e.when & fdExcept) FD_SET(e.fd, &efds);
+        if (e.fd > maxfd) maxfd = e.fd;
+    }
+    timeval tv;
+    return select(maxfd + 1, &rfds, &wfds, &efds, &tv) > 0;
+}
+
 /// Ported from `Widget.damage(Damage,x,y,w,h)`'s own call into this
 /// module -- the direct but
 /// bounding-box-simplified equivalent of FLTK's
@@ -4456,20 +4496,24 @@ package(fl) void accumulateDamage(FlWindow win, int x, int y, int w, int h)
     }
 }
 
-/// Backs `fl.core.captureWindow()` -- finds `win`'s real X window
-/// (if shown) and reads pixels straight from it via
-/// `fl.draw.readPixelsFromDrawable()`, matching FLTK's
-/// `fl_capture_window()`'s "read a mapped window's own xid directly"
-/// path (the simplified GL-subwindow-free, single-monitor version of
-/// `Fl_Screen_Driver::traverse_to_gl_subwindows()` -- no GL subwindows
-/// exist in this port to traverse). Returns `null` if `win` isn't
-/// currently shown, matching FLTK's own guard.
+/// Backs `fl.core.captureWindow()` -- reads `win`'s pixels via
+/// `fl.draw.readPixelsFromDrawable()`. Ported from
+/// `Fl_X11_Screen_Driver::read_win_rectangle()`: a double-buffered
+/// window is read from its offscreen buffer, so windows covering it on
+/// screen don't show up in the result; any other window is read from
+/// its on-screen X window, where covered parts come back undefined
+/// (usually black). No GL-subwindow traversal
+/// (`Fl_Screen_Driver::traverse_to_gl_subwindows()`). Returns `null` if
+/// `win` isn't currently shown, matching FLTK's own guard.
 package(fl) ubyte[] captureWindowPixels(FlWindow win, int x, int y, int w, int h)
 {
     if (!win.shown()) return null;
     for (auto rec = first_; rec !is null; rec = rec.next)
         if (rec.widget is win)
-            return fldraw.readPixelsFromDrawable(rec.xid, x, y, w, h, 0);
+        {
+            bool fromOffscreen = rec.widget.type() == doubleWindowTypeTag && rec.offscreen != 0;
+            return fldraw.readPixelsFromDrawable(fromOffscreen ? rec.offscreen : rec.xid, x, y, w, h, 0);
+        }
     return null;
 }
 
@@ -5003,7 +5047,7 @@ private void processNextEvent()
             // cross-screen move to the check just below.
             if (num == -1) num = olds;
             float s = screenScale(num);
-            if (num != olds && !rec.widget.menuWindow())
+            if (num != olds && !rec.widget.menuWindow() && !rec.widget.tooltipWindow())
             {
                 if (auto m = cast(FlWindow) fl.core.modal())
                 {
@@ -5058,7 +5102,7 @@ private void processNextEvent()
             if (!resizeBetweenScreens_.busy
                 && (cast(int) ceil(rw / cast(double) s) != rec.widget.w()
                     || cast(int) ceil(rh / cast(double) s) != rec.widget.h())
-                && !rec.widget.menuWindow())
+                && !rec.widget.menuWindow() && !rec.widget.tooltipWindow())
             {
                 int fw = cast(int) ceil(rw / cast(double) s);
                 int fh = cast(int) ceil(rh / cast(double) s);

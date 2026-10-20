@@ -84,6 +84,9 @@ alias SharedHandler = Image delegate(string name, const(ubyte)[] header);
 
 class SharedImage : Image
 {
+    /// Ported from `Fl_Shared_Image::as_shared_image()`.
+    override SharedImage asSharedImage() { return this; }
+
     private static SharedImage[] images_;
     private static SharedHandler[] handlers_;
 
@@ -140,6 +143,17 @@ class SharedImage : Image
     /// The filename (or pool name, for get(RGBImage)) this shared
     /// image was loaded/created from.
     string name() const { return name_; }
+
+    /// Orders two shared images by name, then data width, then data
+    /// height: negative, zero or positive, like `std.algorithm.cmp`.
+    /// Ported from `Fl_Shared_Image::compare()`.
+    static int compare(const SharedImage a, const SharedImage b)
+    {
+        import std.algorithm.comparison : cmp;
+        if (int i = cmp(a.name(), b.name())) return i;
+        if (a.dataW() != b.dataW()) return a.dataW() - b.dataW();
+        return a.dataH() - b.dataH();
+    }
 
     /// How many callers currently hold a reference (via get()/find()/
     /// retain()) -- the image is actually destroyed once this reaches 0.

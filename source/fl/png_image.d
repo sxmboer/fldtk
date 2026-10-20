@@ -677,6 +677,11 @@ class PngImage : RGBImage
             ld(errFormat);
             return;
         }
+        if (cast(size_t) width * height * channels > maxSize())
+        {
+            ld(errFormat);
+            return;
+        }
 
         array = pixels;
         w(width);
@@ -960,6 +965,13 @@ unittest
     assert(img.w() == 2 && img.h() == 2 && img.d() == 3);
     ubyte[] expected = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
     assert(img.array == expected);
+
+    // RGBImage.maxSize() below the image's 12 bytes refuses to load it.
+    RGBImage.maxSize(11);
+    scope (exit) RGBImage.maxSize(size_t.max);
+    auto big = new PngImage(path);
+    assert(big.fail() == Image.errFormat);
+    assert(big.w() == 0 && big.array.length == 0);
 }
 
 unittest

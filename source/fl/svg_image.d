@@ -52,6 +52,10 @@ private NsvgRasterizer sharedRasterizer;
 /// Ported from `Fl_SVG_Image`.
 final class SvgImage : RGBImage
 {
+    /// Ported from `Fl_SVG_Image::as_svg_image()`.
+    override SvgImage asSvgImage() { return this; }
+    override const(SvgImage) asSvgImage() const { return this; } /// ditto
+
     private NsvgImage svgImage_;
     private bool proportional_ = true;
     private bool toDesaturate_;

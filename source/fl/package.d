@@ -80,6 +80,29 @@ public import fl.gl_window;
 public import fl.gl;
 public import fl.glut;
 public import fl.wizard;
+// Cairo support, in a Cairo-enabled build (the Linux default; not with
+// dub configuration `linux-no-cairo`; on Windows only with `windows-cairo`).
+// fl.cairo_c (the Cairo C API itself) is re-exported
+// too: every name in it carries a cairo_/Cairo/CAIRO_ prefix, so it
+// can't collide with anything else here, and a CairoWindow draw
+// callback is all Cairo calls. fl.cairo_c_xlib and fl.cairo_c_win32
+// are not -- only fl.cairo needs them.
+version (FLDTK_HAVE_CAIRO)
+{
+    public import fl.cairo_c;
+    public import fl.cairo;
+    public import fl.cairo_window;
+}
+// Pango, likewise (the Pango C API, its Cairo backend, and the GLib types
+// and functions it needs): every name carries a pango_/Pango/PANGO_ or
+// g_/G prefix, and drawing text in a CairoWindow callback is what
+// pango_cairo_show_layout() is for.
+version (FLDTK_HAVE_PANGO)
+{
+    public import fl.glib_c;
+    public import fl.pango_c;
+    version (FLDTK_HAVE_CAIRO) public import fl.pango_c_cairo;
+}
 public import fl.pack;
 public import fl.flex;
 public import fl.tile;

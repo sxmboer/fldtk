@@ -12,6 +12,23 @@
  *      rdmd buildsamples.d examples  # only source/examples/
  *      rdmd buildsamples.d test hello    # one program by name
  *      rdmd buildsamples.d --force   # ignore mtimes, relink every binary
+ *      rdmd buildsamples.d --no-cairo [test|examples] [name]
+ *          builds libfldtk.so without Cairo and Pango support (dub.sdl's
+ *          "linux-no-cairo" configuration) and compiles every program
+ *          without their -version=/-l flags, so the Cairo
+ *          samples (cairo_test, cairo_draw_x) show their "needs a Cairo
+ *          enabled library" message instead of the real demo -- the
+ *          same two ways FLTK builds them, depending on
+ *          FLTK_OPTION_CAIRO_WINDOW. Not combinable with --release.
+ *          Without it (the default), Linux builds include Cairo and Pango.
+ *      rdmd buildsamples.d --cairo [test|examples] [name]      (Windows)
+ *          builds fldtk-cairo.lib, the library with Cairo and Pango
+ *          support (dub.sdl's "windows-cairo" configuration), and links every program
+ *          against the static Cairo/Pango libraries (the lib*.a files
+ *          in libraries/, listed in that configuration).
+ *          Windows builds leave Cairo and
+ *          Pango out otherwise, since they need libraries Windows doesn't
+ *          have; see BUILDING.md's "Cairo and Pango on Windows".
  *      rdmd buildsamples.d --release [test|examples] [name]
  *          builds against dub.sdl's "linux-release" configuration
  *          instead (build/release/libfldtk-release.so, built with gdc
@@ -73,9 +90,15 @@ import std.stdio;
 import std.string;
 
 version (Windows)
+{
     enum exeSuffix = ".exe";
+    enum isWindows = true;
+}
 else
+{
     enum exeSuffix = "";
+    enum isWindows = false;
+}
 
 /// Programs that are known not to build, with the reason. Each is a real,
 /// documented gap rather than a regression -- see CONVENTIONS.md's "Deferred:
@@ -83,8 +106,6 @@ else
 /// Library compatibility" sections. Skipped with their reason printed,
 /// so the run stays green and the exceptions stay visible.
 enum string[string] skip = [
-    "cairo_test":    "needs a Cairo backend (deferred -- no port plan decided yet)",
-    "cairo_draw_x":  "needs a Cairo backend (deferred -- no port plan decided yet)",
     "forms":         "XForms/Forms compatibility layer, deliberately out of scope",
     "penpal":        "needs fl.Pen; FLTK has no X11 pen/touch support either",
 ];
@@ -213,15 +234,31 @@ int main(string[] args)
     // release configuration is Linux-only (see dub.sdl), and this whole
     // flag exists only to test that one library build.
     bool release = args.canFind("--release");
+    // --no-cairo (Linux): build libfldtk.so without Cairo and Pango
+    // support (dub.sdl's "linux-no-cairo" configuration) and compile every
+    // program without -version=FLDTK_HAVE_CAIRO/FLDTK_HAVE_PANGO.
+    // --cairo (Windows): build with them, against the static lib*.a
+    // archives dub.sdl lists. See the usage comment at the top.
+    bool noCairo = args.canFind("--no-cairo");
+    version (Windows)
+        bool cairo = args.canFind("--cairo");
+    else
+        bool cairo = !noCairo;
     string[] positional = args[1 .. $]
-        .filter!(a => a != "--force" && a != "-f" && a != "--release").array;
+        .filter!(a => a != "--force" && a != "-f" && a != "--release" && a != "--no-cairo" && a != "--cairo").array;
+
+    if (noCairo && release)
+    {
+        stderr.writeln("buildsamples: --no-cairo can't be combined with --release");
+        return 1;
+    }
 
     string categoryFilter = positional.length > 0 ? positional[0] : "";
     string nameFilter = positional.length > 1 ? positional[1] : "";
 
     if (categoryFilter.length && categoryFilter != "test" && categoryFilter != "examples")
     {
-        stderr.writeln("usage: rdmd buildsamples.d [--release] [test|examples] [name]");
+        stderr.writeln("usage: rdmd buildsamples.d [--force] [--release|--no-cairo|--cairo] [test|examples] [name]");
         return 1;
     }
 
@@ -232,7 +269,7 @@ int main(string[] args)
     // that file's own comment on why (Windows DLL export-visibility,
     // found 2026-09-09). Only used here as a staleness marker.
     version (Windows)
-        string libName = "fldtk.lib";
+        string libName = cairo ? "fldtk-cairo.lib" : "fldtk.lib";
     else
         string libName = release ? "libfldtk-release.so" : "libfldtk.so";
     string libDir = release ? buildPath(repoRoot, "build", "release") : repoRoot;
@@ -247,11 +284,40 @@ int main(string[] args)
     // 1. The library itself, if stale.
     auto flSources = dirEntries(buildPath(repoRoot, "source", "fl"), "*.d", SpanMode.depth)
         .map!(e => e.name).array;
-    if (!exists(libPath) || newestMtime(flSources) > timeLastModified(libPath))
+    // A library built the other way (with or without Cairo support) is
+    // stale too, whatever its mtime. The marker is CairoState's mangled
+    // name; fl.cairo's ModuleInfo symbol is no use, since dmd emits it
+    // even when the whole module is versioned out. Not needed on Windows,
+    // where the two builds are separate libraries (fldtk.lib,
+    // fldtk-cairo.lib).
+    bool wrongCairoMode = false;
+    version (linux)
+        wrongCairoMode = exists(libPath)
+            && (cast(const(ubyte)[]) read(libPath)).canFind(cast(const(ubyte)[]) "_D2fl5cairo10CairoState") != cairo;
+
+    // Windows --cairo: the static Cairo/Pango link line, from dub.sdl.
+    version (Windows)
     {
-        writeln("buildsamples: building lib" ~ (release ? "fldtk-release (gdc)" : "fldtk") ~ "...");
+        string[] cairoLinkFlags;
+        if (cairo)
+        {
+            auto libs = windowsCairoLibs(repoRoot);
+            if (libs is null)
+                return 1;
+            cairoLinkFlags = libs;
+        }
+    }
+    if (!exists(libPath) || wrongCairoMode || newestMtime(flSources) > timeLastModified(libPath))
+    {
+        version (Windows)
+            bool plainLib = !cairo;
+        else
+            bool plainLib = noCairo;
+        writeln("buildsamples: building lib" ~ (release ? "fldtk-release (gdc)" : plainLib ? "fldtk (no Cairo)" : "fldtk") ~ "...");
         string[] dubArgs = release
             ? ["dub", "build", "--config=linux-release", "--build=release", "--compiler=gdc"]
+            : noCairo ? ["dub", "build", "--config=linux-no-cairo"]
+            : cairo && isWindows ? ["dub", "build", "--config=windows-cairo"]
             : ["dub", "build"];
         auto pid = spawnProcess(dubArgs, cast(string[string]) null, Config.none, repoRoot);
         enforce(wait(pid) == 0, "dub build failed");
@@ -312,7 +378,11 @@ int main(string[] args)
 
         string[] candidates;
         foreach (dir; searchDirs)
-            candidates ~= dirEntries(dir, "*.d", SpanMode.shallow).map!(e => e.name).array;
+            // Hidden files are skipped: editors leave lock files and
+            // backups there (Emacs' `.#name.d` is a dangling symlink).
+            candidates ~= dirEntries(dir, "*.d", SpanMode.shallow)
+                .filter!(e => !baseName(e.name).startsWith("."))
+                .map!(e => e.name).array;
         candidates.sort();
 
         foreach (src; candidates)
@@ -346,7 +416,16 @@ int main(string[] args)
 
             auto deps = localDeps(src, searchDirs) ~ extraFiles;
 
-            if (!force && exists(binary))
+            // Which way (with Cairo or --no-cairo) the binary was last built, kept
+            // next to its object files: switching modes changes what gets
+            // compiled (-version=FLDTK_HAVE_CAIRO) without touching any
+            // mtime, so a binary built the other way is stale too. No
+            // stamp means a build from before Cairo existed, i.e. without it.
+            string modeStamp = buildPath(buildDir, "obj", name ~ ".mode");
+            string mode = cairo ? "cairo" : "plain";
+            string builtMode = exists(modeStamp) ? readText(modeStamp) : "plain";
+
+            if (!force && exists(binary) && builtMode == mode)
             {
                 auto binMtime = timeLastModified(binary);
                 if (newestMtime(deps) <= binMtime && timeLastModified(libPath) <= binMtime)
@@ -422,6 +501,27 @@ int main(string[] args)
             version (Windows)
                 if (auto extra = stem in extraLibsWindows)
                     linkFlags ~= *extra;
+            version (Windows)
+            {
+                // The static Cairo/Pango libraries are built against the
+                // Universal C runtime (MSYS2 UCRT64), so the whole program
+                // links that runtime instead of dmd's msvcrt120
+                // (-mscrtlib also stops dmd naming msvcrt120 as the
+                // default library in main's object file); the runtime
+                // libraries themselves are in cairoLinkFlags, from dub.sdl.
+                if (cairo)
+                    linkFlags = linkFlags.filter!(f => f != "msvcrt120.lib").array
+                        .map!(f => f == buildPath(repoRoot, "fldtk.lib") ? libPath : f).array
+                        ~ ["-mscrtlib=vcruntime140",
+                           "-version=FLDTK_HAVE_CAIRO", "-version=FLDTK_HAVE_PANGO"]
+                        ~ cairoLinkFlags;
+            }
+            else if (cairo)
+                linkFlags ~= release
+                    ? ["-fversion=FLDTK_HAVE_CAIRO", "-fversion=FLDTK_HAVE_PANGO",
+                       "-lcairo", "-lpangocairo-1.0", "-lpango-1.0", "-lgobject-2.0", "-lglib-2.0"]
+                    : ["-version=FLDTK_HAVE_CAIRO", "-version=FLDTK_HAVE_PANGO",
+                       "-L-lcairo", "-L-lpangocairo-1.0", "-L-lpango-1.0", "-L-lgobject-2.0", "-L-lglib-2.0"];
 
             mkdirRecurse(buildDir);
             string[] cmd;
@@ -460,6 +560,8 @@ int main(string[] args)
             auto result = execute(cmd, null, Config.none, size_t.max, repoRoot);
             if (result.status == 0)
             {
+                mkdirRecurse(buildPath(buildDir, "obj"));
+                std.file.write(modeStamp, mode);
                 built++;
                 writefln("%-28s %-9s ok", name, category);
             }
@@ -500,4 +602,41 @@ int main(string[] args)
     }
 
     return failures.length ? 1 : 0;
+}
+
+/*
+ * The link line for static Cairo and Pango on Windows, read from dub.sdl's
+ * "windows-cairo" configuration (`dub describe`), so the library list
+ * lives in one place: its libs become <name>.lib, and its lflags (the
+ * static lib*.a archives in libraries/, plus lld-link options)
+ * are passed through to the linker with -L. Returns null after printing
+ * why if dub fails or a listed archive is missing (see BUILDING.md's
+ * "Cairo and Pango on Windows" for where they come from).
+ */
+string[] windowsCairoLibs(string repoRoot)
+{
+    string[] describe(string data)
+    {
+        auto r = execute(["dub", "describe", "--config=windows-cairo", "--data=" ~ data, "--data-list"],
+            cast(string[string]) null, Config.none, size_t.max, repoRoot);
+        if (r.status != 0)
+        {
+            stderr.writeln("buildsamples: dub describe failed:\n" ~ r.output);
+            return null;
+        }
+        return r.output.splitLines.filter!(l => l.length).array;
+    }
+
+    auto libs = describe("libs");
+    auto lflags = describe("lflags");
+    if (libs is null || lflags is null)
+        return null;
+    foreach (f; lflags)
+        if (f.endsWith(".a") && !exists(f))
+        {
+            stderr.writeln("buildsamples: --cairo needs " ~ f
+                ~ " (see BUILDING.md's \"Cairo and Pango on Windows\")");
+            return null;
+        }
+    return libs.map!(l => l ~ ".lib").array ~ lflags.map!(f => "-L" ~ f).array;
 }

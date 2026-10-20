@@ -31,10 +31,8 @@
  *    in the `optimizeMemory` draw loop -- this port has no per-driver
  *    scale factor anywhere else either (a documented, existing
  *    simplification, not new to this module).
- *  - `Fl_Anim_GIF_Image::frame_count()`/`is_animated()` (static +
- *    instance) are not ported -- no sample exercises either, and both
- *    are pure conveniences over `frames()`/`valid()`, easy to add
- *    later if a real caller needs them.
+ *  - The `LOG_FLAG`/`DEBUG_FLAG` flags and `debug()` are not ported:
+ *    fldtk carries no debugging-only code paths.
  *  - `Fl::warning()`/`Fl::error()` diagnostic calls are dropped, not
  *    translated to `stderr` output -- matches this port's established
  *    "no Fl::warning()/Fl::error() equivalent" convention (see e.g.
@@ -74,8 +72,6 @@ class AnimGifImage : GifImage
     enum ushort dontResizeCanvas = 2;
     enum ushort dontSetAsImage = 4;
     enum ushort optimizeMemory = 8;
-    enum ushort logFlag = 64;
-    enum ushort debugFlag = 128;
 
     /// Ported from `Fl_Anim_GIF_Image::min_delay`.
     static double minDelay = 0.0;
@@ -128,7 +124,6 @@ class AnimGifImage : GifImage
     private Color averageColor_;
     private float averageWeight_ = -1;
     private bool optimizeMem_;
-    private int debugLevel_;
     private ubyte[] offscreen_;
 
     /// Ported from the file-loading constructor.
@@ -184,7 +179,6 @@ class AnimGifImage : GifImage
     private void setupFlags(ushort flags)
     {
         flags_ = flags;
-        debugLevel_ = ((flags & logFlag) != 0 ? 1 : 0) + ((flags & debugFlag) != 0 ? 2 : 0);
         optimizeMem_ = (flags & optimizeMemory) != 0;
     }
 
@@ -211,6 +205,23 @@ class AnimGifImage : GifImage
     {
         return valid_;
     }
+
+    /// The number of frames in the GIF file `name` (or in `imgdata`, if
+    /// given), `0` if it can't be loaded. Ported from
+    /// `Fl_Anim_GIF_Image::frame_count()`.
+    static int frameCount(string name, const(ubyte)[] imgdata = null, size_t imglength = 0)
+    {
+        auto temp = new AnimGifImage();
+        temp.load(name, imgdata, imglength);
+        return temp.valid() ? temp.frames() : 0;
+    }
+
+    /// Whether this is a valid GIF with more than one frame. Ported
+    /// from `Fl_Anim_GIF_Image::is_animated()`.
+    bool isAnimated() const { return valid_ && frames_.length > 1; }
+    /// Keeps `GifImage.isAnimated(string)` callable through this class,
+    /// which the declaration above would otherwise hide.
+    alias isAnimated = GifImage.isAnimated;
 
     private bool loadAnim(string name, const(ubyte)[] imgdata, size_t imglength)
     {
@@ -275,11 +286,7 @@ class AnimGifImage : GifImage
         canvas_ = canvas;
         if (canvas_ && !(flags & dontSetAsImage)) canvas_.image(this);
         if (canvas_ && !(flags & dontResizeCanvas)) canvas_.size(w(), h());
-        if (flags_ != flags)
-        {
-            flags_ = flags;
-            debugLevel_ = ((flags & logFlag) != 0 ? 1 : 0) + ((flags & debugFlag) != 0 ? 2 : 0);
-        }
+        flags_ = flags;
         frame_ = -1;
         if (fl.core.hasTimeout(&cbAnimate))
         {

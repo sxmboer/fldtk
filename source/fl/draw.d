@@ -134,9 +134,13 @@
  *
  * All four scheme boxtype families (gleam/gtk+/oxy/plastic) are real
  * too -- see the section comments above gtkColor()/gleamColor()/
- * oxyColor()/shadeColor() further down this module. Every boxtype
- * `fl.core.boxTable` has metrics for is drawable; `drawBoxAt()`'s
- * `default:` case is pure forward-compat, not a real gap.
+ * oxyColor()/shadeColor() further down this module.
+ *
+ * BOXTYPE TABLE: drawBoxAt()/drawBoxFocus() and fl.core's boxDx()/.../
+ * setBoxtype()/getBoxtype() all go through one table of drawing
+ * function, insets, flags and focus function per boxtype, ported from
+ * fl_boxtype.cxx's fl_box_table (see boxEntry()), so programs can
+ * replace a built-in boxtype or add their own in a freeBoxtype slot.
  *
  * TRANSFORM STACK / VERTEX PATH: pushMatrix()/popMatrix()/
  * fl_translate()/fl_scale()/fl_rotate()/beginPolygon()/
@@ -621,6 +625,13 @@ version (linux)
         }
         restoreClip(); // a freshly-created xftDraw_ starts unclipped; sync it
     }
+
+    /// The drawable drawing currently targets: a window, or a double
+    /// window's back buffer during its `draw()` (FLTK's `fl_window`).
+    package(fl) Drawable currentDrawable() { return drawable_; }
+
+    /// The shared GC (FLTK's `fl_gc`); `null` until the display is open.
+    package(fl) GC currentGc() { return gc_; }
 
     /**
      * Internal use only; called by fl.platform_x11 right before a
@@ -3277,7 +3288,7 @@ void loop(int x0, int y0, int x1, int y1, int x2, int y2)
 /// rounding mismatch as the 3-point loop()/fl_line() cases above:
 /// fl.check_browser's checkbox glyph is exactly the rectangular case,
 /// and its outline would pick up corner gaps at scale > 1 the same way
-/// flFrame2()'s boxtype bevels do.
+/// frame2()'s boxtype bevels do.
 /// `Fl_Scalable_Graphics_Driver::loop(x0,y0,x1,y1,x2,y2,x3,y3)`
 /// (`src/Fl_Graphics_Driver.cxx`) special-cases both possible point
 /// orderings of an axis-aligned rectangle and redirects to rect() (a
@@ -3414,7 +3425,7 @@ void fl_yxline(int x, int y, int y1, int x2, int y3)
 /// etc.) to stay proportional -- the same corner-rounding convention
 /// `fl_rectf()` already uses for its own height. Without this, a
 /// multi-line bevel built from adjacent 1-unit-tall `fl_xyline()` calls
-/// (`flFrame2()`'s "AAWWMMTT"-style border, used by every plain up/down
+/// (`frame2()`'s "AAWWMMTT"-style border, used by every plain up/down
 /// boxtype) would leave real device-pixel gaps *between* consecutive lines
 /// at any scale > 1: a `MenuBar`'s "up" box background,
 /// hidden under a solid-fill highlight box (whose own height *does*
@@ -3480,7 +3491,7 @@ void fl_xyline(int x, int y, int x1)
         // of it (plain floor(n)) -- ported from
         // Fl_Scalable_Graphics_Driver::xyline()/yxline()
         // (src/Fl_Graphics_Driver.cxx). Without it, two perpendicular
-        // beveled-frame lines meeting at a corner (flFrame2()'s
+        // beveled-frame lines meeting at a corner (frame2()'s
         // "AAWWMMTT"-style border, used by every plain up/down boxtype)
         // could each independently floor() to non-adjacent device pixels
         // at any scale > 1, leaving a gap at that corner --
@@ -6296,57 +6307,26 @@ private void flOvalFocus(Boxtype bt, int x, int y, int w, int h, Color fg, Color
 }
 
 /**
- * Draws a widget's keyboard-focus indicator inside (x,y,w,h) -- a
+ * Draws a widget's keyboard-focus indicator inside (x,y,w,h). Ported
+ * from fl_draw_box_focus() (src/fl_boxtype.cxx). No-op if
+ * Fl::visible_focus() is off.
+ *
+ * If boxtype bt's table row has a focus-drawing function (the
+ * rounded/round/diamond/oval families' shaped rings, or one registered
+ * with `fl.core.setBoxtype()`), that draws it. Otherwise this draws a
  * dotted rectangle in a color contrasting against `bg`, inset by the
  * boxtype's own margins (and nudged +1,+1 for a down-style box, so the
- * dots don't sit under the bevel). Ported from fl_draw_box_focus()
- * (src/fl_boxtype.cxx). No-op if Fl::visible_focus() is off.
- *
- * FLTK's `fl_box_table[bt].ff` per-boxtype focus-drawing dispatch
- * -- round/oval/diamond/rounded boxtypes get a matching-shaped focus
- * ring instead of a rectangular one -- is real.
- * The round/oval/diamond/rounded-family shaped functions
- * (`flRoundFocus()`/`flOvalFocus()`/`flDiamondFocus()`/
- * `flRoundedFocus()` just above) are checked first, exactly matching
- * FLTK's dispatch order and each shape's own dx/dy/dw/dh math (no
- * shared pre-adjustment -- every shaped function does its own, same as
- * FLTK); every other boxtype still falls through to the generic
- * rectangular outline below.
+ * dots don't sit under the bevel).
  */
 void drawBoxFocus(Boxtype bt, int x, int y, int w, int h, Color fg, Color bg)
 {
     if (!fl.core.visibleFocus()) return;
 
-    switch (bt)
+    auto ff = boxEntry(bt).ff;
+    if (ff !is null)
     {
-    case Boxtype.roundedBox:
-    case Boxtype.rshadowBox:
-    case Boxtype.roundedFrame:
-    case Boxtype.rflatBox:
-        flRoundedFocus(bt, x, y, w, h, fg, bg);
+        ff(bt, x, y, w, h, fg, bg);
         return;
-    case Boxtype.roundUpBox:
-    case Boxtype.roundDownBox:
-    case Boxtype.plasticRoundUpBox:
-    case Boxtype.plasticRoundDownBox:
-    case Boxtype.gtkRoundUpBox:
-    case Boxtype.gtkRoundDownBox:
-    case Boxtype.oxyRoundUpBox:
-    case Boxtype.oxyRoundDownBox:
-        flRoundFocus(bt, x, y, w, h, fg, bg);
-        return;
-    case Boxtype.diamondUpBox:
-    case Boxtype.diamondDownBox:
-        flDiamondFocus(bt, x, y, w, h, fg, bg);
-        return;
-    case Boxtype.ovalBox:
-    case Boxtype.oshadowBox:
-    case Boxtype.ovalFrame:
-    case Boxtype.oflatBox:
-        flOvalFocus(bt, x, y, w, h, fg, bg);
-        return;
-    default:
-        break;
     }
 
     switch (bt)
@@ -6376,8 +6356,7 @@ void drawBoxFocus(Boxtype bt, int x, int y, int w, int h, Color fg, Color bg)
 // Box drawing (src/fl_boxtype.cxx)
 // ---------------------------------------------------------------------
 //
-// Ported from the box-drawing half of fl_boxtype.cxx (the metrics half
-// -- dx/dy/dw/dh insets -- already lives in fl.core.boxTable). Covers
+// Ported from the box-drawing functions of fl_boxtype.cxx. Covers
 // noBox/flatBox/upBox/downBox/upFrame/downFrame/thinUpBox/thinDownBox/
 // thinUpFrame/thinDownFrame/engravedBox/engravedFrame/embossedBox/
 // embossedFrame/borderBox/borderFrame/shadowBox/shadowFrame here, plus
@@ -6387,9 +6366,8 @@ void drawBoxFocus(Boxtype bt, int x, int y, int w, int h, Color fg, Color bg)
 // plastic/gtk+/gleam/oxy scheme families are
 // real too, each in its own section further down this module (see
 // gtkColor()/gleamColor()/oxyColor()/shadeColor()'s own section
-// comments) and wired into drawBoxAt()'s switch below. Every boxtype
-// fl.core.boxTable has metrics for is drawable; drawBoxAt()'s
-// default: case is pure forward-compat, not a real gap.
+// comments). The boxtype table (boxDefaults, further down) maps each
+// boxtype to its function.
 
 /// Ported from FLTK's `draw_it_active` (`fl_boxtype.cxx`, a
 /// process-wide flag `Fl_Widget::draw_box()` sets around its own call
@@ -6419,7 +6397,7 @@ package(fl) void drawBoxActive(bool v) { drawItActive_ = v; }
 /// it swaps between two entirely separate, pre-baked 24-entry lookup
 /// tables (`active_ramp`/`inactive_ramp`) based on `draw_it_active`,
 /// and `inactive_ramp`'s values are literal hardcoded palette indices
-/// (43-52), not `colorAverage()`-derived. `flFrame2()`/`flUpFrame()`/
+/// (43-52), not `colorAverage()`-derived. `frame2()`/`flUpFrame()`/
 /// `flDownFrame()`/etc. (the beveled-border half of every classic
 /// up/down boxtype, called from `drawBoxAt()`, entirely separate from
 /// the flat fill color a caller passes in) all route through this, so
@@ -6450,7 +6428,7 @@ private Color grayRampChar(char c)
  * must be a multiple of 4 characters ('A'..'X'); behavior is undefined
  * otherwise, matching FLTK's own documented caveat.
  */
-private void flFrame2(string s, int x, int y, int w, int h)
+void frame2(string s, int x, int y, int w, int h)
 {
     if (h <= 0 || w <= 0) return;
 
@@ -6478,11 +6456,11 @@ private void flFrame2(string s, int x, int y, int w, int h)
 }
 
 /// Ported from fl_up_frame() (fl_boxtype.cxx), the BORDER_WIDTH==2
-/// (this port's only supported border width, see fl.core's boxTable
-/// note on D1/D2) case.
-private void flUpFrame(int x, int y, int w, int h)
+/// (this port's only supported border width, see D1/D2 at the boxtype
+/// table) case.
+private void flUpFrame(int x, int y, int w, int h, Color c = 0)
 {
-    flFrame2("AAWWMMTT", x, y, w, h);
+    frame2("AAWWMMTT", x, y, w, h);
 }
 
 /// Ported from fl_up_box().
@@ -6494,9 +6472,9 @@ private void flUpBox(int x, int y, int w, int h, Color c)
 }
 
 /// Ported from fl_down_frame(), BORDER_WIDTH==2 case.
-private void flDownFrame(int x, int y, int w, int h)
+private void flDownFrame(int x, int y, int w, int h, Color c = 0)
 {
-    flFrame2("WWMMPPAA", x, y, w, h);
+    frame2("WWMMPPAA", x, y, w, h);
 }
 
 /// Ported from fl_down_box().
@@ -6508,13 +6486,13 @@ private void flDownBox(int x, int y, int w, int h, Color c)
 }
 
 /**
- * Same as flFrame2() but walks the 4-character groups in top, left,
+ * Same as frame2() but walks the 4-character groups in top, left,
  * bottom, right order instead of bottom, right, top, left -- ported
  * verbatim from fl_frame() (fl_boxtype.cxx; FLTK's own doc comment:
  * "The only difference between this function and fl_frame2() is the
  * order of the line segments").
  */
-private void flFrame(string s, int x, int y, int w, int h)
+void fl_frame(string s, int x, int y, int w, int h)
 {
     if (h <= 0 || w <= 0) return;
 
@@ -6543,9 +6521,9 @@ private void flFrame(string s, int x, int y, int w, int h)
 
 /// Ported from fl_thin_down_frame() -- the BORDER_WIDTH==1 sibling of
 /// flDownFrame()'s BORDER_WIDTH==2.
-private void flThinDownFrame(int x, int y, int w, int h)
+private void flThinDownFrame(int x, int y, int w, int h, Color c = 0)
 {
-    flFrame2("WWHH", x, y, w, h);
+    frame2("WWHH", x, y, w, h);
 }
 
 /// Ported from fl_thin_down_box().
@@ -6558,9 +6536,9 @@ private void flThinDownBox(int x, int y, int w, int h, Color c)
 
 /// Ported from fl_thin_up_frame() -- the BORDER_WIDTH==1 sibling of
 /// flUpFrame()'s BORDER_WIDTH==2.
-private void flThinUpFrame(int x, int y, int w, int h)
+private void flThinUpFrame(int x, int y, int w, int h, Color c = 0)
 {
-    flFrame2("HHWW", x, y, w, h);
+    frame2("HHWW", x, y, w, h);
 }
 
 /// Ported from fl_thin_up_box().
@@ -6572,9 +6550,9 @@ private void flThinUpBox(int x, int y, int w, int h, Color c)
 }
 
 /// Ported from fl_engraved_frame().
-private void flEngravedFrame(int x, int y, int w, int h)
+private void flEngravedFrame(int x, int y, int w, int h, Color c = 0)
 {
-    flFrame("HHWWWWHH", x, y, w, h);
+    fl_frame("HHWWWWHH", x, y, w, h);
 }
 
 /// Ported from fl_engraved_box().
@@ -6586,9 +6564,9 @@ private void flEngravedBox(int x, int y, int w, int h, Color c)
 }
 
 /// Ported from fl_embossed_frame().
-private void flEmbossedFrame(int x, int y, int w, int h)
+private void flEmbossedFrame(int x, int y, int w, int h, Color c = 0)
 {
-    flFrame("WWHHHHWW", x, y, w, h);
+    fl_frame("WWHHHHWW", x, y, w, h);
 }
 
 /// Ported from fl_embossed_box().
@@ -7035,8 +7013,7 @@ private void flRshadowBox(int x, int y, int w, int h, Color c)
 // order). A 2-pixel-bordered, top/bottom-gradient-shaded look ("Clear
 // looks Glossy"); every boxtype here shares the same dx/dy/dw/dh (2,2,
 // 4,4) -- no "thin" distinction, matching FLTK's own doc comment
-// in fl_gleam.cxx and this port's existing boxTable rows for these
-// (added ahead of time during Phase A scoping).
+// in fl_gleam.cxx and the boxtype table's rows for these.
 //
 // DELIBERATE SIMPLIFICATION, same one already established for the
 // oval/round/diamond families just above: FLTK's `gleam_color(c)`
@@ -7475,12 +7452,11 @@ private void flGtkRoundDownBox(int x, int y, int w, int h, Color c)
 
 // ---------------------------------------------------------------------
 // "Oxy" scheme boxtype family (src/fl_oxy.cxx, ~500 lines) -- one of
-// the four scheme families. Wired into drawBoxAt()'s switch under the
-// already-existing oxyUpBox/oxyDownBox/oxyUpFrame/oxyDownFrame/
-// oxyThinUpBox/oxyThinDownBox/oxyThinUpFrame/oxyThinDownFrame/
-// oxyRoundUpBox/oxyRoundDownBox/oxyButtonUpBox/oxyButtonDownBox
-// Boxtype values and fl.core.boxTable metrics rows (see
-// fl.core.d). Also includes oxy_arrow() (below, near the end of this
+// the four scheme families, registered in the boxtype table under
+// oxyUpBox/oxyDownBox/oxyUpFrame/oxyDownFrame/oxyThinUpBox/
+// oxyThinDownBox/oxyThinUpFrame/oxyThinDownFrame/oxyRoundUpBox/
+// oxyRoundDownBox/oxyButtonUpBox/oxyButtonDownBox. Also includes
+// oxy_arrow() (below, near the end of this
 // section), the `drawArrow()`'s own `Fl::is_scheme("oxy")`
 // branch (see that function's own doc comment).
 //
@@ -7946,12 +7922,9 @@ private void oxyArrow(Rect bb, ArrowType t, Orientation o, Color col)
 // boxtype-drawing functions below, which never had any
 // `fl.image` dependency.
 //
-// Wired into `fl.draw.drawBoxAt()`'s switch under the already-existing
-// `plasticUpBox`/`plasticDownBox`/`plasticUpFrame`/`plasticDownFrame`/
-// `plasticThinUpBox`/`plasticThinDownBox`/`plasticRoundUpBox`/
-// `plasticRoundDownBox` `Boxtype` values and `fl.core.boxTable` metrics
-// rows (both already in place from Phase A scoping, nothing new needed
-// there -- see `fl.core.d`).
+// Registered in the boxtype table under `plasticUpBox`/`plasticDownBox`/
+// `plasticUpFrame`/`plasticDownFrame`/`plasticThinUpBox`/
+// `plasticThinDownBox`/`plasticRoundUpBox`/`plasticRoundDownBox`.
 //
 // Each of the 8 public `fl_plastic_*()` functions FLTK encodes its
 // particular bevel as a short string of letters ("RVQNOPQRSTUVWVQ" and
@@ -8353,284 +8326,204 @@ private void flPlasticDownRound(int x, int y, int w, int h, Color c)
     plasticFrameRound(x, y, w, h, "IJLM", c);
 }
 
-/**
- * Draws a box of type t at (x,y,w,h) in color c -- the D equivalent of
- * looking up and calling `fl_box_table[t].f` FLTK, except as a
- * direct switch rather than a real function-pointer table (FLTK's
- * table also supports runtime-registered FL_FREE_BOXTYPE custom box
- * types via Fl::set_boxtype(); not supported here). See the module
- * section note above for which boxtypes are actually covered.
- *
- * Resolves t through `fl.core.resolveBoxtype()` first (core-roadmap
- * item 11 Phase A) -- e.g. under an active "gtk+" scheme, a widget's
- * plain `Boxtype.upBox` draws as `gtkUpBox` instead, with no change
- * needed at any call site. Until a scheme's own boxtype family is
- * ported, activating that scheme just means the aliased boxtype hits
- * this switch's own `default:` (no-op) case -- the same behavior any
- * not-yet-covered boxtype already has. All four scheme families --
- * "gleam", "gtk+", "oxy", and now "plastic" -- are ported
- * (core-roadmap item 11 Phase B complete); no boxtype falls through
- * to `default:` because of a missing scheme family anymore.
- */
-/// Fluid's own "Show Ghosted FlGroup Outlines" editor toggle (`fluid/
-/// panels/settings_panel.fl`'s General tab) -- the direct equivalent
-/// of FLTK's `Overlay_Window::draw()` temporarily swapping out
-/// `FL_FLAT_BOX`'s registered drawing function for `fd_flat_box_
-/// ghosted()` (`Fl::set_boxtype(FL_FLAT_BOX, fd_flat_box_ghosted, ...)`,
-/// `nodes/Window_Node.cxx`) around the one call that redraws the
-/// currently-edited window, then restoring it. This port's `drawBoxAt()`
-/// is a direct `switch`, not a real function-pointer table (see that
-/// function's own doc comment), so there's no separate function to
-/// swap -- a plain global flag, consulted only by the `flatBox` case
-/// below, gets the same effect: any flat-boxed widget drawn while this
-/// is `true` gets a contrasting outline on top of its normal fill, and
-/// nothing does otherwise. `fluid.canvas.ProjectCanvas.draw()` is the
-/// only intended setter, `true` only around its own `super.draw()`
-/// call -- exactly matching FLTK's save/restore-around-one-draw-
-/// call scope, so no other window (Settings dialog, widget bin, ...)
-/// is ever affected.
-bool ghostFlatBox;
+// ---------------------------------------------------------------------
+// The boxtype table (fl_box_table, src/fl_boxtype.cxx)
+// ---------------------------------------------------------------------
 
-/// Public: matches FLTK's own
-/// public global `fl_draw_box()` (`FL/fl_draw.H`), which custom-drawn
-/// widgets (e.g. a `Table`/`Tree` subclass overriding cell/item
-/// drawing) call directly, same as `fl_color()`/`fl_rect()`.
+/// Draws a box of one boxtype at (x, y, w, h) in color c. FLTK's
+/// `Fl_Box_Draw_F`, as a delegate (see `ContrastFunction` in
+/// `fl.enumerations` for the precedent).
+alias BoxDrawFunc = void delegate(int x, int y, int w, int h, Color c);
+
+/// Draws the keyboard-focus frame inside a box of boxtype bt at
+/// (x, y, w, h), contrasting fg against bg. FLTK's `Fl_Box_Draw_Focus_F`.
+alias BoxDrawFocusFunc = void delegate(Boxtype bt, int x, int y, int w, int h, Color fg, Color bg);
+
+/// One row of the boxtype table. Ported from `fl_boxtype.cxx`'s
+/// `boxtable_t`: the drawing function, the frame insets, flags (bit 0:
+/// the row was set with `setBoxtype()`; bit 1: the box doesn't draw its
+/// whole background) and an optional focus-drawing function.
+package(fl) struct BoxtypeEntry
+{
+    BoxDrawFunc f;
+    ubyte dx, dy, dw, dh;
+    int flags;
+    BoxDrawFocusFunc ff;
+
+    bool set() const { return (flags & 1) != 0; }
+    bool bg() const { return (flags & 2) == 0; }
+}
+
+private alias BoxFn = void function(int, int, int, int, Color);
+private alias FocusFn = void function(Boxtype, int, int, int, int, Color, Color);
+
+private struct BoxDefault
+{
+    BoxFn f;
+    ubyte dx, dy, dw, dh;
+    int flags;
+    FocusFn ff;
+}
+
+/// D1/D2 are FLTK's `BORDER_WIDTH` (2) and `2*BORDER_WIDTH`.
+package(fl) enum ubyte D1 = 2, D2 = 4;
+
+/// FLTK's `fl_no_box()`: draws nothing.
+private void flNoBox(int x, int y, int w, int h, Color c) {}
+
+/// FLTK's `fl_flat_box()`.
+private void flFlatBox(int x, int y, int w, int h, Color c)
+{
+    fl_color(c);
+    fl_rectf(x, y, w, h);
+}
+
+/// The built-in rows, in `Boxtype` order. Ported from `fl_box_table`'s
+/// initializer ("must match list in Enumerations.H !!!"); FLTK's
+/// `fl_border_box` is a `#define` for `fl_rectbound`, so `rectbound`
+/// stands in for it here.
+private immutable BoxDefault[] boxDefaults = [
+    BoxDefault(&flNoBox,             0,  0,  0,  0,  3),               // noBox
+    BoxDefault(&flFlatBox,           0,  0,  0,  0,  1),               // flatBox
+    BoxDefault(&flUpBox,             D1, D1, D2, D2, 1),               // upBox
+    BoxDefault(&flDownBox,           D1, D1, D2, D2, 1),               // downBox
+    BoxDefault(&flUpFrame,           D1, D1, D2, D2, 3),               // upFrame
+    BoxDefault(&flDownFrame,         D1, D1, D2, D2, 3),               // downFrame
+    BoxDefault(&flThinUpBox,         1,  1,  2,  2,  1),               // thinUpBox
+    BoxDefault(&flThinDownBox,       1,  1,  2,  2,  1),               // thinDownBox
+    BoxDefault(&flThinUpFrame,       1,  1,  2,  2,  3),               // thinUpFrame
+    BoxDefault(&flThinDownFrame,     1,  1,  2,  2,  3),               // thinDownFrame
+    BoxDefault(&flEngravedBox,       2,  2,  4,  4,  1),               // engravedBox
+    BoxDefault(&flEmbossedBox,       2,  2,  4,  4,  1),               // embossedBox
+    BoxDefault(&flEngravedFrame,     2,  2,  4,  4,  3),               // engravedFrame
+    BoxDefault(&flEmbossedFrame,     2,  2,  4,  4,  3),               // embossedFrame
+    BoxDefault(&rectbound,           1,  1,  2,  2,  1),               // borderBox
+    BoxDefault(&flShadowBox,         1,  1,  5,  5,  1),               // shadowBox
+    BoxDefault(&flBorderFrame,       1,  1,  2,  2,  3),               // borderFrame
+    BoxDefault(&flShadowFrame,       1,  1,  5,  5,  3),               // shadowFrame
+    BoxDefault(&flRoundedBox,        1,  1,  2,  2,  1, &flRoundedFocus), // roundedBox
+    BoxDefault(&flRshadowBox,        1,  1,  2,  2,  1, &flRoundedFocus), // rshadowBox
+    BoxDefault(&flRoundedFrame,      1,  1,  2,  2,  3, &flRoundedFocus), // roundedFrame
+    BoxDefault(&flRflatBox,          0,  0,  0,  0,  1, &flRoundedFocus), // rflatBox
+    BoxDefault(&flRoundUpBox,        3,  3,  6,  6,  1, &flRoundFocus),   // roundUpBox
+    BoxDefault(&flRoundDownBox,      3,  3,  6,  6,  1, &flRoundFocus),   // roundDownBox
+    BoxDefault(&flDiamondUpBox,      0,  0,  0,  0,  1, &flDiamondFocus), // diamondUpBox
+    BoxDefault(&flDiamondDownBox,    0,  0,  0,  0,  1, &flDiamondFocus), // diamondDownBox
+    BoxDefault(&flOvalBox,           1,  1,  2,  2,  1, &flOvalFocus),    // ovalBox
+    BoxDefault(&flOvalShadowBox,     1,  1,  2,  2,  1, &flOvalFocus),    // oshadowBox
+    BoxDefault(&flOvalFrame,         1,  1,  2,  2,  2, &flOvalFocus),    // ovalFrame
+    BoxDefault(&flOvalFlatBox,       0,  0,  0,  0,  1, &flOvalFocus),    // oflatBox
+    BoxDefault(&flPlasticUpBox,      2,  2,  4,  4,  1),               // plasticUpBox
+    BoxDefault(&flPlasticDownBox,    2,  2,  4,  4,  1),               // plasticDownBox
+    BoxDefault(&flPlasticUpFrame,    2,  2,  4,  4,  3),               // plasticUpFrame
+    BoxDefault(&flPlasticDownFrame,  2,  2,  4,  4,  3),               // plasticDownFrame
+    BoxDefault(&flPlasticThinUpBox,  2,  2,  4,  4,  1),               // plasticThinUpBox
+    BoxDefault(&flPlasticDownBox,    2,  2,  4,  4,  1),               // plasticThinDownBox (no thin variant in FLTK)
+    BoxDefault(&flPlasticUpRound,    2,  2,  4,  4,  1, &flRoundFocus),   // plasticRoundUpBox
+    BoxDefault(&flPlasticDownRound,  2,  2,  4,  4,  1, &flRoundFocus),   // plasticRoundDownBox
+    BoxDefault(&flGtkUpBox,          2,  2,  4,  4,  1),               // gtkUpBox
+    BoxDefault(&flGtkDownBox,        2,  2,  4,  4,  1),               // gtkDownBox
+    BoxDefault(&flGtkUpFrame,        2,  2,  4,  4,  3),               // gtkUpFrame
+    BoxDefault(&flGtkDownFrame,      2,  2,  4,  4,  3),               // gtkDownFrame
+    BoxDefault(&flGtkThinUpBox,      1,  1,  2,  2,  3),               // gtkThinUpBox
+    BoxDefault(&flGtkThinDownBox,    1,  1,  2,  2,  3),               // gtkThinDownBox
+    BoxDefault(&flGtkThinUpFrame,    1,  1,  2,  2,  1),               // gtkThinUpFrame
+    BoxDefault(&flGtkThinDownFrame,  1,  1,  2,  2,  1),               // gtkThinDownFrame
+    BoxDefault(&flGtkRoundUpBox,     2,  2,  4,  4,  1, &flRoundFocus),   // gtkRoundUpBox
+    BoxDefault(&flGtkRoundDownBox,   2,  2,  4,  4,  1, &flRoundFocus),   // gtkRoundDownBox
+    BoxDefault(&flGleamUpBox,        2,  2,  4,  4,  1),               // gleamUpBox
+    BoxDefault(&flGleamDownBox,      2,  2,  4,  4,  1),               // gleamDownBox
+    BoxDefault(&flGleamUpFrame,      2,  2,  4,  4,  3),               // gleamUpFrame
+    BoxDefault(&flGleamDownFrame,    2,  2,  4,  4,  3),               // gleamDownFrame
+    BoxDefault(&flGleamThinUpBox,    2,  2,  4,  4,  1),               // gleamThinUpBox
+    BoxDefault(&flGleamThinDownBox,  2,  2,  4,  4,  1),               // gleamThinDownBox
+    BoxDefault(&flGleamUpBox,        2,  2,  4,  4,  1),               // gleamRoundUpBox (no round variant in FLTK)
+    BoxDefault(&flGleamDownBox,      2,  2,  4,  4,  1),               // gleamRoundDownBox
+    BoxDefault(&flOxyUpBox,          2,  2,  4,  4,  1),               // oxyUpBox
+    BoxDefault(&flOxyDownBox,        2,  2,  4,  4,  1),               // oxyDownBox
+    BoxDefault(&flOxyUpFrame,        2,  2,  4,  4,  3),               // oxyUpFrame
+    BoxDefault(&flOxyDownFrame,      2,  2,  4,  4,  3),               // oxyDownFrame
+    BoxDefault(&flOxyThinUpBox,      1,  1,  2,  2,  1),               // oxyThinUpBox
+    BoxDefault(&flOxyThinDownBox,    1,  1,  2,  2,  1),               // oxyThinDownBox
+    BoxDefault(&flOxyThinUpFrame,    1,  1,  2,  2,  3),               // oxyThinUpFrame
+    BoxDefault(&flOxyThinDownFrame,  1,  1,  2,  2,  3),               // oxyThinDownFrame
+    BoxDefault(&flOxyRoundUpBox,     2,  2,  4,  4,  1, &flRoundFocus),   // oxyRoundUpBox
+    BoxDefault(&flOxyRoundDownBox,   2,  2,  4,  4,  1, &flRoundFocus),   // oxyRoundDownBox
+    BoxDefault(&flOxyButtonUpBox,    2,  2,  4,  4,  1),               // oxyButtonUpBox
+    BoxDefault(&flOxyButtonDownBox,  2,  2,  4,  4,  1),               // oxyButtonDownBox
+    BoxDefault(&flUpBox,             3,  3,  6,  6,  1),               // freeBoxtype + 0
+    BoxDefault(&flDownBox,           3,  3,  6,  6,  1),               // freeBoxtype + 1
+    BoxDefault(&flUpBox,             3,  3,  6,  6,  1),               // freeBoxtype + 2
+    BoxDefault(&flDownBox,           3,  3,  6,  6,  1),               // freeBoxtype + 3
+    BoxDefault(&flUpBox,             3,  3,  6,  6,  1),               // freeBoxtype + 4
+    BoxDefault(&flDownBox,           3,  3,  6,  6,  1),               // freeBoxtype + 5
+    BoxDefault(&flUpBox,             3,  3,  6,  6,  1),               // freeBoxtype + 6
+    BoxDefault(&flDownBox,           3,  3,  6,  6,  1),               // freeBoxtype + 7
+];
+
+static assert(boxDefaults.length == Boxtype.freeBoxtype + 8);
+
+// One table for the whole process, like FLTK's static `fl_box_table`
+// (D module variables are otherwise thread-local). Rows past
+// `freeBoxtype + 7` start empty: no drawing function, no insets, as in
+// FLTK.
+private __gshared BoxtypeEntry[Boxtype.maxBoxtype + 1] boxTable_;
+private __gshared bool boxTableReady_;
+
+/// The table row for boxtype t, filled with the built-in rows on first
+/// use. `fl.core`'s `boxDx()`/.../`boxBg()`/`setBoxtype()`/`getBoxtype()`
+/// read and write it.
+package(fl) ref BoxtypeEntry boxEntry(Boxtype t)
+{
+    if (!boxTableReady_)
+    {
+        import std.functional : toDelegate;
+        foreach (i, ref d; boxDefaults)
+            boxTable_[i] = BoxtypeEntry(toDelegate(d.f), d.dx, d.dy, d.dw, d.dh, d.flags,
+                                        d.ff !is null ? toDelegate(d.ff) : null);
+        boxTableReady_ = true;
+    }
+    return boxTable_[t];
+}
+
+/// Puts the built-in rows back (`fl.core.resetForTest()`).
+package(fl) void resetBoxTable()
+{
+    boxTableReady_ = false;
+    boxTable_[] = BoxtypeEntry.init;
+}
+
+/// The built-in drawing function of boxtype t, as a delegate --
+/// `fl.core.reloadScheme()` uses these to restore the default look,
+/// the way FLTK's own `reload_scheme()` passes `fl_up_box` and friends
+/// to `Fl::set_boxtype()`.
+package(fl) BoxDrawFunc defaultBoxDraw(Boxtype t)
+{
+    import std.functional : toDelegate;
+    return toDelegate(boxDefaults[t].f);
+}
+
+/// ditto, for the focus-drawing function (`null` if the built-in row
+/// has none).
+package(fl) BoxDrawFocusFunc defaultBoxDrawFocus(Boxtype t)
+{
+    import std.functional : toDelegate;
+    auto ff = boxDefaults[t].ff;
+    return ff !is null ? toDelegate(ff) : null;
+}
+
+/**
+ * Draws a box of type t at (x, y, w, h) in color c, by calling the
+ * drawing function registered for t (`fl.core.setBoxtype()`). Ported
+ * from `fl_draw_box()` (`src/fl_boxtype.cxx`); public like FLTK's, for
+ * custom-drawn widgets (e.g. a `Table`/`Tree` subclass drawing its own
+ * cells). Draws nothing for `noBox` or a boxtype with no function.
+ */
 void drawBoxAt(Boxtype t, int x, int y, int w, int h, Color c)
 {
-    t = fl.core.resolveBoxtype(t);
-    switch (t)
-    {
-    case Boxtype.noBox:
-        break;
-    case Boxtype.flatBox:
-        fl_color(c);
-        fl_rectf(x, y, w, h);
-        // FLTK: `fd_flat_box_ghosted()`'s own trailing outline --
-        // `Fl::box_color(fl_color_average(FL_FOREGROUND_COLOR, c, .1f))`.
-        // `Fl::box_color()` itself isn't ported (see this project's own
-        // module-map note on `gleam_color()`/`Fl::set_box_color()`: it
-        // only auto-dims for inactive widgets via a process-wide flag
-        // this port never tracks, dimming staying each caller's own
-        // job) -- plain `c` substitutes, matching every other boxtype
-        // case in this function already.
-        if (ghostFlatBox)
-        {
-            fl_color(colorAverage(foregroundColor, c, 0.1f));
-            fl_rect(x, y, w, h);
-        }
-        break;
-    case Boxtype.upBox:
-        flUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.downBox:
-        flDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.upFrame:
-        flUpFrame(x, y, w, h);
-        break;
-    case Boxtype.downFrame:
-        flDownFrame(x, y, w, h);
-        break;
-    case Boxtype.thinUpBox:
-        flThinUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.thinDownBox:
-        flThinDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.thinUpFrame:
-        flThinUpFrame(x, y, w, h);
-        break;
-    case Boxtype.thinDownFrame:
-        flThinDownFrame(x, y, w, h);
-        break;
-    case Boxtype.engravedBox:
-        flEngravedBox(x, y, w, h, c);
-        break;
-    case Boxtype.embossedBox:
-        flEmbossedBox(x, y, w, h, c);
-        break;
-    case Boxtype.engravedFrame:
-        flEngravedFrame(x, y, w, h);
-        break;
-    case Boxtype.embossedFrame:
-        flEmbossedFrame(x, y, w, h);
-        break;
-    case Boxtype.borderBox:
-        rectbound(x, y, w, h, c);
-        break;
-    case Boxtype.shadowBox:
-        flShadowBox(x, y, w, h, c);
-        break;
-    case Boxtype.borderFrame:
-        flBorderFrame(x, y, w, h, c);
-        break;
-    case Boxtype.shadowFrame:
-        flShadowFrame(x, y, w, h, c);
-        break;
-    case Boxtype.roundUpBox:
-        flRoundUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.roundDownBox:
-        flRoundDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.diamondUpBox:
-        flDiamondUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.diamondDownBox:
-        flDiamondDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.ovalBox:
-        flOvalBox(x, y, w, h, c);
-        break;
-    case Boxtype.oshadowBox:
-        flOvalShadowBox(x, y, w, h, c);
-        break;
-    case Boxtype.ovalFrame:
-        flOvalFrame(x, y, w, h, c);
-        break;
-    case Boxtype.oflatBox:
-        flOvalFlatBox(x, y, w, h, c);
-        break;
-    case Boxtype.roundedBox:
-        flRoundedBox(x, y, w, h, c);
-        break;
-    case Boxtype.rshadowBox:
-        flRshadowBox(x, y, w, h, c);
-        break;
-    case Boxtype.roundedFrame:
-        flRoundedFrame(x, y, w, h, c);
-        break;
-    case Boxtype.rflatBox:
-        flRflatBox(x, y, w, h, c);
-        break;
-    case Boxtype.gleamUpBox:
-        flGleamUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.gleamDownBox:
-        flGleamDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.gleamUpFrame:
-        flGleamUpFrame(x, y, w, h, c);
-        break;
-    case Boxtype.gleamDownFrame:
-        flGleamDownFrame(x, y, w, h, c);
-        break;
-    case Boxtype.gleamThinUpBox:
-        flGleamThinUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.gleamThinDownBox:
-        flGleamThinDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.gleamRoundUpBox:
-        // No distinct round shape FLTK either -- see this section's
-        // own module comment (above gleamColor()) for why.
-        flGleamUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.gleamRoundDownBox:
-        flGleamDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.gtkUpBox:
-        flGtkUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.gtkDownBox:
-        flGtkDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.gtkUpFrame:
-        flGtkUpFrame(x, y, w, h, c);
-        break;
-    case Boxtype.gtkDownFrame:
-        flGtkDownFrame(x, y, w, h, c);
-        break;
-    case Boxtype.gtkThinUpBox:
-        flGtkThinUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.gtkThinDownBox:
-        flGtkThinDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.gtkThinUpFrame:
-        flGtkThinUpFrame(x, y, w, h, c);
-        break;
-    case Boxtype.gtkThinDownFrame:
-        flGtkThinDownFrame(x, y, w, h, c);
-        break;
-    case Boxtype.gtkRoundUpBox:
-        flGtkRoundUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.gtkRoundDownBox:
-        flGtkRoundDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.oxyUpBox:
-        flOxyUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.oxyDownBox:
-        flOxyDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.oxyUpFrame:
-        flOxyUpFrame(x, y, w, h, c);
-        break;
-    case Boxtype.oxyDownFrame:
-        flOxyDownFrame(x, y, w, h, c);
-        break;
-    case Boxtype.oxyThinUpBox:
-        flOxyThinUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.oxyThinDownBox:
-        flOxyThinDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.oxyThinUpFrame:
-        flOxyThinUpFrame(x, y, w, h, c);
-        break;
-    case Boxtype.oxyThinDownFrame:
-        flOxyThinDownFrame(x, y, w, h, c);
-        break;
-    case Boxtype.oxyRoundUpBox:
-        flOxyRoundUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.oxyRoundDownBox:
-        flOxyRoundDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.oxyButtonUpBox:
-        flOxyButtonUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.oxyButtonDownBox:
-        flOxyButtonDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.plasticUpBox:
-        flPlasticUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.plasticDownBox:
-        flPlasticDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.plasticUpFrame:
-        flPlasticUpFrame(x, y, w, h, c);
-        break;
-    case Boxtype.plasticDownFrame:
-        flPlasticDownFrame(x, y, w, h, c);
-        break;
-    case Boxtype.plasticThinUpBox:
-        flPlasticThinUpBox(x, y, w, h, c);
-        break;
-    case Boxtype.plasticThinDownBox:
-        // No distinct "thin down" variant FLTK either --
-        // fl_plastic.cxx never defines fl_plastic_thin_down_box at
-        // all; fl_box_table's own _FL_PLASTIC_THIN_DOWN_BOX row points
-        // at the plain fl_plastic_down_box, ported faithfully as-is.
-        flPlasticDownBox(x, y, w, h, c);
-        break;
-    case Boxtype.plasticRoundUpBox:
-        flPlasticUpRound(x, y, w, h, c);
-        break;
-    case Boxtype.plasticRoundDownBox:
-        flPlasticDownRound(x, y, w, h, c);
-        break;
-    default:
-        // Every boxtype fl.core.boxTable has metrics for is now
-        // drawable -- all four scheme families (rounded/gleam/gtk+/
-        // oxy/plastic) are handled above. This default: only exists
-        // for forward-compat with any future boxtype this switch
-        // hasn't been extended for yet.
-        break;
-    }
+    if (t == Boxtype.noBox) return;
+    auto f = boxEntry(t).f;
+    if (f !is null) f(x, y, w, h, c);
 }
 
 // ===========================================================================
@@ -10952,4 +10845,80 @@ unittest
     assert(parseColor("#GG0000", r, g, b) == false); // not hex
 
     assert(parseColor("", r, g, b) == false);
+}
+
+/**
+ * Switches drawing to unscaled device pixels until `restoreScale()`, so
+ * code can draw at exact pixel positions on a scaled display. Returns
+ * the scale to pass to `restoreScale()`. Ported from
+ * `fl_override_scale()` (`Fl_Scalable_Graphics_Driver::override_scale()`).
+ */
+float overrideScale()
+{
+    float s = currentScale();
+    if (s != 1.0f) fl.core.currentScale(1.0f);
+    return s;
+}
+
+/// Restores the scale `overrideScale()` returned. Ported from
+/// `fl_restore_scale()`.
+void restoreScale(float s)
+{
+    if (s != 1.0f) fl.core.currentScale(s);
+}
+
+/// Whether RGBA images are drawn with real alpha blending rather than
+/// FLTK's screen-door fallback. Always true: fldtk composites RGBA
+/// images itself (see `drawImage()`). Ported from
+/// `fl_can_do_alpha_blending()`.
+bool canDoAlphaBlending() { return true; }
+
+/**
+ * Reads the size of XPM image data from its header row. Returns false,
+ * with `w` set to 0, if the header is invalid or uses more than 2
+ * characters per pixel. Ported from `fl_measure_pixmap()`.
+ */
+bool measurePixmap(const(string)[] data, out int w, out int h)
+{
+    import fl.pixmap : parseHeader;
+    int ncolors, cpp;
+    if (data.length == 0 || !parseHeader(data[0], w, h, ncolors, cpp)
+        || w <= 0 || h <= 0 || (cpp != 1 && cpp != 2))
+    {
+        w = 0;
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Draws XPM image data with its top-left corner at `(x, y)`; transparent
+ * pixels let the background show through. Returns false if the data
+ * can't be decoded. Ported from `fl_draw_pixmap()`; the mask bitmap
+ * FLTK also builds there only serves `Fl_Pixmap`'s own cache, which
+ * `fl.pixmap.Pixmap` keeps separately.
+ */
+bool drawPixmap(const(string)[] data, int x, int y, Color bg = gray)
+{
+    import fl.pixmap : convertPixmap;
+    int w, h;
+    if (!measurePixmap(data, w, h)) return false;
+    auto buffer = new ubyte[w * h * 4];
+    if (!convertPixmap(data, buffer, bg)) return false;
+    drawImage(buffer.ptr, x, y, w, h, 4);
+    return true;
+}
+
+unittest
+{
+    int w, h;
+    assert(measurePixmap(["3 2 1 1", "a c #ff0000", "aaa", "aaa"], w, h));
+    assert(w == 3 && h == 2);
+    assert(!measurePixmap(["3 2 1 3"], w, h) && w == 0); // 3 chars per pixel
+    assert(!measurePixmap([], w, h));
+
+    float s = overrideScale();
+    assert(currentScale() == 1.0f);
+    restoreScale(s);
+    assert(currentScale() == s);
 }

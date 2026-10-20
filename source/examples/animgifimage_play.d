@@ -282,7 +282,6 @@ void main(string[] args)
     // use the 'DONT_RESIZE_CANVAS' flag to tell the animation
     // not to change the canvas size (which is the default).
     auto flags = AnimGifImage.dontResizeCanvas;
-    //  flags |= AnimGifImage.debugFlag | AnimGifImage.logFlag;
     animgif.canvas(canvas, flags);
 
     loadNext();

@@ -5,7 +5,7 @@
  * A button that records a key combination typed by the user (click to
  * arm it, then type the shortcut; a second click or losing focus makes
  * it permanent) and draws a human-readable rendering of it via the
- * newly-ported fl.core.flShortcutLabel().
+ * newly-ported fl.core.fl_shortcut_label().
  *
  * Faithful port of the live code paths in draw()/handle()/the
  * constructor/value() (named shortcutValue() here -- see the note by
@@ -108,7 +108,7 @@ class ShortcutButton : Button
         fldraw.fl_font(labelfont(), labelsize());
         string text = label();
         if (shortcutValue_)
-            text = fl.core.flShortcutLabel(shortcutValue_);
+            text = fl.core.fl_shortcut_label(shortcutValue_);
         fldraw.fl_draw(text, X, Y, W, H, alignment() | alignInside);
         if (fl.core.focus() is this) drawFocus();
     }

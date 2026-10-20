@@ -61,6 +61,8 @@ module fl.image;
 
 import fl.enumerations : Color, foregroundColor, gray;
 import fl.pixmap : Pixmap, convertPixmap;
+import fl.shared_image : SharedImage;
+import fl.svg_image : SvgImage;
 import fldraw = fl.draw;
 import fl.core; // screenScale() -- circular with fl.core's own use of
 // fl.image in a few places, same precedent as fl.pixmap/fl.core
@@ -68,6 +70,10 @@ import fl.core; // screenScale() -- circular with fl.core's own use of
 
 class Image
 {
+    /// Returns this object as a `SharedImage`, or `null` if it isn't
+    /// one. Ported from `Fl_Image::as_shared_image()`.
+    SharedImage asSharedImage() { return null; }
+
     enum errNoImage = -1;
     enum errFileAccess = -2;
     enum errFormat = -3;
@@ -322,6 +328,25 @@ class Image
  */
 class RGBImage : Image
 {
+    /// Returns this object as an `SvgImage`, or `null` if it isn't one.
+    /// Ported from `Fl_RGB_Image::as_svg_image()`.
+    SvgImage asSvgImage() { return null; }
+    const(SvgImage) asSvgImage() const { return null; } /// ditto
+
+    private static size_t maxSize_ = size_t.max;
+
+    /**
+     * The largest image, in bytes (`w() * h() * d()`), that the file
+     * loaders (`BMPImage`, `ICOImage`, `PNMImage`, `PngImage`,
+     * `JpegImage`) will load; a larger file fails with `errFormat`.
+     * Constructing an `RGBImage` from pixel data directly is not
+     * limited. The default is effectively unlimited. Ported from
+     * `Fl_RGB_Image::max_size()`.
+     */
+    static void maxSize(size_t size) { maxSize_ = size; }
+    /// ditto
+    static size_t maxSize() { return maxSize_; }
+
     /// Makes sure the pixel array is present; a no-op except for lazily
     /// rasterized subclasses (SvgImage).
     void normalize() {}

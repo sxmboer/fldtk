@@ -300,6 +300,14 @@ class BMPImage : RGBImage
             ld(errFormat);
             return;
         }
+        // FLTK compares the *source* depth: 32-bit BI_RGB data without a
+        // mask is read 4 bytes a pixel even when only 3 are kept.
+        int srcBDepth = (depth == 32 && !haveMask) ? 4 : bDepth;
+        if (cast(size_t) width * height * srcBDepth > maxSize())
+        {
+            ld(errFormat);
+            return;
+        }
         auto arr = new ubyte[width * height * bDepth];
 
         int color = 0, rl = 0, align_ = 0, temp = 0;

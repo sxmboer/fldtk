@@ -50,10 +50,10 @@ Instead:
    (`FL/Fl_Whatever.H`) to find which `fl.*` module ported it, and
    whether that port is `Done`/`Partial`/`Deferred`.
 2. Read that module's actual D source (`source/fl/whatever.d`) — the
-   real signature, not a remembered one. Method names are camelCase
-   versions of the FLTK method (`label_image_spacing()` ->
-   `labelImageSpacing()`); type names are PascalCase without the `Fl_`
-   prefix (`Fl_Widget` -> `Widget`, `Fl_Group` -> `Group`).
+   real signature, not a remembered one. The name itself follows
+   "Naming rules" below (`label_image_spacing()` ->
+   `labelImageSpacing()`, `Fl_Widget` -> `Widget`, `Fl_Group` ->
+   `FlGroup`).
 3. For the old monolithic `Fl::` static surface specifically: most of
    it now lives in `fl.core` (event state, `run()`/`wait()`, timers,
    `grab()`/`modal()`, clipboard, `add_fd()`, schemes — see CONVENTIONS.md's
@@ -72,9 +72,233 @@ Instead:
 Because this lookup step is real work, don't try to memorize a static
 C++-name -> D-name table here; one would drift out of date immediately
 as more of `fl.*` gets ported. This document only covers mappings that
-are **structural** (true regardless of which FLTK module is involved)
-and the **`.fl`-dialect conventions** specific to this project's own
-Fluid port.
+are **structural** (true regardless of which FLTK module is involved),
+the **`.fl`-dialect conventions** specific to this project's own
+Fluid port, and one deliberate exception: the complete list of
+`fl_`-prefixed names in "Naming rules" below, kept here because that
+family is the one place the structural rule has exceptions.
+
+## Naming rules
+
+How an FLTK identifier becomes a fldtk identifier. These rules are
+structural: they hold for every module, so they are the starting point
+for the lookup above, not a replacement for it. The two tables at the
+end of this section list every `fl_`-prefixed name explicitly, because
+that is the one family where the rule has exceptions.
+
+| FLTK | fldtk | Example |
+|---|---|---|
+| Header `FL/Fl_Foo_Bar.H` | module `fl.foo_bar` | `FL/Fl_Light_Button.H` -> `fl.light_button` |
+| Class `Fl_Foo_Bar` | `FooBar` (PascalCase, no `Fl_`) | `Fl_Light_Button` -> `LightButton` |
+| Class with FLTK's trailing `_` (an abstract base) | keeps the `_` | `Fl_Browser_` -> `Browser_`, `Fl_Input_` -> `Input_`, `Fl_Menu_` -> `Menu_` |
+| `Fl_Group`, `Fl_Clock` | `FlGroup`, `FlClock` | the only two classes that keep an `Fl` prefix: a bare `Group`/`Clock` collides with Phobos's `std.algorithm.iteration.Group`/`std.datetime.systime.Clock` under the wildcard `import fl; import std;` every generated file does. No other class gets this treatment without the same kind of confirmed collision. |
+| Method `foo_bar()` | `fooBar()` | `label_image_spacing()` -> `labelImageSpacing()` |
+| Constructor `Fl_Foo::Fl_Foo()` / destructor | `this()` / `~this()` | |
+| A `std::string`-returning `foo_str()` variant of a `foo()` that FLTK also has | no separate function: `foo()` already returns a D `string` | `fl_filename_name_str()` -> `filenameName()`, `Fl_Valuator::format_str()` -> `format()`. A `_str` function with no plain twin keeps its name: `fl_eventname_str()` -> `eventNameStr()` (one exception, `fl_filename_path_str()`, is listed under \"Exceptions\" below) |
+| `Fl::foo_bar()` (the `namespace Fl` core API) | free function `fooBar()` in `fl.core` | `Fl::add_timeout()` -> `fl.core.addTimeout()` |
+| Free function `fl_foo_bar()` | `fooBar()`, `fl_` dropped, in the module that ported its header | `fl_draw_check()` -> `drawCheck()` (`fl.draw`), `fl_filename_name()` -> `filenameName()` (`fl.filename`), `fl_alert()` -> `alert()` (`fl.ask`) |
+| Free function `fl_foo()` whose bare name would collide | keeps FLTK's name unchanged | `fl_color()`, `fl_draw()`, `fl_rect()` -- see "Kept `fl_`-prefixed" below |
+| `gl_foo()` (`FL/gl.h`'s wrappers) | keeps FLTK's name unchanged, in `fl.gl` | `gl_color()`, `gl_draw()`, `gl_start()` |
+| An FLTK name that is a D keyword | a chosen descriptive name, listed in "D keywords" below | `Fl_Widget::align()` -> `alignment()` |
+| `FL_FOO_BAR` constant | `fooBar`, as a D enum member or a manifest constant (see CONVENTIONS.md's enum-vs-alias convention) | `FL_UP_BOX` -> `Boxtype.upBox`, `FL_GRAY_RAMP` -> `grayRamp` |
+| A system C library's own API (Xlib, OpenGL, GLX, GLEW, GLUT, GLU, Xft, fontconfig, Xinerama, Xrandr, Xcursor, Xfixes) | the C name, unchanged, in `fl.xlib`/`fl.opengl`/`fl.glx`/`fl.glew`/`fl.glut`/`fl.glu`/`fl.xft`/`fl.fontconfig`/`fl.xinerama`/`fl.xrandr`/`fl.xcursor`/`fl.xfixes` | `XOpenDisplay()`, `glFinish()`, `glutInit()` |
+
+### D keywords
+
+An FLTK name that is a D keyword can't be used as-is, and the trailing-`_`
+escape is not available for it: a trailing `_` marks a private storage
+field in this port (`Widget` already has a private `align_` behind its
+public accessor). Each one gets a descriptive name instead, listed here.
+When porting another one, choose its name and add it to this table.
+
+| FLTK | fldtk | Status |
+|---|---|---|
+| `Fl::version()` | `fl.core.versionNumber()` | ported |
+| `Fl_Widget::align()` | `Widget.alignment()` | ported |
+| `Fl_Grid::Cell::align()` | `Cell.alignment()` (`fl.grid`) | ported |
+| `Fl_Window::override()` | `Window.isOverride()` | ported |
+
+`Fl_Grid::debug()` and `Fl_Anim_GIF_Image::debug()` have no entry: fldtk
+does not port debugging-only code paths.
+
+### `fl_`-prefixed free functions and globals
+
+A `fl_` name is renamed to camelCase with no prefix unless the bare name
+would collide with an identifier that already exists in this port. The
+collision that matters most is with a method: D resolves an unqualified
+call against the enclosing class first, so inside any `Widget`
+subclass a bare `color(c)` would call the widget's own `color()` setter
+rather than set the drawing color, and compile without complaint. A
+module of the same name (`fl.draw`, `fl.box`, `fl.rect`, `fl.input`,
+`fl.scroll`) or another public function (`fl.core.beep()`) collides the
+same way. FLTK keeps the prefix on these same names for the same reason.
+
+Both tables below are exhaustive for the public `fl_` surface in
+`source/fl/`: when porting a new `fl_` function, check its bare name for
+a collision, then add it to the matching table.
+
+The `gl_` wrappers in `fl.gl` are not in these tables; all of them keep
+FLTK's names. Several camelCase forms would collide with raw OpenGL
+(`glFinish()`, `glRectf()` in `fl.opengl`) or with fldtk's own GL code
+(`glStart()` in `fl.gl_window_driver`), and keeping the whole family as
+`gl_` makes it obvious at each call site which calls are FLTK's helpers
+and which are OpenGL itself.
+
+#### Renamed
+
+| FLTK name | fldtk name |
+|---|---|
+| `fl_add_symbol` | `addSymbol` |
+| `fl_alert` | `alert` |
+| `fl_antialias` | `antialias` |
+| `fl_begin_complex_polygon` | `beginComplexPolygon` |
+| `fl_begin_line` | `beginLine` |
+| `fl_begin_loop` | `beginLoop` |
+| `fl_begin_offscreen` | `beginOffscreen` |
+| `fl_begin_points` | `beginPoints` |
+| `fl_begin_polygon` | `beginPolygon` |
+| `fl_capture_window` | `captureWindow` |
+| `fl_choice` | `choice` |
+| `fl_choice_n` | `choiceN` |
+| `fl_circle` | `circle` |
+| `fl_color_average` | `colorAverage` |
+| `fl_color_chooser` | `colorChooser` |
+| `fl_contrast` | `contrast` |
+| `fl_contrast_legacy` | `contrastLegacy` |
+| `fl_contrast_function` | `contrastFunction` |
+| `fl_contrast_level` | `contrastLevel` |
+| `fl_contrast_mode` | `contrastMode` |
+| `fl_copy_offscreen` | `copyOffscreen` |
+| `fl_create_offscreen` | `createOffscreen` |
+| `fl_curve` | `curve` |
+| `fl_darker` | `darker` |
+| `fl_delete_offscreen` | `deleteOffscreen` |
+| `fl_descent` | `descent` |
+| `fl_dir_chooser` | `dirChooser` |
+| `fl_draw_arrow` | `drawArrow` |
+| `fl_draw_box_focus` | `drawBoxFocus` |
+| `fl_draw_check` | `drawCheck` |
+| `fl_draw_circle` | `drawCircle` |
+| `fl_draw_image` | `drawImage` |
+| `fl_draw_image_mono` | `drawImageMono` |
+| `fl_draw_radio` | `drawRadio` |
+| `fl_draw_symbol` | `drawSymbol` |
+| `fl_embossed_label_draw` | `embossedLabelDraw` |
+| `fl_end_complex_polygon` | `endComplexPolygon` |
+| `fl_end_line` | `endLine` |
+| `fl_end_loop` | `endLoop` |
+| `fl_end_offscreen` | `endOffscreen` |
+| `fl_end_points` | `endPoints` |
+| `fl_end_polygon` | `endPolygon` |
+| `fl_engraved_label_draw` | `engravedLabelDraw` |
+| `fl_file_chooser` | `fileChooser` |
+| `fl_file_chooser_callback` | `fileChooserCallback` |
+| `fl_file_chooser_ok_label` | `fileChooserOkLabel` |
+| `fl_focus_rect` | `focusRect` |
+| `fl_height` | `height` |
+| `fl_inactive` | `inactive` |
+| `fl_lighter` | `lighter` |
+| `fl_lightness` | `lightness` |
+| `fl_line_style` | `lineStyle` |
+| `fl_load_identity` | `loadIdentity` |
+| `fl_load_matrix` | `loadMatrix` |
+| `fl_loop` | `loop` |
+| `fl_luminance` | `luminance` |
+| `fl_message` | `message` |
+| `fl_message_hotspot` | `messageHotspot` |
+| `fl_message_icon` | `messageIcon` (merged with a private helper of the same name that already existed in `fl.ask`; the one call site with a same-named local variable, `source/test/ask.d`, qualifies as `fl.ask.messageIcon()`) |
+| `fl_message_icon_label` | `messageIconLabel` |
+| `fl_message_position` | `messagePosition` |
+| `fl_message_title` | `messageTitle` |
+| `fl_message_title_default` | `messageTitleDefault` |
+| `fl_mult_matrix` | `multMatrix` |
+| `fl_no` | `no` |
+| `fl_nonspacing` | `nonspacing` |
+| `fl_ok` | `ok` |
+| `fl_open_callback` | `openCallback` |
+| `fl_open_uri` | `openUri` |
+| `fl_overlay_clear` | `overlayClear` |
+| `fl_overlay_rect` | `overlayRect` |
+| `fl_parse_color` | `parseColor` |
+| `fl_password` | `password` |
+| `fl_point` | `point` |
+| `fl_pop_matrix` | `popMatrix` |
+| `fl_push_matrix` | `pushMatrix` |
+| `fl_push_no_clip` | `pushNoClip` |
+| `fl_read_image` | `readImage` |
+| `fl_rectbound` | `rectbound` |
+| `fl_remove_symbol` | `removeSymbol` |
+| `fl_rescale_offscreen` | `rescaleOffscreen` |
+| `fl_reset_spot` | `resetSpot` |
+| `fl_return_arrow` | `returnArrow` |
+| `fl_rgb_color` | `rgbColor` |
+| `fl_rounded_rect` | `roundedRect` |
+| `fl_rounded_rectf` | `roundedRectf` |
+| `fl_rtl_draw` | `rtlDraw` |
+| `fl_screen` | `x11Screen` |
+| `fl_set_spot` | `setSpot` |
+| `fl_shadow_label_draw` | `shadowLabelDraw` |
+| `fl_show_colormap` | `showColormap` |
+| `fl_text_extents` | `textExtents` |
+| `fl_transform_dx` | `transformDx` |
+| `fl_transform_dy` | `transformDy` |
+| `fl_transform_x` | `transformX` |
+| `fl_transform_y` | `transformY` |
+| `fl_transformed_vertex` | `transformedVertex` |
+| `fl_vertex` | `vertex` |
+| `fl_width` | `width` |
+| `fl_wl_display` | `wlDisplay` |
+| `fl_write_jpeg` | `writeJpeg` |
+| `fl_write_png` | `writePng` |
+| `fl_x11_display` | `x11Display` |
+| `fl_xpixel` | `xpixel` |
+| `fl_yes` | `yes` |
+
+#### Kept `fl_`-prefixed
+
+| FLTK/fldtk name | Would collide with |
+|---|---|
+| `fl_arc` | `GraphicsDriver.arc()` (abstract) + overrides (`svg_file_surface`, `postscript`, `gl_graphics_driver`) |
+| `fl_beep` | `platform_x11.beep()`, `core.beep()` |
+| `fl_box` | `Widget.box()`/`box(Boxtype)` + boxtype-setting calls across nearly every widget constructor |
+| `fl_cancel` | `menu_popup`'s private `PopupEngine.cancel()` |
+| `fl_close` | `close()` methods in `fl.postscript` and `TreeItem.close()` (`fl.tree_item`) |
+| `fl_color` | `Widget.color()`/`color(Color)`/`color(Color,Color)`, `GraphicsDriver.color()`, `Tooltip.color()`, `FileChooser.color()`, `Spinner.color()`, and more override/forwarding sites |
+| `fl_colormap` | a `__gshared` global; `platform_x11.createWindow()`'s own `colormap` parameter shadows it in the same file |
+| `fl_down` | `Terminal`'s private nested `down()` (row-increment helper) |
+| `fl_draw` | `Widget.draw()` (abstract) + well over a hundred override sites across nearly every widget/image/driver |
+| `fl_draw_shortcut` | `menu_popup`'s private `MenuLevelWindow.drawShortcut()` |
+| `fl_font` | `Tooltip.font()`/`font(Font)` |
+| `fl_frame` | `AnimGifImage.frame()`/`frame(int)` |
+| `fl_gap` | `Grid.gap(int,int)`, `Flex.gap()`/`gap(int)` |
+| `fl_graphics_driver` | a module-scope import alias for `fl.graphics_driver`, `import graphicsDriver = fl.graphics_driver;` (`image_surface.d`, plus unittest-scoped aliases in `postscript.d`/`svg_file_surface.d`) |
+| `fl_gray_ramp` | the `Color` enum member `grayRamp` (`fl.enumerations`), used pervasively in `fl.core`'s gamma/ramp math |
+| `fl_input` | `InputChoice.input()` (returns the embedded `Input` widget) |
+| `fl_line` | `GraphicsDriver.line()` (abstract) + overrides |
+| `fl_measure` | `Widget.measure()`, `MenuItem.measure()`, `MultiLabel.measure()`, `FileBrowser`'s private `measure()` |
+| `fl_pie` | `GraphicsDriver.pie()` (abstract) + overrides |
+| `fl_polygon` | `GraphicsDriver.polygon()` (2 overloads, abstract) + overrides |
+| `fl_rect` | `GraphicsDriver.rect()` (abstract) + overrides |
+| `fl_rectf` | `GraphicsDriver.rectf()` (abstract) + overrides |
+| `fl_rotate` | `PagedDevice.rotate()`, `Postscript.rotate()` override |
+| `fl_scale` | `PagedDevice.scale()`, `Postscript.scale()` override, `Slider.scale()`/`scale(ScaleType)`, `SvgImage.scale()`, `Image.scale()`, `fl.draw`'s own local `scale()` |
+| `fl_scroll` | `Terminal.scroll()` (3 overloads), `TextDisplay.scroll()` |
+| `fl_shortcut_label` | `Widget.shortcutLabel()`/`shortcutLabel(bool)` (the `&`-underline flag) |
+| `fl_size` | a widely-used plain method name: `Chart.size()`, `TextBuffer.size()`, `Window.size(int,int)`, `Widget.size(int,int)`, `Browser.size()`/`size(int,int)`, `Tooltip.size()`/`size(Fontsize)`, `Menu_.size()`, `MenuItem.size()`, `HelpView.size()`, and more |
+| `fl_translate` | `WidgetSurface.translate()` + overrides (`postscript` x2, `svg_file_surface`, `image_surface` x2) |
+| `fl_visual` | a `__gshared` global; `platform_x11.createWindow()`'s own `visual` parameter shadows it in the same file (same shape as `fl_colormap`) |
+| `fl_xyline` | `GraphicsDriver.xyline()` (abstract) + overrides |
+| `fl_yxline` | `GraphicsDriver.yxline()` (abstract) + overrides |
+
+#### Exceptions
+
+Two names follow neither table's rule. Both are established in the code
+and kept deliberately.
+
+| FLTK name | fldtk name | Why |
+|---|---|---|
+| `fl_draw_box` | `drawBoxAt` | the bare name collides with `Widget.drawBox()`; a descriptive name was chosen instead of keeping FLTK's |
+| `fl_filename_path_str` | `filenamePath` | FLTK has no plain `fl_filename_path()`, but every other `fl.filename` function drops `_str`, and this one follows its siblings |
 
 ## Structural C++ -> D mappings
 

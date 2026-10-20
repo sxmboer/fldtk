@@ -5,7 +5,7 @@ the other documents refer here for the reasoning; per-module status is in
 [`PORTING.md`](PORTING.md), build instructions are in
 [`BUILDING.md`](BUILDING.md).
 
-fldtk (Full-D-tick) is a complete D port of FLTK, not just a binding layer:
+fldtk (Full-D-toolkit) is a complete D port of FLTK, not just a binding layer:
 FLTK's functionality is reimplemented as native D code, including support
 in Fluid (FLTK's UI designer) for exporting D source files instead of C++.
 
@@ -55,7 +55,8 @@ agreed direction:
   matching via `XftFontOpenName()`, no complex-script shaping). Replacing
   that layer with Pango, for real shaping and internationalization, is
   sanctioned. It is a rewrite of a layer every labelled widget depends on,
-  not an incremental patch.
+  not an incremental patch. The Pango bindings it needs exist
+  (`fl.pango_c`, see the next section); the text layer itself does not.
 - **Native image codecs instead of FLTK's bundled libraries.** XBM, XPM, PNM,
   BMP, ICO, GIF (including animated), SVG, PNG and JPEG are all decoded by D
   code in this repository (see the next section).
@@ -92,14 +93,39 @@ Decided and done:
 - **OpenGL** uses hand-written `extern(C)` D bindings against the system
   `libGL` (the same treatment as `fl.xlib` for Xlib), not a third-party D
   binding package. `Fl_Gl_Window`, GL text, overlays, the GL3/core-profile
-  samples (via GLEW) and the GLUT compatibility layer (`fl.glut`/`fl.glu`) are
-  all in. A GL module that is not re-exported from `fl` (`fl.opengl`,
+  samples (via GLEW) and a minimal GLUT layer (`fl.glut`/`fl.glu`, only what
+  the demo programs use; see PORTING.md's `FL/glut.H` row) are all in. A GL module that is not re-exported from `fl` (`fl.opengl`,
   `fl.glx`, `fl.gl_choice`, `fl.gl_window_driver`) needs its own explicit
   import in a program.
 
-Still deferred, because they wait on a decision: the **Cairo** rendering
-backend (`FLTK_GRAPHICS_CAIRO`, and with it the `cairo_test` and
-`cairo_draw_x` samples) and **Pango** text (see above). A stub whose only
+- **Cairo** uses hand-written `extern(C)` D bindings against the system
+  `libcairo` (`fl.cairo_c`, `fl.cairo_c_xlib`, `fl.cairo_c_win32`). They cover the whole
+  public API, not just what fldtk calls itself, since a program drawing in
+  a `CairoWindow` uses Cairo directly. They are written from the C headers
+  and cross-checked against GtkD's C layer (whose names they follow), not
+  copied from it, because GtkD is LGPL. Cairo support
+  (`version (FLDTK_HAVE_CAIRO)`) is on by default on Linux and can be left
+  out with dub.sdl's `linux-no-cairo` configuration, for a library that
+  needs nothing beyond X11/GL. On Windows it is opt-in (`windows-cairo`, a separate fldtk-cairo.lib),
+  linking static Cairo/Pango libraries built with MSYS2's UCRT64 toolchain. This covers
+  FLTK_OPTION_CAIRO_WINDOW
+  (`fl.cairo`, `fl.cairo_window`). One rule keeps that switch safe:
+  Cairo state lives only in Cairo-only modules, and no shared class ever
+  gains a `version (FLDTK_HAVE_CAIRO)` field. As a result, a library built
+  either way works with programs built either way, except that a Cairo
+  program needs a Cairo library and fails at link time without one.
+- **Pango** is bound the same way (`fl.pango_c`, `fl.pango_c_cairo`): the
+  whole public API of `pango.h` and `pangocairo.h`, written from the C
+  headers and cross-checked against GtkD. It comes with `fl.glib_c`,
+  deliberately only the part of GLib/GObject that Pango's API exposes.
+  It is part of the same switch as Cairo (`version (FLDTK_HAVE_PANGO)`,
+  on by default on Linux, left out by `linux-no-cairo`), under the same
+  rule.
+
+Still deferred: the **Cairo graphics driver** (`FLTK_GRAPHICS_CAIRO`, all
+of FLTK's own drawing done through Cairo, and with it the Wayland
+driver's drawing) and with it fldtk's own **Pango-based text** (see
+above). Their bindings are done; the drivers are not. A stub whose only
 blocker is one of these is a deliberate gap, marked `Deferred` in
 `PORTING.md`, not an oversight.
 
@@ -133,7 +159,10 @@ compatibility" in their doc comments, and all are ported (`fl.clock`,
 FLTK's `Fl_Widget`/`Fl_Window`/`fl_draw()` naming maps to D as: package `fl`,
 one module per FLTK header (`FL/Fl_Widget.H` -> `fl.widget`, `FL/Fl_Group.H`
 -> `fl.group`, ...), PascalCase types (`Fl_Widget` -> `Widget`), camelCase
-methods (`label_image_spacing()` -> `labelImageSpacing()`).
+methods (`label_image_spacing()` -> `labelImageSpacing()`). The complete
+rules, including the exceptions (`FlGroup`/`FlClock`, the `fl_`/`gl_` names
+that keep FLTK's spelling), are in `TRANSLITERATION_GUIDE.md`'s "Naming
+rules" section.
 
 `namespace Fl { ... }` (FLTK's core static/global state: event state, focus,
 options, the application loop) maps to the D module `fl.core`, using free
@@ -288,9 +317,10 @@ wrapper class.
   (`Boxtype.noBox`, `rgbAliceBlue`), not FLTK's C macro name (`FL_NO_BOX`),
   because the point of such text is to show what to write in D.
 - **Port the real surface, not just the part a sample happens to call.** A
-  module is ported in full (the whole GLUT compatibility layer, for example),
-  not as the subset the current demos need: demo-scoped coverage leaves gaps
-  that only show up later.
+  module is ported in full, not as the subset the current demos need:
+  demo-scoped coverage leaves gaps that only show up later. The one
+  deliberate exception is `fl.glut`, a legacy API kept only as far as the
+  demo programs need it (see PORTING.md's `FL/glut.H` row).
 - **Modules that are intentionally not a complete port** say so in a comment
   at the top, list what is missing and point at the FLTK file with the real
   logic. Source comments are written as plain, current facts about the code,

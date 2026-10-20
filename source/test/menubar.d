@@ -27,7 +27,7 @@ void testCb(Widget w)
     if (!m)
         gTty.printf("NULL\n");
     else if (m.shortcut_)
-        gTty.printf("%s - %s\n", m.text, flShortcutLabel(m.shortcut_));
+        gTty.printf("%s - %s\n", m.text, fl_shortcut_label(m.shortcut_));
     else
         gTty.printf("%s\n", m.text);
 }

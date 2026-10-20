@@ -25,10 +25,10 @@
  * Working end-to-end: text parts, image parts, and chained-
  * MultiLabel parts all draw/measure real pixels. `part()` builds a
  * local `Label` copy per part (letting its own `draw()`/`measure()`
- * dispatch on type, exactly like `Fl_Label::draw()` does FLTK) and
- * leaves `typeA`/`typeB` at their default `normalLabel` unless a
- * caller overrides them -- `Widget.Label.measure()`/`draw()`'s
- * `normalLabel` branch already handles a non-null `image` field
+ * call that part's label-type function, exactly like `Fl_Label::draw()`
+ * does in FLTK) and leaves `typeA`/`typeB` at their default
+ * `normalLabel` unless a caller overrides them -- the normal label
+ * type's functions already handle a non-null `image` field
  * generically, so an image-only or image+text part needed no
  * `MultiLabel`-specific drawing code at all (see this module's own
  * tests). A chained `multiLabel` part recurses correctly and works the

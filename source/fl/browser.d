@@ -615,6 +615,11 @@ class Browser : Browser_
     protected const(char)[] blineTxt(Object b) const { return (cast(BLine) b).txt; }
     protected char blineFlags(Object b) const { return (cast(BLine) b).flags; }
     protected Object blineData(Object b) const { return (cast(BLine) b).data; }
+    /// The line's icon, assignable. Ported from `Fl_Browser::bline_icon()`.
+    protected ref Image blineIcon(Object b) const { return (cast(BLine) b).icon; }
+    /// The length of the line's text. Ported from
+    /// `Fl_Browser::bline_length()`.
+    protected int blineLength(Object b) const { return cast(int) (cast(BLine) b).txt.length; }
 
     // ------------------------------------------------------------
     // Public API

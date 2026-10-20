@@ -55,7 +55,9 @@ import fl.image : Image, RGBImage;
 import fl.bitmap : Bitmap;
 import fl.tiled_image : TiledImage;
 import fl.enumerations : Event, Cursor, Boxtype, Labeltype, damageChild, alignInside,
-    alignCenter, alignClip;
+    alignCenter, alignClip, Color, white;
+import fl.double_window : DoubleWindow;
+import fl.overlay_window : OverlayWindow;
 import fl.filename : filenameName;
 import fl.core;
 import fldraw = fl.draw;
@@ -1165,6 +1167,8 @@ class Window : FlGroup
         Window w = window(), toplevel = this;
         while (w !is null) { toplevel = w; w = w.window(); }
         if (toplevel !is this) { toplevel.cursor(c); return; }
+
+        if (c == Cursor.default_) c = cursorDefault_;
 
         version (linux) platformX11.setCursor(this, c);
         version (Windows) platformWin32.setCursor(this, c);
@@ -2330,6 +2334,80 @@ class Window : FlGroup
     {
         return (flags() & Flag.menuWindow) != 0;
     }
+
+    /// Marks this window as a menu window. Ported from
+    /// `Fl_Window::set_menu_window()`. Must be called before `show()`.
+    void setMenuWindow() { setFlag(Flag.menuWindow); }
+
+    /// Marks this window as a tooltip window, which also clears the
+    /// menu-window state. Ported from `Fl_Window::set_tooltip_window()`.
+    /// Must be called before `show()`.
+    void setTooltipWindow()
+    {
+        setFlag(Flag.tooltipWindow);
+        clearFlag(Flag.menuWindow);
+    }
+
+    /// Whether this window is a tooltip window. Ported from
+    /// `Fl_Window::tooltip_window()`.
+    bool tooltipWindow() const { return (flags() & Flag.tooltipWindow) != 0; }
+
+    /// Removes the window border and makes the window override-redirect:
+    /// the window manager neither decorates nor places it. Ported from
+    /// `Fl_Window::set_override()`; `fl.platform_x11.createWindow()`
+    /// honors the flag the way FLTK's `make_xid()` does. Must be called
+    /// before `show()`.
+    void setOverride() { setFlag(Flag.noBorder | Flag.windowOverride); }
+
+    /// Whether `setOverride()` was called. Ported from
+    /// `Fl_Window::override()`, renamed because `override` is a D keyword
+    /// (see TRANSLITERATION_GUIDE.md's keyword table).
+    bool isOverride() const { return (flags() & Flag.windowOverride) != 0; }
+
+    /// Turns a modal or non-modal window back into a normal one. Ported
+    /// from `Fl_Window::clear_modal_states()`. The window must be hidden
+    /// while its modality changes.
+    void clearModalStates() { clearFlag(Flag.nonModal | Flag.modal); }
+
+    private Cursor cursorDefault_ = Cursor.default_;
+
+    /// Sets the cursor `cursor(Cursor.default_)` shows from now on, and
+    /// shows it. Ported from `Fl_Window::default_cursor()`
+    /// (`src/fl_cursor.cxx`).
+    void defaultCursor(Cursor c)
+    {
+        cursorDefault_ = c;
+        cursor(c);
+    }
+
+    /// ditto -- the legacy overload; the colors are ignored, as in FLTK.
+    void defaultCursor(Cursor c, Color fg, Color bg = white)
+    {
+        defaultCursor(c);
+    }
+
+    /// Returns this object as an `OverlayWindow`, or `null`. Ported from
+    /// `Fl_Window::as_overlay_window()`.
+    OverlayWindow asOverlayWindow() { return null; }
+
+    /// Returns this object as a `DoubleWindow`, or `null`. Ported from
+    /// `Fl_Window::as_double_window()`.
+    DoubleWindow asDoubleWindow() { return null; }
+
+    /// The platform's identifier for this window: the X11 window id on
+    /// Linux, the `HWND` on Windows, `0` if it isn't shown. Ported from
+    /// `Fl_Window::os_id()`.
+    size_t osId() const
+    {
+        version (linux) return cast(size_t) xid();
+        else version (Windows) return cast(size_t) xid();
+        else return 0;
+    }
+
+    /// Lets a subwindow extend beyond its parent's area. Ported from
+    /// `Fl_Window::allow_expand_outside_parent()`; as in FLTK, only the
+    /// Wayland driver acts on it, so it does nothing on X11 and Windows.
+    void allowExpandOutsideParent() {}
 }
 
 unittest

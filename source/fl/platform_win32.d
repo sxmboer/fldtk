@@ -3607,7 +3607,7 @@ package(fl) bool altGrDown()
 }
 
 /**
- * Names a keysym for `fl.core.flShortcutLabel()` ("F1", "Home",
+ * Names a keysym for `fl.core.fl_shortcut_label()` ("F1", "Home",
  * "KP_5"), or returns null so the caller uses the uppercased character
  * itself. Ported from the generic `Fl_Screen_Driver::
  * shortcut_add_key_name()` (`src/fl_shortcut.cxx`) and its

@@ -55,6 +55,9 @@ import fl.enumerations : damageOverlay;
 
 abstract class OverlayWindow : DoubleWindow
 {
+    /// Ported from `Fl_Overlay_Window::as_overlay_window()`.
+    override OverlayWindow asOverlayWindow() { return this; }
+
     /// Matches FLTK's private `Fl_Window *overlay_` field --
     /// `null` until the first `redrawOverlay()` call, `this` from then
     /// on (never anything else, since `canDoOverlay()` is always

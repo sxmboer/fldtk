@@ -55,8 +55,8 @@ void main(string[] args)
     string NO = "FAIL";
 
     version_[versions++] = format("FL_VERSION        = %6.4f", FL_VERSION);
-    version_[versions++] = format("fl.version_()     = %6.4f", fl.version_());
-    version_[versions++] = (FL_VERSION == fl.version_()) ? YES : NO;
+    version_[versions++] = format("fl.versionNumber()= %6.4f", fl.versionNumber());
+    version_[versions++] = (FL_VERSION == fl.versionNumber()) ? YES : NO;
 
     version_[versions++] = format("FL_API_VERSION    = %6d", FL_API_VERSION);
     version_[versions++] = format("fl.apiVersion()   = %6d", fl.apiVersion());

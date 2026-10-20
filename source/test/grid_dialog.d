@@ -142,7 +142,7 @@ void main()
     grid.rowWeight(rowWeights[0 .. rows]);
     grid.colWeight(colWeights[0 .. cols]);
 
-    // Set environment variable "FLTK_GRID_DEBUG=1" or uncomment this line:
+    // Uncomment this line to display the grid helper lines:
     // grid.showGrid(1);     // enable to display grid helper lines
 
     win.end();

@@ -86,6 +86,10 @@ private enum int nonLocalContext = 0x8000_0000; // FLTK's NON_LOCAL_CONTEXT
 
 class GlWindow : Window
 {
+    /// Ported from `Fl_Gl_Window::as_gl_window()`.
+    override GlWindow asGlWindow() { return this; }
+    override const(GlWindow) asGlWindow() const { return this; } /// ditto
+
 private:
     int mode_ = modeRgb | modeDepth | modeDouble;
     const(int)* alist_;

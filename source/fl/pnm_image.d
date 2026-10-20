@@ -132,6 +132,8 @@ private PnmResult readPnm(string filename)
 
     int d = (format == 1 || format == 2 || format == 4 || format == 5) ? 1 : 3;
 
+    if (cast(size_t) w * h * d > RGBImage.maxSize())
+        return PnmResult(null, 0, 0, 0, Image.errFormat);
     auto bits = new ubyte[w * h * d];
     size_t outIdx = 0;
 

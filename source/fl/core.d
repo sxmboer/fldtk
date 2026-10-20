@@ -207,22 +207,10 @@
  *                                                straight port, and why
  *                                                it's not just faithful-
  *                                                for-faithfulness's-sake)
- *  - box_dx()/box_dy()/box_dw()/box_dh()/box_bg() (backed by the metrics
- *                                                half of src/fl_boxtype.cxx's
- *                                                fl_box_table: the per-
- *                                                boxtype dx/dy/dw/dh insets
- *                                                and solid-background-vs-
- *                                                frame flag. The *drawing*
- *                                                half of that table -- the
- *                                                actual box-drawing function
- *                                                pointers -- is real too: see
- *                                                fl.draw.drawBoxAt(), a
- *                                                switch dispatch rather than
- *                                                a literal function-pointer
- *                                                table, but functionally
- *                                                complete for every boxtype
- *                                                boxTable below has a
- *                                                metrics entry for.)
+ *  - box_dx()/box_dy()/box_dw()/box_dh()/box_bg(), get_boxtype() and
+ *    both set_boxtype() overloads, over fl.draw's port of
+ *    src/fl_boxtype.cxx's fl_box_table (drawing function, insets,
+ *    flags and focus-drawing function per boxtype)
  */
 module fl.core;
 
@@ -266,6 +254,12 @@ import fl.tooltip;
 
 version (linux) import platformX11 = fl.platform_x11;
 version (Windows) import platformWin32 = fl.platform_win32;
+
+// FLTK declares Fl::cairo_make_current()/cairo_cc()/cairo_flush()/
+// cairo_autolink_context() in FL/Fl.H; they're implemented in fl.cairo
+// (src/Fl_Cairo.cxx) and re-exported here in a Cairo-enabled build.
+version (FLDTK_HAVE_CAIRO) public import fl.cairo : cairoMakeCurrent,
+    cairoCc, cairoFlush, cairoAutolinkContext;
 version (linux) import fl.xlib : XParseGeometry, XParseColor, XColor,
     XDefaultScreen, XDefaultColormap, Colormap;
 
@@ -467,8 +461,10 @@ int getMouse(out int x, out int y)
  * and friends live here rather than in `fl.draw` too. Returns `null`
  * if `win` isn't currently shown or the underlying pixel read failed,
  * matching FLTK's own `NULL`-on-failure contract. Unlike FLTK,
- * no GL-subwindow traversal or display-scale handling (neither exists
- * anywhere in this port). Same "window must be viewable" `XGetImage()`
+ * no GL-subwindow traversal or display-scale handling: x/y/w/h are
+ * device pixels. A double-buffered window is read from its offscreen
+ * buffer, any other window from the screen (see
+ * `fl.platform_x11.captureWindowPixels()`). Same "window must be viewable" `XGetImage()`
  * caveat as `fl.draw.readImage()` applies here too -- see that
  * function's own doc comment; `win.shown()` being true isn't quite
  * enough on its own if called too soon after that same window's own
@@ -732,12 +728,49 @@ private Widget pendingPasteReceiver_;
  */
 void copy(string text, int clipboard)
 {
+    // With selectionToClipboard() on, a copy to the selection buffer
+    // goes to the clipboard as well; clipboard 2 means "both"
+    // (Fl_X11_Screen_Driver::copy()).
+    if (clipboard == 0 && selectionToClipboard_) clipboard = 2;
+    if (clipboard >= 2)
+    {
+        copy(text, 1);
+        clipboard = 0;
+    }
     if (clipboard) clipboardBuffer_ = text;
     else primarySelection_ = text;
     selectionType_[clipboard] = clipboardPlainText;
     weOwnSelection_[clipboard] = true;
     version (linux) platformX11.setSelectionOwner(clipboard);
     version (Windows) platformWin32.setSelectionOwner(clipboard);
+}
+
+private bool selectionToClipboard_;
+
+/**
+ * Whether `copy()` to the selection buffer (`clipboard` 0) also copies
+ * to the clipboard, making X11 selection behave more like other
+ * platforms. Off by default; FLTK marks it experimental. Ported from
+ * `Fl::selection_to_clipboard()`.
+ */
+void selectionToClipboard(bool on) { selectionToClipboard_ = on; }
+/// ditto
+bool selectionToClipboard() { return selectionToClipboard_; }
+
+private Widget selectionOwner_;
+
+/// The widget that last set the selection with `selection()`. Ported
+/// from `Fl::selection_owner()`; like FLTK, fldtk itself never reads it.
+Widget selectionOwner() { return selectionOwner_; }
+/// ditto
+void selectionOwner(Widget owner) { selectionOwner_ = owner; }
+
+/// Makes `owner` the selection owner and copies `text` to the selection
+/// buffer. Ported from `Fl::selection()`.
+void selection(Widget owner, string text)
+{
+    selectionOwner_ = owner;
+    copy(text, 0);
 }
 
 /**
@@ -1200,7 +1233,7 @@ bool testShortcut(uint shortcut)
     return false;
 }
 
-/// Localizable modifier-key names used by flShortcutLabel(). Ported
+/// Localizable modifier-key names used by fl_shortcut_label(). Ported
 /// from fl_local_ctrl/fl_local_alt/fl_local_shift/fl_local_meta
 /// (src/Fl.cxx), which forward to Fl::system_driver()->control_name()/
 /// etc. -- "Ctrl"/"Alt"/"Shift"/"Meta" on every platform this port
@@ -1224,7 +1257,7 @@ private string addModifierKeySeparator(string name)
     return name ~ "+";
 }
 
-/// The platform hook behind flShortcutLabel(): names key (a keysym),
+/// The platform hook behind fl_shortcut_label(): names key (a keysym),
 /// or returns null if it isn't worth naming (the caller falls back to
 /// the uppercased character itself). Forwards to fl.platform_x11's
 /// keyName() (XKeysymToString()) or fl.platform_win32's (FLTK's
@@ -1242,10 +1275,10 @@ private string platformKeyName(uint key)
  * (src/fl_shortcut.cxx) -- see the module comment above for which
  * overload and what's simplified.
  */
-string flShortcutLabel(uint shortcut)
+string fl_shortcut_label(uint shortcut)
 {
     string keyPart;
-    return flShortcutLabel(shortcut, keyPart);
+    return fl_shortcut_label(shortcut, keyPart);
 }
 
 /**
@@ -1259,7 +1292,7 @@ string flShortcutLabel(uint shortcut)
  * justify the modifier names and left-justify the key name in two
  * separate columns, matching FLTK's layout exactly.
  */
-string flShortcutLabel(uint shortcut, out string keyPart)
+string fl_shortcut_label(uint shortcut, out string keyPart)
 {
     if (shortcut == 0) { keyPart = ""; return ""; }
 
@@ -1891,9 +1924,9 @@ void pushed(Widget o)
  * Test-only helper: resets every piece of process-wide mutable state
  * this module exposes -- event state, focus()/belowmouse()/pushed(),
  * the default callback queue backing readqueue(), and the active
- * scheme()/boxtype alias table -- back to its initial "nothing has
+ * scheme() and the boxtype and label-type tables -- back to its initial "nothing has
  * happened yet" condition. The scheme reset matters beyond fl.core's
- * own tests: scheme_/boxAlias_ are read on every drawBoxAt()/
+ * own tests: scheme_ and the boxtype table are read on every drawBoxAt()/
  * drawRadio() call, so a test that leaves a scheme active (or a
  * failed assertion that skips the restore) would silently change
  * every other module's draw()-exercising test that runs afterward.
@@ -1966,7 +1999,8 @@ package(fl) void resetForTest()
     awakeQueue_ = null;
     while (readqueue() !is null) {}
     scheme_ = null;
-    boxAlias_ = identityBoxAlias();
+    fldraw.resetBoxTable();
+    resetLabelTable();
 }
 
 CallbackReason callbackReason()
@@ -2754,14 +2788,57 @@ unittest
 
 /// Ported from `Fl::version()` (`Fl.cxx`) -- the compiled-in
 /// `FL_VERSION` (`fl.enumerations`), deprecated FLTK in favor of
-/// `apiVersion()`. Named `version_` since `version` is a D keyword.
-double version_() { return FL_VERSION; }
+/// `apiVersion()`. Named `versionNumber` since `version` is a D keyword
+/// (see TRANSLITERATION_GUIDE.md's keyword table).
+double versionNumber() { return FL_VERSION; }
 
 /// Ported from `Fl::api_version()` -- the compiled-in `FL_API_VERSION`.
 int apiVersion() { return FL_API_VERSION; }
 
 /// Ported from `Fl::abi_version()` -- the compiled-in `FL_ABI_VERSION`.
 int abiVersion() { return FL_ABI_VERSION; }
+
+/// Whether `val` equals the library's ABI version. Ported from
+/// `Fl::abi_check()`. fldtk is a single D library compiled together
+/// with its callers, so with the default argument this is always true.
+bool abiCheck(int val = FL_ABI_VERSION) { return val == abiVersion(); }
+
+/**
+ * Sets the X display to connect to (`":0"`, `"host:0.1"`, ...) by setting
+ * `DISPLAY`, which child processes inherit as well. Takes effect only
+ * before the display is opened. Ported from `Fl::display()`
+ * (`Fl_X11_Screen_Driver::display()`); does nothing on Windows.
+ */
+void display(string name)
+{
+    if (name is null) return;
+    version (linux)
+    {
+        import std.process : environment;
+        environment["DISPLAY"] = name;
+        platformX11.setDisplayName(name);
+    }
+}
+
+private bool programShouldQuit_;
+
+/// Whether a request to terminate the program was received and
+/// accepted. Ported from `Fl::program_should_quit()`. Only the program
+/// itself sets it on Linux and Windows (FLTK's macOS "Quit" menu item is
+/// the one platform source).
+bool programShouldQuit() { return programShouldQuit_; }
+/// ditto
+void programShouldQuit(bool shouldQuit) { programShouldQuit_ = shouldQuit; }
+
+/// Runs `command` through the shell and returns its exit status.
+/// Ported from `Fl::system()`, which calls the C library's `system()`;
+/// this uses `std.process`, so the result is the command's exit code
+/// rather than a raw `wait()` status.
+int system(string command)
+{
+    import std.process : spawnShell, wait;
+    return wait(spawnShell(command));
+}
 
 /// Ported from `fl_open_callback(void(*)(const char*))` (`FL/platform.H`)
 /// -- registers a callback for "the user dropped a file on this app's
@@ -3259,82 +3336,117 @@ void boxBorderRadiusMax(int r)
 // ---------------------------------------------------------------------
 //
 // Provided: scheme()/scheme(string)/isScheme()/reloadScheme()/
-// getSystemScheme(), and a new boxtype alias table (resolveBoxtype()/
-// setBoxtype()) that reload_scheme() uses instead of FLTK's
-// Fl::set_boxtype(). DELIBERATE SIMPLIFICATION: FLTK's
-// Fl::set_boxtype() has two overloads -- `set_boxtype(Fl_Boxtype,
-// Fl_Boxtype)` (alias one boxtype to another's existing table row,
-// draw function AND metrics together) and `set_boxtype(Fl_Boxtype,
-// Fl_Box_Draw_F*, uchar,uchar,uchar,uchar, Fl_Box_Draw_Focus_F* = 0)`
-// (register a wholly new FL_FREE_BOXTYPE-style custom boxtype/function
-// pointer). reload_scheme() only ever uses the first form -- every
-// scheme branch remaps a handful of built-in boxtypes to that scheme's
-// own equivalents (`set_boxtype(FL_UP_BOX, FL_GTK_UP_BOX)`), and the
-// "none"/default branch remaps them back to themselves. So only that
-// alias form is ported, as a plain `Boxtype[]` lookup table
-// (`boxAlias_`) rather than a real function-pointer table -- this
-// deliberately does NOT reopen `drawBoxAt()`'s own documented "switch,
-// not a function-pointer table" simplification (see that function's
-// doc comment): the alias is a thin indirection layer resolved *before*
-// the switch runs, not a replacement for it. The second, custom-
-// boxtype-registration overload stays unsupported, matching
-// `drawBoxAt()`'s existing FL_FREE_BOXTYPE limitation.
+// getSystemScheme(). reloadScheme() switches the look by rewriting rows
+// of fl.draw's boxtype table with setBoxtype(), as FLTK's does.
 
 /// The current scheme name (always lowercase, matching FLTK's own
 /// normalization), or `null` for the default look ("none"/"base", or an
 /// unrecognized name). Ported from `Fl::scheme_`.
 private string scheme_;
 
-/// Boxtype-to-boxtype alias table -- `resolveBoxtype(t)` returns
-/// `boxAlias_[t]` when `t` has been remapped (e.g. under the "gtk+"
-/// scheme, `resolveBoxtype(Boxtype.upBox) == Boxtype.gtkUpBox`),
-/// otherwise `t` itself. Identity by default (every real boxtype index
-/// maps to itself) -- ported from the alias half of FLTK's
-/// `fl_box_table`-indexed `Fl::set_boxtype()`.
-private Boxtype[boxTable.length] boxAlias_ = identityBoxAlias();
-
-private Boxtype[boxTable.length] identityBoxAlias()
+/**
+ * Sets the functions that draw and measure label type t. Ported from
+ * `Fl::set_labeltype(Fl_Labeltype, Fl_Label_Draw_F*,
+ * Fl_Label_Measure_F*)`. Use a slot from `Labeltype.freeLabeltype` up to
+ * 15 for a new label type, or replace a built-in one. A null m measures
+ * the label as normal text plus image.
+ */
+void setLabeltype(Labeltype t, LabelDrawFunc f, LabelMeasureFunc m)
 {
-    Boxtype[boxTable.length] a;
-    foreach (i; 0 .. boxTable.length) a[i] = cast(Boxtype) i;
-    return a;
+    registerLabeltype(t, f, m);
 }
 
-/// Resolves t through the current scheme's boxtype alias table (see
-/// setBoxtype()/reloadScheme()) -- e.g. under the "gtk+" scheme,
-/// `resolveBoxtype(Boxtype.upBox)` returns `Boxtype.gtkUpBox`. Identity
-/// (returns t unchanged) when no scheme has remapped it, or when t is
-/// out of the table's range (FL_FREE_BOXTYPE-and-beyond custom values,
-/// never aliased). Used by both `fl.draw`'s `drawBoxAt()` (before its
-/// dispatch switch) and this module's own `boxMetrics()` just below --
-/// FLTK's `Fl::set_boxtype()` copies a whole `fl_box_table` row,
-/// draw function AND metrics together, so aliasing only the draw
-/// function and leaving `boxDx()`/`boxDy()`/`boxDw()`/`boxDh()`/
-/// `boxBg()` reading the unaliased index would silently break child
-/// layout and `drawBoxFocus()`'s inset under an active scheme --
-/// a layout bug that would present as a drawing bug.
-///
-/// Callers must not feed an already-resolved result back into
-/// `fl.enumerations`' `fl_up()`/`fl_down()`/`fl_frame()` (the "give me
-/// this box's pressed/frame counterpart" arithmetic on the raw enum
-/// ordinal) -- those assume an unaliased index and would land on an
-/// unrelated boxtype somewhere else in whatever family the resolved
-/// value belongs to. No call site does this today (every `fl_down()`
-/// call in the tree passes a widget's own, unresolved `box()`); keep it
-/// that way rather than resolving before calling them.
-Boxtype resolveBoxtype(Boxtype t)
+/// The drawing function currently registered for boxtype t (`null` for
+/// an unused `freeBoxtype + n` slot). Ported from `Fl::get_boxtype()`;
+/// save it to restore it later with `setBoxtype()`.
+fldraw.BoxDrawFunc getBoxtype(Boxtype t)
 {
-    return t < boxAlias_.length ? boxAlias_[t] : t;
+    return fldraw.boxEntry(t).f;
 }
 
-/// Remaps boxtype `from` to draw (and report metrics/the bg flag) as
-/// `to` instead. Ported from the boxtype-to-boxtype overload of
-/// `Fl::set_boxtype()` (`src/fl_boxtype.cxx`) -- see this section's own
-/// header comment for why only this overload is ported. Pass `from` as
-/// both arguments to restore identity (no remapping) for that boxtype.
-void setBoxtype(Boxtype from, Boxtype to)
+/**
+ * Sets the function that draws boxtype t, and its frame insets: dx, dy
+ * are the top-left frame widths, dw, dh the left-plus-right and
+ * top-plus-bottom widths. ff, if given, draws the keyboard-focus frame
+ * (otherwise a dotted rectangle inset by those margins). Ported from
+ * `Fl::set_boxtype(Fl_Boxtype, Fl_Box_Draw_F*, uchar, uchar, uchar,
+ * uchar, Fl_Box_Draw_Focus_F*)`. Use a slot from `Boxtype.freeBoxtype`
+ * up to `Boxtype.maxBoxtype` for a new boxtype, or replace a built-in
+ * one.
+ */
+void setBoxtype(Boxtype t, fldraw.BoxDrawFunc f, ubyte dx, ubyte dy, ubyte dw, ubyte dh,
+                fldraw.BoxDrawFocusFunc ff = null)
 {
-    if (from < boxAlias_.length) boxAlias_[from] = to;
+    auto e = &fldraw.boxEntry(t);
+    e.f = f;
+    e.flags |= 1;
+    e.dx = dx;
+    e.dy = dy;
+    e.dw = dw;
+    e.dh = dh;
+    e.ff = ff;
+}
+
+/// Makes boxtype `to` a copy of boxtype `from`: drawing function,
+/// insets, flags and focus function. Ported from
+/// `Fl::set_boxtype(Fl_Boxtype to, Fl_Boxtype from)`; a later change to
+/// `from` doesn't carry over to `to`.
+void setBoxtype(Boxtype to, Boxtype from)
+{
+    fldraw.boxEntry(to) = fldraw.boxEntry(from);
+}
+
+unittest
+{
+    // A custom boxtype in a free slot: drawBoxAt() calls it, the insets
+    // and focus function come from the same row, and setBoxtype(to,
+    // from) copies the row.
+    int drawn, focused;
+    auto custom = cast(Boxtype)(Boxtype.freeBoxtype + 8);
+    assert(getBoxtype(custom) is null && boxDx(custom) == 0);
+    setBoxtype(custom, (x, y, w, h, c) { drawn++; }, 4, 5, 8, 10,
+               (bt, x, y, w, h, fg, bg) { focused++; });
+    fldraw.drawBoxAt(custom, 0, 0, 10, 10, 0);
+    assert(drawn == 1);
+    assert(boxDx(custom) == 4 && boxDy(custom) == 5 && boxDw(custom) == 8 && boxDh(custom) == 10);
+    auto saved = visibleFocus();
+    visibleFocus(true);
+    fldraw.drawBoxFocus(custom, 0, 0, 10, 10, 0, 0);
+    visibleFocus(saved);
+    assert(focused == 1);
+
+    // Replacing a built-in boxtype and putting it back, the way Fluid's
+    // ghosted flat box does.
+    auto oldFlat = getBoxtype(Boxtype.flatBox);
+    setBoxtype(Boxtype.flatBox, getBoxtype(custom), 0, 0, 0, 0);
+    fldraw.drawBoxAt(Boxtype.flatBox, 0, 0, 10, 10, 0);
+    assert(drawn == 2);
+    setBoxtype(Boxtype.flatBox, oldFlat, 0, 0, 0, 0);
+    assert(getBoxtype(Boxtype.flatBox) == fldraw.defaultBoxDraw(Boxtype.flatBox));
+
+    setBoxtype(Boxtype.upBox, custom);
+    assert(boxDx(Boxtype.upBox) == 4);
+    fldraw.drawBoxAt(Boxtype.upBox, 0, 0, 10, 10, 0);
+    assert(drawn == 3);
+
+    // A custom label type: Label.draw()/measure() call it.
+    int labelsDrawn;
+    auto lt = cast(Labeltype)(Labeltype.freeLabeltype + 1);
+    setLabeltype(lt, (l, x, y, w, h, a) { labelsDrawn++; },
+                 (l, ref int w, ref int h) { w = 42; h = 7; });
+    Label lab;
+    lab.text = "x";
+    lab.type = lt;
+    lab.draw(0, 0, 10, 10, 0);
+    assert(labelsDrawn == 1);
+    int mw, mh;
+    lab.measure(mw, mh);
+    assert(mw == 42 && mh == 7);
+
+    resetForTest();
+    assert(getBoxtype(custom) is null && boxDx(Boxtype.upBox) == 2);
+    lab.draw(0, 0, 10, 10, 0);
+    assert(labelsDrawn == 1); // the free slot draws nothing again
 }
 
 /// Ported from `Fl_X11_Screen_Driver::get_system_scheme()`
@@ -3430,12 +3542,10 @@ bool isScheme(string name)
  * `thinDownFrame`/`upBox`/`downBox`/`thinUpBox`/`thinDownBox`/
  * `roundUpBox`/`roundDownBox`) to that scheme's own equivalents, plus a
  * `scrollbarSize()` change (16 for "plastic"/default, 15 for the other
- * three). The "none"/default branch remaps those same 10 boxtypes back
- * to themselves (identity) rather than to a *different* raw function
- * pointer the way FLTK's own `else` branch technically does
- * (`set_boxtype(FL_UP_BOX, fl_up_box, D1,D1,D2,D2)`, restoring the
- * built-in) -- functionally identical here, since this port's `upBox`
- * case in `drawBoxAt()` already *is* the built-in.
+ * three). The "none"/default branch puts the built-in drawing functions
+ * and insets back on those same 10 boxtypes, as FLTK's `else` branch
+ * does (`set_boxtype(FL_UP_BOX, fl_up_box, D1,D1,D2,D2)`); like FLTK's,
+ * it leaves each row's flags as they were.
  *
  * The "plastic" scheme's `Fl_Tiled_Image` window-background tile is
  * real too. See `plasticSchemeTile()`
@@ -3444,8 +3554,8 @@ bool isScheme(string name)
  * ...)`) for how it's pushed onto every open window.
  *
  * Every scheme's own boxtype family ("gleam"/"gtk+"/"oxy"/"plastic",
- * plus "none"/default) is ported, so `fl.draw.drawBoxAt()` has a real
- * `case` for every boxtype any scheme remaps to.
+ * plus "none"/default) is ported, so every row a scheme copies from has
+ * a real drawing function.
  */
 void reloadScheme()
 {
@@ -3511,17 +3621,21 @@ void reloadScheme()
         schemeBg_ = null;
         break;
 
-    default: // "none"/default -- restore identity
-        setBoxtype(Boxtype.upFrame, Boxtype.upFrame);
-        setBoxtype(Boxtype.downFrame, Boxtype.downFrame);
-        setBoxtype(Boxtype.thinUpFrame, Boxtype.thinUpFrame);
-        setBoxtype(Boxtype.thinDownFrame, Boxtype.thinDownFrame);
-        setBoxtype(Boxtype.upBox, Boxtype.upBox);
-        setBoxtype(Boxtype.downBox, Boxtype.downBox);
-        setBoxtype(Boxtype.thinUpBox, Boxtype.thinUpBox);
-        setBoxtype(Boxtype.thinDownBox, Boxtype.thinDownBox);
-        setBoxtype(Boxtype.roundUpBox, Boxtype.roundUpBox);
-        setBoxtype(Boxtype.roundDownBox, Boxtype.roundDownBox);
+    default: // "none"/default: the standard FLTK look
+        alias D1 = fldraw.D1, D2 = fldraw.D2;
+        alias def = fldraw.defaultBoxDraw;
+        setBoxtype(Boxtype.upFrame, def(Boxtype.upFrame), D1, D1, D2, D2);
+        setBoxtype(Boxtype.downFrame, def(Boxtype.downFrame), D1, D1, D2, D2);
+        setBoxtype(Boxtype.thinUpFrame, def(Boxtype.thinUpFrame), 1, 1, 2, 2);
+        setBoxtype(Boxtype.thinDownFrame, def(Boxtype.thinDownFrame), 1, 1, 2, 2);
+        setBoxtype(Boxtype.upBox, def(Boxtype.upBox), D1, D1, D2, D2);
+        setBoxtype(Boxtype.downBox, def(Boxtype.downBox), D1, D1, D2, D2);
+        setBoxtype(Boxtype.thinUpBox, def(Boxtype.thinUpBox), 1, 1, 2, 2);
+        setBoxtype(Boxtype.thinDownBox, def(Boxtype.thinDownBox), 1, 1, 2, 2);
+        setBoxtype(Boxtype.roundUpBox, def(Boxtype.roundUpBox), 3, 3, 6, 6,
+                   fldraw.defaultBoxDrawFocus(Boxtype.roundUpBox));
+        setBoxtype(Boxtype.roundDownBox, def(Boxtype.roundDownBox), 3, 3, 6, 6,
+                   fldraw.defaultBoxDrawFocus(Boxtype.roundDownBox));
         scrollbarSize(16);
         schemeBg_ = null;
         break;
@@ -3653,14 +3767,15 @@ Image schemeBg() { return schemeBg_; }
 
 unittest
 {
-    // scheme()/isScheme()/resolveBoxtype(): pure logic, no display
-    // needed. Restores the default scheme at the end so other tests
-    // (and boxMetrics()'s own unittest) see the identity alias, same
-    // "restore the default for other tests" convention as
-    // boxShadowWidth()'s/boxBorderRadiusMax()'s own unittests.
+    // scheme()/isScheme() and the boxtype rows they copy: pure logic,
+    // no display needed. Restores the default scheme at the end so other
+    // tests see the built-in rows, same "restore the default for other
+    // tests" convention as boxShadowWidth()'s/boxBorderRadiusMax()'s
+    // own unittests.
+    alias def = fldraw.defaultBoxDraw;
     assert(scheme() is null);
     assert(!isScheme("gtk+"));
-    assert(resolveBoxtype(Boxtype.upBox) == Boxtype.upBox);
+    assert(getBoxtype(Boxtype.upBox) == def(Boxtype.upBox));
 
     // Case-insensitive on the way in, normalized to lowercase, and
     // isScheme() matches only the normalized (lowercase) form.
@@ -3668,15 +3783,15 @@ unittest
     assert(scheme() == "gtk+");
     assert(isScheme("gtk+"));
     assert(!isScheme("plastic"));
-    assert(resolveBoxtype(Boxtype.upBox) == Boxtype.gtkUpBox);
-    assert(resolveBoxtype(Boxtype.downBox) == Boxtype.gtkDownBox);
-    assert(resolveBoxtype(Boxtype.roundUpBox) == Boxtype.gtkRoundUpBox);
+    assert(getBoxtype(Boxtype.upBox) == def(Boxtype.gtkUpBox));
+    assert(getBoxtype(Boxtype.downBox) == def(Boxtype.gtkDownBox));
+    assert(getBoxtype(Boxtype.roundUpBox) == def(Boxtype.gtkRoundUpBox));
     assert(scrollbarSize() == 15);
-    // A boxtype no scheme ever touches (e.g. flatBox) stays identity.
-    assert(resolveBoxtype(Boxtype.flatBox) == Boxtype.flatBox);
+    // A boxtype no scheme ever touches (e.g. flatBox) keeps its own row.
+    assert(getBoxtype(Boxtype.flatBox) == def(Boxtype.flatBox));
 
     // "none"/"base"/unrecognized all normalize to no scheme (null),
-    // restoring every remapped boxtype to identity and scrollbarSize()
+    // restoring every remapped boxtype's built-in drawing and scrollbarSize()
     // to 16 -- unconditionally, even if an app had called
     // scrollbarSize(N) itself. That's FLTK's own behavior
     // (reload_scheme()'s default branch hardcodes 16 too, it doesn't
@@ -3685,7 +3800,7 @@ unittest
     assert(scheme("base") == false);
     assert(scheme() is null);
     assert(!isScheme("gtk+"));
-    assert(resolveBoxtype(Boxtype.upBox) == Boxtype.upBox);
+    assert(getBoxtype(Boxtype.upBox) == def(Boxtype.upBox));
     assert(scrollbarSize() == 16);
 
     assert(scheme("not-a-real-scheme") == false);
@@ -3693,7 +3808,7 @@ unittest
 
     // Each of the other three schemes remaps upBox to its own equivalent.
     scheme("plastic");
-    assert(resolveBoxtype(Boxtype.upBox) == Boxtype.plasticUpBox);
+    assert(getBoxtype(Boxtype.upBox) == def(Boxtype.plasticUpBox));
     assert(scrollbarSize() == 16);
     // "plastic" builds a real tiled window-background image --
     // headless-safe to check directly (Pixmap/
@@ -3701,25 +3816,39 @@ unittest
     assert(schemeBg_ !is null);
 
     scheme("gleam");
-    assert(resolveBoxtype(Boxtype.upBox) == Boxtype.gleamUpBox);
+    assert(getBoxtype(Boxtype.upBox) == def(Boxtype.gleamUpBox));
     assert(scrollbarSize() == 15);
     // Switching away from "plastic" clears the background image.
     assert(schemeBg_ is null);
 
     scheme("oxy");
-    assert(resolveBoxtype(Boxtype.upBox) == Boxtype.oxyUpBox);
+    assert(getBoxtype(Boxtype.upBox) == def(Boxtype.oxyUpBox));
     assert(scrollbarSize() == 15);
 
-    // setBoxtype()'s metrics-routing: boxDx()/boxDw()/boxBg() (fl.core's
-    // own boxMetrics()) follow the same alias resolveBoxtype() does --
-    // gtkThinUpBox's metrics (1,1,2,2, bg=false, per its own boxTable
-    // row -- see FLTK_ISSUES.md's "inconsistent bg/frame flags"
-    // candidate for why bg is false there) must show through plain
-    // thinUpBox once "gtk+" remaps it, not thinUpBox's own (1,1,2,2,
-    // bg=true).
+    // setBoxtype(to, from) copies the whole row, metrics and flags
+    // included: gtkThinUpBox's row (1,1,2,2, bg=false -- see
+    // FLTK_ISSUES.md's "inconsistent bg/frame flags" candidate for why
+    // bg is false there) shows through plain thinUpBox once "gtk+"
+    // copies it, not thinUpBox's own (1,1,2,2, bg=true).
     scheme("gtk+");
     assert(boxDx(Boxtype.thinUpBox) == 1 && boxDw(Boxtype.thinUpBox) == 2);
     assert(boxBg(Boxtype.thinUpBox) == false);
+
+    // Back to the default look: the built-in functions, insets and the
+    // round boxes' focus function return, whatever scheme was active.
+    // (FLTK's default branch leaves the flags alone, so thinUpBox keeps
+    // gtk+'s bg=false.)
+    foreach (sch; ["base", "plastic", "base", "gtk+", "base"])
+    {
+        scheme(sch);
+        if (sch != "base") continue;
+        assert(getBoxtype(Boxtype.upBox) == def(Boxtype.upBox));
+        assert(boxDx(Boxtype.upBox) == 2 && boxDw(Boxtype.upBox) == 4);
+        assert(getBoxtype(Boxtype.roundUpBox) == def(Boxtype.roundUpBox));
+        assert(boxDx(Boxtype.roundUpBox) == 3);
+        assert(fldraw.boxEntry(Boxtype.roundUpBox).ff == fldraw.defaultBoxDrawFocus(Boxtype.roundUpBox));
+        assert(fldraw.boxEntry(Boxtype.upBox).ff is null);
+    }
 
     // Restore the default for other tests -- "base" (not null/empty)
     // deliberately, so this doesn't depend on whether FLTK_SCHEME
@@ -4365,6 +4494,64 @@ void removeTimeout(TimeoutHandler cb)
 }
 
 /**
+ * Removes the pending timeout matching `cb` that is due soonest, and
+ * returns how many matched before the removal: `0` if none did, `1` if
+ * the last one was removed, more if others are still pending. Ported
+ * from `Fl::remove_next_timeout()`. FLTK's `data` wildcard and
+ * `data_return` have no D counterpart: a delegate carries its own
+ * context, so `cb` already identifies callback and data together.
+ */
+int removeNextTimeout(TimeoutHandler cb)
+{
+    int count = 0;
+    size_t soonest = size_t.max;
+    foreach (i, ref t; timeouts_)
+    {
+        if (t.callback != cb) continue;
+        count++;
+        if (soonest == size_t.max || t.due < timeouts_[soonest].due) soonest = i;
+    }
+    if (count)
+        timeouts_ = timeouts_[0 .. soonest] ~ timeouts_[soonest + 1 .. $];
+    return count;
+}
+
+/// One entry of `timeoutList()`: seconds until the timeout is due, and
+/// its callback. Ported from `Fl::TimeoutData` (whose `data` field is
+/// part of the delegate here).
+struct TimeoutData
+{
+    double t;
+    TimeoutHandler cb;
+}
+
+/// Every pending timeout, soonest first. Ported from
+/// `Fl::timeout_list()`.
+TimeoutData[] timeoutList()
+{
+    import std.algorithm.sorting : sort;
+    auto now = MonoTime.currTime;
+    auto list = new TimeoutData[timeouts_.length];
+    foreach (i, ref t; timeouts_)
+        list[i] = TimeoutData((t.due - now).total!"usecs" / 1_000_000.0, t.callback);
+    sort!((a, b) => a.t < b.t)(list);
+    return list;
+}
+
+/**
+ * Whether an event or a due timer is waiting, without blocking or
+ * handling anything. For long computations: call `check()` only when
+ * this returns true. Ported from `Fl::ready()`
+ * (`Fl_Unix_System_Driver::ready()`).
+ */
+bool ready()
+{
+    if (timeToWait(dur!"seconds"(1)) <= Duration.zero) return true;
+    version (linux) return platformX11.eventsReady();
+    else return false;
+}
+
+/**
  * Ported from Fl_Timeout::do_timeouts(). Fires every timer whose due
  * time has passed, soonest first, repeating until none are left
  * expired -- a callback may itself schedule a new timer via
@@ -4601,6 +4788,10 @@ package(fl) bool idleActive()
 {
     return idleHandlers_.length > 0;
 }
+
+/// Whether at least one idle callback is registered. Ported from
+/// `Fl::idle()`.
+bool idle() { return idleActive(); }
 
 /**
  * Calls the next idle callback in turn, if any are registered.
@@ -5996,132 +6187,21 @@ package(fl) void throwFocus(Widget w)
     }
 }
 
-private struct BoxMetrics
-{
-    ubyte dx, dy, dw, dh;
-    /// True if this boxtype paints a solid background (a "box"); false
-    /// if it's outline-only (a "frame"). Mirrors fl_box_table's flags
-    /// bit 1 (`bg() { return !(flags & 2); }` FLTK).
-    bool bg;
-}
-
 /*
- * Ported from the metrics half of fl_box_table's initializer in
- * src/fl_boxtype.cxx (FLTK 1.5.0): the per-boxtype dx/dy/dw/dh frame
- * insets (used e.g. by Fl_Rect::inset(Boxtype) and Fl_Group::bounds()
- * to shrink a rectangle to a widget's interior) and the bg flag. Order
- * matches Boxtype's declaration order 1:1, per FLTK's own "must
- * match list in Enumerations.H!!!" comment on the table.
- *
- * The table's other half -- the actual per-boxtype box-drawing function
- * pointers (fl_up_box, fl_down_frame, ...) and the focus-frame-drawing
- * pointers (fl_rounded_focus, ...) -- is real too: see fl.draw.drawBoxAt() (a switch dispatch, not a literal
- * function-pointer table, but functionally complete) and
- * drawBoxFocus(). Box types beyond freeBoxtype+7 (up to maxBoxtype)
- * have no table entry FLTK either
- * (zero-initialized statically), which boxDx()/etc. below reproduce by
- * falling back to "no frame, has background" for any out-of-range index.
- *
- * D1/D2 mirror FLTK's D1/D2 macros, themselves `BORDER_WIDTH` (2)
- * and `2*BORDER_WIDTH`; this port doesn't have a build-time config
- * knob for BORDER_WIDTH, so the (also default) value of 2 is hardcoded.
+ * The per-boxtype frame insets (used e.g. by Fl_Rect::inset(Boxtype) and
+ * Fl_Group::bounds() to shrink a rectangle to a widget's interior) and
+ * the background flag. Ported from `Fl::box_dx()`/.../`Fl::box_bg()`
+ * (src/fl_boxtype.cxx), reading fl.draw's boxtype table -- the same
+ * rows `setBoxtype()` writes and `drawBoxAt()` draws from.
  */
-private enum ubyte D1 = 2;
-private enum ubyte D2 = 4;
-
-private immutable BoxMetrics[] boxTable = [
-    BoxMetrics(0,  0,  0,  0,  false), // noBox
-    BoxMetrics(0,  0,  0,  0,  true),  // flatBox
-    BoxMetrics(D1, D1, D2, D2, true),  // upBox
-    BoxMetrics(D1, D1, D2, D2, true),  // downBox
-    BoxMetrics(D1, D1, D2, D2, false), // upFrame
-    BoxMetrics(D1, D1, D2, D2, false), // downFrame
-    BoxMetrics(1,  1,  2,  2,  true),  // thinUpBox
-    BoxMetrics(1,  1,  2,  2,  true),  // thinDownBox
-    BoxMetrics(1,  1,  2,  2,  false), // thinUpFrame
-    BoxMetrics(1,  1,  2,  2,  false), // thinDownFrame
-    BoxMetrics(2,  2,  4,  4,  true),  // engravedBox
-    BoxMetrics(2,  2,  4,  4,  true),  // embossedBox
-    BoxMetrics(2,  2,  4,  4,  false), // engravedFrame
-    BoxMetrics(2,  2,  4,  4,  false), // embossedFrame
-    BoxMetrics(1,  1,  2,  2,  true),  // borderBox
-    BoxMetrics(1,  1,  5,  5,  true),  // shadowBox
-    BoxMetrics(1,  1,  2,  2,  false), // borderFrame
-    BoxMetrics(1,  1,  5,  5,  false), // shadowFrame
-    BoxMetrics(1,  1,  2,  2,  true),  // roundedBox
-    BoxMetrics(1,  1,  2,  2,  true),  // rshadowBox
-    BoxMetrics(1,  1,  2,  2,  false), // roundedFrame
-    BoxMetrics(0,  0,  0,  0,  true),  // rflatBox
-    BoxMetrics(3,  3,  6,  6,  true),  // roundUpBox
-    BoxMetrics(3,  3,  6,  6,  true),  // roundDownBox
-    BoxMetrics(0,  0,  0,  0,  true),  // diamondUpBox
-    BoxMetrics(0,  0,  0,  0,  true),  // diamondDownBox
-    BoxMetrics(1,  1,  2,  2,  true),  // ovalBox
-    BoxMetrics(1,  1,  2,  2,  true),  // oshadowBox
-    BoxMetrics(1,  1,  2,  2,  false), // ovalFrame
-    BoxMetrics(0,  0,  0,  0,  true),  // oflatBox
-    BoxMetrics(2,  2,  4,  4,  true),  // plasticUpBox
-    BoxMetrics(2,  2,  4,  4,  true),  // plasticDownBox
-    BoxMetrics(2,  2,  4,  4,  false), // plasticUpFrame
-    BoxMetrics(2,  2,  4,  4,  false), // plasticDownFrame
-    BoxMetrics(2,  2,  4,  4,  true),  // plasticThinUpBox
-    BoxMetrics(2,  2,  4,  4,  true),  // plasticThinDownBox
-    BoxMetrics(2,  2,  4,  4,  true),  // plasticRoundUpBox
-    BoxMetrics(2,  2,  4,  4,  true),  // plasticRoundDownBox
-    BoxMetrics(2,  2,  4,  4,  true),  // gtkUpBox
-    BoxMetrics(2,  2,  4,  4,  true),  // gtkDownBox
-    BoxMetrics(2,  2,  4,  4,  false), // gtkUpFrame
-    BoxMetrics(2,  2,  4,  4,  false), // gtkDownFrame
-    BoxMetrics(1,  1,  2,  2,  false), // gtkThinUpBox
-    BoxMetrics(1,  1,  2,  2,  false), // gtkThinDownBox
-    BoxMetrics(1,  1,  2,  2,  true),  // gtkThinUpFrame
-    BoxMetrics(1,  1,  2,  2,  true),  // gtkThinDownFrame
-    BoxMetrics(2,  2,  4,  4,  true),  // gtkRoundUpBox
-    BoxMetrics(2,  2,  4,  4,  true),  // gtkRoundDownBox
-    BoxMetrics(2,  2,  4,  4,  true),  // gleamUpBox
-    BoxMetrics(2,  2,  4,  4,  true),  // gleamDownBox
-    BoxMetrics(2,  2,  4,  4,  false), // gleamUpFrame
-    BoxMetrics(2,  2,  4,  4,  false), // gleamDownFrame
-    BoxMetrics(2,  2,  4,  4,  true),  // gleamThinUpBox
-    BoxMetrics(2,  2,  4,  4,  true),  // gleamThinDownBox
-    BoxMetrics(2,  2,  4,  4,  true),  // gleamRoundUpBox
-    BoxMetrics(2,  2,  4,  4,  true),  // gleamRoundDownBox
-    BoxMetrics(2,  2,  4,  4,  true),  // oxyUpBox
-    BoxMetrics(2,  2,  4,  4,  true),  // oxyDownBox
-    BoxMetrics(2,  2,  4,  4,  false), // oxyUpFrame
-    BoxMetrics(2,  2,  4,  4,  false), // oxyDownFrame
-    BoxMetrics(1,  1,  2,  2,  true),  // oxyThinUpBox
-    BoxMetrics(1,  1,  2,  2,  true),  // oxyThinDownBox
-    BoxMetrics(1,  1,  2,  2,  false), // oxyThinUpFrame
-    BoxMetrics(1,  1,  2,  2,  false), // oxyThinDownFrame
-    BoxMetrics(2,  2,  4,  4,  true),  // oxyRoundUpBox
-    BoxMetrics(2,  2,  4,  4,  true),  // oxyRoundDownBox
-    BoxMetrics(2,  2,  4,  4,  true),  // oxyButtonUpBox
-    BoxMetrics(2,  2,  4,  4,  true),  // oxyButtonDownBox
-    BoxMetrics(3,  3,  6,  6,  true),  // freeBoxtype (FL_FREE_BOX+0)
-    BoxMetrics(3,  3,  6,  6,  true),  // FL_FREE_BOX+1
-    BoxMetrics(3,  3,  6,  6,  true),  // FL_FREE_BOX+2
-    BoxMetrics(3,  3,  6,  6,  true),  // FL_FREE_BOX+3
-    BoxMetrics(3,  3,  6,  6,  true),  // FL_FREE_BOX+4
-    BoxMetrics(3,  3,  6,  6,  true),  // FL_FREE_BOX+5
-    BoxMetrics(3,  3,  6,  6,  true),  // FL_FREE_BOX+6
-    BoxMetrics(3,  3,  6,  6,  true),  // FL_FREE_BOX+7
-];
-
-private BoxMetrics boxMetrics(Boxtype t)
-{
-    t = resolveBoxtype(t);
-    return t < boxTable.length ? boxTable[t] : BoxMetrics(0, 0, 0, 0, true);
-}
-
-int boxDx(Boxtype t) { return boxMetrics(t).dx; }
-int boxDy(Boxtype t) { return boxMetrics(t).dy; }
-int boxDw(Boxtype t) { return boxMetrics(t).dw; }
-int boxDh(Boxtype t) { return boxMetrics(t).dh; }
+int boxDx(Boxtype t) { return fldraw.boxEntry(t).dx; }
+int boxDy(Boxtype t) { return fldraw.boxEntry(t).dy; } /// ditto
+int boxDw(Boxtype t) { return fldraw.boxEntry(t).dw; } /// ditto
+int boxDh(Boxtype t) { return fldraw.boxEntry(t).dh; } /// ditto
 
 /// True if boxtype t paints a solid background; false if it's an
 /// outline-only "frame" boxtype. `Widget.redrawLabel()` uses it.
-bool boxBg(Boxtype t) { return boxMetrics(t).bg; }
+bool boxBg(Boxtype t) { return fldraw.boxEntry(t).bg; }
 
 unittest
 {
@@ -6136,8 +6216,8 @@ unittest
 
     assert(boxDx(Boxtype.shadowBox) == 1 && boxDw(Boxtype.shadowBox) == 5);
 
-    // Free/user boxtypes beyond the table (but within Boxtype's range)
-    // fall back to "no frame, has background".
+    // Unused slots past freeBoxtype + 7 have no frame and a background,
+    // as in FLTK (an empty row).
     assert(boxDx(Boxtype.maxBoxtype) == 0);
     assert(boxBg(Boxtype.maxBoxtype));
 }
@@ -6245,22 +6325,22 @@ unittest
 
 unittest
 {
-    // flShortcutLabel(0) is always "" (0 means "no shortcut").
-    assert(flShortcutLabel(0) == "");
+    // fl_shortcut_label(0) is always "" (0 means "no shortcut").
+    assert(fl_shortcut_label(0) == "");
 
     // A plain printable key with no modifiers: just the uppercased
     // character, no "+"-joined modifier prefix.
-    assert(flShortcutLabel('a') == "A");
+    assert(fl_shortcut_label('a') == "A");
 
     // Modifiers are prefixed in Ctrl/Alt/Shift/Meta order, matching
     // FLTK's fixed ordering.
-    assert(flShortcutLabel(stateCtrl | 'a') == "Ctrl+A");
-    assert(flShortcutLabel(stateCtrl | stateAlt | 'a') == "Ctrl+Alt+A");
-    assert(flShortcutLabel(stateAlt | stateShift | 'a') == "Alt+Shift+A");
+    assert(fl_shortcut_label(stateCtrl | 'a') == "Ctrl+A");
+    assert(fl_shortcut_label(stateCtrl | stateAlt | 'a') == "Ctrl+Alt+A");
+    assert(fl_shortcut_label(stateAlt | stateShift | 'a') == "Alt+Shift+A");
 
     // An upper-case key implies Shift even if the caller didn't OR it
     // in explicitly (same fixup as testShortcut()).
-    assert(flShortcutLabel('A') == "Shift+A");
+    assert(fl_shortcut_label('A') == "Shift+A");
 }
 
 version (linux) unittest
@@ -6273,10 +6353,10 @@ version (linux) unittest
     // already requires for every other module's Xlib bindings).
     import fl.enumerations : left, enter, kpEnter, f;
 
-    assert(flShortcutLabel(left) == "Left");
-    assert(flShortcutLabel(kpEnter) == "KP_Enter");
-    assert(flShortcutLabel(enter) == "Enter");
-    assert(flShortcutLabel(stateCtrl | (f + 1)) == "Ctrl+F1"); // FL_F+1 == F1
+    assert(fl_shortcut_label(left) == "Left");
+    assert(fl_shortcut_label(kpEnter) == "KP_Enter");
+    assert(fl_shortcut_label(enter) == "Enter");
+    assert(fl_shortcut_label(stateCtrl | (f + 1)) == "Ctrl+F1"); // FL_F+1 == F1
 }
 
 unittest

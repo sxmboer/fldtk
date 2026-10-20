@@ -105,9 +105,7 @@ Window openFile(string name, string flags, bool close = false)
     // create a canvas for the animation
     Box canvas = testTiles ? null : new Box(0, 0, 0, 0); // canvas will be resized by animation
     Box canvas2 = null;
-    ushort gifFlags = debugLevel ? AnimGifImage.logFlag : 0;
-    if (debugLevel > 1)
-        gifFlags |= AnimGifImage.debugFlag;
+    ushort gifFlags = 0;
     if (optimizeMem)
         gifFlags |= AnimGifImage.optimizeMemory;
 
@@ -323,7 +321,7 @@ void main(string[] args)
                     ~ "   -t [directory] [-{flags}] open all files in directory (default name: %s) [with options]\n"
                     ~ "   filename [-{flags}] open single file [with options] \n"
                     ~ "   No arguments open a fileselector\n"
-                    ~ "   {flags} can be: d=debug mode, u=uncached, D=desaturated, A=color averaged, T=tiled\n"
+                    ~ "   {flags} can be: ddd=each frame in its own window, u=uncached, D=desaturated, A=color averaged, T=tiled\n"
                     ~ "                   m=minimal update, r[scale factor]=resize by 'scale factor'\n"
                     ~ "   Use keys '+'/'-/0' to change speed of the active image (belowmouse).", testsuite);
             return;

@@ -28,7 +28,7 @@ module fl.enumerations;
 // module's own doc comment says it was ported from.
 // Since this port compiles everything into one D module (no separate
 // header-vs-shared-library skew the way a C/C++ program linking an old
-// .so against new headers could have), fl.core.version_()/
+// .so against new headers could have), fl.core.versionNumber()/
 // apiVersion()/abiVersion() below always return these same values --
 // there's no real "header says X, library says Y" case to detect here,
 // but the constants and query functions are ported anyway for call-site
@@ -673,8 +673,8 @@ EventState stateButton(int n) { return cast(EventState)(0x00800000 << n); }
 
 enum : EventState
 {
-    /// FL_COMMAND/FL_CONTROL are platform aliases FLTK
-    /// (FL/platform_types.h): on X11/Wayland/Windows FL_COMMAND is
+    /// FL_COMMAND/FL_CONTROL are platform aliases
+    /// (FL/Enumerations.H): on X11/Wayland/Windows FL_COMMAND is
     /// FL_CTRL and FL_CONTROL is FL_META; only macOS swaps them. Linux
     /// X11/Wayland is this port's primary target (see CONVENTIONS.md), so
     /// that's the only mapping ported.
@@ -683,6 +683,14 @@ enum : EventState
 
     keyMask = 0x0000ffff,
 }
+
+/// The FL_COMMAND modifier bit, as a function. Ported from
+/// `fl_command_modifier()`.
+int commandModifier() { return stateCommand; }
+
+/// The FL_CONTROL modifier bit, as a function. Ported from
+/// `fl_control_modifier()`.
+int controlModifier() { return stateControl; }
 
 // ---------------------------------------------------------------------
 // Fl_Damage
@@ -820,3 +828,9 @@ enum ContrastMode
 /// consistency and so a caller's custom function can still close over
 /// its own state.
 alias ContrastFunction = Color delegate(Color fg, Color bg, int context, int size);
+
+unittest
+{
+    assert(commandModifier() == stateCtrl);
+    assert(controlModifier() == stateMeta);
+}

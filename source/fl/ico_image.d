@@ -190,6 +190,12 @@ class ICOImage : BMPImage
         w(entry.bWidth);
         h(entry.bHeight);
         d(4);
+        if (cast(size_t) w() * h() * d() > maxSize())
+        {
+            w(0); h(0); d(0);
+            ld(errFormat);
+            return;
+        }
         rdr.seek(cast(size_t) entry.dwImageOffset);
         loadBmp(rdr, entry.bHeight, entry.bWidth);
     }

@@ -137,6 +137,18 @@ class MenuBar : Menu_
         return items[next];
     }
 
+    /// Called after the menu items change; a menu bar that mirrors them
+    /// elsewhere (FLTK's macOS system menu bar) refreshes itself here.
+    /// Ported from `Fl_Menu_Bar::update()`.
+    void update() {}
+
+    /// Opens the dropdown of the top-level `item`, as if it had been
+    /// clicked. Ported from `Fl_Menu_Bar::play_menu()`.
+    void playMenu(const(MenuItem)* item)
+    {
+        if (item !is null) doPulldown(item);
+    }
+
     /**
      * Shared tail for the FL_PUSH and FL_SHORTCUT cases -- matches
      * FLTK's own `goto J1` structure (see `fl.repeat_button`'s

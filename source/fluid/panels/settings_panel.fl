@@ -40,7 +40,7 @@ success-only `fl.message()` popup at the tail of `gui_main.d`'s
 `completion_button->value()` check in `Fluid.write_code_files()`/
 `Project::write_strings()` -- failure alerts stay unconditional either
 way, matching FLTK), "Show Ghosted Group Outlines" (`gui_main.
-showGhostedOutline()`, drives `fl.draw.ghostFlatBox` plus a
+showGhostedOutline()`, drives a ghosted flat-box swap plus a
 no-box-group tree-walk -- see `fluid.canvas.ProjectCanvas.draw()`'s
 own doc comment for the full mechanism), and "Show Restricted Areas"
 (`gui_main.showRestricted()`, drives out-of-bounds/overlap

@@ -53,6 +53,35 @@ Process:
 
 ## Candidates
 
+### `Fl::cairo_make_current(Fl_Window*)` (`src/Fl_Cairo.cxx`): a single-buffered window reuses its stale Cairo context and re-applies the scale to it
+
+**FLTK status:** Open. Inferred from reading the source, not observed in a
+run. fltk/fltk's GitHub issues and pull requests have not been searched
+for an existing report yet.
+
+On X11, `Fl::cairo_make_current()` calls
+`Fl::Private::cairo_make_current(0, W*scale, H*scale)` and then records
+`fl_xid(wi)` as the state's window. The private function returns the
+existing context whenever `gc == cairo_state_.gc()` (both `0` on X11),
+`fl_window == cairo_state_.window()`, and a context exists.
+
+- For an `Fl_Double_Window` this never matches: during `draw()`,
+  `fl_window` is the back buffer (`other_xid->offscreen()`, set in
+  `Fl_X11_Window_Driver::flush_double()`), not `fl_xid(wi)`. So a fresh
+  context is made on every draw, and `Fl_Cairo_Window` is unaffected.
+- For a plain `Fl_Window`, `fl_window == fl_xid(wi)` during `draw()`, so
+  every draw after the first gets the *same* context back. Two things
+  follow:
+  - `Fl::cairo_make_current()` then calls
+    `cairo_scale(cairo_ctxt, scale, scale)` on that reused context again.
+    At any screen scale other than 1 the scale compounds on each redraw.
+    So does any transformation the program's own drawing left on the
+    context, such as `test/cairo_test.cxx`'s `cairo_scale(cr, w, h)`.
+  - The `cairo_xlib_surface` keeps the size it was created with. After the
+    window grows, drawing beyond the old size is clipped away.
+
+fldtk's `fl.cairo.cairoMakeCurrent()` ports this logic faithfully.
+
 ### `Fl_Window_Driver::resize_after_scale_change()` (`src/Fl_Window_Driver.cxx`): truncating cast drifts window position by 1px per rescale, always toward top-left
 
 **FLTK status:** Open.
@@ -111,8 +140,7 @@ move/resize to a value that doesn't already exist on screen.
 
 **FLTK status:** Open.
 
-Found while porting the metrics half of `fl_box_table` to `fl.core.boxTable`
-(commit that introduced `boxDx()`/`boxBg()`).
+Found while porting `fl_box_table` (`fl.draw`'s boxtype table).
 
 Every other box/frame pair in the table follows the naming convention
 consistently: `*_BOX` entries have `flags & 2 == 0` (paints a solid
@@ -129,8 +157,29 @@ GTK "thin" entries have this backwards:
 i.e. the `_BOX` variants are flagged as frames and the `_FRAME` variants are
 flagged as boxes — looks like the two flags values were swapped by mistake
 when these four rows were added. Status: not verified against actual
-rendered output; `fl.core.boxBg()` currently reproduces this exactly
-(faithful port, see the comment there).
+rendered output; fldtk's boxtype table reproduces these flags exactly.
+
+### `Fl::reload_scheme()` (`src/Fl_get_system_colors.cxx`): switching back to the default scheme keeps the previous scheme's flags
+
+**FLTK status:** Open.
+
+Each scheme branch copies whole rows with `set_boxtype(FL_UP_BOX,
+FL_GTK_UP_BOX)` and friends, flags included. The default (`else`) branch
+restores the built-in look with the other overload, `set_boxtype(FL_UP_BOX,
+fl_up_box, D1, D1, D2, D2)`, which sets the function and insets but only
+ORs bit 0 into `flags`. So after "gtk+" then the default scheme,
+`FL_THIN_UP_BOX`/`FL_THIN_DOWN_BOX` keep the GTK rows' `flags = 3` (see the
+entry above), and `Fl::box_bg()` reports them as frames for the rest of the
+program. fldtk ports the default branch the same way, so it has the same
+behavior (`fl.core.reloadScheme()`, tested in its unittest).
+
+### `FL/Fl.H`: `Fl::set_labeltype(Fl_Labeltype, Fl_Labeltype)` is declared but never defined
+
+**FLTK status:** Open.
+
+`FL/Fl.H` declares `set_labeltype(Fl_Labeltype, Fl_Labeltype from)` with the
+comment `// is it defined ?`. No source file defines it, so a program
+calling it fails to link. fldtk ports only the three-argument form.
 
 ### `fl_box_table`: `FL_OVAL_FRAME` missing the "set" bit
 
@@ -1056,7 +1105,7 @@ Both functions were very likely written from the same template/pattern
 independent mistakes.
 
 Ported faithfully in
-`fl.names.fontNameStr()`/`callbackReasonNameStr()` -- both replicate the
+`fl.names.fontNameStr()`/`callbackReasonStr()` -- both replicate the
 exact same off-by-one (see each function's own doc comment), with a
 `unittest` that asserts the off-by-one, so syncing to FLTK's fix means
 updating that test too.
@@ -1462,16 +1511,13 @@ whole kinging decision, not just gate which ternary branch runs) rather
 than an intentional design choice — there's no comment justifying
 checking `j<=8` unconditionally for an already-crowned piece.
 
-**Ported
-faithfully, not fixed**: `source/test/checkers.d`'s `movepiece()`
-reproduces the exact same parse at both call sites
-(`(!(oldpiece & KING) && n.who) ? (j >= 36) : (j <= 8)`, parens added
-only to make the preserved grouping explicit, not to change it) — see
-that file's own top comment for the same writeup. No fldtk-specific
-consequence beyond reproducing FLTK's own gameplay quirk (this
-isn't a memory-safety-relevant bug the way some other entries in this
-file are, so there's no "faithful replication would crash a
-bounds-checked D array" reason to deviate here).
+Visible in play: undoing moves demotes the computer's kings back to
+plain pieces.
+
+**Fixed in fldtk**: `source/test/checkers.d`'s `movepiece()` uses the
+intended grouping, `!(oldpiece & KING) && (n.who ? (j >= 36) : (j <= 8))`,
+at both call sites, so an already-crowned piece never sets `n.king` and
+`undomove()` never strips its crown.
 
 ### `fluid::end_with_slash()` (`fluid/tools/filename.cxx`): undefined behavior on an empty string
 
@@ -2185,3 +2231,25 @@ Found by reading;
 not run against a built FLTK. **Deviated from in the port**
 (`fl.bmp_image`): a bitmap decoded for an `.ico` always keeps its fourth
 channel.
+
+### `examples/cairo-draw-x.cxx:49`: `size_range(50,50,-1,-1)` makes the window collapse on Windows
+
+**FLTK status:** Open. The fldtk port of the example was observed
+collapsing on Windows; upstream's own binary was not run. fltk/fltk's
+GitHub issues and pull requests have not been searched for an existing
+report yet.
+
+`Fl_Window::size_range()`'s documentation defines only `0` as "no
+maximum" for `maxWidth`/`maxHeight`; the example passes `-1`.
+`Fl_WinAPI_Window_Driver::set_minmax()` (`src/Fl_win32.cxx:2500`) tests
+`if (maxw)`/`if (maxh)`, so `-1` is taken as a real maximum and
+`ptMaxTrackSize` becomes the border width plus `-1` pixels. Moving or
+resizing the window then shrinks it to its minimum size. On X11 the
+same call happens to work: `Fl_X11_Window_Driver`'s size hints
+(`src/Fl_x.cxx:2865`) only set `PMaxSize` when the maximum is at least
+the minimum. The example should pass `size_range(50,50)` (or `0,0`);
+alternatively `set_minmax()` could treat a negative maximum like `0`.
+
+**Deviated from in the port**: `source/examples/cairo_draw_x.d` calls
+`sizeRange(50, 50)`; `fl.platform_win32`'s `setMinMax()` keeps FLTK's
+`if (maxw)` test.

@@ -106,7 +106,6 @@ void main(string[] args)
     bool bilinear = false;
     bool optimize = false;
     bool uncache = false;
-    bool debugMode = false;
     for (size_t i = 1; i < args.length; i++)
     {
         if (args[i] == "-b") // turn bilinear scaling on
@@ -117,8 +116,6 @@ void main(string[] args)
             drawGrid = false;
         else if (args[i] == "-u") // uncache
             uncache = true;
-        else if (args[i] == "-d") // debug
-            debugMode = true;
         else if (args[i][0] != '-' && !fileName.length)
             fileName = args[i];
         else if (args[i][0] == '-')
@@ -155,8 +152,6 @@ void main(string[] args)
         flags |= AnimGifImage.optimizeMemory;
         writefln("Using memory optimization (if image supports)");
     }
-    if (debugMode)
-        flags |= AnimGifImage.debugFlag;
     orig = new AnimGifImage(/*name=*/ fileName, /*canvas=*/ canvas, /*flags=*/ flags);
 
     // check if loading succeeded

@@ -19,15 +19,13 @@
  * the output buffer; no caller in this port needs that signal, and
  * string equality already answers the same question if one ever does).
  *
- * Not ported: `fl_filename_list()`/`fl_filename_free_list()` (a portable
- * `scandir()` wrapper) and `fl_decode_uri()` -- both exist to back a file
- * chooser's own directory listing (`fl.file_chooser`/`fl.native_file_chooser`,
- * both done, but neither ended up needing this specific pair -- see
- * their own module comments for what they use instead) or percent-decoding
- * a URI's path component, and still have no caller in this port.
- * `Fl_File_Sort_F`, `fl_alphasort()`/`fl_casealphasort()`/
- * `fl_casenumericsort()`/`fl_numericsort()` (the sort-order callbacks for
- * that scandir wrapper) skipped for the same reason.
+ * Not ported, because Phobos already provides them: `fl_filename_list()`/
+ * `fl_filename_free_list()` (a `scandir()` wrapper with C memory
+ * management; use `std.file.dirEntries()`, as `fl.file_browser` does),
+ * along with its `Fl_File_Sort_F` sort callbacks (`fl_alphasort()`,
+ * `fl_numericsort()`, ...); `fl_decode_uri()` (use
+ * `std.uri.decodeComponent()`); and `fl_getcwd_str()` (use
+ * `std.file.getcwd()`).
  *
  * `openUri()` (`fl.help_view`'s first real caller, for non-`file:`
  * link schemes -- http/https/ftp/mailto/news) is real on both

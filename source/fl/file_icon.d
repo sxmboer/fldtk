@@ -96,21 +96,14 @@
  *    existence check either way.
  *
  *  - **`Fl_File_Icon::label(Fl_Widget*)`/`labeltype()`**: ported as
- *    `FileIcon.label(Widget)`, wired into `fl.widget`'s `Label` struct
- *    via a new `Labeltype.iconLabel` case in `Label.draw()` (the enum
- *    value already existed, reserved but undispatched) -- same pattern
- *    already established for `Labeltype.multiLabel`/`fl.multi_label`.
- *    `Label.measure()` needed no change: an icon label's `text` field
- *    is always empty, and the existing `if (text.length == 0)` fallback
- *    already yields `(0, 0)`, which is what this port uses instead of
- *    FLTK's `fl_normal_measure()` -- FLTK's own default-measure
- *    fallback (`Fl::set_labeltype(_FL_ICON_LABEL, ..., 0)` passes a
- *    null measure function) measures `o->value` as if it were text,
- *    but `o->value` is actually an `Fl_File_Icon*` reinterpreted as
- *    `const char*` -- reading raw object bytes as UTF-8 text. Nothing
- *    in FLTK itself (or this port) actually calls
- *    `Fl_File_Icon::label()`/relies on its measured size, so this port
- *    doesn't reproduce that undefined-looking read.
+ *    `FileIcon.label(Widget)` and the static `FileIcon.labeltype()`,
+ *    which `fl.widget` registers as `Labeltype.iconLabel`'s drawing
+ *    function. The icon travels in `Label.icon`, a typed field, where
+ *    FLTK reinterprets the label's `const char*` value as an
+ *    `Fl_File_Icon*`. Like FLTK, the icon label has no measuring
+ *    function of its own, so the normal one runs; with `Label.icon`
+ *    holding the icon, the label's text is empty and measures (0, 0),
+ *    where FLTK's would measure the pointer's bytes as text.
  */
 module fl.file_icon;
 
@@ -123,9 +116,9 @@ import std.path : baseName;
 import std.process : environment;
 import std.string : splitLines;
 
-import fl.enumerations : Color, gray, black, white, red, green, blue, dark3;
+import fl.enumerations : Color, Align, gray, black, white, red, green, blue, dark3;
 import fl.filename : filenameName, filenameExt, filenameMatch;
-import fl.widget : Widget;
+import fl.widget : Widget, Label;
 import fldraw = fl.draw;
 
 /// Special color value meaning "use the caller's `ic` parameter" --
@@ -397,6 +390,16 @@ class FileIcon
         default:
             break;
         }
+    }
+
+    /// Draws the icon a label carries (`Label.icon`) within (x, y, w, h)
+    /// in the label's color: the drawing function `fl.widget` registers
+    /// for `Labeltype.iconLabel`. Ported from `Fl_File_Icon::labeltype()`.
+    /// Always draws as active; `Widget.drawLabel()` has already dimmed
+    /// the color for an inactive widget, as FLTK's `draw_label()` does.
+    static void labeltype(const(Label)* o, int x, int y, int w, int h, Align a)
+    {
+        if (o.icon !is null) o.icon.draw(x, y, w, h, o.color);
     }
 
     /// Associates this icon with `w`'s label (`Labeltype.iconLabel`).

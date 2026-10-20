@@ -42,18 +42,13 @@
  *    the "are all four margins equal?" convenience return value isn't
  *    ported since nothing needs it and it's trivial to recompute from
  *    the four getters if it ever is.
- *  - `Fl_Grid::Cell::align()`/`Fl_Grid::debug()` are renamed to
- *    `Cell.alignment()` / `Grid.dumpLayout()` -- `align` and `debug`
- *    are both D keywords (the former for alignment attributes, the
- *    latter for conditional-compilation blocks), so neither FLTK
- *    name is usable as a plain D identifier.
+ *  - `Fl_Grid::Cell::align()` is `Cell.alignment()`: `align` is a D
+ *    keyword (see TRANSLITERATION_GUIDE.md's keyword table).
+ *  - `Fl_Grid::debug()` and the `FLTK_GRID_DEBUG` environment variable
+ *    are not ported: fldtk carries no debugging-only code paths.
  *  - `draw_grid()`'s `lineStyle(FL_SOLID, 1)`/`lineStyle(FL_SOLID, 0)`
  *    calls (setting, then restoring, the pen width around the helper
  *    lines) are real, via `fl.draw.lineStyle()`.
- *  - `fl_getenv("FLTK_GRID_DEBUG")` (a locale-aware `getenv()` wrapper
- *    that isn't ported) is replaced with `std.process.environment.get()`
- *    -- a direct, cleaner D stdlib equivalent for the same plain
- *    "is this environment variable set" check.
  */
 module fl.grid;
 
@@ -63,8 +58,6 @@ import fl.rect : Rect;
 import fl.enumerations : Boxtype, Color, black, damageChild, lineSolid;
 import fl.core;
 import fldraw = fl.draw;
-import std.process : environment;
-import std.stdio : stderr;
 
 /// Fl_Grid_Align: an open bitmask set (combinable via `|`), same
 /// alias-plus-constants treatment as Align/Color/Font/When/Damage.
@@ -187,8 +180,6 @@ class Grid : FlGroup
         needLayout_ = false;
         gridColor_ = 0xbbeebb00; // light green
         drawGrid_ = false;
-        if (environment.get("FLTK_GRID_DEBUG") !is null)
-            drawGrid_ = true;
     }
 
     /**
@@ -239,8 +230,8 @@ class Grid : FlGroup
 
     bool needLayout() const { return needLayout_; }
 
-    /// Draws the grid helper lines (design/debugging aid, enabled via
-    /// showGrid() or the FLTK_GRID_DEBUG environment variable).
+    /// Draws the grid helper lines (a design aid, enabled via
+    /// showGrid()).
     protected void drawGrid()
     {
         int x0 = x() + fl.core.boxDx(box()) + marginLeft_;
@@ -777,27 +768,6 @@ class Grid : FlGroup
     {
         drawGrid_ = set;
         gridColor_ = col;
-    }
-
-    /// Dumps row/col layout info to stderr (FLTK: debug(), renamed
-    /// since `debug` is a D keyword). level is currently ignored
-    /// except for the "print anything at all" 0-vs-nonzero check,
-    /// matching FLTK's own not-yet-implemented level scheme.
-    void dumpLayout(int level = 127)
-    {
-        if (level <= 0) return;
-        stderr.writefln("Grid.layout(%d, %d) at (%d, %d, %d, %d)",
-            rowCount_, colCount_, x(), y(), w(), h());
-        stderr.writefln("    margins:   (%2d, %2d, %2d, %2d)",
-            marginLeft_, marginTop_, marginRight_, marginBottom_);
-        stderr.writefln("       gaps:   (%2d, %2d)", gapRow_, gapCol_);
-        foreach (r, ref row; rowArray_)
-        {
-            stderr.writefln("Row %2d: minh = %d, weight = %d, gap = %d, h = %d",
-                r, row.minh_, row.weight_, row.gap_, row.h_);
-            foreach (c; row.cells_)
-                stderr.writefln("        Cell(%2d, %2d)", c.row_, c.col_);
-        }
     }
 }
 

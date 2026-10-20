@@ -620,6 +620,19 @@ final class ProjectCanvas : OverlayWindow
         foreach (c; n.children) clearSelectedFlags(c);
     }
 
+    /// Draws a flat box with an outline, so a flat-boxed group stays
+    /// visible while editing even when it has its parent's color. Ported
+    /// from `fd_flat_box_ghosted()` (`fluid/nodes/Window_Node.cxx`),
+    /// without FLTK's `Fl::box_color()` dimming, which fldtk doesn't
+    /// track (see `PORTING.md`'s `FL/Fl.H` row).
+    private static void flatBoxGhosted(int x, int y, int w, int h, Color c)
+    {
+        fl_color(c);
+        fl_rectf(x, y, w, h);
+        fl_color(colorAverage(foregroundColor, c, 0.1f));
+        fl_rect(x, y, w, h);
+    }
+
     /// Checkerboard-fills the whole canvas before the real content
     /// paints whenever the window's own `box()` wouldn't itself cover
     /// every pixel (`noBox`, any frame-only type, or anything in the
@@ -635,10 +648,8 @@ final class ProjectCanvas : OverlayWindow
     /// show_ghosted_outline`): FLTK's own mechanism is two-part --
     /// `Overlay_Window::draw()` temporarily swaps `FL_FLAT_BOX`'s
     /// registered drawing function for `fd_flat_box_ghosted()` around
-    /// the real content redraw (ported as `fl.draw.ghostFlatBox`, a
-    /// plain flag `drawBoxAt()`'s own `flatBox` case consults -- see
-    /// that flag's own doc comment for why a flag substitutes for
-    /// FLTK's function-pointer swap), plus a *separate* explicit
+    /// the real content redraw (ported as-is with `getBoxtype()`/
+    /// `setBoxtype()` and `flatBoxGhosted()`), plus a *separate* explicit
     /// outline for any `noBox` group specifically (FLTK:
     /// `Group_Node.cxx`/`Grid_Node.cxx`'s own live-preview `draw()`
     /// overrides -- `if (Fluid.show_ghosted_outline && box()==FL_NO_
@@ -668,9 +679,16 @@ final class ProjectCanvas : OverlayWindow
                     fl_rectf(X, Y, checkSize, checkSize);
                 }
         }
-        ghostFlatBox = showGhostedOutline;
-        super.draw();
-        ghostFlatBox = false;
+        if (showGhostedOutline)
+        {
+            import std.functional : toDelegate;
+            auto oldFlatBox = getBoxtype(Boxtype.flatBox);
+            setBoxtype(Boxtype.flatBox, toDelegate(&flatBoxGhosted), 0, 0, 0, 0);
+            super.draw();
+            setBoxtype(Boxtype.flatBox, oldFlatBox, 0, 0, 0, 0);
+        }
+        else
+            super.draw();
         if (showGhostedOutline) outlineNoBoxGroups(this);
     }
 
@@ -679,7 +697,7 @@ final class ProjectCanvas : OverlayWindow
     /// (FL_FOREGROUND_COLOR, color(), .1f)` formula, `colorAverage()`
     /// here) around any `Group` (or subclass, e.g. `fl.grid.Grid`)
     /// whose own `box()` is `noBox` -- an otherwise fully invisible
-    /// container, which the `ghostFlatBox` flat-box swap above can
+    /// container, which the flat-box swap above can
     /// never reach since it never calls the flat-box drawer at all.
     ///
     /// Must skip an invisible child (and, since it's a

@@ -391,8 +391,8 @@ struct MenuItem
     /// staying populated for a multiLabel item, matching this setter's
     /// own behavior. `l.text = text;` in
     /// `measure()`/`draw()` below is harmless with `text` left set: the
-    /// `multiLabel` case in `fl.widget.Label.draw()`/`measure()`
-    /// dispatches straight into `multi`, never reading `l.text` at all.
+    /// `multiLabel` label type's draw/measure functions (`fl.widget`'s
+    /// label-type table) read `multi`, never `l.text`.
     void multiLabel(MultiLabel ml)
     {
         labeltype_ = Labeltype.multiLabel;

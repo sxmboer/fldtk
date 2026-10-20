@@ -46,21 +46,15 @@
 //    that reset deliberately, since it already did the same reset
 //    itself a few lines earlier).
 //
-// Found, NOT fixed (ported faithfully, flagged here rather than
-// silently worked around or silently corrected -- see CONVENTIONS.md's
-// FLTK-bug process): in `movepiece()`, the kinging check
-// `!(oldpiece&KING) && n->who ? (j>=36) : (j<=8)` parses (`&&` binds
-// tighter than `?:`) as `(!(oldpiece&KING) && n->who) ? (j>=36) :
-// (j<=8)` -- for a piece that's *already* a king, the left side is
-// always false regardless of `n->who`, so the check silently degrades
-// to plain `j<=8` instead of skipping the kinging branch outright. In
-// practice this only sets `n->king` (and OR's in an already-set KING
-// bit, a no-op) on an ordinary move by a white king that happens to
-// land on a low-numbered square -- mostly harmless *except* that
-// `undomove()` reads `n->king` to decide whether to strip the KING bit
-// on undo, so undoing such a move could incorrectly demote an
-// already-crowned king back to a plain piece. Ported with the exact
-// same precedence (not "fixed") in both `movepiece()` call sites below.
+// Deliberate deviation from FLTK (see FLTK_ISSUES.md): in
+// `movepiece()`, FLTK's kinging check `!(oldpiece&KING) && n->who ?
+// (j>=36) : (j<=8)` parses (`&&` binds tighter than `?:`) as
+// `(!(oldpiece&KING) && n->who) ? (j>=36) : (j<=8)`, so a piece that's
+// already a king gets `n->king` set whenever it moves onto a square
+// `<= 8`. `undomove()` reads `n->king` to decide whether to strip the
+// KING bit, so undoing such a move demotes the king to a plain piece.
+// Both `movepiece()` call sites below use the intended grouping,
+// `!(oldpiece & KING) && (n.who ? (j >= 36) : (j <= 8))`.
 //
 // `usermoves()`'s own bounds check is one narrow exception to "port
 // faithfully": FLTK's `idx > (int)sizeof(_usermoves)-1` (sizeof
@@ -456,7 +450,7 @@ void movepiece(Node f, int i, Node jnode)
                 n.from = i;
                 n.to = j;
                 Piece oldpiece = b[i]; b[i] = EMPTY;
-                if ((!(oldpiece & KING) && n.who) ? (j >= 36) : (j <= 8))
+                if (!(oldpiece & KING) && (n.who ? (j >= 36) : (j <= 8)))
                 {
                     n.king = true;
                     b[j] = cast(Piece)(oldpiece | KING);
@@ -483,7 +477,7 @@ void movepiece(Node f, int i, Node jnode)
             n.to = j;
             n.jump = (1 << (jumploc - 10));
             Piece oldpiece = b[i]; b[i] = EMPTY;
-            if ((!(oldpiece & KING) && n.who) ? (j >= 36) : (j <= 8))
+            if (!(oldpiece & KING) && (n.who ? (j >= 36) : (j <= 8)))
             {
                 n.king = true;
                 b[j] = cast(Piece)(oldpiece | KING);
