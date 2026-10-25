@@ -47,7 +47,7 @@ void main()
 
 which produces a window with a clickable button.
 
-<img width="412" height="333" alt="button" src="https://github.com/user-attachments/assets/c1d54510-d5fb-4408-87cd-b63c48e08104" />
+<img width="412" height="333" alt="button" src="https://raw.githubusercontent.com/sxmboer/fldtk/main/screenshots/button.png" />
 
 ## Status
 
@@ -80,6 +80,9 @@ Highlights of v1.0.3:
   tabs, the file chooser, help viewer and adjuster glyphs, cursors and the
   print dialog's pictures. They look clean on any monitor, at any desktop
   scale or zoom.
+
+  <img alt="Fluid's widget bin" src="https://raw.githubusercontent.com/sxmboer/fldtk/main/screenshots/widget-bin.png" />
+
 - **Fluid speaks D only.** A widget's code sections are reduced to the
   ones that mean something in D: `setup`, and `finalize` for code that
   runs after a group's or window's children are built. FLTK's `#include`
