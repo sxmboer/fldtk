@@ -554,6 +554,44 @@ enum Event
     beforeMenu,
     appActivate,
     appDeactivate,
+
+    // Pen events (FLTK's Fl::Pen::Event), sent to widgets subscribed
+    // with fl.pen.Pen.subscribe() -- see fl.pen.
+    penDetected = 0x1000, /// a new pen came near the tablet
+    penChanged,           /// another pen than the last came near (or the pen or tablet went: `Pen.eventPenId()` is -1)
+    penInRange,           /// the pen came near the tablet again
+    penOutOfRange,        /// the pen went out of the tablet's range
+    penEnter,             /// the pen came over the widget; return nonzero to receive its events
+    penLeave,             /// the pen left the widget
+    penTouch,             /// the tip or eraser touched the surface; return nonzero to receive penDraw until it lifts
+    penLift,              /// the tip or eraser left the surface
+    penHover,             /// the pen moved without touching, no button held
+    penDraw,              /// the pen moved touching, or with a button held
+    penButtonPush,        /// a barrel button was pressed (`Pen.eventTrigger()` says which)
+    penButtonRelease,     /// a barrel button was released
+
+    // fldtk's own events, beyond FLTK (numbered apart from FLTK's).
+    // Gestures go where the mouse wheel goes: to the widget under the
+    // fingers, then out through its parents; see fl.core.eventZoom() and
+    // the other gesture accessors. Raw touch goes to widgets subscribed
+    // with fl.touch.Touch.subscribe().
+    rotateGesture = 0x2000, /// two fingers turned: `eventRotation()` degrees
+    swipeGesture,           /// three or more fingers moved on a touchpad: `eventDx()`/`eventDy()`, `eventFingers()`
+    touchDown,              /// a finger touched a subscribed widget; return nonzero to receive its touchMove/touchUp
+    touchMove,              /// a finger the widget took moved
+    touchUp,                /// a finger the widget took left the screen
+    touchCancel,            /// the system took a finger the widget had (for its own gesture, say)
+}
+
+/// Where a gesture event stands: the first event of a gesture, one of
+/// its updates, its last, or its end without completing (the system took
+/// it over, say) -- `fl.core.eventGesturePhase()`.
+enum GesturePhase
+{
+    begin,
+    update,
+    end,
+    cancel,
 }
 
 /// FL_KEYBOARD is a synonym for FL_KEYDOWN FLTK.

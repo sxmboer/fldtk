@@ -2,6 +2,7 @@
 // Build: rdmd buildsamples.d test file_chooser
 import fl;
 import std.format : format;
+import std.path : buildPath;
 import std.process : environment, executeShell;
 import std.stdio : File, KeepTerminator;
 
@@ -212,7 +213,7 @@ Image pdfCheck(string name, ubyte[] header, int)
     if (header.length < 4 || header[0 .. 4] != "%PDF") return null;
 
     string home = environment.get("HOME", null);
-    string preview = format("%s/.preview.ppm", home !is null ? home : "");
+    string preview = buildPath(home, ".preview.ppm");
 
     string command = format(
         "gs -r100 -dFIXED -sDEVICE=ppmraw -dQUIET -dNOPAUSE -dBATCH "
@@ -229,13 +230,13 @@ Image psCheck(string name, ubyte[] header, int)
     if (header.length < 2 || header[0 .. 2] != "%!") return null;
 
     string home = environment.get("HOME", null);
-    string preview = format("%s/.preview.ppm", home !is null ? home : "");
+    string preview = buildPath(home, ".preview.ppm");
     string outname;
 
     if (header.length >= 4 && header[0 .. 4] == "%!PS")
     {
         // PS file has DSC comments; extract the first page...
-        outname = format("%s/.preview.ps", home !is null ? home : "");
+        outname = buildPath(home, ".preview.ps");
 
         if (name != outname)
         {

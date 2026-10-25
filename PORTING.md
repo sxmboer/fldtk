@@ -44,10 +44,8 @@ documented or not, so being public in an FLTK header doesn't by itself
 make something worth porting. Members FLTK marks deprecated, keeps out of
 its own manual (`\internal`, `\cond`, `#ifndef FL_DOXYGEN`), or leaves
 without a doc comment of their own are deliberately not ported, and are
-not listed in the rows below. `api-inventory/MISSING.md` lists every
-FLTK class, method and function without a fldtk counterpart, sorted by
-those signals; rows below name only the documented ones fldtk leaves out
-on purpose, and why.
+not listed in the rows below. The rows name only the documented ones
+fldtk leaves out on purpose, and why.
 
 **Maintaining this file**: this is a status snapshot, not a change log —
 when a module's status or gaps change, edit that row's own `**Status:**`
@@ -112,16 +110,34 @@ dividing by *its own window's* screen, not a fixed index),
 live-rescale keybinding (`keyboardScreenScaling()`) with its "137 %"
 indicator popup, and startup detection (`Xft.dpi` resource on Linux,
 genuine independent per-monitor `GetDpiForMonitor()` queries on
-Windows, `FLTK_SCALING_FACTOR` env var on both).
+Windows, `FLTK_SCALING_FACTOR` env var on both). On Linux, a desktop
+scale change while windows are open is followed too, as in FLTK's
+`after_display_rescale()`/`react_to_screen_reconfiguration()`
+(`Fl_x.cxx`): `RRScreenChangeNotify` re-reads the monitor list, and a
+change of the root window's `_NET_WORKAREA` re-reads `Xft.dpi` and
+rescales every window, and a window's size is read from the X server
+(`XGetWindowAttributes()`), not from the ConfigureNotify event, whose size
+can be wrong. Beyond FLTK: a change of `RESOURCE_MANAGER` (the property
+holding `Xft.dpi`) triggers the same re-read; the new desktop scale
+becomes Ctrl-0's reference (FLTK's X11 `base_scale()` keeps the startup
+value); and windows keep their size on screen under GNOME's XWayland
+scaling, which resizes X11 windows itself, clamps them to their old size
+hints, and ignores a fixed-size window's request for its new size until
+it is asked for a different one first. `fl.platform_x11` records each
+window's size at the RandR notification and asks for it again once
+Mutter has settled (see the comment above `recordedSizes_`). FLTK on
+X11 does not follow a scale change on that desktop.
 **One deliberate fldtk-only addition beyond FLTK**: the last
-interactively-chosen scale persists across restarts via `fl.preferences`
-(`fl.core.loadPersistedScaleFactor()`/`persistScaleFactor()`), as a single
-global value applying to all applications at once rather than a
-per-monitor preference. It lives at `~/.config/fldtk/core.prefs` — fldtk's
-own vendor namespace, deliberately not FLTK's `"fltk.org"`, since this
-feature has no FLTK counterpart at all (FLTK's `scale_handler()`/
-`rescale()` chain never uses `Fl_Preferences` to persist it) — and is
-applied before `FLTK_SCALING_FACTOR`. Linux only so far; Windows has no
+interactively-chosen zoom persists across restarts via `fl.preferences`
+(`fl.core.loadPersistedZoom()`/`persistZoom()`), as a single global
+value applying to all applications at once rather than a per-monitor
+preference. It is stored relative to the base scale (the desktop's scale
+times `FLTK_SCALING_FACTOR`), so X11 and Wayland, where the compositor
+applies its scale separately, share it. It lives at
+`~/.config/fldtk/core.prefs`, key `Zoom` — fldtk's own vendor namespace,
+deliberately not FLTK's `"fltk.org"`, since this feature has no FLTK
+counterpart at all (FLTK's `scale_handler()`/`rescale()` chain never uses
+`Fl_Preferences` to persist it). Linux only so far; Windows has no
 persistence wired up.
 
 **`Fl::fatal()`/`Fl::set_abort()`** are real, with one deliberate
@@ -218,6 +234,31 @@ existed in FLTK to support `event_dispatch()`, ported separately as
   (`FL_ZOOM_EVENT`) is real and dispatched (`fl.core.scaleHandler()`
   calls `dispatch(Event.zoomEvent, null)` after every successful live
   rescale), so it is not one of these gaps.
+- Touch and gestures, beyond FLTK (`fl.touch`, with `fl.win32_touch`,
+  `fl.xinput2` and the Wayland and X11 backends; samples
+  `examples/touch_test.d` and, for pens, `examples/pen_test.d`). FLTK's
+  only gesture is `FL_ZOOM_GESTURE`, sent on macOS only; fldtk sends
+  `Event.zoomGesture` on Wayland, X11 and Windows, and adds
+  `Event.rotateGesture`, `Event.swipeGesture` and raw touch
+  (`Event.touchDown`/`touchMove`/`touchUp`/`touchCancel` for widgets
+  subscribed with `Touch.subscribe()`), with `eventZoom()`,
+  `eventRotation()`, `eventFingers()` and `eventGesturePhase()`
+  (`GesturePhase`). `zoomGesture` still sets `eventDy()` as FLTK does
+  ((zoom - 1) x 1000). Gestures go where the mouse wheel goes (FLTK sends
+  its zoom gesture to the window, whose group offers it to the focused
+  child first). On a touchscreen one finger acts as the mouse (its press
+  waits up to 100 ms for a second finger, so a pinch starting on a
+  button doesn't click it) and two make zoom, rotate and scroll events,
+  worked out in `fl.touch` from the raw contacts on Wayland (`wl_touch`)
+  and X11 (XInput 2.2, which makes the X server stop turning the first
+  finger into the mouse itself), and by Windows (`WM_GESTURE`, with
+  single-finger pan turned off). Touchpad pinch, turn and swipe come
+  recognized from Wayland's pointer-gestures and X11's XInput 2.4
+  (X.Org server 21.1 and later); Windows sends a touchpad pinch as
+  Ctrl + mouse wheel. The X11 backend links libXi for this. Tested on
+  touchscreens with `examples/touch_test.d`: raw multi-touch on Windows
+  (six fingers tracked independently, a Lenovo Yoga) and on Wayland.
+  X11 touch and touchpad gestures are untested on hardware.
 
 ### `FL/core/options.H`
 
@@ -254,14 +295,47 @@ dispatch, see `FL/Fl.H`'s row).
 
 ### `FL/core/pen_events.H`
 
-**Status:** Deferred — n/a
+**Status:** Partial — `fl.pen` (the API, from `FL/core/pen_events.H` and
+`src/drivers/Base/Fl_Base_Pen_Driver.*`), `fl.wayland_pen_driver`
+(`src/drivers/Wayland/Fl_Wayland_Pen_Driver.*`), `fl.win32_pen_driver`
+(`src/drivers/WinAPI/Fl_WinAPI_Pen_Driver.*`); samples `test/penpal.d`
+(FLTK's) and `examples/pen_test.d` (every value, trait and event)
 ([header](https://github.com/fltk/fltk/blob/master/FL/core/pen_events.H))
 
-Pen/tablet events. FLTK itself has no X11 implementation of this either
-(only Wayland and Windows) — see `CONVENTIONS.md`'s "Where this port
-intentionally exceeds FLTK" for the plan to eventually add X11 pen
-support (via XInput2) once fldtk's Wayland driver exists to validate the
-event model first.
+Pen and tablet input (a stylus, on a tablet or a pen-enabled screen):
+pressure, tilt, twist, barrel pressure, the eraser, barrel buttons,
+hovering, several pens told apart. Widgets subscribe with
+`Pen.subscribe()`; see `fl.pen`'s module comment for the event flow.
+
+- Drivers for Wayland (the tablet protocol, `zwp_tablet_v2`) and Windows
+  (pointer input, `WM_POINTER*`, Windows 8 and later, its functions
+  looked up in user32.dll at run time). None for X11 or macOS: there pens
+  act as mice, as FLTK's X11 does. An X11 driver through XInput2 is
+  planned beyond FLTK (`CONVENTIONS.md`).
+- Simpler than FLTK: the pen events are members of `Event`
+  (`Event.penTouch`, ...) instead of a second enum `Fl::Pen::Event` passed
+  as an int; the API is class `Pen`'s static members (`Pen.subscribe()`,
+  `Pen.State.tipDown`), FLTK's namespace `Fl::Pen`; destroying a
+  subscribed widget unsubscribes it (FLTK requires unsubscribing first).
+- The dispatch FLTK copies into each driver is written once, in `fl.pen`
+  (FLTK's own TODO): the widget under the pen is found by walking the
+  window's widget tree on both platforms (FLTK's Windows driver takes
+  the first subscriber in its list, whatever the stacking), and a widget
+  destroyed while it handles a pen event ends the dispatch on both
+  (FLTK checks only on Windows). Losing the pointer capture mid-stroke
+  keeps the barrel buttons' state (FLTK's Windows driver clears them,
+  against its own comment).
+- On Wayland, the pen works fldtk's own title bar like the mouse
+  (`fl.platform_wayland.penOnFrame()`); FLTK has a libdecor/GTK proof of
+  concept moving a window only. A tool reporting its distance from the
+  surface gets `Pen.Trait.proximity` (FLTK fills the value but leaves
+  the trait out).
+- Not ported: the tablet's own pad (buttons, rings, strips) and a
+  tool's wheel, which FLTK's API doesn't cover either.
+- Tested on hardware: the Windows driver with a Lenovo Yoga's built-in
+  pen (`examples/pen_test.d`) — pressure, tilt, hover versus contact and
+  the eraser all work. That pen reports no twist, so twist is untested.
+  The Wayland driver is untested on hardware.
 
 ### `FL/Fl_Export.H`
 
@@ -499,9 +573,8 @@ need them, not as a port of this header: `utf8encode()`/`utf8len()`/
 `eventNames`/`fontNames`/`callbackReasonNames` plus their `*Str()` lookup
 helpers — pure debug/introspection tables, no internal consumer.
 
-- `eventNames` skips FLTK's 11 trailing `Fl::Pen::*` entries (pen events
-  are deferred — see `FL/core/pen_events.H`'s row); every other entry is
-  ported.
+- `eventNames` includes the pen events (`Event.penTouch` ->
+  `"Fl::Pen::TOUCH"`, ...).
 - Two real FLTK off-by-one bugs (`fl_fontname_str()`/
   `fl_callback_reason_str()` both bounds-check against the wrong index, so
   each array-based path is unreachable for its own last entry) are ported
@@ -689,13 +762,19 @@ Differences from FLTK:
   for a new, unrelated Pixmap) when they match — otherwise a short-lived
   popup destroyed while still the last thing painted would leave
   `drawable_` dangling and break the next `createOffscreen()` call.
-  Two deliberately-deferred gaps: `drawBitmapFixed()` (1-bit XBM stipple
-  bitmaps) isn't scaled — FLTK's real version recaches an actual resized
-  bitmap rather than scaling the destination rect, machinery `fl.bitmap`
-  doesn't have; and `copyOffscreen()`/double-buffer sizing (window/buffer
-  allocation size) is a separate concern from the rect/line/polygon
-  scaling above. `rescaleOffscreen()` is a real no-op for the same
-  reason — see that function's own doc comment.
+  The public offscreens follow FLTK's scale handling, on every platform:
+  `createOffscreen(w, h)` takes FLTK units and makes the buffer at the
+  current scale, `beginOffscreen()` draws into it at that scale wherever
+  it is called from, `copyOffscreen()` takes FLTK units on both sides,
+  and `rescaleOffscreen()` remakes a buffer at a new scale with its
+  picture scaled (Cairo on Wayland, `StretchBlt()` on Windows, reading
+  and redrawing the pixels on X11). `fl.image_surface` and the
+  double-buffering use device-pixel buffers
+  (`createOffscreenPixels()`, the seven-argument `copyOffscreen()`),
+  sizing them themselves. One deliberately-deferred gap:
+  `drawBitmapFixed()` (1-bit XBM stipple bitmaps) isn't scaled — FLTK's
+  real version recaches an actual resized bitmap rather than scaling the
+  destination rect, machinery `fl.bitmap` doesn't have.
 - `fl.platform_x11`'s `case Expose:` translates raw device-pixel
   coordinates into FLTK units before passing them to `Widget.damage()`,
   matching every other incoming-event coordinate translation
@@ -838,47 +917,33 @@ Minimal hand-written `extern(C)` bindings against the system `libGLU`
 itself). Only the 7 functions any sample actually calls are declared
 (`gluNewQuadric`/`gluCylinder`/`gluDeleteQuadric`/`gluLookAt`/
 `gluOrtho2D`/`gluPerspective`/`gluPickMatrix` plus the opaque `GLUquadric`
-handle) — GLU's sphere/disk/NURBS/tessellator surface isn't. Not
-re-exported from the top-level `fl` package, same as `fl.opengl`/`fl.glx`
-— infrastructure, not a header port.
+handle) — GLU's sphere/disk/NURBS/tessellator surface isn't.
+Re-exported from the top-level `fl` package, like `fl.opengl`, since
+samples call it directly.
 
 ### `GL/glew.h`
 
 **Status:** Complete — `fl.glew`
 
-Not an FLTK header — GLEW (the OpenGL Extension Wrangler), a third-party
-C library, bound the same way `fl.glu` binds GLU, **but only on Linux**
-(see the platform-split note below). Needed because OpenGL functions from
-1.3 onward aren't guaranteed linkable symbols in `libGL.so`/
-`opengl32.dll` (they're meant to be resolved via `glXGetProcAddress()`/
-`wglGetProcAddress()` at runtime); FLTK's own GL3-core-profile samples
-depend on real GLEW for exactly this, so Linux matches that dependency
-choice exactly.
+Not an FLTK header: the part of GLEW (the OpenGL Extension Wrangler)
+FLTK's GL3 samples use. OpenGL functions from 1.3 onward aren't
+guaranteed linkable symbols in `libGL.so`/`opengl32.dll`; they are
+looked up at run time, which is GLEW's job. fldtk does that lookup
+itself instead of linking GLEW: `glewInit()` resolves each function
+through `fl.gl_window_driver.getProcAddress()` (`glXGetProcAddressARB()`,
+`eglGetProcAddress()` or `wglGetProcAddress()`), so it works on X11,
+Wayland and Windows with no extra library (a GLEW built for GLX fails on
+an EGL context).
 
-**Windows is deliberately different**: real GLEW (`glew32s.lib`) isn't
-required, so a Windows dev machine needs no GLEW install (a static-library
-`dub build` wouldn't notice the missing symbols, but a fully-linked `dub
-test` binary would). `fl.glew`'s Windows branch instead resolves the same
-~26 functions itself via `wglGetProcAddress()` — already linked
-unconditionally through `opengl32.dll`, no new dependency of any kind —
-the same technique GLEW uses internally, just inlined here rather than
-delegated to the third-party library, and the same one
-`fl.gl_window_driver.switchToGl1()` uses for its own single
-`glUseProgram` lookup. See `fl.glew`'s own module doc comment for the
-full writeup of both branches.
-
-- Both branches expose the identical binding shape: a private function-
-  pointer variable per modern GL function (`__glewCreateShader` etc,
-  matching GLEW's own naming), populated before use (by real GLEW on
-  Linux, by this module's own `glewInit()` on Windows), each wrapped in
-  a thin real D function of the familiar GL name -- the two consumer
-  samples need zero platform-specific code of their own either way.
-- Covers only the ~26 modern GL functions this project's samples actually
-  call (shader/program creation, VAO/VBO management, uniform/attribute
-  setup) plus `glewInit()`/`glewGetString()` (Windows' own
-  `glewGetString()` just self-identifies as this internal loader rather
-  than reporting a real GLEW version number). Not re-exported from the
-  top-level `fl` package, same as `fl.glu`.
+- Each function is a private function-pointer variable
+  (`__glewCreateShader` etc, GLEW's naming) wrapped in a D function of the
+  GL name, so the samples read as with GLEW and keep FLTK's
+  `glewInit()`/`glewGetString()` calls.
+- Covers only the ~26 modern GL functions this project's samples call
+  (shader/program creation, VAO/VBO management, uniform/attribute
+  setup) plus `glewInit()`/`glewGetString()`; `glewGetString()` names
+  this loader rather than a GLEW version. Re-exported from the
+  top-level `fl` package, like `fl.opengl`.
 
 ### `FL/rgb_colors.H`
 
@@ -904,7 +969,10 @@ native-handle layer: a program that makes its own Xlib or Win32 calls is
 tied to one of fldtk's platform drivers, and keeping those calls out of
 reach keeps programs portable across them. The equivalents exist inside
 the library as `package(fl)` (`fl.window.Window.xid()`,
-`fl.platform_x11.openDisplay()`), not as public API. Add a public accessor
+`fl.platform.openDisplay()`), not as public API. `fl.platform.backend()`
+is public: which Linux display server a program runs on
+(`test/fltk_versions` reports it; FLTK programs ask
+`fl_x11_display()`/`fl_wl_display()` for this). Add a public accessor
 only for a specific need that has no portable alternative.
 
 ### `FL/x.H` + `FL/x11.H` + `src/drivers/X11/*` + `src/drivers/Xlib/*` (rect/color/font parts)
@@ -927,9 +995,23 @@ hints, fullscreen/maximize/iconify via EWMH, icons via `_NET_WM_ICON`,
 image, with instant Xfixes-based change notification and a polling
 fallback); full XDND drag-and-drop (same-process and cross-application);
 real XIM/IME composition (including "preedit at cursor spot" positioning);
-and multi-monitor/Xinerama-aware screen geometry.
+and multi-monitor/Xinerama-aware screen geometry, including keeping a
+new top-level window on screen as `make_xid()` does (clamped to the
+monitor it overlaps most, or the first monitor if it overlaps none, so a
+position saved under another monitor layout can't open it out of sight).
 
 Differences from FLTK:
+- **Diagonal resize cursors** (`Cursor.nwse`/`nesw`) come from the
+  desktop's cursor theme (`XcursorLibraryLoadCursor()`, by the names
+  `nwse-resize`/`size_fdiag`/`bd_double_arrow` and their mirror images);
+  a theme without them gets an SVG arrow drawn at the theme's cursor
+  size. FLTK always uses its own 15×15 bitmaps there, tiny on a HiDPI
+  screen.
+- **Default cursor**: every top-level window gets the arrow cursor
+  (`XDefineCursor()`) when it is created. FLTK leaves it at `None`, which
+  inherits the root window's cursor, and a rootless Xwayland server
+  (labwc and other wlroots compositors) leaves that blank, so the pointer
+  vanishes over the window.
 - **Architecture**: a concrete, non-virtual module rather than FLTK's
   `Fl_Screen_Driver`/`Fl_Window_Driver` abstract base classes plus
   `Fl_X11_*` concrete subclasses. Windows has its own platform driver
@@ -939,13 +1021,17 @@ Differences from FLTK:
   own row) is polymorphic precisely because several concrete backends
   (SVG/PostScript/GL/GDI) coexist and are chosen *at runtime, within one
   running process*. X11 and Windows never do that — a compiled fldtk
-  binary targets exactly one OS, so which windowing backend is active is
-  a `version()` choice D's compiler resolves at build time, the same role
-  FLTK's own `newScreenDriver()`/`newWindowDriver()` factory functions
-  play in a per-platform C++ build. So `fl.platform_win32` is a second
+  binary targets exactly one OS, so `fl.platform_win32` is a second
   concrete module, exactly like this one, with `fl.window`/`fl.core`
   holding `version (Windows)` twins beside their `version (linux)`
-  branches — not a new abstract base class underneath both.
+  branches — not a new abstract base class underneath both. X11 and
+  Wayland *are* chosen at run time within one Linux binary, as in FLTK's
+  hybrid build; for that, `fl.window`/`fl.core` call the Linux backend
+  through `fl.platform`, a facade of free functions forwarding to the
+  active backend module, still with no class
+  hierarchy. The few X11-only functions outside the facade (the X
+  `Display*`, visual and colormap, X resources, `-display`) are used by
+  X11-only code such as GLX.
 - **Naming**: flat `fl.platform_x11`, not a nested `fl.platform.x11` —
   matches this project's actual convention (no subpackages exist yet).
 - `fl.xlib`/`fl.xft` are raw `extern(C)` infrastructure bindings (Xlib,
@@ -1035,18 +1121,128 @@ Missing:
 
 ### `FL/wayland.H`
 
-**Status:** Not started — *(planned: `fl.platform_wayland`, flat like
-`fl.platform_x11`/`fl.platform_win32` — this project has no subpackages
-anywhere, so there is no nested `fl.platform.wayland`)*
+**Status:** Partial — `fl.platform_wayland` and `fl.wayland_decoration`, with bindings `fl.wayland_client`, `fl.wayland_cursor`, `fl.xkbcommon` and generated protocol modules; built with Cairo only
 ([header](https://github.com/fltk/fltk/blob/master/FL/wayland.H))
 
-Note: Wayland support will introduce external dependencies:
+Ported from FLTK's `src/drivers/Wayland/` at FLTK commit `3a049d826`.
+`fl.platform` uses this backend whenever a Wayland connection can be
+made, as FLTK does, and forwards to it; `FLDTK_BACKEND=x11` or
+`FLDTK_BACKEND=wayland` forces one.
 
-- Cairo: advanced font rendering
-- Pango / Fontconfig: Required for international text layouts, complex scripts,
-UTF-8 parsing, and anti-aliased systemic font lookups. 
-- libdecor: Required for managing system window decorations (min/max/close
-buttons) natively inside Wayland environments. 
+What exists (`fl.platform_wayland`, plus the Wayland paths in `fl.draw`):
+- **Display and screens:** compositor, subcompositor, shm,
+  `xdg_wm_base`, outputs, the socket in `fl.core`'s event loop (read
+  with libwayland's prepare/read calls, `dispatchEvents()`). Screen geometry in logical pixels from
+  xdg-output (from the integer output scale when it is missing).
+- **Windows:** `xdg_toplevel`s. A window with a border asks for
+  server-side decorations (xdg-decoration), which KDE and the wlroots
+  compositors draw; where the compositor leaves them to the program
+  (GNOME, Weston, or no xdg-decoration), fldtk draws its own frame
+  (`fl.wayland_decoration`): a subsurface below the window with a title
+  bar in the program's colors (title in Pango, minimize, maximize and
+  close buttons; a double click maximizes, the right button opens the
+  compositor's window menu, dragging moves the window through
+  `xdg_toplevel.move`) and an invisible 8-pixel margin that resizes it
+  (`xdg_toplevel.resize`), left out when maximized, tiled or not
+  resizable; no frame when fullscreen. The window geometry includes the
+  title bar, so sizes asked for by the compositor and the size range are
+  adjusted by its height. `fullscreenActive()`/`maximizeActive()`
+  follow the compositor's configure states (a fullscreen change it makes
+  itself sends `Event.fullscreen`, as on X11). Configure, resizing by the user and the
+  program, close, minimize, maximize, fullscreen, title, size range,
+  modal/non-modal parents, xdg-dialog for dialogs, xdg-activation when a
+  shown window is shown again, window icons (xdg-toplevel-icon, where the
+  compositor offers it: not KDE Plasma 5.27's KWin nor GNOME's mutter;
+  elsewhere the desktop shows the icon of the `.desktop` file matching
+  the app id, or a generic one), shaped
+  windows (pixels outside the shape transparent). Menus and tooltips
+  are `xdg_popup`s, placed where fldtk's menu engine puts them and
+  written back where the compositor moved them; the Ctrl +/- indicator
+  is a popup centred on the window, as in FLTK. Subwindows are
+  desynchronized `wl_subsurface`s clipped to their parents (FLTK's
+  `checkSubwindowFrame()`).
+- **Drawing:** each window draws through `fl.cairo_graphics_driver`
+  into its own Cairo image buffer, copied into a shared-memory
+  `wl_buffer` on commit and paced by frame callbacks; drawing outside a
+  repaint is committed by the next flush. Overlay windows' overlay is
+  drawn over a copy of the window's pixels. In `fl.draw`: offscreen
+  buffers and image surfaces are Cairo image surfaces, `fl_scroll()`
+  moves pixels within the buffer, `fl_overlay_rect()` works. Integer
+  output scales become buffer scales; fractional desktop scales are
+  drawn at the exact scale (wp-fractional-scale + viewporter).
+  `fl.cairo`'s context for a window is its buffer's.
+- **OpenGL:** `fl.wayland_gl_window_driver`, the port of
+  `Fl_Wayland_Gl_Window_Driver`, with bindings `fl.egl` and
+  `fl.wayland_egl`: EGL configs and contexts, a `wl_egl_window` and EGL
+  surface on each GL window's or GL subwindow's surface at the integer
+  buffer scale, swaps paced by frame callbacks, the software overlay,
+  and `gl_start()` through a transparent subsurface over the window.
+  See the `FL/Fl_Gl_Window.H` row.
+- **Input:** pointer enter/leave/motion/buttons/wheel with double
+  clicks; keyboard through xkbcommon (modifiers, keypad with NumLock
+  off, key repeat at the compositor's rate, dead keys and compose
+  sequences shown as marked text); input methods through text-input-v3
+  (preedit as marked text, commits, the cursor position for the
+  candidate window, `fl.core.compose()`'s Wayland rules);
+  `eventKey()`/`getKey()` from the keys held; cursors through the
+  cursor-shape protocol or a cursor theme, and cursors made from
+  images. Ctrl +/- rescaling, starting from `FLTK_SCALING_FACTOR` times
+  the zoom fldtk remembers (shared with X11, see
+  `fl.core.loadPersistedZoom()`).
+- **Data exchange:** the clipboard (`wl_data_device`, text and PNG/BMP
+  images), the middle-click selection buffer (primary-selection
+  protocol), and text drag and drop both ways, with the dragged text as
+  the drag's icon. Clipboard-change notification
+  (`fl.core.addClipboardNotify()`) when another program sets the
+  clipboard.
+- **Bindings:** `fl.wayland_client`, `fl.wayland_cursor` and
+  `fl.xkbcommon` are hand-written (`fl.xkbcommon` only the keymap,
+  state and compose part). The protocol modules (`fl.wayland_protocol`,
+  `fl.xdg_shell_protocol`, `fl.tablet_protocol`,
+  `fl.cursor_shape_protocol`, `fl.primary_selection_protocol`,
+  `fl.text_input_protocol`, `fl.fractional_scale_protocol`,
+  `fl.viewporter_protocol`, `fl.xdg_activation_protocol`,
+  `fl.xdg_dialog_protocol`, `fl.xdg_toplevel_icon_protocol`,
+  `fl.xdg_output_protocol`, `fl.xdg_decoration_protocol`,
+  `fl.xdg_system_bell_protocol`) are generated by `source/devtools/wayland_scanner.d`
+  and checked in; its header lists the commands.
+
+Beyond FLTK: `fl_beep()` rings the desktop's bell through
+xdg-system-bell where the compositor offers it (FLTK, like fldtk without
+it, writes a BEL character to stderr, which only a terminal turns into a
+bell); fldtk's own title bar shows only the buttons the compositor
+supports (`xdg_toplevel.wm_capabilities`, xdg-shell version 5); fractional scales drawn exactly (FLTK draws at the next
+integer scale and lets the compositor shrink the result); window icons
+through xdg-toplevel-icon (FLTK relies on the app id's desktop file); a
+window that moves itself while a mouse button is held gets the
+compositor to move it (`xdg_toplevel.move`); mouse buttons beyond 5,
+numbered as fldtk numbers them on X11 (side buttons 4 and 5, then 10,
+11, ...; FLTK makes back/forward 4 and 5 and ignores the rest);
+clipboard-change notification.
+
+Other differences from FLTK: no libdecor (FLTK uses the system's or
+its bundled copy, whose GTK plugin starts GTK in the process to draw the
+title bar on GNOME): fldtk's own frame instead, which looks the same on
+every compositor that leaves decorations to programs, and doesn't follow
+the desktop's theme; the cursor theme comes from
+`XCURSOR_THEME`/`XCURSOR_SIZE` (FLTK asks libdecor for the desktop's);
+each `wl_buffer` has its own shared-memory pool instead of
+FLTK's shared 10 MB pools; a window counts as exposed after its first
+configure (FLTK waits for the second); fldtk's image surfaces have no
+alpha, so the drag icon is black text on white (FLTK's is transparent).
+
+Missing:
+- Window positions: a Wayland program can't place its windows, so saved
+  positions are ignored.
+- Fullscreen across several screens (`fullscreenScreens()`): a Wayland
+  program can only ask to be fullscreen on one output, so the window is
+  fullscreen on its current screen; spanning screens needs the X11
+  backend. FLTK sizes a borderless window to cover the screens and leaves
+  its placement to the compositor, which can leave it partly off screen.
+- Drag and drop with `localOnly` (a fldtk addition) can't be limited to
+  the program: the compositor offers the drag to every program.
+- The work area: the whole of screen 0 is reported, where FLTK measures
+  it with maximized test windows.
 
 ### `FL/win32.H`
 
@@ -1577,6 +1773,8 @@ output or pipes finished PostScript to `lp`/`lpr` via
 `std.process.pipeShell()`.
 
 Differences from FLTK (POSIX half):
+- The color/grayscale output-mode pictures are SVG redrawings of FLTK's
+  `print_color`/`print_gray` XPMs, sharp at any scale.
 - The Collate checkbox is real/reachable here, unlike FLTK's own dialog,
   where the reactivating branch of `cb_print_copies()` is dead code —
   a deliberate deviation completing that dead code's evident intent.
@@ -1591,10 +1789,11 @@ Differences from FLTK (POSIX half):
   unvalidated preferences file (FLTK's own read is an unchecked
   out-of-bounds risk on a corrupted prefs file — see `FLTK_ISSUES.md`).
 
-Missing (POSIX half):
-- `Fl_GTK_Printer_Driver` (the `dlopen()`-at-runtime GTK dialog) — FLTK's
-  own doc comment calls it a cosmetic enhancement layered on top of the
-  dialog this port already has, not a functional requirement.
+Not ported, deliberately (POSIX half):
+- `Fl_GTK_Printer_Driver` (the `dlopen()`-at-runtime GTK dialog). fldtk
+  does not load or link GTK or Qt, and FLTK's own doc comment calls the
+  GTK dialog a cosmetic enhancement layered on top of the FLTK-drawn
+  dialog this port already has.
 
 `fl.printer_win32.Printer` extends `fl.paged_device.PagedDevice`
 directly (not `PostscriptFileDevice` — nothing here is PostScript-shaped),
@@ -1686,15 +1885,14 @@ Missing (Windows half):
 
 ### `FL/Fl_PDF_File_Surface.H`
 
-**Status:** Deferred (Cairo graphics driver) — *(planned: `fl.pdf_file_surface`)*
+**Status:** Not started — *(planned: `fl.pdf_file_surface`)*
 ([header](https://github.com/fltk/fltk/blob/master/FL/Fl_PDF_File_Surface.H))
 
 FLTK's implementation on Linux needs Pango
 (`new_platform_pdf_surface_()` returns a hard error without it): it
-draws through the Cairo graphics driver onto a Cairo PDF surface. The
-Cairo and Pango bindings exist (`fl.cairo_c`, `fl.pango_c`); the Cairo
-graphics driver itself is still deferred (see `CONVENTIONS.md`'s
-"Deferred" section).
+draws through the Cairo graphics driver onto a Cairo PDF surface. That
+driver exists now (`fl.cairo_graphics_driver`, see `src/drivers/Cairo/`'s
+row), so nothing blocks this any more.
 
 ### `FL/Fl_PostScript.H`
 
@@ -1845,11 +2043,12 @@ Missing:
   automatically to every window as it is made current).
   `cairoAutolinkContext(true)` is fatal, as in an FLTK library built
   without that option.
-- The Wayland and macOS branches of `src/Fl_Cairo.cxx` (X11 and Windows
-  are ported).
-- `FLTK_GRAPHICS_CAIRO`, all of FLTK's own drawing done through Cairo
-  (`Fl_Cairo_Graphics_Driver`), is a separate, still-deferred feature;
-  see `CONVENTIONS.md`'s "Deferred" section.
+- The macOS branch of `src/Fl_Cairo.cxx` (X11, Wayland and Windows are
+  ported).
+- In Cairo display mode (`FLDTK_GRAPHICS=cairo`, see
+  `src/drivers/Cairo/`'s row), `cairoMakeCurrent()` still makes its own
+  context instead of handing out the one the Cairo graphics driver
+  draws the window with.
 
 ### `FL/Fl_Cairo_Window.H`
 
@@ -1908,9 +2107,9 @@ Not bound:
   macros, the engine/module type-definition macros, and the
   `glib_autoptr` cleanup helpers (use `scope (exit)`).
 
-These are bindings only. fldtk's own text is still drawn through Xft
-(`fl.xft`); a Pango-based text layer is part of the still-deferred Cairo
-graphics driver (see `CONVENTIONS.md`'s "Deferred" section).
+`fl.cairo_graphics_driver` lays out and draws fldtk's text through these
+bindings wherever it is the display driver: on Wayland, and on X11 with
+`FLDTK_GRAPHICS=cairo`. X11's default text path is Xft (`fl.xft`).
 
 ## Widget base, windows
 
@@ -2255,15 +2454,35 @@ a subwindow, or nested inside a plain `Window`.
   rectangle` only — no legacy `glXUseXFont()`-display-list or
   `glutStrokeString()` fallback (a silent no-op on hardware without that
   extension, vanishingly rare in practice).
-- Linux/X11 (GLX) and Windows (WGL) — see `CONVENTIONS.md`'s own "Platform
-  scope" section for why Wayland (EGL) is a genuinely separate
-  undertaking. `GlWindow`/`fl.gl_graphics_driver`/`fl.gl_display_device`/
-  `fl.gl` themselves needed zero platform-specific code to support
-  Windows too (every platform-specific call already goes through
-  `fl.gl_window_driver`, which has the real per-platform split, or
-  `Window.xid()`, which already resolves to the right handle type per
-  platform) — see `FL/win32.H`'s row for the Windows-specific work that
-  *did* need doing.
+- Linux/X11 (GLX), Linux/Wayland (EGL) and Windows (WGL). Every
+  platform-specific call goes through `fl.gl_window_driver`, which on
+  Linux forwards to `fl.wayland_gl_window_driver` on the Wayland
+  backend; `GlWindow`/`fl.gl_graphics_driver`/`fl.gl_display_device`/
+  `fl.gl` have no platform-specific code. See `FL/win32.H`'s row for the
+  Windows-specific work.
+- On Wayland, as in FLTK, every GL window is double-buffered, drawn at
+  the screen's integer buffer scale (the compositor resamples it at a
+  fractional scale), and a GL subwindow isn't clipped to its parent.
+  Changing `mode()` of a shown window takes effect at the next
+  `makeCurrent()` without hiding and showing the window. Unlike FLTK:
+  GL windows are drawn at most once per frame callback, and an event
+  loop running idle callbacks waits for a pending frame (up to 50 ms)
+  instead of spinning, so a program animating from an idle callback
+  (`fractals`) runs at the screen's refresh rate, as a blocking
+  `glXSwapBuffers()` makes it on X11 (FLTK draws as often as the program
+  asks and shows the last frame drawn before each refresh;
+  `swapInterval(0)` gives that behavior); EGL's own swap interval is 0,
+  so a minimized window, which gets no frame callbacks, never blocks the
+  program; the software overlay is drawn into the back buffer over a
+  freshly drawn scene (FLTK copies between front and back buffers,
+  which relies on the back buffer surviving a swap; on Wayland it
+  doesn't, and old overlays pile up); a swap
+  postponed until the frame callback is done with the window's
+  own context made current (FLTK swaps with whatever context is current,
+  which EGL refuses when it belongs to another window); and
+  `gl_start()`'s surface is cleared once per repaint and swapped after
+  the window's `draw()`, shown with the window's next commit (FLTK
+  clears it at every `gl_start()` and never swaps it).
 - Hardware overlay planes are not applicable on either of this port's
   drivers (X11 and Windows both use the software-simulated overlay
   instead), matching FLTK's own X11 driver exactly and its Windows driver
@@ -2274,7 +2493,8 @@ a subwindow, or nested inside a plain `Window`.
 **Status:** Partial — `fl.opengl` (raw GL bindings, Linux and Windows) +
 `fl.glx` (raw GLX bindings, Linux only — Windows' WGL equivalent needs no
 binding module at all, druntime's `core.sys.windows.wingdi` already has
-it) + `fl.gl` (the FLTK wrapper functions this header declares)
+it) + `fl.egl`/`fl.wayland_egl` (raw EGL and wayland-egl bindings, Wayland
+builds only) + `fl.gl` (the FLTK wrapper functions this header declares)
 
 Infrastructure, not a literal header port — the same role `fl.xlib` plays
 for Xlib. `fl.opengl`'s own declarations use `extern (System)`
@@ -2958,8 +3178,10 @@ of its own. `format(char*)`/`format_str()` collapse into a single
 ([header](https://github.com/fltk/fltk/blob/master/FL/Fl_Adjuster.H))
 
 Full 3-button drag/click/keyboard step math, real box/focus drawing, and
-the three directional-arrow glyphs (transcribed verbatim from FLTK's own
-16×16 XBM bit patterns).
+the three directional-arrow glyphs.
+
+- The arrows are drawn as polygons in the shape of FLTK's 16×16 bitmaps
+  (`src/fastarrow.h` and friends), so they stay sharp at any scale.
 
 ### `FL/Fl_Counter.H`
 
@@ -3321,6 +3543,8 @@ Differences from FLTK:
   directly; `user_data()` isn't ported (capture what you need instead).
 - Every fixed-size `char[]` buffer becomes a plain D `string`.
 - The preview updates as soon as a file is selected; FLTK waits one second.
+- The "new directory" button shows a drawn `@fl_new_folder` label symbol
+  in its label color instead of FLTK's 16×16 bitmap, sharp at any scale.
 - `Fl::system_driver()`-gated platform hooks (`colon_is_drive()`, etc.)
   collapse to their fixed POSIX answers — not a driver abstraction
   skipped, one that was never needed for a single-platform port.
@@ -3725,6 +3949,8 @@ right-click copy menu, and real `<IMG>` rendering (including a real
 broken-image fallback glyph).
 
 Differences from FLTK:
+- The broken-image glyph is an SVG redrawing of FLTK's `broken_xpm[]`,
+  sharp at any scale.
 - **Structural**: FLTK splits into a public shell class plus a private
   `Impl` class holding all real state, purely for C++ ABI stability (its
   own doc comment says so explicitly) — this port collapses both into one
@@ -4305,6 +4531,15 @@ compressed SVG) is supported too, via `std.zlib`.
 - `copy()` shares the parsed document (a plain GC reference) rather than
   re-parsing — replacing FLTK's manual reference-counting wrapper, which
   existed purely for the same sharing without a second parse.
+- Unlike nanosvg, a gradient coordinate written as a plain number
+  (`x2="1"`) in the default `objectBoundingBox` units is a fraction of
+  the shape's bounding box, as the SVG specification says; nanosvg takes
+  it as an absolute position, so the gradient shows as a single colour
+  (see `FLTK_ISSUES_2.md`).
+- Still as in nanosvg and FLTK: in `objectBoundingBox` units,
+  `gradientTransform` is applied after the gradient is fitted to the
+  shape, where the specification applies it before, so a rotated gradient
+  turns about the wrong point.
 
 ### `FL/Fl_XBM_Image.H`
 
@@ -4348,9 +4583,61 @@ row elsewhere in this document — not as a literal `Fl_X11_*`/
 | `src/drivers/OpenGL/` | `fl.gl_graphics_driver` + `fl.gl_display_device` | Partial — see below |
 | `src/drivers/PostScript/` | `fl.postscript` + `fl.printer` | See `FL/Fl_PostScript.H`'s/`FL/Fl_Printer.H`'s rows above |
 | `src/drivers/SVG/` | `fl.svg_file_surface` | See `FL/Fl_SVG_File_Surface.H`'s row above |
-| `src/drivers/Wayland/`, `src/drivers/Cairo/` | — | Not started — primary target (Linux), not yet begun |
+| `src/drivers/Cairo/` | `fl.cairo_graphics_driver` (+ the Cairo display mode in `fl.draw`) | Partial — see below |
+| `src/drivers/Wayland/` | `fl.platform_wayland` (+ `fl.wayland_decoration`, `fl.wayland_client`, the generated protocol modules) | Partial — see `FL/wayland.H`'s row |
 | `src/drivers/WinAPI/`, `src/drivers/GDI/` | `fl.platform_win32` (screen/window driver) + `fl.gdi_graphics_driver`/`fl.gdiplus_graphics_driver` (drawing) | See `FL/win32.H`'s row above |
 | `src/drivers/Cocoa/`, `src/drivers/Quartz/`, `src/drivers/Darwin/` | — | Not started — out of scope for testing (no macOS hardware), driver abstraction left open for it |
+
+### `src/drivers/Cairo/` — `Fl_Cairo_Graphics_Driver` / `Fl_X11_Cairo_Graphics_Driver`
+
+**Status:** Partial — `fl.cairo_graphics_driver` (+ the Cairo display mode in `fl.draw`), Cairo-enabled build
+
+`CairoGraphicsDriver` is a `GraphicsDriver` drawing every `fl.draw`
+primitive through Cairo and laying out and drawing text through Pango,
+ported from `Fl_Cairo_Graphics_Driver.cxx`. It is the Wayland
+driver's drawing, and it also runs on X11:
+with the environment variable `FLDTK_GRAPHICS=cairo`, `fl.draw` makes it
+the display driver when the display opens, like an FLTK library built
+with `FLTK_GRAPHICS_CAIRO`. Without the variable, X11 drawing stays on
+the Xlib/Xft path.
+
+How it fits into `fl.draw` in Cairo mode (the part of
+`Fl_X11_Cairo_Graphics_Driver` and `Fl_X11_Window_Driver::make_current()`
+that applies):
+- `setDrawable()` gives the driver a Cairo context for the window or
+  pixmap, one `cairo_xlib_surface` per drawable, created on first use,
+  resized when the drawable's size changed, freed with the drawable.
+- Fonts and text metrics (`fl_font()`, `height()`, `descent()`,
+  `width()`, `textExtents()`) go to Pango. Built-in fonts use FLTK's
+  Pango names ("Sans", "Monospace Bold", "Standard Symbols PS", ...);
+  renamed and added fonts have their X11-style style character turned
+  into a Pango style suffix (`pangoFontName()`).
+- The clip follows `fl.draw`'s clip stack and the translate offset goes
+  into the driver's matrix.
+- Xlib is still used for `XCopyArea()` (double buffering, `fl_scroll()`,
+  offscreen copies), `XGetImage()` (`readImage()`, image surfaces) and
+  the overlay rectangle; pending Cairo drawing is flushed before each.
+- `fl.image_surface.SurfaceDevice` falls back to the Cairo driver, not
+  null, for a surface without a driver of its own.
+
+Differences from FLTK's driver, all in the module's top comment:
+clipping replaces Cairo's clip from `fl.draw`'s stack instead of nesting
+`cairo_save()`/`cairo_restore()`; the clip, filled rectangles, thin
+solid horizontal/vertical lines and rectangle outlines have their edges
+rounded down to whole device pixels as on the Xlib path (FLTK's driver
+lets Cairo round them to the nearest pixel, which at 110% or 133% leaves
+a row unpainted next to `XCopyArea()`-copied pixels); images arrive as raw buffers, so a
+pattern is built per draw rather than cached per image; vertex paths
+arrive flattened to points in device pixels, rounded to whole pixels as
+on the Xlib path, where FLTK's driver keeps them as doubles; indexed
+colors are opaque.
+
+Missing:
+- `Fl::set_fonts()` still enumerates fonts through Xft/fontconfig, not
+  through Pango's font map as FLTK's Cairo driver does.
+- `overlay_rect()`/`focus_rect()` overrides: the overlay is drawn with
+  Xlib on X11, and the focus rectangle is composed from the line-style
+  and rectangle primitives.
 
 ### `src/drivers/OpenGL/` — `Fl_OpenGL_Graphics_Driver` / `Fl_OpenGL_Display_Device`
 
@@ -4458,30 +4745,19 @@ throughout every node/writer below:
   lines around editable blocks.
 
 **Code-block structure: kept close to FLTK, under review for D.**
-Fluid's per-widget code slots (`declare`, `setup`, `final`, `callback`,
-`import`) and its `decl`/`declblock`/`class`/`Function`/`code`/`codeblock`
-nodes keep FLTK's structure on purpose, so `.fl` files, the node model and
-the panels stay comparable with FLTK's own. That structure is organized
-around what C++ needs: separate header and source files, and
-declaration-before-use. Of the five per-widget slots only `setup` and
-`callback` are stored (`WidgetNode.setupCode`/`callback`), written to the
-`.fl` file and generated; the panel's `import`, `declare` and `final` pages
-are not stored anywhere, so what is typed there is ignored (their tooltips
-say so). D needs neither, so some of it is redundant and
-some of its vocabulary clashes with D. These differences are being
-weighed, and none of them has been changed yet:
-- **`final`** is a D keyword with an unrelated meaning. The slot runs
-  code after a widget and all its children exist, so `before`/`after`
-  (paired with today's `setup`) would describe it better than
-  `setup`/`final`.
-- **`declare`** exists in FLTK to place a declaration in the right file.
-  Generated D has one file and no ordering constraint, so a declaration
-  lands in the same place as `setup` code and the slot may be obsolete.
-  The same applies to the `in header`/`in source` controls on
-  `decl`/`class`/`Function` nodes, which carry no meaning in D output.
-- **`import`** is written once near the top of the generated file, but
-  the property panel places its button after `// comment`. Left of
-  `// comment` would follow the order things appear in the output.
+Fluid's `decl`/`declblock`/`class`/`Function`/`code`/`codeblock` nodes
+keep FLTK's structure on purpose, so `.fl` files, the node model and the
+panels stay comparable with FLTK's own. A widget has three code slots:
+`setup` (after the widget is constructed, before its children),
+`finalize` (after its children, before `end()`; groups and windows only)
+and `callback`, stored as `WidgetNode.setupCode`/`finalizeCode`/
+`callback`, written to the `.fl` file and generated. FLTK calls the
+second slot "final"; `finalize` avoids the D keyword. FLTK's other two slots,
+`#include` and declare, only choose what goes into the C++ header file
+and have no counterpart: an import goes in a parent widget's `setup`
+code or in a `decl` node (see `FLUID_DIALECT.md`'s "Per-widget code"
+section). Still being weighed: the `in header`/`in source` controls on
+`decl`/`class`/`Function` nodes carry no meaning in D output.
 
 ### Deliberately not ported
 
@@ -4850,8 +5126,10 @@ stores its own value.
 Several of FLTK's own Fluid-app resource files (not test samples — Fluid's
 *own* UI, `source/fluid/panels/`+`source/fluid/templates/`+`fluid_icon.fl`) are ported
 as real `.fl` files run through this project's own code generator:
-`fluid_icon.fl` (app icon), `fldtkLicense.fl` (the bundled
-project template), `about_panel.fl`, `template_panel.fl` ("New from
+`fluid_icon.fl` (app icon, the SVG flask of `fluid.flask_logo` at every
+size a desktop asks for), `fldtkLicense.fl` (the bundled
+project template), `about_panel.fl` (its logo is the same flask, with
+bubbles rising smoothly, instead of FLTK's five-frame GIF), `template_panel.fl` ("New from
 Template", shared with `&File/Save As &Template...`, see `fluid/app/`'s
 `templates.h` entry), `codeview_panel.fl` (Source/Project tabs, Find, and node↔text-
 position sync all work — selecting a node in the widget editor or the
@@ -4867,16 +5145,15 @@ Auto-Refresh light button is real: `gui_main.d` calls a shared
 `codeviewAutoRefresh()` from every one of its own project-mutating
 entry points (in place of FLTK's single `codeview_defer_update()`
 call site inside `Project::set_modflag()`, which this dialect has no
-equivalent centralized hook for), and unchecking it stops those
-calls from refreshing (with the button on, each call site refreshes
-whenever the panel is visible). No debounce timer, unlike FLTK: each call
-site already fires at most once per discrete edit, not once per drag
-frame, so there's nothing to coalesce. The plain "Refresh" button stays
+equivalent centralized hook for; the widget panel's `onEditSettled`
+hook is one of them, firing once per completed property edit, for a
+text field when it loses the focus), and unchecking it stops those
+calls from refreshing. There is no debounce timer, unlike FLTK. The plain "Refresh" button stays
 unconditional either way, and re-applies the current selection's
 highlight on every refresh so it's never lost), and `settings_panel.fl` (all six of FLTK's
 tabs are placed at FLTK's own exact 360x585 dialog size and per-
-widget coordinates, including real tab icons in `source/fluid/panels/
-pixmaps/`). General and Locale tabs are fully functional; Shell
+widget coordinates, including tab icons in `source/fluid/panels/
+pixmaps/`, SVG redrawings of FLTK's PNGs). General and Locale tabs are fully functional; Shell
 keeps its pre-existing real wiring (`source/fluid/shell_settings.d`),
 repositioned into FLTK's narrower single-column layout; Project's
 Code File field is wired (`gui_main.codeFileName()`, round-tripped
@@ -4944,7 +5221,7 @@ tab's list shows a per-row storage icon (`Browser.icon()`).
   `code_writer.d` and `ProjectSettings.writeMergebackData`. Status:
   Done. With the project flag on, `code_writer.d` brackets each
   `code {}` fragment, widget callback, menu-item callback and widget
-  `setup` code with CRC-tagged `//` lines; `Mergeback.analyse()`/`apply()` recompute the
+  `setup` and `finalize` code with CRC-tagged `//` lines; `Mergeback.analyse()`/`apply()` recompute the
   CRCs from a generated file, report edits and copy edited blocks back
   into the matching nodes by `uid`. `&File/MergeBack Code` (visible
   only while the flag is on; interactive dialog with merge/cancel),
@@ -4954,11 +5231,12 @@ tab's list shows a per-row storage icon (`Browser.icon()`).
   a project is remembered (`rememberCodePath()`, also from `fluid -c`)
   so a build-step-generated file is found. Differences from FLTK:
   blocks keep their own indentation and are un-indented by the tag
-  line's indentation rather than a fixed two spaces; `setup` code is
-  written with the widget's own name in place of `o` and merged back with
-  `o` restored; FLTK's `CODE0`/`CODE1`/`FINALIZE` tags have no
-  counterpart because the panel's `import`, `declare` and `final` pages
-  are not stored in the project; menu-item
+  line's indentation rather than a fixed two spaces; `setup` and `finalize`
+  code is written with the widget's own name (`this` in a Widget Class)
+  in place of `o` and merged back with `o` restored; `FINALIZE` blocks are written
+  for every widget, where FLTK writes them only for widgets without
+  children (see `FLTK_ISSUES.md`); FLTK's `CODE0`/`CODE1` tags
+  (header-file code) have no counterpart; menu-item
   callbacks merge back (FLTK's `is_true_widget()` lookup rejects
   them, see `FLTK_ISSUES.md`). The headless entry points are
   `-m`/`--merge-back`, `-mb`/`--merge-back-if-safe` and
@@ -4968,6 +5246,13 @@ tab's list shows a per-row storage icon (`Browser.icon()`).
   reports), exit status 1 on an unreadable tag or an unsafe
   `--merge-back-if-safe` merge, and combine with `-c` to fold edits in
   before regenerating.
+  Known bug: the `o` ↔ widget-name substitution for `setup` and
+  `finalize` code (`translateOwnSlot()` in `code_writer.d`,
+  `setupToGenerated()`/`setupFromGenerated()` here) is a plain
+  whole-word regex, so it also rewrites an `o` inside a string literal
+  or comment in generated code (`"press o"` becomes `"press btn"`), and
+  merging back turns any use of the widget's own name, strings included,
+  into `o`.
 
 ### `fluid/app/`
 
@@ -5268,9 +5553,13 @@ coordinates, every one of them live). The "Window" button is `Bin_Window_Button`
 that follows the pointer; releasing it creates the new top-level window at
 the drop position on the desktop (`fluid.bin_button.onWindowDropped`). **`rsrcs/pixmaps.h`/`.cxx`'s own
 per-node-type icon table is real** — `fluid.pixmaps`
-(`pixmapFor()`/`loadPixmaps()`, backed by 62 embedded XPMs in `fluid.
-pixmaps_xpm`), wired into both `function_panel.fl`'s real buttons and
+(`pixmapFor()`/`loadPixmaps()`), wired into both `function_panel.fl`'s real buttons and
 `node_browser.d`'s own per-row icon (`fl.tree_item.TreeItem.usericon()`).
+Unlike FLTK, the icons are SVG, not XPM: `source/fluid/pixmaps_svg/`
+holds a vector redrawing of each of FLTK's `fluid/pixmaps/*.xpm` (same
+name, same design), embedded with a string import and drawn by
+`fl.svg_image.SvgImage` at the screen's scale, so they stay sharp at any
+desktop scale or zoom.
 **`Node_Browser::item_draw()`/`item_height()`'s own row format is
 real** — a `NodeBrowserItem : TreeItem` (`node_browser.d`) overrides
 `calcItemHeight()`/`drawItemContent()` (both real, documented
@@ -5481,10 +5770,8 @@ D transliterations of FLTK's own `examples/*.cxx`/`test/*.cxx`, built by
 `rdmd buildsamples.d` into `build/`. Most samples build and match FLTK's
 own behavior; a program calling a library API this port doesn't have yet
 is expected and not tracked here unless it's blocked on something still
-open. `buildsamples.d` itself skips two programs, each for a reason
-already tracked against the header it needs:
+open. `buildsamples.d` itself skips one program:
 
-- `test/penpal.d` — needs pen/tablet input, see `FL/core/pen_events.H`.
 - `test/forms.d` — FLTK's XForms-compatibility demo, permanently out of
   scope, see `FL/forms.H`.
 

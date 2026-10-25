@@ -107,7 +107,6 @@ else
 /// so the run stays green and the exceptions stay visible.
 enum string[string] skip = [
     "forms":         "XForms/Forms compatibility layer, deliberately out of scope",
-    "penpal":        "needs fl.Pen; FLTK has no X11 pen/touch support either",
 ];
 
 /// Programs skipped only on Windows -- unlike `skip` above (unsupported
@@ -145,20 +144,9 @@ enum string[][string] extraSources = [
 ];
 
 /// Extra Windows-only link libraries a program needs beyond the uniform
-/// Windows `linkFlags` below. Empty now (2026-09-13) -- `fl.glew`'s
-/// Windows branch no longer binds against the real system GLEW library
-/// at all (Linux's own branch still does, unchanged -- see that
-/// module's own doc comment for the platform split): Windows instead
-/// resolves its ~26 modern GL functions itself via
-/// `wglGetProcAddress()`, needing no library beyond `opengl32`, already
-/// linked unconditionally via `linkFlags` below, so its two consumers
-/// (`OpenGL3test`/`OpenGL3_glut_test`) no longer need a `glew32s.lib`
-/// entry here either. Kept as a table (rather than deleted outright)
-/// since a future sample needing some other genuinely-optional, not-
-/// every-dev-machine Windows library would want the exact same per-
-/// sample-only treatment GLEW itself used to need here -- unlike GLU
-/// (system-standard, safe to link into every sample uniformly, see
-/// `linkFlags`' own comment).
+/// Windows `linkFlags` below. Empty: `fl.glew` resolves the modern GL
+/// functions itself, so no sample needs a GLEW library. Kept as a table
+/// for a future sample needing a Windows library not every machine has.
 enum string[][string] extraLibsWindows = null;
 
 /// True if `file` defines a main() function -- i.e. it is a program
@@ -446,14 +434,10 @@ int main(string[] args)
             // baked in at link time). GLU-direct samples (`glpuzzle`/
             // `fractals`/`glut_test`, via `fl.glu`/`fl.glut`) now link fine
             // too, `glu32.lib` shipping with Windows the same way GLU
-            // ships with any Linux OpenGL install. GLEW-direct samples
-            // (`OpenGL3test`/`OpenGL3_glut_test`, via `fl.glew`) have real
-            // bindings too now, but need `glew32s.lib` (see `extraLibsWindows`
-            // below and `fl.glew`'s own doc comment) -- an optional
-            // third-party dependency not installed on every dev machine
-            // (this one included, as of this port), so it's named per-
-            // sample rather than added to the uniform list below, unlike
-            // GLU. `list_visuals`'s Xlib-specific visual dump still isn't
+            // ships with any Linux OpenGL install. GLEW-style samples
+            // (`OpenGL3test`/`OpenGL3_glut_test`, via `fl.glew`) need no
+            // GLEW library: `fl.glew` resolves the functions itself.
+            // `list_visuals`'s Xlib-specific visual dump still isn't
             // linkable on Windows -- no Xlib bindings exist for it -- but
             // plain `Fl_Gl_Window` samples (`shape`, `cube`, `gl_overlay`,
             // `gl_image`) are, now that `fl.gl_window_driver` has a real
@@ -488,14 +472,14 @@ int main(string[] args)
                 linkFlags = [
                     "-L" ~ libDir,
                     "-lfldtk-release",
-                    "-lGL", "-lGLU", "-lGLEW", "-lX11",
+                    "-lGL", "-lGLU", "-lX11",
                     "-Wl,-rpath,$ORIGIN",
                 ];
             else
                 linkFlags = [
                     "-L-L" ~ repoRoot,
                     "-L-lfldtk",
-                    "-L-lGL", "-L-lGLU", "-L-lGLEW", "-L-lX11",
+                    "-L-lGL", "-L-lGLU", "-L-lX11",
                     "-L-rpath=$ORIGIN/..",
                 ];
             version (Windows)
@@ -514,7 +498,13 @@ int main(string[] args)
                         .map!(f => f == buildPath(repoRoot, "fldtk.lib") ? libPath : f).array
                         ~ ["-mscrtlib=vcruntime140",
                            "-version=FLDTK_HAVE_CAIRO", "-version=FLDTK_HAVE_PANGO"]
-                        ~ cairoLinkFlags;
+                        // dub.sdl's /IMPLIB:NUL: lld-link writes its
+                        // output through a temporary file renamed into
+                        // place, which fails ("permission denied") for
+                        // the NUL device, so the import library goes
+                        // into build/obj instead, out of the way.
+                        ~ cairoLinkFlags.map!(f => f == "-L/IMPLIB:NUL"
+                            ? "-L/IMPLIB:" ~ buildPath(buildDir, "obj", stem ~ ".lib") : f).array;
             }
             else if (cairo)
                 linkFlags ~= release

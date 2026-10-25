@@ -95,12 +95,10 @@
  * confirmed against real hardware (a Logitech MX
  * Master 3S for side buttons, a full-size keyboard's numpad for
  * NumLock/keypad -- see smoke-tests/side_buttons.d and
- * smoke-tests/keypad.d). The MX Master 3S's third side button (a gesture
- * button, delivered by X as button number 10, not 8/9) produces no
- * event at all -- expected, not a bug, since this driver (matching
- * FLTK) only ever remaps X button numbers 8/9; any other button
- * number falls through to the ButtonPress/ButtonRelease "unrecognized
- * button number, ignore" case. Dead-key/compose input is real
+ * smoke-tests/keypad.d). Unlike FLTK, any further button number (the
+ * MX Master 3S's gesture button arrives as X button 10) is passed on as
+ * Event.push/Event.release with that number in eventButton(); see the
+ * ButtonPress case. Dead-key/compose input is real
  * (see openDisplay()'s XOpenIM()/
  * XCreateIC() and the KeyPress case's Xutf8LookupString() use).
  *
@@ -137,7 +135,7 @@ import fl.png_image : PngImage;
 // already wildcard-imports fl.xlib, whose own `Pixmap` is the
 // unrelated raw X11 XID typedef (same collision fl.core's `FlWindow`
 // alias exists for, see that import's own comment).
-import fl.pixmap : CursorPixmap = Pixmap;
+import fl.svg_image : SvgImage;
 import fl.widget : Widget;
 import fl.filename : filenameName;
 import fl.enumerations : Event, damageExpose, damageAll, damageOverlay, Damage, Keysym, EventState,
@@ -175,6 +173,8 @@ private
     Atom netWmStateModal_;
     Atom netWmStateHidden_;
     Atom netWorkarea_;
+    /// The root window property holding the X resources, `Xft.dpi` among them.
+    Atom resourceManager_;
     Atom motifWmHints_;
     Atom clipboardAtom_;
     Atom targetsAtom_;
@@ -196,6 +196,10 @@ private
     bool haveXfixes_;
     int xfixesEventBase_;
     int xfixesErrorBase_;
+    /// Whether the server has RandR, and the number of its first event,
+    /// for recognizing `RRScreenChangeNotify` (see `processNextEvent()`).
+    bool haveRandr_;
+    int randrEventBase_;
 
     /// The XDND protocol's own atoms (`fl_Xdnd*`/`fl_XaUtf8String`-
     /// adjacent set in `Fl_x.cxx`) -- registered in `openDisplay()`
@@ -468,15 +472,6 @@ package(fl) void waitForExpose(FlWindow win)
     }
 }
 
-/// Ported from `fl_wl_display()` (`FL/wayland.H`) -- a permanent `null`
-/// stub, not a placeholder pending completion: this port has no
-/// Wayland driver at all yet (see `PORTING.md`'s platform-scope notes),
-/// so there's never a real `wl_display*` to return. Exists purely for
-/// call-site compatibility with programs that check both
-/// `fl_x11_display()`/`fl_wl_display()` to report which backend is
-/// active (`test/fltk-versions.cxx`'s own pattern).
-void* wlDisplay() { return null; }
-
 /**
  * Opens the X11 connection and queries the default screen/visual/
  * colormap. Lazy and idempotent, matching FLTK's
@@ -543,6 +538,7 @@ void openDisplay()
     netWmStateModal_ = XInternAtom(display_, "_NET_WM_STATE_MODAL", False);
     netWmStateHidden_ = XInternAtom(display_, "_NET_WM_STATE_HIDDEN", False);
     netWorkarea_ = XInternAtom(display_, "_NET_WORKAREA", False);
+    resourceManager_ = XInternAtom(display_, "RESOURCE_MANAGER", False);
     motifWmHints_ = XInternAtom(display_, "_MOTIF_WM_HINTS", False);
     clipboardAtom_ = XInternAtom(display_, "CLIPBOARD", False);
     targetsAtom_ = XInternAtom(display_, "TARGETS", False);
@@ -586,10 +582,22 @@ void openDisplay()
     // is real but *visibly* slower than what a live side-by-side
     // comparison against FLTK expects.
     haveXfixes_ = XFixesQueryExtension(display_, &xfixesEventBase_, &xfixesErrorBase_) != 0;
+    initXInput2();
 
     screen_ = XDefaultScreen(display_);
-    // Active-window changes arrive as root property changes (see appActivateCheck()).
+    // Active-window changes arrive as root property changes (see
+    // appActivateCheck()), and so do work-area and X-resource changes
+    // (see afterDisplayRescale()).
     XSelectInput(display_, XRootWindow(display_, screen_), PropertyChangeMask);
+    // Monitor and root-size changes (see reactToScreenReconfiguration()),
+    // as in FLTK's open_display_platform().
+    {
+        import fl.xrandr : XRRQueryExtension, XRRSelectInput, RRScreenChangeNotifyMask;
+        int randrErrorBase;
+        haveRandr_ = XRRQueryExtension(display_, &randrEventBase_, &randrErrorBase) != 0;
+        if (haveRandr_)
+            XRRSelectInput(display_, XRootWindow(display_, screen_), RRScreenChangeNotifyMask);
+    }
     visual_ = XDefaultVisual(display_, screen_);
     depth_ = XDefaultDepth(display_, screen_);
     colormap_ = XDefaultColormap(display_, screen_);
@@ -706,9 +714,8 @@ private void desktopScaleFactor()
 /**
  * Applies the desktop's detected scale (`desktopScaleFactor()`), folds
  * in the `FLTK_SCALING_FACTOR` environment variable if set, then
- * overrides the result with the user's own last interactively-chosen
- * scale if one was ever saved (`fl.core.loadPersistedScaleFactor()` --
- * a deliberate fldtk-only addition, see that function's own doc
+ * multiplies in the zoom the user last chose with Ctrl +/- if one was
+ * saved (`fl.core.loadPersistedZoom()`, a fldtk addition, see its doc
  * comment) -- ported from `Fl_Screen_Driver::use_startup_scale_
  * factor()`. FLTK's own version branches on `rescalable() ==
  * SYSTEMWIDE_APP_SCALING` to decide whether the env var multiplies
@@ -767,8 +774,8 @@ private void useStartupScaleFactor()
     foreach (i; 0 .. screenCount())
         fl.core.seedBaseScale(i, nativeScale * envFactor);
 
-    float persisted = fl.core.loadPersistedScaleFactor();
-    float effective = (isNaN(persisted) ? nativeScale : persisted) * envFactor;
+    float zoom = fl.core.loadPersistedZoom();
+    float effective = nativeScale * envFactor * (isNaN(zoom) ? 1.0f : zoom);
 
     foreach (i; 0 .. screenCount())
         fl.core.screenScale(i, effective);
@@ -784,6 +791,208 @@ private void useStartupScaleFactor()
     // point on X11 -- see this function's own doc comment) is the best
     // available guess for "the scale," absent any specific window yet.
     fl.core.currentScale(effective);
+}
+
+/**
+ * Re-reads the monitor list after an `RRScreenChangeNotify` -- ported
+ * from `react_to_screen_reconfiguration()` (`Fl_x.cxx`). When the
+ * monitors' sizes in FLTK units are unchanged, or there was and still is
+ * a single monitor, every screen keeps its scale; otherwise the startup
+ * scale is worked out again and every window is rescaled to it. A changed
+ * desktop scale on a single monitor is handled by `afterDisplayRescale()`.
+ */
+private void reactToScreenReconfiguration()
+{
+    // memorize previous screen sizes (FLTK units) and scales
+    int oldCount = screenCount();
+    auto sizes = new int[4][](oldCount);
+    auto scales = new float[](oldCount);
+    foreach (i; 0 .. oldCount)
+    {
+        fl.core.screenXYWH(sizes[i][0], sizes[i][1], sizes[i][2], sizes[i][3], i);
+        scales[i] = screenScale(i);
+    }
+
+    screens_ = null;
+    randrMonitors_ = null;
+    randrQueried_ = false;
+    workArea_ = ScreenInfo(0, 0, -1, 0);
+    initScreens();
+
+    // detect whether screen sizes were unchanged
+    bool nochange = oldCount == screenCount();
+    if (nochange)
+        foreach (i; 0 .. oldCount)
+        {
+            auto s = screens_[i];
+            if (cast(int)(s.x / scales[i]) != sizes[i][0] || cast(int)(s.y / scales[i]) != sizes[i][1]
+                || cast(int)(s.w / scales[i]) != sizes[i][2] || cast(int)(s.h / scales[i]) != sizes[i][3])
+            {
+                nochange = false;
+                break;
+            }
+        }
+
+    if (nochange || (oldCount == 1 && screenCount() == 1))
+    {
+        // re-use previous screen scale values
+        foreach (i; 0 .. oldCount)
+            fl.core.screenScale(i, scales[i]);
+    }
+    else
+    {
+        useStartupScaleFactor();
+        float newScale = screenScale(0);
+        foreach (i; 0 .. screenCount())
+        {
+            fl.core.screenScale(i, 1);
+            fl.core.rescaleAllWindowsFromScreen(i, newScale, 1);
+        }
+    }
+}
+
+/**
+ * Rescales every window when the desktop's `Xft.dpi` changed -- ported
+ * from `after_display_rescale()` (`Fl_x.cxx`). Xlib caches the X
+ * resources of a connection when it first reads them, so `Xft.dpi` is
+ * read through a second, short-lived connection. A change of less than
+ * 0.1 dpi is ignored. Called when the root window's `_NET_WORKAREA` or
+ * `RESOURCE_MANAGER` property changes.
+ *
+ * Unlike FLTK, the new desktop scale also becomes the reference for
+ * Ctrl-0 and the zoom indicator's percentage (`fl.core.seedBaseScale()`):
+ * FLTK's X11 driver keeps its `base_scale()` from startup, so after the
+ * desktop scale changes, Ctrl-0 returns windows to the *old* desktop
+ * scale.
+ */
+private void afterDisplayRescale()
+{
+    Display* newDisplay = XOpenDisplay(XDisplayString(display_));
+    if (newDisplay is null) return;
+    scope (exit) XCloseDisplay(newDisplay);
+
+    const(char)* s = XGetDefault(newDisplay, "Xft", "dpi");
+    if (s is null) return;
+
+    import std.string : fromStringz;
+    import std.conv : parse, ConvException;
+    import std.math : fabs;
+
+    auto str = fromStringz(s);
+    float dpi;
+    try
+        dpi = parse!float(str);
+    catch (ConvException)
+        return;
+
+    if (fabs(dpi - currentXftDpi_) <= 0.1f) return;
+    currentXftDpi_ = dpi;
+    float f = dpi / 96.0f;
+    restoreRecordedSizes();
+    foreach (i; 0 .. screenCount())
+    {
+        fl.core.seedBaseScale(i, f);
+        fl.core.rescaleAllWindowsFromScreen(i, f, f);
+    }
+    if (recordedSizes_.length)
+    {
+        fl.core.removeTimeout(settleHandler_);
+        fl.core.addTimeout(1.0, settleHandler_);
+    }
+}
+
+// Following a desktop scale change under a window manager that resizes
+// X11 windows itself -- GNOME's Mutter does, when it runs XWayland at a
+// scale of its own ("xwayland-native-scaling"). None of this is in
+// FLTK, which on such a desktop does not follow the change at all.
+//
+// Mutter resizes every X11 window to keep its size on screen as soon as
+// the scale changes: before the new `Xft.dpi` arrives, so read at the
+// old scale, the window's size in FLTK units comes out doubled (or
+// halved). It also clamps that resize to the window's size hints, still
+// in device pixels of the old scale, so a fixed-size window (min == max)
+// keeps its old device size; and it then answers the window's own
+// request for the correct size with a synthetic ConfigureNotify only,
+// leaving the window as it is, until a request for a different size
+// comes first. Hence:
+//
+//  1. RRScreenChangeNotify, which arrives before Mutter's resizes,
+//     records each top-level window's size in FLTK units
+//     (`recordWindowSizes()`).
+//  2. When the new scale is known, `afterDisplayRescale()` puts the
+//     recorded sizes back before rescaling.
+//  3. A second later, once Mutter has settled, `settleWindowSizes()`
+//     asks again for every window whose device size is still wrong:
+//     with its size hints lifted, first one device pixel larger, then
+//     the exact size, and puts the hints back half a second later.
+//
+// The record is dropped after the settle step, or after 5 seconds when
+// no scale change follows (a monitor plugged in or removed).
+
+/// Each shown top-level window's size in FLTK units when the last
+/// RRScreenChangeNotify arrived; empty when none is pending.
+private int[2][FlWindow] recordedSizes_;
+
+private TimeoutHandler forgetHandler_, settleHandler_;
+
+private void recordWindowSizes()
+{
+    if (forgetHandler_ is null)
+    {
+        forgetHandler_ = () { recordedSizes_ = null; };
+        settleHandler_ = () { settleWindowSizes(); };
+    }
+    recordedSizes_ = null;
+    for (auto w = fl.core.firstWindow(); w !is null; w = fl.core.nextWindow(w))
+        if (w.parent() is null && w.shown())
+            recordedSizes_[w] = [w.w(), w.h()];
+    fl.core.removeTimeout(forgetHandler_);
+    fl.core.addTimeout(5.0, forgetHandler_);
+}
+
+/// Gives every recorded window its recorded size in FLTK units again,
+/// without asking the X server for anything (`resizeBugFix_`).
+private void restoreRecordedSizes()
+{
+    foreach (w, sz; recordedSizes_)
+        if (w.shown() && !w.fullscreenActive() && !w.maximizeActive()
+            && (w.w() != sz[0] || w.h() != sz[1]))
+        {
+            resizeBugFix_ = w;
+            w.resize(w.x(), w.y(), sz[0], sz[1]);
+        }
+}
+
+private void settleWindowSizes()
+{
+    restoreRecordedSizes();
+    foreach (w, sz; recordedSizes_)
+    {
+        // the window manager decides the size of these
+        if (!w.shown() || w.fullscreenActive() || w.maximizeActive()) continue;
+        float sc = screenScale(w.screenNum());
+        uint dw = scaledDim(w.w(), sc), dh = scaledDim(w.h(), sc);
+        XWindowAttributes attrs;
+        XGetWindowAttributes(display_, w.xid(), &attrs);
+        if (attrs.width == dw && attrs.height == dh) continue;
+
+        XSizeHints free;
+        free.flags = PWinGravity;
+        free.win_gravity = StaticGravity;
+        XSetWMNormalHints(display_, w.xid(), &free);
+        XResizeWindow(display_, w.xid(), dw + 1, dh + 1);
+        XResizeWindow(display_, w.xid(), dw, dh);
+        fl.core.addTimeout(0.5, sizeHintsSender(w));
+    }
+    recordedSizes_ = null;
+    fl.core.removeTimeout(forgetHandler_);
+}
+
+/// A timeout handler sending `win`'s size hints again (a function of its
+/// own, so a handler made in a loop gets its own `win`).
+private TimeoutHandler sizeHintsSender(FlWindow win)
+{
+    return () { if (win.shown()) sendSizeHints(win, win.xid()); };
 }
 
 /// One-time latch for `ensureVisualFigured()` below.
@@ -1125,61 +1334,38 @@ package(fl) void resetIC()
 }
 
 /**
- * Installs a custom Xlib error handler that tolerates exactly one
- * known-benign race instead of taking the whole process down over it.
+ * Installs an Xlib error handler that prints the error as a warning and
+ * carries on, as FLTK's `xerror_handler` (`Fl_x.cxx`) does. Xlib's
+ * default handler prints the error and calls `exit()`.
  *
- * The race this guards against, kept because it's a
- * generally useful thing to understand even though nothing currently
- * triggers it: `XSetInputFocus()` requires its target window to already be
- * *viewable*, but `XMapWindow()` only *requests* that a window become
- * mapped -- for a window a window manager might still be reparenting
- * into a decoration frame, that request can take an arbitrary amount of
- * WM-dependent time to actually land. A caller invoking
- * `XSetInputFocus()` directly on a window whose map hasn't finished
- * landing yet -- e.g. `fl.menu_popup`'s engine immediately after
- * `win.show()` when opening a cascade level -- would reliably reproduce
- * this as a `BadMatch`
- * error on a live server (`X_Error ... BadMatch ... Major opcode ... 42
- * (X_SetInputFocus)`, since Xlib's *default* error handler prints the
- * error and calls `exit()`).
+ * Many X protocol errors are races with another client rather than bugs
+ * in this program: during drag-and-drop or a selection transfer, the
+ * other application can destroy the window we are about to send to,
+ * and the request fails with `BadWindow` (for example, `XSendEvent()`
+ * to the short-lived window KWin uses to bridge XWayland drags to
+ * Wayland, after a drop on the Plasma desktop). With Xlib's default
+ * handler, that ends the program.
  *
- * `grab()`'s real implementation (`grabPointer()`/`ungrabPointer()`, see
- * those functions' own doc comments) has since replaced the
- * `XSetInputFocus()` call entirely with real `XGrabPointer()`/
- * `XGrabKeyboard()` calls, preceded by `waitViewable()`'s bounded poll
- * -- so nothing in this port calls `XSetInputFocus()` at all anymore,
- * and the specific `BadMatch`-on-`X_SetInputFocus` this handler
- * swallows should no longer be reachable in practice (`XGrabPointer()`/
- * `XGrabKeyboard()` don't have this failure mode to begin with: an
- * unviewable target window makes them return the status code
- * `GrabNotViewable`, not raise a protocol error -- which is exactly why
- * `waitViewable()` polls attributes rather than needing an error
- * handler of its own). This handler is left in place anyway as a
- * defensive catch-all -- cheap insurance against a future direct
- * `XSetInputFocus()` call reintroducing the same race, and harmless
- * since it only swallows this one exact, narrow combination; everything
- * else still terminates the process via Xlib's own default handler, so
- * an unrelated real bug doesn't get masked by this.
+ * `fl.draw.readPixelsFromDrawable()` swaps in its own silent handler
+ * around `XGetImage()`, whose `BadMatch` is an expected outcome there
+ * and not worth a warning.
  */
 private void installErrorHandler()
 {
-    defaultXErrorHandler = XSetErrorHandler(&handleXError);
+    XSetErrorHandler(&handleXError);
 }
 
 extern (C) private int handleXError(Display* display, XErrorEvent* event) @nogc nothrow
 {
-    if (event.error_code == BadMatch && event.request_code == X_SetInputFocus)
-    {
-        import core.stdc.stdio : fprintf, stderr;
-        fprintf(stderr, "fl.platform_x11: ignored a benign XSetInputFocus "
-            ~ "BadMatch (window not yet viewable -- see installErrorHandler()'s doc comment)\n");
-        return 0;
-    }
+    import core.stdc.stdio : fprintf, snprintf, stderr;
 
-    return defaultXErrorHandler(display, event);
+    char[128] request, text;
+    snprintf(request.ptr, request.length, "XRequest.%d", event.request_code);
+    XGetErrorDatabaseText(display, "", request.ptr, request.ptr, text.ptr, cast(int) text.length);
+    XGetErrorText(display, event.error_code, request.ptr, cast(int) request.length);
+    fprintf(stderr, "%s: %s 0x%lx\n", text.ptr, request.ptr, event.resourceid);
+    return 0;
 }
-
-private __gshared XErrorHandler defaultXErrorHandler;
 
 /**
  * Emits a system beep. The direct equivalent of
@@ -1463,7 +1649,7 @@ private int localHandle(Event event, FlWindow window)
  * `case Event.push:`, which is what first set `pushed()` from the
  * initial click that led here).
  */
-package(fl) int dnd()
+package(fl) int dnd(bool localOnly)
 {
     FlWindow sourceFlWin = fl.core.firstWindow();
     if (sourceFlWin is null) return 0;
@@ -1484,7 +1670,11 @@ package(fl) int dnd()
     FlWindow localWindow = null;
     int dndVersion = 4;
     int destX, destY;
-    XSetSelectionOwner(display_, xdndSelection_, sourceWindow, lastEventTime_);
+    // The last XdndPosition sent: its target and root position.
+    Window positionTarget = 0;
+    int positionX, positionY;
+    if (!localOnly)
+        XSetSelectionOwner(display_, xdndSelection_, sourceWindow, lastEventTime_);
 
     while (fl.core.pushed() !is null)
     {
@@ -1510,6 +1700,13 @@ package(fl) int dnd()
             newWindow = child;
             if (auto rec = find(child)) { newLocalWindow = rec.widget; break; }
             if ((newVersion = dndAware(newWindow)) != 0) break;
+        }
+        // localOnly: another application's window is no target at all,
+        // so it gets no XDND messages and no fake middle-click drop.
+        if (localOnly && newLocalWindow is null)
+        {
+            newWindow = 0;
+            newVersion = 0;
         }
 
         // fl.core.eXRoot_/eYRoot_ were just written as raw device
@@ -1540,6 +1737,8 @@ package(fl) int dnd()
             dndVersion = newVersion;
             targetWindow = newWindow;
             localWindow = newLocalWindow;
+            positionTarget = 0; // a new XdndEnter always gets a position
+
 
             if (localWindow !is null)
                 localHandle(Event.dndEnter, localWindow);
@@ -1577,9 +1776,23 @@ package(fl) int dnd()
             localHandle(Event.dndDrag, localWindow);
         else if (dndVersion)
         {
+            // Only when the target or the pointer position changed --
+            // unlike FLTK, which sends one on every pass. The target's
+            // XdndStatus reply wakes wait() below, so resending an
+            // unchanged position makes the two sides answer each other
+            // nonstop; GNOME's XWayland-to-Wayland drag bridge (the
+            // target whenever the pointer is over a Wayland surface,
+            // such as the desktop) cannot keep up with that and stalls
+            // the desktop for seconds. See FLTK_ISSUES_2.md.
             int exRoot = fl.core.eXRoot_, eyRoot = fl.core.eYRoot_;
-            sendClientMessage(targetWindow, xdndPosition_, sourceWindow,
-                0, cast(c_long)((exRoot << 16) | eyRoot), lastEventTime_, xdndActionCopy_);
+            if (targetWindow != positionTarget || exRoot != positionX || eyRoot != positionY)
+            {
+                sendClientMessage(targetWindow, xdndPosition_, sourceWindow,
+                    0, cast(c_long)((exRoot << 16) | eyRoot), lastEventTime_, xdndActionCopy_);
+                positionTarget = targetWindow;
+                positionX = exRoot;
+                positionY = eyRoot;
+            }
         }
 
         fl.core.wait();
@@ -1796,6 +2009,171 @@ private WindowRecord* find(Window xid)
     for (auto rec = first_; rec !is null; rec = rec.next)
         if (rec.xid == xid) return rec;
     return null;
+}
+
+// ---- touch and gestures (XInput2): beyond FLTK, see fl.touch
+
+import fl.xinput2;
+import touchEngine = fl.touch;
+
+private int xiOpcode_;              // the XInput extension's opcode; 0 without it
+private bool xiTouch_, xiGestures_; // XInput 2.2 (touch) and 2.4 (touchpad gestures)
+
+/// Finds out what the server's XInput extension offers.
+private void initXInput2()
+{
+    int event, error;
+    if (!XQueryExtension(display_, "XInputExtension", &xiOpcode_, &event, &error))
+    {
+        xiOpcode_ = 0;
+        return;
+    }
+    int major = 2, minor = 4;
+    if (XIQueryVersion(display_, &major, &minor) != 0) return; // Success is 0
+    xiTouch_ = major > 2 || (major == 2 && minor >= 2);
+    xiGestures_ = major > 2 || (major == 2 && minor >= 4);
+}
+
+/**
+ * Asks for touch events (and touchpad gestures) on toplevel window
+ * `xid`. The server then sends this program the touches on the window
+ * instead of turning the first finger into the mouse, which `fl.touch`
+ * does, adding two-finger gestures.
+ */
+private void selectTouch(Window xid)
+{
+    if (!xiTouch_) return;
+    ubyte[XIMaskLen!XI_LASTEVENT] bits;
+    XISetMask(bits[], XI_TouchBegin);
+    XISetMask(bits[], XI_TouchUpdate);
+    XISetMask(bits[], XI_TouchEnd);
+    if (xiGestures_)
+        foreach (e; XI_GesturePinchBegin .. XI_GestureSwipeEnd + 1) XISetMask(bits[], e);
+    XIEventMask mask = { deviceid: XIAllMasterDevices, mask_len: cast(int) bits.length, mask: bits.ptr };
+    XISelectEvents(display_, xid, &mask, 1);
+}
+
+// a touchpad pinch or swipe in progress
+private FlWindow xiGestureWin_;
+private double xiPinchScale_ = 1, xiSwipeDx_ = 0, xiSwipeDy_ = 0;
+private bool xiPinchZoomed_, xiPinchRotated_;
+
+/// An XInput2 event: touch contacts go to `fl.touch`, touchpad pinches
+/// and swipes become gesture events. Returns whether it was one.
+private bool handleXInput2(XEvent* ev)
+{
+    import fl.enumerations : GesturePhase;
+    auto cookie = cast(XGenericEventCookie*) ev;
+    if (xiOpcode_ == 0 || cookie.extension != xiOpcode_) return false;
+    if (!XGetEventData(display_, cookie)) return true;
+    scope (exit) XFreeEventData(display_, cookie);
+
+    FlWindow topOf(Window xid, double ex, double ey, out double x, out double y)
+    {
+        auto rec = find(xid);
+        if (rec is null) return null;
+        float f = screenScale(rec.widget.screenNum());
+        x = ex / f;
+        y = ey / f;
+        return rec.widget;
+    }
+
+    switch (cookie.evtype)
+    {
+        case XI_TouchBegin, XI_TouchUpdate, XI_TouchEnd:
+        {
+            auto d = cast(XIDeviceEvent*) cookie.data;
+            double x, y;
+            FlWindow top = topOf(d.event, d.event_x, d.event_y, x, y);
+            if (cookie.evtype == XI_TouchBegin)
+            {
+                if (top !is null) touchEngine.touchDown(top, d.detail, x, y);
+            }
+            else if (cookie.evtype == XI_TouchUpdate)
+            {
+                if (top !is null) touchEngine.touchMotion(d.detail, x, y);
+            }
+            else
+                touchEngine.touchUp(d.detail);
+            touchEngine.touchFrame();
+            return true;
+        }
+
+        case XI_GesturePinchBegin, XI_GesturePinchUpdate, XI_GesturePinchEnd:
+        {
+            auto p = cast(XIGesturePinchEvent*) cookie.data;
+            double x, y;
+            FlWindow top = topOf(p.event, p.event_x, p.event_y, x, y);
+            if (cookie.evtype == XI_GesturePinchBegin)
+            {
+                xiGestureWin_ = top;
+                xiPinchScale_ = 1;
+                xiPinchZoomed_ = xiPinchRotated_ = false;
+                return true;
+            }
+            if (xiGestureWin_ is null || top is null) return true;
+            if (cookie.evtype == XI_GesturePinchUpdate)
+            {
+                if (p.scale > 0 && p.scale != xiPinchScale_)
+                {
+                    touchEngine.sendGesture(Event.zoomGesture, top, x, y,
+                        xiPinchZoomed_ ? GesturePhase.update : GesturePhase.begin, p.detail,
+                        cast(float)(p.scale / xiPinchScale_));
+                    xiPinchScale_ = p.scale;
+                    xiPinchZoomed_ = true;
+                }
+                if (p.delta_angle != 0)
+                {
+                    touchEngine.sendGesture(Event.rotateGesture, top, x, y,
+                        xiPinchRotated_ ? GesturePhase.update : GesturePhase.begin, p.detail, 1,
+                        cast(float) p.delta_angle);
+                    xiPinchRotated_ = true;
+                }
+                return true;
+            }
+            auto phase = p.flags & XIGesturePinchEventCancelled ? GesturePhase.cancel : GesturePhase.end;
+            if (xiPinchZoomed_) touchEngine.sendGesture(Event.zoomGesture, top, x, y, phase, p.detail, 1);
+            if (xiPinchRotated_) touchEngine.sendGesture(Event.rotateGesture, top, x, y, phase, p.detail, 1, 0);
+            xiGestureWin_ = null;
+            return true;
+        }
+
+        case XI_GestureSwipeBegin, XI_GestureSwipeUpdate, XI_GestureSwipeEnd:
+        {
+            auto sw = cast(XIGestureSwipeEvent*) cookie.data;
+            double x, y;
+            FlWindow top = topOf(sw.event, sw.event_x, sw.event_y, x, y);
+            if (top is null) return true;
+            if (cookie.evtype == XI_GestureSwipeBegin)
+            {
+                xiGestureWin_ = top;
+                xiSwipeDx_ = xiSwipeDy_ = 0;
+                touchEngine.sendGesture(Event.swipeGesture, top, x, y, GesturePhase.begin, sw.detail);
+                return true;
+            }
+            if (xiGestureWin_ is null) return true;
+            if (cookie.evtype == XI_GestureSwipeUpdate)
+            {
+                import std.math : trunc;
+                float f = screenScale(top.screenNum());
+                xiSwipeDx_ += sw.delta_x / f;
+                xiSwipeDy_ += sw.delta_y / f;
+                int ix = cast(int) trunc(xiSwipeDx_), iy = cast(int) trunc(xiSwipeDy_);
+                if (ix == 0 && iy == 0) return true;
+                xiSwipeDx_ -= ix;
+                xiSwipeDy_ -= iy;
+                touchEngine.sendGesture(Event.swipeGesture, top, x, y, GesturePhase.update, sw.detail, 1, 0, ix, iy);
+                return true;
+            }
+            touchEngine.sendGesture(Event.swipeGesture, top, x, y,
+                sw.flags & XIGestureSwipeEventCancelled ? GesturePhase.cancel : GesturePhase.end, sw.detail);
+            xiGestureWin_ = null;
+            return true;
+        }
+
+        default:
+            return true;
+    }
 }
 
 /// The head of the shown-window list (`first_.widget`, or null if no
@@ -2026,9 +2404,41 @@ void createWindow(FlWindow win, XVisualInfo* visual = null, Colormap colormap = 
     // `win.x()`/`win.y()`/`win.w()`/`win.h()` themselves stay in FLTK
     // units throughout, matching FLTK's own `X*s`/`Y*s`/`W*s`/`H*s`
     // at this exact call site (`Fl_x.cxx`'s `make_xid()`).
+    // Keeps a new top-level window on screen, as make_xid() does
+    // ("Usually the X window manager does this, but a few don't"): a
+    // position saved under another monitor layout would otherwise open
+    // the window out of sight under a window manager that obeys the
+    // requested position. Clamped to the monitor the window overlaps
+    // most, or the first monitor if it overlaps none; skipped while a
+    // grab is active (menus place their own windows), as in FLTK. The
+    // window takes the clamped position before sendSizeHints() reports
+    // it to the window manager.
+    int winX = win.x, winY = win.y;
+    if (!isSubwindow && fl.core.grab() is null)
+    {
+        int scrX, scrY, scrW, scrH;
+        fl.core.screenXYWH(scrX, scrY, scrW, scrH, winX, winY, win.w, win.h);
+        if (win.border())
+        {
+            // Room for a minimal frame, the 20-pixel title bar above.
+            enum top = 20, left = 1, right = 1, bottom = 1;
+            if (winX + win.w + right > scrX + scrW) winX = scrX + scrW - right - win.w;
+            if (winX - left < scrX) winX = scrX + left;
+            if (winY + win.h + bottom > scrY + scrH) winY = scrY + scrH - bottom - win.h;
+            if (winY - top < scrY) winY = scrY + top;
+        }
+        // The contents matter more than the frame.
+        if (winX + win.w > scrX + scrW) winX = scrX + scrW - win.w;
+        if (winX < scrX) winX = scrX;
+        if (winY + win.h > scrY + scrH) winY = scrY + scrH - win.h;
+        if (winY < scrY) winY = scrY;
+        if (winX != win.x || winY != win.y)
+            win.resizeBoundsOnly(winX, winY, win.w, win.h);
+    }
+
     float scale = screenScale(win.rawScreenNum());
-    int x = scaledPos(win.x, scale);
-    int y = scaledPos(win.y, scale);
+    int x = scaledPos(winX, scale);
+    int y = scaledPos(winY, scale);
     uint w = scaledDim(win.w, scale);
     uint h = scaledDim(win.h, scale);
 
@@ -2121,6 +2531,8 @@ void createWindow(FlWindow win, XVisualInfo* visual = null, Colormap colormap = 
     rec.widget = win;
     rec.next = first_;
     first_ = rec;
+
+    if (!isSubwindow) selectTouch(xid);
 
     if (!isSubwindow)
     {
@@ -2317,6 +2729,15 @@ void createWindow(FlWindow win, XVisualInfo* visual = null, Colormap colormap = 
     XSync(display_, False);
 
     win.markShown(xid);
+
+    // Give every top-level window a real cursor of its own. FLTK's
+    // make_xid() leaves the window's cursor at None, so it inherits the
+    // root window's, which a rootless Xwayland server (labwc, and other
+    // wlroots compositors) leaves blank: the pointer disappears over the
+    // window until a widget sets a cursor explicitly. Subwindows keep
+    // None and inherit this one.
+    if (!isSubwindow)
+        win.cursor(CursorShape.default_);
 
     // Ported from Fl_X::set_xid()'s own `if (win->modal()) {Fl::modal_
     // = win; fl_fix_focus();}` (src/Fl_x.cxx), right after the raw X
@@ -3441,122 +3862,57 @@ package(fl) void resizeWindow(FlWindow win, int x, int y, int w, int h, bool isM
     }
 }
 
-/// Verbatim ports of `src/fl_cursor_nwse.xpm`/`fl_cursor_nesw.xpm` --
-/// the classic X cursor font (`XCreateFontCursor()`, what every other
-/// shape in `setCursor()` uses) has no true diagonal-resize glyph, so
-/// FLTK's own `fallback_cursor()` builds these two from hand-drawn
-/// bitmap data via the image-cursor path instead. See `setCursor()`'s
-/// own use of these, right below.
-private static immutable string[] cursorNwseXpm = [
-    "15 15 28 1",
-    "  c None",
-    ".  c #FFFFFF",
-    "+  c #000000",
-    "@  c #767676",
-    "#  c #4E4E4E",
-    "$  c #0C0C0C",
-    "%  c #494949",
-    "&  c #1B1B1B",
-    "*  c #4D4D4D",
-    "=  c #363636",
-    "-  c #646464",
-    ";  c #515151",
-    ">  c #242424",
-    ",  c #585858",
-    "'  c #545454",
-    ")  c #6A6A6A",
-    "!  c #797979",
-    "~  c #444444",
-    "{  c #2E2E2E",
-    "]  c #3B3B3B",
-    "^  c #0A0A0A",
-    "/  c #F7F7F7",
-    "(  c #595959",
-    "_  c #6B6B6B",
-    ":  c #080808",
-    "<  c #FEFEFE",
-    "[  c #FCFCFC",
-    "}  c #FDFDFD",
-    "..........     ",
-    ".++++++@.      ",
-    ".+++++#.       ",
-    ".++++$.        ",
-    ".+++++%.       ",
-    ".++&+++*.     .",
-    ".+=.-+++;.   ..",
-    ".>. .,+++'. .).",
-    "..   .#+++,.!+.",
-    ".     .~+++{++.",
-    "       .]+++++.",
-    "        .^++++.",
-    "       /(+++++.",
-    "      /_::::::.",
-    "     <[[[[[[[[}",
-];
+/// Drawn diagonal resize arrows, for a cursor theme without its own --
+/// a black double arrow with a white outline, after FLTK's
+/// `src/fl_cursor_nwse.xpm`/`fl_cursor_nesw.xpm`. See `setCursor()`.
+private enum cursorNwseSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M3,3 L15,3 L10.41,7.59 L24.41,21.59 L29,17 L29,29 L17,29 L21.59,24.41 L7.59,10.41 L3,15 Z" fill="#000000" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round"/></svg>`;
+private enum cursorNeswSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M29,3 L17,3 L21.59,7.59 L7.59,21.59 L3,17 L3,29 L15,29 L10.41,24.41 L24.41,10.41 L29,15 Z" fill="#000000" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round"/></svg>`;
 
-/// ditto
-private static immutable string[] cursorNeswXpm = [
-    "15 15 28 1",
-    "  c None",
-    ".  c #FFFFFF",
-    "+  c #767676",
-    "@  c #000000",
-    "#  c #4E4E4E",
-    "$  c #0C0C0C",
-    "%  c #494949",
-    "&  c #4D4D4D",
-    "*  c #1B1B1B",
-    "=  c #515151",
-    "-  c #646464",
-    ";  c #363636",
-    ">  c #6A6A6A",
-    ",  c #545454",
-    "'  c #585858",
-    ")  c #242424",
-    "!  c #797979",
-    "~  c #2E2E2E",
-    "{  c #444444",
-    "]  c #3B3B3B",
-    "^  c #0A0A0A",
-    "/  c #595959",
-    "(  c #F7F7F7",
-    "_  c #080808",
-    ":  c #6B6B6B",
-    "<  c #FDFDFD",
-    "[  c #FCFCFC",
-    "}  c #FEFEFE",
-    "     ..........",
-    "      .+@@@@@@.",
-    "       .#@@@@@.",
-    "        .$@@@@.",
-    "       .%@@@@@.",
-    ".     .&@@@*@@.",
-    "..   .=@@@-.;@.",
-    ".>. .,@@@'. .).",
-    ".@!.'@@@#.   ..",
-    ".@@~@@@{.     .",
-    ".@@@@@].       ",
-    ".@@@@^.        ",
-    ".@@@@@/(       ",
-    ".______:(      ",
-    "<[[[[[[[[}     ",
-];
+/**
+ * The diagonal resize cursor `c` (`CursorShape.nwse` or `.nesw`) from the
+ * desktop's cursor theme, by its freedesktop name or an older one, or 0
+ * if the theme has none. Loaded once.
+ */
+private Cursor themedDiagonalCursor(CursorShape c)
+{
+    import std.string : toStringz;
+
+    static Cursor nwse, nesw;
+    static bool loaded;
+    if (!loaded)
+    {
+        loaded = true;
+        foreach (name; ["nwse-resize", "size_fdiag", "bd_double_arrow"])
+            if (nwse == 0) nwse = XcursorLibraryLoadCursor(display_, name.toStringz);
+        foreach (name; ["nesw-resize", "size_bdiag", "fd_double_arrow"])
+            if (nesw == 0) nesw = XcursorLibraryLoadCursor(display_, name.toStringz);
+    }
+    return c == CursorShape.nwse ? nwse : nesw;
+}
 
 package(fl) void setCursor(FlWindow win, CursorShape c)
 {
     if (win.xid() == 0) return; // not shown yet -- nothing to apply to
 
-    // No classic X-cursor-font glyph exists for a true diagonal
-    // resize arrow, so these two shapes are built from bitmap data
-    // and set via the image-cursor path instead -- ported from
-    // FLTK's own `fallback_cursor()` (`src/fl_cursor.cxx`), which
-    // recurses into `Fl_Window::cursor(const Fl_RGB_Image*, int,
-    // int)` the exact same way.
+    // The classic X cursor font has no diagonal resize arrow, so these
+    // two come from the desktop's cursor theme, and where it has none,
+    // are drawn at the theme's cursor size and set through the image-
+    // cursor path. FLTK always uses its 15x15 bitmaps there
+    // (`fallback_cursor()`, `src/fl_cursor.cxx`), which are tiny on a
+    // HiDPI screen and unlike the rest of the theme.
     if (c == CursorShape.nwse || c == CursorShape.nesw)
     {
-        auto pxm = new CursorPixmap(c == CursorShape.nwse ? cursorNwseXpm : cursorNeswXpm);
-        auto image = new RGBImage(pxm);
-        win.cursor(image, 7, 7);
+        if (auto themed = themedDiagonalCursor(c))
+        {
+            XDefineCursor(display_, win.xid(), themed);
+            return;
+        }
+        int size = XcursorGetDefaultSize(display_);
+        if (size < 16) size = 16;
+        auto svg = new SvgImage(null, c == CursorShape.nwse ? cursorNwseSvg : cursorNeswSvg);
+        svg.resize(size, size);
+        svg.normalize();
+        win.cursor(new RGBImage(svg.array.dup, size, size, 4), size / 2, size / 2);
         return;
     }
 
@@ -3688,15 +4044,8 @@ package(fl) void setCursor(FlWindow win, CursorShape c)
  * a native-resolution `Fl_Pixmap`-derived image) requests a display
  * size smaller than the image's native data.
  *
- * Deliberately skipped relative to FLTK: the `normalize()` half of
- * that same pre-step. FLTK's `normalize()` exists to turn a
- * colormap-indexed `Fl_RGB_Image` into real per-pixel RGB(A) data
- * first; this port's `RGBImage` has no colormap-indexed representation
- * at all (`fl.draw`'s own "plain 8-8-8 TrueColor visual assumed, no
- * colormap/palette support" simplification, documented in that
- * module's top comment), so `copy()`'s own result is always already
- * plain per-pixel data -- there is nothing for an equivalent step to
- * normalize away.
+ * The copy is then `normalize()`d, as in FLTK: a copied `SvgImage` is
+ * rasterized only when its pixels are first needed.
  */
 package(fl) bool setCursorImage(FlWindow win, const(RGBImage) image, int hotx, int hoty)
 {
@@ -3709,7 +4058,9 @@ package(fl) bool setCursorImage(FlWindow win, const(RGBImage) image, int hotx, i
     if (w <= 0 || h <= 0) return false;
 
     auto resampled = image.copy(w, h);
-    if (resampled is null || resampled.array.length == 0) return false;
+    if (resampled is null) return false;
+    resampled.normalize(); // an SvgImage's copy is rasterized only on demand
+    if (resampled.array.length == 0) return false;
     int d = resampled.d();
     if (d < 1 || d > 4) return false;
 
@@ -4212,8 +4563,8 @@ void run()
  * FLTK's `Fl::wait()` (the finer-grained entry point below
  * `run()`'s own `while (first) wait(FOREVER);` loop). Fires any due
  * timers (fl.core.processTimeouts()), repaints (flushDamage()), then
- * either processes an already-queued X event immediately
- * (XPending() > 0) or blocks in waitForEventOrTimeout() until the X
+ * handles every waiting X event (`processQueuedEvents()`), first
+ * blocking in waitForEventOrTimeout() when there is none until the X
  * connection has data or the next timer is due -- whichever comes
  * first, rather than a plain blocking XNextEvent() loop, since a
  * blocking XNextEvent() would never wake up to fire a timer with no X
@@ -4252,18 +4603,16 @@ void wait()
 
     if (first_ is null) return;
 
-    if (XPending(display_) > 0)
-        processNextEvent();
-    else
-        waitForEventOrTimeout();
+    if (XPending(display_) > 0 || waitForEventOrTimeout())
+        processQueuedEvents();
 }
 
 /**
  * Bounded-wait counterpart of wait() above -- the direct equivalent of
  * FLTK's `Fl::wait(double time_to_wait)` (`Fl.cxx`, forwarding to
  * `Fl_System_Driver::wait(double)` -> `poll_or_select_with_delay()`).
- * Same body as wait() (fires due timers, repaints, processes one
- * already-queued X event), but when it has to block, it blocks for at
+ * Same body as wait() (fires due timers, repaints, handles the
+ * waiting X events), but when it has to block, it blocks for at
  * most `timeToWait` seconds rather than until the next due timer --
  * `waitForEventOrTimeout()`'s own `Duration maxWait` parameter (below)
  * is exactly this: the same `select()` call, just with a second, tighter
@@ -4288,7 +4637,7 @@ double wait(double timeToWait)
 
     if (XPending(display_) > 0)
     {
-        processNextEvent();
+        processQueuedEvents();
         return 1.0;
     }
 
@@ -4296,14 +4645,16 @@ double wait(double timeToWait)
 
     long us = cast(long)(timeToWait * 1_000_000.0);
     if (us < 0) us = 0;
-    return waitForEventOrTimeout(dur!"usecs"(us)) ? 1.0 : 0.0;
+    if (!waitForEventOrTimeout(dur!"usecs"(us))) return 0.0;
+    processQueuedEvents();
+    return 1.0;
 }
 
 /**
  * Non-blocking single iteration of the event loop -- the direct
  * equivalent of FLTK's `Fl::check()` (`Fl.cxx`: `wait(0.0); return
  * Fl_X::first != 0;`). Same body as wait() above (fires due timers,
- * repaints, processes one already-queued X event) but never blocks in
+ * repaints, handles the waiting X events) but never blocks in
  * waitForEventOrTimeout() -- that's the whole difference between
  * "wait(0.0)" and a genuinely blocking wait(): with nothing pending,
  * this returns immediately instead of sleeping until the next event or
@@ -4322,7 +4673,7 @@ bool check()
     flushDamage();
 
     if (first_ !is null && XPending(display_) > 0)
-        processNextEvent();
+        processQueuedEvents();
 
     return first_ !is null;
 }
@@ -4340,8 +4691,8 @@ bool check()
  * connection is just another add_fd() entry" design (FLTK registers
  * its own X connection fd through the very same Fl::add_fd() mechanism
  * a caller uses, dispatched via a generic callback array; this port
- * keeps the X connection's own handling exactly as it already was --
- * XPending()/processNextEvent() in wait()/check() above -- and folds
+ * keeps the X connection's own handling separate --
+ * XPending()/processQueuedEvents() in wait()/check() above -- and folds
  * fl.core.addFd()'s registered descriptors into this select() call
  * *alongside* it, rather than unifying the two, since nothing here
  * needs poll()'s larger-fd-count scalability advantage over select()
@@ -4357,9 +4708,8 @@ bool check()
  * `if (fd[i].events & revents) fd[i].cb(...)` dispatch.
  *
  * A stray EINTR (e.g. from a signal), a plain timeout, or `select()`
- * returning 0 all just return early without invoking anything; the
- * caller's next loop iteration re-checks XPending() and
- * re-fires timers regardless of why select() returned.
+ * returning 0 all just return early without invoking anything, and
+ * return false; otherwise the caller handles the X events now waiting.
  *
  * `select()`
  * itself is bracketed by `fl.core.unlockForWait()`/`lockForWait()`,
@@ -4818,7 +5168,11 @@ package(fl) void flushDamage()
             any = true;
         }
     }
-    if (any) XFlush(display_);
+    if (any)
+    {
+        fldraw.flushDrawable();
+        XFlush(display_);
+    }
 }
 
 /**
@@ -4875,6 +5229,19 @@ private void resizeAfterScreenChange(FlWindow win)
     resizeBetweenScreens_.busy = false;
 }
 
+/**
+ * Handles every X event waiting, reading what the connection has --
+ * ported from `do_queued_events()` (`Fl_x.cxx`). All of them are
+ * handled before the next repaint, so a burst of mouse motion while a
+ * slow repaint (a GL window waiting for its buffer swap, say) runs
+ * doesn't pile up and get handled one event per repaint.
+ */
+private void processQueuedEvents()
+{
+    while (first_ !is null && XEventsQueued(display_, QueuedAfterReading) > 0)
+        processNextEvent();
+}
+
 private void processNextEvent()
 {
     XEvent ev;
@@ -4898,6 +5265,9 @@ private void processNextEvent()
     // placement here, before the switch.
     if (ximIc_ !is null && XFilterEvent(&ev, 0)) return;
 
+    // touchscreen contacts and touchpad gestures (XInput2, fl.touch)
+    if (ev.type == GenericEvent && handleXInput2(&ev)) return;
+
     // Ported from fl_handle()'s own trailing `switch (xevent.type -
     // xfixes_event_base) { case XFixesSelectionNotify: ... }` (Fl_x.cxx)
     // -- an XFixes-extension event type is a runtime value (the
@@ -4910,6 +5280,39 @@ private void processNextEvent()
     // ultimately just need to know "did this selection's ownership
     // timestamp change"; matches FLTK's own `Fl_x.cxx`, which
     // shares `handle_clipboard_timestamp()` between both paths too.
+    // A monitor was added, removed, or resized, or the root window
+    // changed size (XWayland does this when the desktop scale changes) --
+    // ported from FLTK's `xevent.type == randrEventBase +
+    // RRScreenChangeNotify` check in fl_handle() (`Fl_x.cxx`).
+    {
+        import fl.xrandr : XRRUpdateConfiguration, RRScreenChangeNotify;
+        if (haveRandr_ && ev.type == randrEventBase_ + RRScreenChangeNotify)
+        {
+            XRRUpdateConfiguration(&ev);
+            recordWindowSizes();
+            reactToScreenReconfiguration();
+            fl.core.dispatch(Event.screenConfigurationChanged, null);
+        }
+    }
+
+    // A changed work area or X resources can mean a changed desktop
+    // scale -- ported from FLTK's `_NET_WORKAREA` check in fl_handle()
+    // (`Fl_x.cxx`). FLTK reacts to `_NET_WORKAREA` only; fldtk also
+    // reacts to `RESOURCE_MANAGER`, the property that holds `Xft.dpi`
+    // itself, so a changed `Xft.dpi` without a changed work area (for
+    // example after `xrdb -merge`) is followed too. Falls through to the
+    // switch below, as in FLTK.
+    if (ev.type == PropertyNotify && ev.xproperty.window == XRootWindow(display_, screen_))
+    {
+        if (ev.xproperty.atom == netWorkarea_)
+        {
+            workArea_ = ScreenInfo(0, 0, -1, 0); // re-read on next use
+            afterDisplayRescale();
+        }
+        else if (ev.xproperty.atom == resourceManager_)
+            afterDisplayRescale();
+    }
+
     if (haveXfixes_ && ev.type == xfixesEventBase_ + XFixesSelectionNotify)
     {
         auto sn = cast(XFixesSelectionNotifyEvent*)&ev;
@@ -5019,7 +5422,13 @@ private void processNextEvent()
             // need the exact same gate for too, not just this handler.
             resizeBugFix_ = rec.widget;
 
-            int rw = ev.xconfigure.width, rh = ev.xconfigure.height;
+            // The size the server reports now, as in FLTK's
+            // `W = actual.width, H = actual.height`, not the event's own
+            // size: a window manager's synthetic ConfigureNotify can
+            // carry a size the window does not have (Mutter sends them
+            // while it rescales windows for a new desktop scale), and a
+            // real one can be out of date by the time it is read.
+            int rw = attrs.width, rh = attrs.height;
 
             // Detect whether this window's *centre* just crossed into a
             // different screen -- ported from Fl_x.cxx's own
@@ -5356,11 +5765,17 @@ private void processNextEvent()
             replyEv.xselection.time = req.time;
             replyEv.xselection.property = None;
 
-            // Only ever answer for the two selections we actually claim
-            // ownership of (setSelectionOwner() never requests any
-            // other) -- anything else is refused, same as an
-            // unrecognized target.
-            if (req.selection == XA_PRIMARY || req.selection == clipboardAtom_)
+            // Answer for the three selections we claim ownership of:
+            // PRIMARY and CLIPBOARD (setSelectionOwner()), and
+            // XdndSelection (dnd()), which carries the same text as
+            // PRIMARY, as in FLTK, where every selection but CLIPBOARD
+            // is served from PRIMARY's buffer. A drop target fetches the
+            // dragged data through XdndSelection -- refusing it would
+            // fail every drop into another application (and leaves
+            // GNOME's XWayland-to-Wayland drag bridge waiting). Any
+            // other selection is refused, same as an unrecognized target.
+            if (req.selection == XA_PRIMARY || req.selection == clipboardAtom_
+                || req.selection == xdndSelection_)
             {
                 int clipboardIdx = req.selection == clipboardAtom_ ? 1 : 0;
                 if (fl.core.selectionOwnedType(clipboardIdx) == fl.core.clipboardImage)

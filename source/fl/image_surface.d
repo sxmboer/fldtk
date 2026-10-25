@@ -94,7 +94,7 @@ import fl.widget_surface : WidgetSurface;
 import fldraw = fl.draw;
 import graphicsDriver = fl.graphics_driver;
 import fl.graphics_driver : GraphicsDriver;
-version (linux) import platformX11 = fl.platform_x11;
+version (linux) import platform = fl.platform;
 version (Windows) import platformWin32 = fl.platform_win32;
 
 /**
@@ -196,7 +196,9 @@ class SurfaceDevice
      * "the native Xlib/Xft path" (see `fl.graphics_driver`'s own doc
      * comment) -- exactly the fallback `ImageSurface`/`CopySurface`
      * want when pushed over *any* other driver, GL included, so Linux
-     * always follows `driver_` verbatim, `null` included. This matters:
+     * always follows `driver_`, and a driver-less surface gets
+     * `fl.draw.nativeDriver()`: `null`, or the Cairo driver when `fl.draw`
+     * draws the display through Cairo. This matters:
      * `alphaMaskForString()` pushes a driver-less `ImageSurface` to
      * render a GL label's texture via the plain, native `fl_draw()`
      * leaf, so `currentDriver` must actually become `null` there rather
@@ -236,7 +238,8 @@ class SurfaceDevice
         driverStack_ ~= graphicsDriver.currentDriver;
         current_ = newCurrent;
         version (linux)
-            graphicsDriver.currentDriver = newCurrent !is null ? newCurrent.driver_ : null;
+            graphicsDriver.currentDriver = newCurrent !is null && newCurrent.driver_ !is null
+                ? newCurrent.driver_ : fldraw.nativeDriver();
         else
         {
             if (newCurrent !is null && newCurrent.driver_ !is null)
@@ -340,12 +343,12 @@ class ImageSurface : WidgetSurface
     ///
     /// On Windows, this class's `offscreen_`/constructor/destructor/
     /// `doSetCurrent()`/`doEndCurrent()` need a real offscreen buffer to
-    /// read back from, backed by `fl.draw`'s `createOffscreen()`/
+    /// read back from, backed by `fl.draw`'s `createOffscreenPixels()`/
     /// `deleteOffscreen()`/`beginOffscreen()`/`endOffscreen()` (the same
     /// ones `test/offscreen.cxx` uses).
     ///
-    /// Windows also needs a `platformX11.openDisplay()` equivalent,
-    /// just a different one: `platformX11.openDisplay()` gets a live X
+    /// Windows also needs a `fl.platform_x11.openDisplay()` equivalent,
+    /// just a different one: `fl.platform_x11.openDisplay()` gets a live X
     /// connection before any window exists; the Windows analogue is
     /// `platformWin32.ensureGraphicsDriver()`, since every `fl.draw`
     /// primitive on this platform routes through a `GdiGraphicsDriver`
@@ -390,7 +393,7 @@ class ImageSurface : WidgetSurface
         logicalW_ = w;
         logicalH_ = h;
         highRes_ = highRes != 0;
-        version (linux) platformX11.openDisplay();
+        version (linux) platform.openDisplay();
         // Matching every `Fl_*_Image_Surface_Driver` constructor's own
         // `if (d != 1 && high_res) { w = int(w*d); h = int(h*d); }`,
         // the offscreen's actual pixel buffer is sized at the current
@@ -422,7 +425,7 @@ class ImageSurface : WidgetSurface
         double scale = highRes_ ? currentScale() : 1.0;
         w_ = highRes_ ? cast(int)(w * scale) : w;
         h_ = highRes_ ? cast(int)(h * scale) : h;
-        offscreen_ = fldraw.createOffscreen(w_, h_);
+        offscreen_ = fldraw.createOffscreenPixels(w_, h_);
     }
 
     /// Ported from `~Fl_Image_Surface()`. Frees the offscreen buffer
@@ -656,7 +659,7 @@ class ImageSurface : WidgetSurface
         double scale = currentScale();
         w_ = cast(int)(logicalW_ * scale);
         h_ = cast(int)(logicalH_ * scale);
-        offscreen_ = fldraw.createOffscreen(w_, h_);
+        offscreen_ = fldraw.createOffscreenPixels(w_, h_);
 
         SurfaceDevice.pushCurrent(this);
         rgb.draw(0, 0);

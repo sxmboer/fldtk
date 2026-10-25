@@ -99,9 +99,10 @@
  *    ported (the menu item/API surface exists), but they resolve to
  *    "go to `.`" rather than a real filesystem-root listing.
  *
- *  - **The `newButton` "new directory" bitmap icon is real**:
- *    `newDirBits`/`newDirImage()` are a verbatim transcription of
- *    FLTK's own `idata_new[]` (`src/Fl_File_Chooser.cxx`).
+ *  - **The `newButton` "new directory" icon is drawn, not a bitmap**:
+ *    the `@fl_new_folder` label symbol (`drawNewFolder()`), after FLTK's
+ *    own 16x16 `idata_new[]` (`src/Fl_File_Chooser.cxx`), so it takes
+ *    the button's label color and stays sharp at any scale.
  *
  *  - **`fl_input()`/`alert()` calls replace the printf-style
  *    `fl_input("%s", deflt, label)` FLTK uses everywhere in this
@@ -170,7 +171,6 @@ import fl.filename : filenameAbsolute, filenameIsdir, filenameExpand, filenameNa
     filenameRelative;
 import fl.ask : fl_input, alert, ok, fl_cancel;
 import fl.shared_image : SharedImage;
-import fl.bitmap : Bitmap;
 import fl.enumerations;
 import fl.core : eventClicks, eventKey, check, addTimeout, removeTimeout, grab, wait;
 
@@ -216,21 +216,41 @@ enum : Type
 /// `void*`/user_data slot alongside it.
 alias FileChooserCallback = void delegate(FileChooser);
 
-// Verbatim transcription of FLTK's own `idata_new[]` (src/
-// Fl_File_Chooser.cxx) -- a 16x16 XBM-style bitmap for newButton's "new
-// folder" icon. FLTK's `new Fl_Bitmap(idata_new, 32, 16, 16)`
-// passes the array's byte length (32) as an explicit `bits_length`
-// argument to the length-checked constructor overload;
-// `fl.bitmap.Bitmap`'s own constructor infers that from the D slice
-// directly, so it's dropped here.
-private immutable ubyte[32] newDirBits = [
-    0, 0, 120, 0, 132, 0, 2, 1, 1, 254, 1, 128, 49, 128, 49, 128, 253, 128,
-    253, 128, 49, 128, 49, 128, 1, 128, 1, 128, 255, 255, 0, 0];
-private Bitmap newDirImage_;
-private Bitmap newDirImage()
+// newButton's "new folder" icon, the `@fl_new_folder` label symbol: a
+// folder outline with a plus sign, drawn in the button's label color
+// and sharp at any scale. FLTK uses a 16x16 bitmap (`idata_new[]`,
+// src/Fl_File_Chooser.cxx); the shape here follows it.
+private void drawNewFolder(Color c)
 {
-    if (newDirImage_ is null) newDirImage_ = new Bitmap(newDirBits, 16, 16);
-    return newDirImage_;
+    import fl.draw : fl_color, beginLoop, endLoop, beginPolygon, endPolygon, vertex;
+
+    fl_color(c);
+    beginLoop();
+    vertex(-0.75, -0.4);
+    vertex(-0.45, -0.65);
+    vertex(-0.1, -0.65);
+    vertex(0.1, -0.45);
+    vertex(0.75, -0.45);
+    vertex(0.75, 0.65);
+    vertex(-0.75, 0.65);
+    endLoop();
+    enum a = 0.06, b = 0.27; // half the plus sign's thickness and length
+    enum cx = -0.25, cy = 0.15;
+    beginPolygon();
+    vertex(cx - b, cy - a); vertex(cx + b, cy - a); vertex(cx + b, cy + a); vertex(cx - b, cy + a);
+    endPolygon();
+    beginPolygon();
+    vertex(cx - a, cy - b); vertex(cx + a, cy - b); vertex(cx + a, cy + b); vertex(cx - a, cy + b);
+    endPolygon();
+}
+
+private string newFolderLabel()
+{
+    import fl.symbols : addSymbol;
+
+    static bool added;
+    if (!added) added = addSymbol("fl_new_folder", &drawNewFolder, true) != 0;
+    return "@fl_new_folder";
 }
 
 class FileChooser
@@ -319,8 +339,7 @@ class FileChooser
         favoritesButton.label(favoritesLabel);
 
         newButton = new Button(455, 10, 25, 25);
-        newButton.image(newDirImage());
-        newButton.labelsize(8);
+        newButton.label(newFolderLabel());
         newButton.callback((w) { newdir(); });
         newButton.tooltip(newDirectoryTooltip);
         topRow.end();

@@ -15,6 +15,7 @@
 //    close over; per CONVENTIONS.md's callback convention this becomes a D
 //    closure that captures `help` directly, dropping the void* entirely.
 import fl;
+import data_file : dataFile;
 
 void main(string[] args)
 {
@@ -33,7 +34,7 @@ void main(string[] args)
     int i;
     fl.argsToUtf8(args); // for MSYS2/MinGW
     if (!fl.args(args, i)) fl.fatal(fl.argsHelp);
-    string fname = (i < args.length) ? args[i] : "help_dialog.html";
+    string fname = (i < args.length) ? args[i] : dataFile("help_dialog.html");
 
     help.load(fname); // TODO: add error check (when load() returns int instead of void)
 

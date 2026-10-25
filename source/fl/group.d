@@ -268,6 +268,13 @@ class FlGroup : Widget
                     return 1;
             return 0;
 
+        // fldtk's gestures: to the child under the fingers (fl.core.handle())
+        case Event.zoomGesture, Event.rotateGesture, Event.swipeGesture:
+            foreach_reverse (o; rawArray())
+                if (o.takesEvents() && fl.core.eventInside(o) && o.send(event))
+                    return 1;
+            return 0;
+
         case Event.deactivate:
         case Event.activate:
             foreach (o; rawArray())

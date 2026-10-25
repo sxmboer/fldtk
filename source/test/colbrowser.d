@@ -1,6 +1,7 @@
 // D transliteration of FLTK's test/colbrowser.cxx.
 // Build: rdmd buildsamples.d test colbrowser
 import fl;
+import data_file : dataFile;
 import std.format : format;
 import std.stdio : File;
 
@@ -35,7 +36,7 @@ void main()
 
     createFormCl();
 
-    if (loadBrowser(dbname))
+    if (loadBrowser(dataFile(dbname)))
         dbobj.label(dbname);
     else
         dbobj.label("None");
@@ -172,8 +173,7 @@ int searchEntry(int r, int g, int b)
     uint mindiff = uint.max;
     // Bounds-checked in addition to FLTK's own bare `while
     // (rgbdb[i].r<256) i++;` sentinel scan: if loadBrowser() never
-    // found the database (e.g. running the built binary from a
-    // directory that doesn't have "rgb.txt" next to it -- the
+    // found the database (e.g. rgb.txt missing from source/test -- the
     // sentinel `rgbdb[idx].r = 1000` only ever gets written on a
     // successful load), rgbdb stays all-zeroes and the sentinel-only
     // loop would walk straight off the end of a fixed-size D array

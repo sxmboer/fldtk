@@ -131,27 +131,31 @@ private enum usageLine = "usage: fluid [options] [filename.fl]\n"
  * `-h`/`--help` means "show usage" here, unlike FLTK's `-h
  * header-filename`: generated D has no header file for it to name.
  */
-void main(string[] args)
+int main(string[] args)
 {
     CommandLine cl;
     if (!parseCommandLine(args, cl, usageLine, true))
-        return;
+        return cl.helpShown ? 0 : 1;
 
     // What is left are fldtk's own switches (-bg, -fg, -scheme,
     // -scaling_factor, ...), then the .fl file. They style Fluid itself
-    // and have no effect on the generated code.
+    // and have no effect on the generated code. fl.core.args() stops at
+    // the first "--" word, taking it for the start of the file names;
+    // getopt has already taken all of Fluid's own "--" options, so one
+    // left there is unknown too.
     int fileIndex;
-    if (fl.core.args(args, fileIndex) == 0)
+    if (fl.core.args(args, fileIndex) == 0
+        || (fileIndex < cast(int) args.length && args[fileIndex].length > 2 && args[fileIndex][0 .. 2] == "--"))
     {
         stderr.writefln("fluid: Unrecognized option %s\nTry 'fluid --help'.", args[fileIndex]);
-        return;
+        return 1;
     }
     cl.inPath = fileIndex < cast(int) args.length ? args[fileIndex] : null;
 
     if (cl.showVersion)
     {
         writefln("fluid v%d.%d.%d", FL_MAJOR_VERSION, FL_MINOR_VERSION, FL_PATCH_VERSION);
-        return;
+        return 0;
     }
 
     if (cl.update)
@@ -159,10 +163,9 @@ void main(string[] args)
         if (cl.inPath.length == 0)
         {
             stderr.writefln("fluid: -u needs a .fl file");
-            return;
+            return 1;
         }
-        normalizeProject(cl.inPath);
-        return;
+        return normalizeProject(cl.inPath) ? 0 : 1;
     }
 
     if (cl.wantsMerge())
@@ -170,17 +173,13 @@ void main(string[] args)
         if (cl.inPath.length == 0)
         {
             stderr.writefln("fluid: merging needs a .fl file");
-            return;
+            return 1;
         }
         int status = mergeBackProject(cl.inPath, cl.output, cl.mergeMode());
         if (status != 0)
-        {
-            import core.stdc.stdlib : exit;
-
-            exit(status);
-        }
+            return status;
         if (!cl.compile)
-            return;
+            return 0;
     }
 
     if (!cl.compile)
@@ -189,14 +188,14 @@ void main(string[] args)
 
         applyEditorStyle(cl);
         runEditor(cl.inPath.length ? [cl.inPath] : []);
-        return;
+        return 0;
     }
 
     if (cl.inPath.length == 0)
     {
         stderr.writefln("fluid: -c needs a .fl file");
-        return;
+        return 1;
     }
 
-    compileFile(cl.inPath, cl.output, cl.strings, cl.dubHeader, cl.stringsName);
+    return compileFile(cl.inPath, cl.output, cl.strings, cl.dubHeader, cl.stringsName) ? 0 : 1;
 }

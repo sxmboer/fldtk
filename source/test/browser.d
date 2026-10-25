@@ -1,6 +1,7 @@
 // D transliteration of FLTK's test/browser.cxx.
 // Build: rdmd buildsamples.d test browser
 import fl;
+import data_file : dataFile;
 import std.format : format;
 import std.conv : to, ConvException;
 import std.string : strip;
@@ -124,7 +125,7 @@ void main()
     browser = new SelectBrowser(0, 0, window.w(), 350, null);
     browser.type(multiBrowser);
     browser.callback((w) { bCb(w); });
-    if (!browser.load(fname))
+    if (!browser.load(dataFile(fname)))
     {
         message(format("Can't load '%s'\n", fname));
         browser.add("This is a test of how the browser draws lines.");

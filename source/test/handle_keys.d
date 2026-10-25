@@ -129,7 +129,7 @@ string getKeyname(int k, out int lg)
         lg = cast(int) s.length;
         return s;
     }
-    else if (k >= button && k <= button + 7)
+    else if (k >= button && k < backSpace) // fldtk reports buttons beyond FLTK's 7 too
     {
         string s = format("button+%d", k - button);
         lg = cast(int) s.length;

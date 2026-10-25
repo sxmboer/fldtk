@@ -319,6 +319,14 @@ private WindowRecord* find(HWND hwnd)
     return null;
 }
 
+/// The window whose handle is `hwnd`, or null -- FLTK's `fl_find()`, for
+/// `fl.win32_pen_driver`.
+package(fl) FlWindow windowOfHwnd(HWND hwnd)
+{
+    auto rec = find(hwnd);
+    return rec !is null ? rec.widget : null;
+}
+
 /// The direct equivalent of `fl.platform_x11.firstWindowWidget()` --
 /// backs `fl.core.firstWindow()`.
 FlWindow firstWindowWidget()
@@ -1147,6 +1155,11 @@ void createWindow(FlWindow win)
     HWND hwnd = CreateWindowExW(exStyle, wndClassNameW.ptr, win.label().toUTF16z,
         style, devX, devY, devW, devH, parentHwnd, null, GetModuleHandleW(null), null);
     if (hwnd is null) return;
+    {
+        // touchscreen gestures, with one finger acting as the mouse (fl.touch)
+        import fl.win32_touch : configureGestures;
+        configureGestures(hwnd);
+    }
 
     auto rec = new WindowRecord;
     rec.hwnd = hwnd;
@@ -1341,10 +1354,20 @@ void createWindow(FlWindow win)
 /// (both name "is there an active pointer/keyboard grab in progress,
 /// e.g. a popup menu" -- raising a window over that would steal the
 /// grab).
+///
+/// A subwindow is shown again instead (FLTK's `Fl_WinAPI_Window_Driver::
+/// map()`, `ShowWindow(SW_RESTORE)`), undoing `unmapWindow()` when the
+/// group holding it is shown again, as `raiseWindow()` does on X11 and
+/// Wayland.
 void raiseWindow(FlWindow win)
 {
     if (auto hwnd = hwndFor(win))
     {
+        if (win.parent !is null)
+        {
+            ShowWindow(hwnd, SW_RESTORE);
+            return;
+        }
         if (IsIconic(hwnd)) OpenIcon(hwnd);
         if (fl.core.grab() is null) BringWindowToTop(hwnd);
     }
@@ -1635,7 +1658,10 @@ bool setCursorImage(FlWindow win, const(RGBImage) image, int hotx, int hoty)
     auto rec = recordFor(win);
     if (rec is null) return false;
 
-    HCURSOR newCursor = cast(HCURSOR) imageToIcon(image, false, hotx, hoty);
+    // A copied SvgImage is rasterized only when normalized.
+    auto ready = cast(RGBImage) image.copy();
+    ready.normalize();
+    HCURSOR newCursor = cast(HCURSOR) imageToIcon(ready, false, hotx, hoty);
     if (newCursor is null) return false;
 
     if (rec.cursor !is null && rec.customCursor) DestroyIcon(rec.cursor);
@@ -3037,6 +3063,9 @@ private extern (Windows) LRESULT wndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LP
         case WM_RBUTTONDOWN: mouseEvent(win, hWnd, 0, 3, wParam, lParam); return 0;
         case WM_RBUTTONDBLCLK: mouseEvent(win, hWnd, 1, 3, wParam, lParam); return 0;
         case WM_RBUTTONUP: mouseEvent(win, hWnd, 2, 3, wParam, lParam); return 0;
+        // Windows has mouse messages for five buttons only: buttons 6 and
+        // up (the MX Master 3S's gesture button, which X11 and Wayland
+        // report as button 10) send no message, so no event.
         case WM_XBUTTONDOWN:
             mouseEvent(win, hWnd, 0, 3 + cast(int) HIWORD(wParam), wParam, lParam);
             return TRUE;
@@ -3173,6 +3202,17 @@ private extern (Windows) LRESULT wndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LP
             return 0;
 
         default:
+            // WM_POINTER* messages of a pen (fl.pen) or of a touch contact
+            // a subscribed widget takes (fl.touch): a message a widget
+            // took gets no DefWindowProcW(), so no mouse message (or
+            // gesture) follows
+            import fl.win32_pen_driver : handlePenMessage = handleMessage;
+            import fl.win32_touch : handleTouchMessage = handlePointerMessage, handleGesture;
+            import fl.win32_pointer : WM_GESTURE;
+            if (handlePenMessage(hWnd, uMsg, wParam, lParam)) return 0;
+            if (handleTouchMessage(hWnd, uMsg, wParam)) return 0;
+            // touchscreen zoom, turn and two-finger pan (fl.touch)
+            if (uMsg == WM_GESTURE && handleGesture(hWnd, wParam, lParam)) return 0;
             break;
         }
 
@@ -5243,6 +5283,12 @@ private final class FLDropSource : IDropSource
 
     private DWORD refCount_;
 
+    /// Cancel a drop released over another application's window
+    /// (`fl.core.dnd()`'s `localOnly`).
+    private bool localOnly_;
+
+    this(bool localOnly) { localOnly_ = localOnly; }
+
     HRESULT QueryInterface(IID* riid, void** ppv)
     {
         if (*riid == IID_IUnknown || *riid == IID_IDropSource)
@@ -5263,7 +5309,16 @@ private final class FLDropSource : IDropSource
     HRESULT QueryContinueDrag(BOOL esc, DWORD keyState)
     {
         if (esc) return DRAGDROP_S_CANCEL;
-        if (!(keyState & (MK_LBUTTON | MK_MBUTTON | MK_RBUTTON))) return DRAGDROP_S_DROP;
+        if (!(keyState & (MK_LBUTTON | MK_MBUTTON | MK_RBUTTON)))
+        {
+            if (localOnly_)
+            {
+                POINT pt;
+                GetCursorPos(&pt);
+                if (find(WindowFromPoint(pt)) is null) return DRAGDROP_S_CANCEL;
+            }
+            return DRAGDROP_S_DROP;
+        }
         return S_OK;
     }
 }
@@ -5356,12 +5411,12 @@ private final class FLDataObject : IDataObject
  * whole drag internally, calling back into whichever window's
  * `dropTarget_` the cursor is over via the callbacks above.
  */
-package(fl) int dnd()
+package(fl) int dnd(bool localOnly)
 {
     ReleaseCapture();
 
     auto fdo = new FLDataObject;
-    auto fds = new FLDropSource;
+    auto fds = new FLDropSource(localOnly);
 
     DWORD dropEffect;
     HRESULT ret = DoDragDrop(fdo, fds, DROPEFFECT_MOVE | DROPEFFECT_LINK | DROPEFFECT_COPY, &dropEffect);

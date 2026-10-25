@@ -182,7 +182,7 @@ void main(string[] args)
         GLenum err = glewInit(); // defines pters to functions of OpenGL V 1.2 and above
         if (err != GLEW_OK)
             stderr.writefln("glewInit() failed returning %u", err); // fl.error() has no equivalent here
-        stderr.writefln("Status: Using GLEW %s", fromStringz(cast(const(char)*) glewGetString(GLEW_VERSION)));
+        stderr.writefln("Status: Using %s", fromStringz(cast(const(char)*) glewGetString(GLEW_VERSION)));
     }
     int glVersionMajor;
     const(char)* glv = cast(const(char)*) glGetString(GL_VERSION);

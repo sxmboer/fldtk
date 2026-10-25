@@ -154,6 +154,8 @@ public import fl.postscript;
 public import fl.printer;
 public import fl.symbols;
 public import fl.names;
+public import fl.pen;
+public import fl.touch;
 public import fl.tooltip;
 public import fl.help_view;
 public import fl.help_dialog;
@@ -184,8 +186,9 @@ public import fl.glew;
 // wrappers of the same name under a single `import fl;` -- fl.core's
 // versions are the actual public API (Fl::run()/Fl::beep()); platform
 // modules are meant to be called through fl.core, not directly.
-// Nothing outside fl.core/fl.window needs it, and both already
-// `import fl.platform_x11` directly (aliased as `platformX11`).
+// fl.core/fl.window reach the Linux backend through fl.platform (not
+// re-exported either, for the same name collisions), which forwards to
+// fl.platform_x11 or, later, fl.platform_wayland.
 //
 // fl.xlib is excluded for the same kind of reason: it's raw extern(C)
 // Xlib bindings, and its `alias Window = XID` collides with fl.window's

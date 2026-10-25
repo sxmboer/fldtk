@@ -3,7 +3,6 @@
 import fl;
 import std.format : format;
 import std.stdio : writefln;
-import core.stdc.stdlib : exit;
 
 int width = 100;
 int height = 100;

@@ -17,11 +17,12 @@
  * current) is not ported, so `cairoAutolinkContext(true)` is a fatal
  * error, exactly as in an FLTK library built without that option.
  *
- * The X11 and Windows branches of src/Fl_Cairo.cxx are ported. On X11
- * the Cairo surface wraps the drawable drawing currently targets (a
- * window, or a double window's back buffer during its `draw()`); on
- * Windows it wraps the current device context (`cairo-win32.h`). The
- * Wayland and macOS branches are not.
+ * The X11, Wayland and Windows branches of src/Fl_Cairo.cxx are ported.
+ * On X11 the Cairo surface wraps the drawable drawing currently targets
+ * (a window, or a double window's back buffer during its `draw()`); on
+ * Wayland the context is the one the window's draw buffer is drawn with;
+ * on Windows it wraps the current device context (`cairo-win32.h`). The
+ * macOS branch is not ported.
  */
 module fl.cairo;
 
@@ -183,6 +184,20 @@ cairo_t* cairoMakeCurrent(Window wi)
     if (wi is null)
         return null;
     cairo_t* cairoCtxt;
+
+    version (FLDTK_HAVE_WAYLAND)
+    {
+        // On Wayland the window's own draw buffer is the context.
+        import platform = fl.platform;
+        import platformWayland = fl.platform_wayland;
+        if (platform.backend() == platform.Backend.wayland)
+        {
+            cairoCtxt = platformWayland.windowCairo(wi);
+            if (cairoCtxt is null) return null; // not shown yet
+            cairoCc(cairoCtxt, false);
+            return cairoCtxt;
+        }
+    }
 
     void* gc = currentGc();
     if (gc is null) // means remove current cc

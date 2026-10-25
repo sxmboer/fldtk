@@ -494,6 +494,7 @@ final class ProjectWriter
         if (wn.whenRaw >= 0) writeBareProp(buf, depth, "when", format("%d", wn.whenRaw));
         if (wn.typeWord.length) writeWordProp(buf, depth, "type", wn.typeWord);
         if (wn.hasSetupCode) writeBracedProp(buf, depth, "setup", wn.setupCode);
+        if (wn.hasFinalizeCode) writeBracedProp(buf, depth, "finalize", wn.finalizeCode);
         if (wn.tooltip.length) writeBracedProp(buf, depth, "tooltip", wn.tooltip);
         if (wn.hasImage)
         {

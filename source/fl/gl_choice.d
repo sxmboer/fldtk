@@ -19,6 +19,9 @@
  *   of the display default one (required -- see `FL/gl.h`'s own doc
  *   comment: "Mesa will crash if you try to use a visual not returned
  *   by glXChooseVisual").
+ * - **Wayland**: the EGL config `eglConf`
+ *   (`fl.wayland_gl_window_driver.chooseConfig()`); nothing is needed at
+ *   window-creation time.
  * - **Windows**: a `DescribePixelFormat()`-chosen pixel-format index
  *   plus its own `PIXELFORMATDESCRIPTOR` (`SetPixelFormat()` needs
  *   both). Unlike X11, Windows needs no visual/colormap at window-
@@ -56,6 +59,11 @@ final class GlChoice
         XVisualInfo* vis;
         Colormap colormap;
     }
+
+    // Wayland-specific (Fl_Wayland_Gl_Choice in FLTK): the EGL config
+    // (an `EGLConfig`). Present in every Linux build, so libraries and
+    // programs built with and without Wayland support stay compatible.
+    version (linux) void* eglConf;
 
     // Windows-specific (Fl_WinAPI_Gl_Choice in FLTK)
     version (Windows)

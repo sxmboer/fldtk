@@ -16,7 +16,10 @@ importPaths "source"
 // Cairo C API), fl.cairo and fl.cairo_window (Fl_Cairo.H/Fl_Cairo_Window.H),
 // the equivalent of FLTK's CMake option FLTK_OPTION_CAIRO_WINDOW -- and the
 // Pango C API (fl.pango_c, fl.pango_c_cairo, with the GLib subset it needs
-// in fl.glib_c). The FLDTK_HAVE_CAIRO/FLDTK_HAVE_PANGO versions and the
+// in fl.glib_c) -- and the Wayland backend (FLDTK_HAVE_WAYLAND: fl.platform_wayland,
+// libwayland-client, libxkbcommon and, for OpenGL, libEGL and
+// libwayland-egl; it draws through Cairo, so it is only
+// in configurations with Cairo). The FLDTK_HAVE_* versions and the
 // libraries are passed on to anything
 // depending on this package, so a dub project gets them automatically
 // (hence the FLDTK_ prefix: a bare HAVE_CAIRO could clash with a
@@ -24,8 +27,8 @@ importPaths "source"
 configuration "linux-default" {
     platforms "linux"
     targetType "dynamicLibrary"
-    versions "FLDTK_HAVE_CAIRO" "FLDTK_HAVE_PANGO"
-    libs "X11" "Xft" "Xinerama" "Xrandr" "fontconfig" "Xcursor" "Xfixes" "Xext" "GL" "GLU" "GLEW" "z" "cairo" "pangocairo-1.0" "pango-1.0" "gobject-2.0" "glib-2.0"
+    versions "FLDTK_HAVE_CAIRO" "FLDTK_HAVE_PANGO" "FLDTK_HAVE_WAYLAND"
+    libs "X11" "Xft" "Xinerama" "Xrandr" "fontconfig" "Xcursor" "Xfixes" "Xext" "Xi" "GL" "GLU" "z" "cairo" "pangocairo-1.0" "pango-1.0" "gobject-2.0" "glib-2.0" "wayland-client" "wayland-cursor" "xkbcommon" "EGL" "wayland-egl"
 }
 
 // The same library without Cairo or Pango support, needing nothing beyond the X11/GL
@@ -37,7 +40,7 @@ configuration "linux-default" {
 configuration "linux-no-cairo" {
     platforms "linux"
     targetType "dynamicLibrary"
-    libs "X11" "Xft" "Xinerama" "Xrandr" "fontconfig" "Xcursor" "Xfixes" "Xext" "GL" "GLU" "GLEW" "z"
+    libs "X11" "Xft" "Xinerama" "Xrandr" "fontconfig" "Xcursor" "Xfixes" "Xext" "Xi" "GL" "GLU" "z"
 }
 
 // Same library, built under another name and in another directory, so
@@ -51,8 +54,8 @@ configuration "linux-release" {
     targetType "dynamicLibrary"
     targetName "fldtk-release"
     targetPath "build/release"
-    versions "FLDTK_HAVE_CAIRO" "FLDTK_HAVE_PANGO"
-    libs "X11" "Xft" "Xinerama" "Xrandr" "fontconfig" "Xcursor" "Xfixes" "Xext" "GL" "GLU" "GLEW" "z" "cairo" "pangocairo-1.0" "pango-1.0" "gobject-2.0" "glib-2.0"
+    versions "FLDTK_HAVE_CAIRO" "FLDTK_HAVE_PANGO" "FLDTK_HAVE_WAYLAND"
+    libs "X11" "Xft" "Xinerama" "Xrandr" "fontconfig" "Xcursor" "Xfixes" "Xext" "Xi" "GL" "GLU" "z" "cairo" "pangocairo-1.0" "pango-1.0" "gobject-2.0" "glib-2.0" "wayland-client" "wayland-cursor" "xkbcommon" "EGL" "wayland-egl"
 }
 
 // Windows-specific configuration.
@@ -103,7 +106,9 @@ configuration "windows-default" {
 // same objects as its DLL, so they still mark pixman's functions
 // dllexport, which makes each program export them and lld-link write an
 // import library (<program>.lib) next to it; /IMPLIB:NUL discards that
-// file (lld-link has no /NOIMPLIB). Built as fldtk-cairo.lib, next to the plain fldtk.lib
+// file (lld-link has no /NOIMPLIB). lld-link can't write to NUL itself
+// ("permission denied"), so buildsamples.d swaps it for a path in
+// build/obj; a program linking this configuration needs the same. Built as fldtk-cairo.lib, next to the plain fldtk.lib
 // rather than over it: a static library with Cairo support pulls Cairo
 // into every program linking it, whether or not the program uses Cairo.
 configuration "windows-cairo" {

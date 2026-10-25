@@ -87,11 +87,9 @@ void timerCb()
     // pop up a message:
     stop = stop || (choice(
         "Timeout. Click the 'Close' button or press Escape.\n"
-        ~ "Note: this message had been blocked in FLTK 1.3\n"
-        ~ "and earlier if another message window was open.\n"
-        ~ "This message should pop up every 5 seconds (max. 10 times)\n"
-        ~ "in FLTK 1.4 and later until stopped by clicking the button\n"
-        ~ "below or by pressing the Enter (Return) key.\n",
+        ~ "This message pops up every 5 seconds (max. 10 times),\n"
+        ~ "even while another message window is open, until stopped\n"
+        ~ "by clicking the button below or by pressing Enter (Return).\n",
         "Close", "Stop these funny popups", null) != 0);
 }
 

@@ -83,24 +83,24 @@ class WidgetNode : Node
     string classOverride;
     bool hasClassOverride;
 
-    // Runs once this widget is constructed and its attributes are set,
-    // but before any of its children are constructed (matching FLTK
-    // Fluid's own "setup" semantics -- see `FLUID_DIALECT.md`'s "Known
-    // dialect gaps" section for why there's no post-children
-    // counterpart yet). Replaces the
-    // four separately-numbered `code0`-`code3` FLTK slots: since
-    // fldtk has no header/`.cxx` split, the other two FLTK slots
-    // those numbers also covered (`#include`/`declare`, both purely
-    // about *which file* to write to) don't apply here at all, and
-    // nothing in this project has ever needed the fourth ("final",
-    // post-children) slot FLTK also offers -- add it back as a
-    // real, separate field the day something actually needs it, not
-    // speculatively. A widget with more than one `setup` property in
-    // its `.fl` source has each one appended in encounter order (see
-    // `readProperty()` below), matching the concatenated-in-numeric-
-    // order behavior `code0`-`code3` already had.
+    // FLTK's four extra-code slots `code0`-`code3` (`#include`,
+    // declare, setup, final; FLTK's "final" is `finalize` here, clear of
+    // the D keyword). The first two only choose what goes into
+    // the C++ header file; D has no header, so they have no counterpart
+    // here: an import goes in a parent widget's `setup` code (local
+    // scope) or a Declaration node (module scope). See
+    // `FLUID_DIALECT.md`.
+    //
+    // `setup` runs once this widget is constructed and its attributes
+    // are set, before any of its children are constructed. `finalize`
+    // runs after its children, and for a group or window before its
+    // `end()`. A widget with more than one `setup` or `finalize` property
+    // in its `.fl` source has each one appended in encounter order (see
+    // `readProperty()` below), matching FLTK's `extra_code_append()`.
     string setupCode;
     bool hasSetupCode;
+    string finalizeCode;
+    bool hasFinalizeCode;
 
     string tooltip;
     bool hidden;
@@ -288,6 +288,10 @@ class WidgetNode : Node
             // across more than one property without losing any of it.
             setupCode ~= (hasSetupCode ? "\n" : "") ~ r.readValue();
             hasSetupCode = true;
+            return true;
+        case "finalize":
+            finalizeCode ~= (hasFinalizeCode ? "\n" : "") ~ r.readValue();
+            hasFinalizeCode = true;
             return true;
         case "tooltip":
             tooltip = r.readValue();

@@ -83,6 +83,15 @@
  *    so there's no caller in this port either. Easy to add later if a real
  *    caller needs them.
  *
+ * Fixed here, unlike the C original:
+ *  - With `gradientUnits="objectBoundingBox"` (the default), a gradient
+ *    coordinate written as a plain number (`x2="1"`) is a fraction of the
+ *    shape's bounding box, as the SVG specification says, the same as
+ *    `x2="100%"`. nanosvg.h's `nsvg__convertToPixels()` takes it as an
+ *    absolute position instead, so such a gradient collapses into the
+ *    shape's first pixel and the shape shows only one colour.
+ *    `createGradient()` maps unitless coordinates onto the bounding box.
+ *
  * Faithfully ported, not "fixed", despite looking odd on a close read:
  *  - `nsvg__atof()`/`nsvg__parseNumber()` deliberately do NOT use
  *    `std.conv.to!float`/libc's locale-sensitive `atof()` -- FLTK's own
@@ -578,12 +587,21 @@ private NsvgGradient createGradient(NsvgParser p, string id, float[4] localBound
     }
     float sl = sqrt(sw * sw + sh * sh) / sqrt(2.0f);
 
+    // In object space a unitless coordinate is a fraction of the bounding
+    // box (see this module's top comment).
+    float toPixels(NsvgCoordinate c, float orig, float length)
+    {
+        if (data.units == NsvgGradientUnits.objectSpace && c.units == NsvgUnits.user)
+            return orig + c.value * length;
+        return convertToPixels(p, c, orig, length);
+    }
+
     if (data.type == NsvgPaintType.linearGradient)
     {
-        float x1 = convertToPixels(p, data.linear.x1, ox, sw);
-        float y1 = convertToPixels(p, data.linear.y1, oy, sh);
-        float x2 = convertToPixels(p, data.linear.x2, ox, sw);
-        float y2 = convertToPixels(p, data.linear.y2, oy, sh);
+        float x1 = toPixels(data.linear.x1, ox, sw);
+        float y1 = toPixels(data.linear.y1, oy, sh);
+        float x2 = toPixels(data.linear.x2, ox, sw);
+        float y2 = toPixels(data.linear.y2, oy, sh);
         float dx = x2 - x1, dy = y2 - y1;
         grad.xform[0] = dy; grad.xform[1] = -dx;
         grad.xform[2] = dx; grad.xform[3] = dy;
@@ -591,11 +609,11 @@ private NsvgGradient createGradient(NsvgParser p, string id, float[4] localBound
     }
     else
     {
-        float cx = convertToPixels(p, data.radial.cx, ox, sw);
-        float cy = convertToPixels(p, data.radial.cy, oy, sh);
-        float fx = convertToPixels(p, data.radial.fx, ox, sw);
-        float fy = convertToPixels(p, data.radial.fy, oy, sh);
-        float r = convertToPixels(p, data.radial.r, 0, sl);
+        float cx = toPixels(data.radial.cx, ox, sw);
+        float cy = toPixels(data.radial.cy, oy, sh);
+        float fx = toPixels(data.radial.fx, ox, sw);
+        float fy = toPixels(data.radial.fy, oy, sh);
+        float r = toPixels(data.radial.r, 0, sl);
         grad.xform[0] = r; grad.xform[1] = 0;
         grad.xform[2] = 0; grad.xform[3] = r;
         grad.xform[4] = cx; grad.xform[5] = cy;
@@ -2707,4 +2725,25 @@ unittest
     assert(r1.bounds[0] > 4.5f && r1.bounds[0] < 5.5f);
     // r2's rect at (10,10) translated by (5,5) -> bounds start at x=15,y=15.
     assert(r2.bounds[0] > 14.5f && r2.bounds[0] < 15.5f);
+}
+
+unittest
+{
+    // In objectBoundingBox units a unitless gradient coordinate is a
+    // fraction of the shape's box: x2="1" ends the gradient at the right
+    // edge, exactly like x2="100%".
+    float[6] gradientXform(string x2)
+    {
+        string svg = `<svg width="40" height="20"><defs><linearGradient id="g" x1="0" x2="`
+            ~ x2 ~ `"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#fff"/>`
+            ~ `</linearGradient></defs><rect x="10" y="0" width="20" height="20" fill="url(#g)"/></svg>`;
+        auto buf = svg.dup;
+        auto img = nsvgParse(buf, "px", 96);
+        assert(img.shapes.fill.type == NsvgPaintType.linearGradient);
+        return img.shapes.fill.gradient.xform;
+    }
+    auto fraction = gradientXform("1");
+    auto percent = gradientXform("100%");
+    foreach (i; 0 .. 6)
+        assert(fabs(fraction[i] - percent[i]) < 1e-4f);
 }

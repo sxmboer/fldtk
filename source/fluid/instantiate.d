@@ -1294,7 +1294,7 @@ void applyProperties(WidgetNode n, Widget w, string projectDir = ".", bool apply
     // trailing `.scale(...)` call, ported from `Widget_Image::write_
     // code()`) and applied here: a `.fl` file with a real
     // `scale_image {w h}` (e.g. `settings_panel.fl`'s own tab icons,
-    // `../icons/*_64.png` scaled down to `{36 24}`) generates correctly-
+    // `pixmaps/*_64.svg` scaled down to `{36 24}`) generates correctly-
     // sized code and shows the image at that size on the
     // live canvas too. Same "0 falls back to the image's own
     // natural size" rule as `code_writer.d`'s version.

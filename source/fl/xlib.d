@@ -653,6 +653,10 @@ int XCloseDisplay(Display* display);
 /// (`Fl_x.cxx`, `list_visuals.cxx`'s standalone `fl_open_display()`).
 const(char)* XDisplayName(const(char)* string);
 
+/// The name `display` was opened with, for opening a second connection
+/// to the same server.
+const(char)* XDisplayString(Display* display);
+
 Atom XInternAtom(Display* display, const(char)* atomName, Bool onlyIfExists);
 
 int XDefaultScreen(Display* display);
@@ -839,14 +843,9 @@ int XGrabKeyboard(Display* display, Window grabWindow, Bool ownerEvents,
 int XUngrabPointer(Display* display, Time time);
 int XUngrabKeyboard(Display* display, Time time);
 
-/// XErrorEvent/XSetErrorHandler(): needed because XSetInputFocus() is
-/// inherently racy against a freshly `XMapWindow()`-ed, window-manager-
-/// reparented window (BadMatch if the window isn't yet viewable when
-/// the request is processed -- see fl.platform_x11's own doc comment
-/// on `installErrorHandler()` for the full explanation). Xlib's
-/// default error handler prints the error and calls `exit()`, which
-/// would otherwise take the whole process down over what's really
-/// just a lost-the-race, safe-to-ignore focus request.
+/// XErrorEvent/XSetErrorHandler()/XGetErrorText(): fl.platform_x11
+/// installs its own error handler (see `installErrorHandler()`), since
+/// Xlib's default one prints the error and calls `exit()`.
 struct XErrorEvent
 {
     int type;
@@ -860,6 +859,9 @@ struct XErrorEvent
 
 alias XErrorHandler = extern (C) int function(Display*, XErrorEvent*) @nogc nothrow;
 XErrorHandler XSetErrorHandler(XErrorHandler handler);
+int XGetErrorText(Display* display, int code, char* bufferReturn, int length);
+int XGetErrorDatabaseText(Display* display, const(char)* name, const(char)* message,
+    const(char)* defaultString, char* bufferReturn, int length);
 
 enum ubyte BadMatch = 8;
 enum ubyte X_SetInputFocus = 42;
@@ -905,6 +907,9 @@ int XPending(Display* display);
 /// the connection but not yet handled.
 int XEventsQueued(Display* display, int mode);
 enum int QueuedAlready = 0;
+/// `XEventsQueued()` mode: reads what the connection has, if the queue
+/// is empty.
+enum int QueuedAfterReading = 1;
 /// The X connection's underlying file descriptor -- a real exported
 /// function (used here instead of the `ConnectionNumber()` macro,
 /// which reaches into `Display`'s private `_XPrivDisplay` layout that

@@ -6,12 +6,9 @@
  * `writeln(eventNames[e])` instead of printing a bare integer while
  * tracing `handle()` calls.
  *
- * `eventNames` skips FLTK's 11 trailing `Fl::Pen::*` entries: pen
- * events are a deferred, not-yet-ported subsystem in this port (see
- * CONVENTIONS.md's "Where this port intentionally exceeds FLTK" section
- * -- X11 pen support is planned but not built yet), so `fl.enumerations
- * .Event` has no corresponding values to map names from. Every other
- * FLTK entry is ported (all real `Event` values in this port).
+ * `eventNames` includes the pen events, which are members of `Event`
+ * in this port (`Event.penTouch`, ...), under FLTK's names for them
+ * (`"Fl::Pen::TOUCH"`, ...).
  *
  * `fontNames`/`callbackReasonNames` are plain `string[]` (index = the
  * enum's own underlying `int` value) rather than FLTK's
@@ -25,9 +22,8 @@ module fl.names;
 import fl.enumerations : Event, Font, CallbackReason, helvetica, zapfDingbats;
 import std.conv : to;
 
-/// Human-readable names for every `Event` value this port has -- ported
-/// from `fl_eventnames` (`FL/names.h`). See this module's own top
-/// comment for why the `Fl::Pen::*` entries aren't included.
+/// Human-readable names for every `Event` value -- ported from
+/// `fl_eventnames` (`FL/names.h`).
 immutable string[Event] eventNames;
 
 shared static this()
@@ -65,6 +61,24 @@ shared static this()
         Event.beforeMenu: "FL_BEFORE_MENU",
         Event.appActivate: "FL_APP_ACTIVATE",
         Event.appDeactivate: "FL_APP_DEACTIVATE",
+        Event.penDetected: "Fl::Pen::DETECTED",
+        Event.penChanged: "Fl::Pen::CHANGED",
+        Event.penInRange: "Fl::Pen::IN_RANGE",
+        Event.penOutOfRange: "Fl::Pen::OUT_OF_RANGE",
+        Event.penEnter: "Fl::Pen::ENTER",
+        Event.penLeave: "Fl::Pen::LEAVE",
+        Event.penTouch: "Fl::Pen::TOUCH",
+        Event.penLift: "Fl::Pen::LIFT",
+        Event.penHover: "Fl::Pen::HOVER",
+        Event.penDraw: "Fl::Pen::DRAW",
+        Event.penButtonPush: "Fl::Pen::BUTTON_PUSH",
+        Event.penButtonRelease: "Fl::Pen::BUTTON_RELEASE",
+        Event.rotateGesture: "ROTATE_GESTURE",
+        Event.swipeGesture: "SWIPE_GESTURE",
+        Event.touchDown: "TOUCH_DOWN",
+        Event.touchMove: "TOUCH_MOVE",
+        Event.touchUp: "TOUCH_UP",
+        Event.touchCancel: "TOUCH_CANCEL",
     ];
 }
 

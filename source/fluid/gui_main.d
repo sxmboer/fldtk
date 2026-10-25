@@ -98,10 +98,11 @@ import fluid.canvas : ProjectCanvas;
 import fluid.node_browser : NodeBrowser, nodeBrowserLoadPrefs = loadPrefs;
 import widget_panel : make_widget_panel, wireEditHooks, widgetPanelLoad = load,
     widgetPanelCurrent = current, refreshCodeFromNode, widgetPanelOnBeforeEdit = onBeforeEdit,
-    widgetPanelOnEdited = onEdited, widgetPanelOnOpenExternalEditor = onOpenExternalEditor,
+    widgetPanelOnEdited = onEdited, widgetPanelOnEditSettled = onEditSettled,
+    widgetPanelOnOpenExternalEditor = onOpenExternalEditor,
     widgetPanelOnBeforeTextEdit = onBeforeTextEdit,
     overlayCb, okCb, liveModeCb, wLiveMode, thePanel, widgetTabs, tabsWizard, overlayButton,
-    vCodeInput2, wCallback, userDataInput;
+    vCodeInput2, vCodeInput3, wCallback, userDataInput;
 import fluid.factory : createNode;
 import fluid.instantiate : instantiateOne, instantiateChild, instantiateStandalone, idealSizeFor, defaultLabelFor, defaultNameFor, LiveTree, loadImageFile, applyMenuItems, applyProperties, scrollOffsetWithin, getTextStuff, onImageLoadError;
 import fluid.menu_owner_node : MenuOwnerNode;
@@ -845,13 +846,9 @@ void runEditor(string[] args)
 
     // `overlayCb`/`okCb`/`liveModeCb` are `widget_panel.fl`'s own
     // module-level `void delegate(Widget)` hooks (see that file's
-    // "gui_main.d integration surface" comment, and its own comment
-    // directly above the three stub Functions for exactly why a real
-    // implementation has to live here rather than in the .fl file
-    // itself -- a callback-shaped Function's own body is unreachable
-    // dead code in any file with no `main()`-shaped root Function,
-    // which every panel file is) -- assigned *before* `make_widget_
-    // panel()` runs, since `overlayButton.callback(overlayCb)`/
+    // "gui_main.d integration surface" comment), implemented here
+    // because they need this module's state -- assigned *before*
+    // `make_widget_panel()` runs, since `overlayButton.callback(overlayCb)`/
     // `wLiveMode.callback(liveModeCb)` inside it capture each
     // delegate's value at that statement, not a live reference to this
     // variable.
@@ -885,6 +882,7 @@ void runEditor(string[] args)
         if (tabsWizard.value() is widgetTabs)
         {
             if (auto d = codeCheck(vCodeInput2.buffer().text())) { fl.message("Error in code: " ~ d); return; }
+            if (auto d = codeCheck(vCodeInput3.buffer().text())) { fl.message("Error in code: " ~ d); return; }
             if (auto d = codeCheck(wCallback.buffer().text())) { fl.message("Error in callback: " ~ d); return; }
             if (auto d = codeCheck(userDataInput.value())) { fl.message("Error in user_data: " ~ d); return; }
         }
@@ -996,6 +994,7 @@ void runEditor(string[] args)
         browser_.recalcTree();
         browser_.redraw();
     };
+    widgetPanelOnEditSettled = () { codeviewAutoRefresh(); };
     widgetPanelOnBeforeEdit = () { checkpoint(); };
     widgetPanelOnBeforeTextEdit = (Object key) { checkpointTextEdit(key); };
     widgetPanelOnOpenExternalEditor = (n) { openExternalEditor(n); };
@@ -1336,9 +1335,8 @@ private bool positionWindow(Window w, string prefsGroup, bool defaultVisible, in
 /// short of manually editing or deleting the prefs file by hand.
 ///
 /// If the window rectangle `(x, y, w, h)` wouldn't overlap the real
-/// virtual screen bounds (`fl.core.screenXYWH()`'s no-arg overload --
-/// the whole display, every monitor, not just the primary one) by at
-/// least `minVisibleMargin` pixels in both dimensions, resets `x`/`y`
+/// bounds of any monitor by at least `minVisibleMargin` pixels in both
+/// dimensions, resets `x`/`y`
 /// to `(defaultX, defaultY)` instead of trusting the saved value
 /// blindly. `int` has no NaN of its own, but the same underlying worry --
 /// "what if this value is garbage" -- applies just as well to a huge,
@@ -1347,17 +1345,17 @@ private enum minVisibleMargin = 20;
 
 private void sanitizePosition(ref int x, ref int y, int w, int h, int defaultX, int defaultY)
 {
-    int scrX, scrY, scrW, scrH;
-    fl.screenXYWH(scrX, scrY, scrW, scrH);
-
-    bool xOnScreen = x + w > scrX + minVisibleMargin && x < scrX + scrW - minVisibleMargin;
-    bool yOnScreen = y + h > scrY + minVisibleMargin && y < scrY + scrH - minVisibleMargin;
-
-    if (!xOnScreen || !yOnScreen)
+    foreach (n; 0 .. fl.screenCount())
     {
-        x = defaultX;
-        y = defaultY;
+        int scrX, scrY, scrW, scrH;
+        fl.screenXYWH(scrX, scrY, scrW, scrH, n);
+        bool xOnScreen = x + w > scrX + minVisibleMargin && x < scrX + scrW - minVisibleMargin;
+        bool yOnScreen = y + h > scrY + minVisibleMargin && y < scrY + scrH - minVisibleMargin;
+        if (xOnScreen && yOnScreen)
+            return;
     }
+    x = defaultX;
+    y = defaultY;
 }
 
 /// Why "the window doesn't reopen where it
@@ -3335,7 +3333,7 @@ private WindowNode createWindowNode()
 /// when you double-click", `nodes/Node.h`'s own doc comment) -- shows
 /// (or raises, if already visible/behind another window --
 /// `fl.window.Window.show()` on an already-shown window forwards to
-/// `platformX11.raiseWindow()`, matching real `XMapRaised` semantics)
+/// `fl.platform_x11.raiseWindow()`, matching real `XMapRaised` semantics)
 /// the Widget Properties panel with `n` loaded, the same pairing
 /// FLTK's own shared `open_panel()` does (`widget_panel_callbacks.
 /// cxx`: lazily construct-or-reuse `the_panel`, `load_panel()`, then
@@ -3353,7 +3351,7 @@ private WindowNode createWindowNode()
 /// the WM's own close button falls back to `fl.window.Window`'s plain
 /// default (`hide()` + push onto the read queue, same as any other
 /// window), and `hide()` really does destroy the underlying X resource
-/// (`platformX11.destroyWindow()`), not just unmap it -- so once
+/// (`fl.platform_x11.destroyWindow()`), not just unmap it -- so once
 /// closed, `shown()` is genuinely `false` with nothing left to reopen
 /// it on its own. Double-clicking the node in the project panel reuses
 /// the same one-shot `resizable()` trick for re-showing a closed window
@@ -3417,7 +3415,7 @@ private void openNode(Node n)
             && thePanel.y() < widgetBinPanel.y() + widgetBinPanel.h())
         {
             int scrX, scrY, scrW, scrH;
-            fl.screenXYWH(scrX, scrY, scrW, scrH);
+            fl.screenXYWH(scrX, scrY, scrW, scrH, fl.screenNum(widgetBinPanel.x(), widgetBinPanel.y()));
             if (widgetBinPanel.y() + widgetBinPanel.h() + thePanel.h() > scrY + scrH)
                 thePanel.position(thePanel.x(), widgetBinPanel.y() - thePanel.h() - 30);
             else

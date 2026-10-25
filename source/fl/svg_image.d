@@ -98,6 +98,7 @@ final class SvgImage : RGBImage
     private this(const SvgImage source)
     {
         super(null, 0, 0, 4, 0);
+        ld(0); // the base constructor marks the missing pixels with errMemoryAccess
         svgImage_ = cast(NsvgImage) source.svgImage_;
         proportional_ = source.proportional_;
         w(source.w());
@@ -187,6 +188,7 @@ final class SvgImage : RGBImage
         sharedRasterizer.rasterizeXY(svgImage_, 0, 0, fx, fy, arr, W, H, W * 4);
         array = arr;
         d(4);
+        ld(0);
         if (toDesaturate_) super.desaturate();
         if (averageWeight_ < 1) super.colorAverage(averageColor_, averageWeight_);
         rasterized_ = true;
@@ -327,6 +329,16 @@ unittest
     size_t off = (5 * 10 + 5) * 4;
     assert(img.array[off + 1] == 255); // green
     assert(img.array[off + 3] == 255); // opaque
+}
+
+unittest
+{
+    // A copy rasterizes when normalized, with plain, unpadded rows.
+    string svg = `<svg width="10" height="10"><rect width="10" height="10" fill="#0000ff"/></svg>`;
+    auto copy = cast(RGBImage) new SvgImage(null, svg).copy(6, 6);
+    copy.normalize();
+    assert(copy.ld() == 0);
+    assert(copy.array.length == 6 * 6 * 4);
 }
 
 unittest

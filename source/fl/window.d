@@ -68,7 +68,7 @@ import std.array : array;
 version (linux)
 {
     import fl.xlib : XlibWindow = Window;
-    import platformX11 = fl.platform_x11;
+    import platform = fl.platform;
 }
 
 version (Windows)
@@ -193,7 +193,7 @@ class Window : FlGroup
     /// source immediately after" contract this doc comment promises.
     static void defaultIcons(RGBImage[] icons)
     {
-        defaultIcons_ = icons.map!(i => cast(RGBImage) i.copy()).array;
+        defaultIcons_ = icons.map!(i => iconCopy(i)).array;
     }
 
     /// Convenience one-icon form of `defaultIcons()`. Ported from
@@ -210,6 +210,17 @@ class Window : FlGroup
     package(fl) const(RGBImage)[] iconsForWM() const
     {
         return icons_;
+    }
+
+    // A copy of an icon with its pixels ready: an `SvgImage`'s copy is
+    // only rasterized on demand, so it is normalized here, as FLTK's
+    // drivers normalize each icon before reading its pixels
+    // (`Fl_X11_Window_Driver::set_icons()`).
+    private static RGBImage iconCopy(const(RGBImage) img)
+    {
+        auto c = cast(RGBImage) img.copy();
+        c.normalize();
+        return c;
     }
 
     /**
@@ -233,10 +244,10 @@ class Window : FlGroup
         // full story (a live crash from a caller destroy()ing its
         // source image right after handing it off, matching FLTK's
         // own "free immediately after" contract).
-        icons_ = imgs.map!(i => cast(RGBImage) i.copy()).array;
+        icons_ = imgs.map!(i => iconCopy(i)).array;
         if (shown())
         {
-            version (linux) platformX11.setIcons(this);
+            version (linux) platform.setIcons(this);
             version (Windows) platformWin32.setIcons(this);
         }
     }
@@ -296,7 +307,7 @@ class Window : FlGroup
     override void label(string text)
     {
         super.label(text);
-        if (shown()) version (linux) platformX11.updateWindowLabel(this);
+        if (shown()) version (linux) platform.updateWindowLabel(this);
     }
 
     /// D hides a base class's entire overload set once a derived class
@@ -326,7 +337,7 @@ class Window : FlGroup
     void iconlabel(string iname)
     {
         iconlabel_ = iname;
-        if (shown()) version (linux) platformX11.updateWindowLabel(this);
+        if (shown()) version (linux) platform.updateWindowLabel(this);
     }
 
     this(int x, int y, int w, int h, string label = null)
@@ -594,9 +605,9 @@ class Window : FlGroup
         version (linux)
         {
             if (!shown_)
-                platformX11.createWindow(this);
+                platform.createWindow(this);
             else
-                platformX11.raiseWindow(this);
+                platform.raiseWindow(this);
         }
         version (Windows)
         {
@@ -722,7 +733,7 @@ class Window : FlGroup
         version (linux)
         {
             if (shown_)
-                platformX11.destroyWindow(this);
+                platform.destroyWindow(this);
         }
         version (Windows)
         {
@@ -749,7 +760,7 @@ class Window : FlGroup
      * "ancestor `FlGroup`, not a `Window`, hidden directly" case, a full
      * destroy-then-recreate `hide()`/`show()` cycle would be
      * behaviorally different from FLTK, not just more expensive:
-     * `hide()` (`platformX11.destroyWindow()`) unconditionally cascades
+     * `hide()` (`fl.platform_x11.destroyWindow()`) unconditionally cascades
      * `Event.hide` through this subwindow's own widget tree, and since
      * the outer `handle()` call already does the same via its own
      * trailing `super.handle(event)`, that would dispatch it *twice* --
@@ -763,7 +774,7 @@ class Window : FlGroup
      * everything below it, so skip the unmap here to avoid an
      * unnecessary extra hide/show blink when the ancestor window
      * reappears. Otherwise (the common case -- a plain `FlGroup`
-     * ancestor was hidden), `platformX11.unmapWindow()`/`raiseWindow()`
+     * ancestor was hidden), `fl.platform_x11.unmapWindow()`/`raiseWindow()`
      * toggle the real X window's mapped state in place, leaving this
      * subwindow's own `WindowRecord`/`shown_` untouched -- matching
      * `Fl_X11_Window_Driver::unmap()`/`::map()` exactly, no destroy or
@@ -779,7 +790,7 @@ class Window : FlGroup
                     show();
                 else
                 {
-                    version (linux) platformX11.raiseWindow(this);
+                    version (linux) platform.raiseWindow(this);
                     version (Windows) platformWin32.raiseWindow(this);
                 }
             }
@@ -798,7 +809,7 @@ class Window : FlGroup
                     }
                     if (doUnmap)
                     {
-                        version (linux) platformX11.unmapWindow(this);
+                        version (linux) platform.unmapWindow(this);
                         version (Windows) platformWin32.unmapWindow(this);
                     }
                 }
@@ -818,9 +829,9 @@ class Window : FlGroup
     /// pattern for `show()`/`hide()`).
     package(fl) void accumulateDamageRect(int x, int y, int w, int h)
     {
-        version (linux) platformX11.accumulateDamage(this, x, y, w, h);
+        version (linux) platform.accumulateDamage(this, x, y, w, h);
         // `fl.platform_win32.accumulateDamageRect()` mirrors
-        // `platformX11.accumulateDamage()`'s own bounding-box-merge
+        // `fl.platform_x11.accumulateDamage()`'s own bounding-box-merge
         // algorithm, see that function's own doc comment.
         version (Windows) platformWin32.accumulateDamageRect(this, x, y, w, h);
     }
@@ -834,7 +845,7 @@ class Window : FlGroup
     /// wrongly clip the next repaint to less than the whole window.
     package(fl) void clearDamageRegion()
     {
-        version (linux) platformX11.clearDamageRegion(this);
+        version (linux) platform.clearDamageRegion(this);
         version (Windows) platformWin32.clearDamageRegion(this);
     }
 
@@ -859,9 +870,8 @@ class Window : FlGroup
         {
             if (xid_ != 0)
             {
-                fldraw.setDrawable(xid_);
+                platform.makeCurrent(this);
                 current_ = this;
-                fl.core.currentScale(fl.core.screenScale(screenNum()));
             }
         }
 
@@ -978,7 +988,7 @@ class Window : FlGroup
         aspect_ = aspectRatio;
         sizeRangeSet_ = true;
 
-        version (linux) platformX11.sizeRangeChanged(this);
+        version (linux) platform.sizeRangeChanged(this);
     }
 
     /// Gets the allowable resize range set by sizeRange(). Returns
@@ -1170,7 +1180,7 @@ class Window : FlGroup
 
         if (c == Cursor.default_) c = cursorDefault_;
 
-        version (linux) platformX11.setCursor(this, c);
+        version (linux) platform.setCursor(this, c);
         version (Windows) platformWin32.setCursor(this, c);
     }
 
@@ -1194,7 +1204,7 @@ class Window : FlGroup
         if (!shown()) return;
 
         bool ok = false;
-        version (linux) ok = platformX11.setCursorImage(this, image, hotx, hoty);
+        version (linux) ok = platform.setCursorImage(this, image, hotx, hoty);
         version (Windows) ok = platformWin32.setCursorImage(this, image, hotx, hoty);
         if (!ok) cursor(Cursor.default_);
     }
@@ -1328,7 +1338,7 @@ class Window : FlGroup
         shapeAppliedH_ = scaledH;
         if (resized is null) return;
 
-        version (linux) platformX11.applyWindowShapeMask(this, scaledW, scaledH, resized.array);
+        version (linux) platform.applyWindowShapeMask(this, scaledW, scaledH, resized.array);
         version (Windows) platformWin32.applyWindowShapeMask(this, scaledW, scaledH, resized.array);
     }
 
@@ -1395,7 +1405,7 @@ class Window : FlGroup
         version (linux)
         {
             int dw, dh;
-            bool trueSides = platformX11.decoratedWinSize(cast(Window) this, dw, dh);
+            bool trueSides = platform.decoratedWinSize(cast(Window) this, dw, dh);
             return trueSides ? dw : w();
         }
         else return w();
@@ -1407,7 +1417,7 @@ class Window : FlGroup
         version (linux)
         {
             int dw, dh;
-            platformX11.decoratedWinSize(cast(Window) this, dw, dh);
+            platform.decoratedWinSize(cast(Window) this, dw, dh);
             return dh;
         }
         else return h();
@@ -1534,7 +1544,7 @@ class Window : FlGroup
         // changes just because the scale did), and X/Y can easily land
         // back on the same integer too (e.g. any window at x()==0).
         // Without this, `resize()` would see "nothing changed" and
-        // return before ever reaching `platformX11.resizeWindow()` --
+        // return before ever reaching `fl.platform_x11.resizeWindow()` --
         // silently skipping the one call that actually updates the
         // window's real on-screen pixel size.
         bool isMove = X != x() || Y != y() || isARescale_;
@@ -1590,9 +1600,9 @@ class Window : FlGroup
             // see exactDeviceTarget_'s own doc comment. Every other
             // window this same rescale's FlGroup.resize() cascade also
             // resizes (e.g. a nested GlWindow subwindow) falls back to
-            // int.min, letting platformX11.resizeWindow() compute its
+            // int.min, letting fl.platform_x11.resizeWindow() compute its
             // own device position from X/Y as usual.
-            version (linux) platformX11.resizeWindow(this, X, Y, W, H, isMove, isResize,
+            version (linux) platform.resizeWindow(this, X, Y, W, H, isMove, isResize,
                 this is exactDeviceTarget_ ? exactDeviceX_ : int.min,
                 this is exactDeviceTarget_ ? exactDeviceY_ : int.min);
             // Windows'
@@ -1638,7 +1648,7 @@ class Window : FlGroup
     /// `resizeAfterScaleChange()`'s own non-clamped case (no FLTK
     /// equivalent -- a deliberate improvement, see that function's own
     /// doc comment and `FLTK_ISSUES.md`). `int.min` (the sentinel
-    /// `platformX11.resizeWindow()`'s own default parameters use) means
+    /// `fl.platform_x11.resizeWindow()`'s own default parameters use) means
     /// "no override, compute the device-pixel position from FLTK units
     /// as usual." Set to the window's own *already-known-correct*
     /// device-pixel position for the duration of that one `resize()`
@@ -1791,7 +1801,7 @@ class Window : FlGroup
             else if (Y + H / 2 > sY + sH - 1) { Y = sY + sH - 1 - H / 2 - d; clamped = true; }
         }
 
-        version (linux) platformX11.sizeRangeChanged(this);
+        version (linux) platform.sizeRangeChanged(this);
 
         isARescale_ = true;
         if (!clamped)
@@ -2044,7 +2054,7 @@ class Window : FlGroup
 
         if (shown() && !fullscreenActive())
         {
-            version (linux) platformX11.fullscreenOn(this);
+            version (linux) platform.fullscreenOn(this);
             version (Windows) platformWin32.fullscreenOn(this);
         }
         else
@@ -2067,7 +2077,7 @@ class Window : FlGroup
     {
         if (shown() && fullscreenActive())
         {
-            version (linux) platformX11.fullscreenOff(this);
+            version (linux) platform.fullscreenOff(this);
             version (Windows) platformWin32.fullscreenOff(this, X, Y, W, H);
         }
         else
@@ -2108,6 +2118,12 @@ class Window : FlGroup
      * Backed by `fl.core.screenNum()`/`screenXYWH()`'s real Xinerama
      * geometry (see
      * `fl.platform_x11.fullscreenOn()`'s own doc comment).
+     *
+     * On the Wayland backend the window is fullscreen on one screen, its
+     * current one: a Wayland program can ask to be fullscreen on a
+     * single output only (`xdg_toplevel.set_fullscreen`), and can't
+     * place a window itself, so spanning several screens needs the X11
+     * backend (`FLDTK_BACKEND=x11`).
      */
     void fullscreenScreens(int top, int bottom, int left, int right)
     {
@@ -2128,7 +2144,7 @@ class Window : FlGroup
 
         if (shown() && fullscreenActive())
         {
-            version (linux) platformX11.fullscreenOn(this);
+            version (linux) platform.fullscreenOn(this);
             version (Windows) platformWin32.fullscreenOn(this);
         }
     }
@@ -2248,7 +2264,7 @@ class Window : FlGroup
         if (!shown() || parent() !is null || !isResizable() || maximizeActive() || fullscreenActive())
             return;
         setFlag(Flag.maximized);
-        version (linux) platformX11.maximizeOn(this);
+        version (linux) platform.maximizeOn(this);
         version (Windows) platformWin32.maximizeOn(this);
     }
 
@@ -2263,7 +2279,7 @@ class Window : FlGroup
         if (!shown() || parent() !is null || !isResizable() || !maximizeActive() || fullscreenActive())
             return;
         clearFlag(Flag.maximized);
-        version (linux) platformX11.maximizeOff(this);
+        version (linux) platform.maximizeOff(this);
         version (Windows) platformWin32.maximizeOff(this);
     }
 
@@ -2302,7 +2318,7 @@ class Window : FlGroup
         }
         else
         {
-            version (linux) platformX11.iconizeWindow(this);
+            version (linux) platform.iconizeWindow(this);
             version (Windows) platformWin32.iconizeWindow(this);
         }
     }
@@ -2318,7 +2334,7 @@ class Window : FlGroup
      */
     void waitForExpose()
     {
-        version (linux) platformX11.waitForExpose(this);
+        version (linux) platform.waitForExpose(this);
     }
 
     /// Whether this window is a popup/tooltip-style menu window (an
@@ -2562,7 +2578,7 @@ unittest
     // On a resizable-but-never-shown window, fullscreen() takes the
     // `else setFlag(Flag.fullscreen);` branch directly (matching
     // FLTK's own `if (shown() && ...) {...} else set_flag(...);`),
-    // since platformX11.fullscreenOn() is only reachable once shown().
+    // since fl.platform_x11.fullscreenOn() is only reachable once shown().
     auto resizable_ = new Window(300, 200, "resizable, unshown");
     resizable_.resizable(resizable_);
     resizable_.end();

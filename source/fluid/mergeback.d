@@ -33,10 +33,12 @@
  *    with `is_true_widget()`, which is false for menu items, so every
  *    menu callback edit is reported as "no node found" there; here any
  *    `WidgetNode`, menu items included, is a valid target.
- *  - A widget's `setup` code is written with the widget's own name in
- *    place of `o`; a merged-back edit gets `o` back. FLTK's `CODE0`,
- *    `CODE1` and `FINALIZE` blocks are not written: `WidgetNode` has no
- *    storage for them.
+ *  - A widget's `setup` and `finalize` code is written with the widget's
+ *    own name in place of `o`; a merged-back edit gets `o` back. FLTK's
+ *    `CODE0` and `CODE1` blocks (header-file code) do not exist here.
+ *  - `FINALIZE` blocks are written for every widget. FLTK writes them
+ *    only for widgets without children, so "final" code of a group or
+ *    window can't be merged back there.
  *  - The whole code file is read into a string instead of walked with
  *    `fgets()`/`ftell()`, and a block's end is the start of the tag
  *    line that closes it (FLTK's `block_end` keeps a stale value
@@ -59,6 +61,7 @@ import fl.preferences : Preferences, rootUserL;
 import fluid.code_node : CodeNode;
 import fluid.group_node : GroupNode;
 import fluid.node : Node;
+import fluid.widget_class_node : WidgetClassNode;
 import fluid.widget_node : WidgetNode;
 import fluid.window_node : WindowNode;
 
@@ -70,13 +73,13 @@ enum Tag : ubyte
     code,
     menuCallback,
     widgetCallback,
-    /// FLTK's extra code slots `code0` and `code1`, and `finalize`, have
-    /// no storage in `WidgetNode`; they are never written and an edit
-    /// inside one is not merged.
+    /// FLTK's extra code slots `code0` and `code1` (header-file code)
+    /// have no counterpart here; they are never written.
     code0,
     code1,
     /// A widget's `setup` code.
     setup,
+    /// A widget's `finalize` code.
     finalize,
     unused_,
 }
@@ -322,11 +325,14 @@ private string stripOneNewline(string s)
     return s;
 }
 
-/// What the code writer calls widget `n` in generated code: its own name,
-/// else `w` for a window, `g<depth>` for an unnamed group (depth counted in
-/// groups, `n` included), else `o`. See `selfRef()` in `code_writer.d`.
+/// What the code writer calls widget `n` in generated code: `this` for a
+/// Widget Class (its code is in the class's constructor), else its own
+/// name, else `w` for a window, `g<depth>` for an unnamed group (depth
+/// counted in groups, `n` included), else `o`. See `selfRef()` and
+/// `writeWidgetClassBody()` in `code_writer.d`.
 private string generatedName(WidgetNode n)
 {
+    if (cast(WidgetClassNode) n) return "this";
     if (n.instanceName.length) return n.instanceName;
     if (cast(WindowNode) n) return "w";
     if (cast(GroupNode) n)
@@ -339,7 +345,7 @@ private string generatedName(WidgetNode n)
     return "o";
 }
 
-/// A widget's `setup` code refers to the widget as `o`; the code writer
+/// A widget's `setup` and `finalize` code refers to the widget as `o`; the code writer
 /// substitutes the widget's generated name (`translateOwnSlot()` in
 /// `code_writer.d`). This does the same, to compare with the file.
 private string setupToGenerated(WidgetNode n, string setup)
@@ -408,12 +414,15 @@ class Mergeback
             if (auto cn = cast(CodeNode) n) { text = cn.instanceName; return true; }
             return false;
         }
-        if (type == Tag.setup)
+        if (type == Tag.setup || type == Tag.finalize)
         {
             if (auto wn = cast(WidgetNode) n)
             {
                 // As the code writer emitted it, so the checksums compare.
-                text = wn.hasSetupCode ? setupToGenerated(wn, wn.setupCode) : "";
+                if (type == Tag.setup)
+                    text = wn.hasSetupCode ? setupToGenerated(wn, wn.setupCode) : "";
+                else
+                    text = wn.hasFinalizeCode ? setupToGenerated(wn, wn.finalizeCode) : "";
                 return true;
             }
             return false;
@@ -433,6 +442,12 @@ class Mergeback
             auto wn = cast(WidgetNode) n;
             wn.setupCode = setupFromGenerated(wn, text);
             wn.hasSetupCode = wn.setupCode.length > 0;
+        }
+        else if (type == Tag.finalize)
+        {
+            auto wn = cast(WidgetNode) n;
+            wn.finalizeCode = setupFromGenerated(wn, text);
+            wn.hasFinalizeCode = wn.finalizeCode.length > 0;
         }
         else
             n.callback = text;

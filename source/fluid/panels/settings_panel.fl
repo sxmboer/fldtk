@@ -52,12 +52,10 @@ that predates this pass. Shell keeps its pre-existing real wiring
 narrower single-column dialog width -- every widget it names is
 unchanged, only `xywh` moved.
 
-Tab icons (`../icons/*_64.png` in FLTK) are real, copied into
-`fluid/panels/pixmaps/` and referenced the same way this project's own
-`about_panel.fl`/`fluid_icon.fl` already reference their own bundled
-pixmaps (relative to this very directory, not FLTK's sibling
-`icons/`, since this port's icons live under `panels/pixmaps/`
-alongside everything else `code_writer.d`'s `writeOneImage()` embeds).
+Tab icons are SVG redrawings of FLTK's `icons/*_64.png`, in
+`fluid/panels/pixmaps/` (relative to this directory, like the images
+`about_panel.fl`/`fluid_icon.fl` embed), so they stay sharp at any
+scale.
 FLTK's custom `@fd_beaker`/`@fd_user`/`@fd_project`/`@fd_file` glyphs
 (`fluid/app/Snap_Action.cxx`) and `@fd_zoom` (`fluid/rsrcs/pixmaps.cxx`)
 are real `fl.symbols` glyphs (`fluid.pixmaps`'s own `fdBeaker()`/
@@ -67,8 +65,8 @@ storage-location menu items and suite names use the first four -- the Shell tab'
 label, which fits
 the button's real 22x22 size, unlike a plain `"Zoom..."` text label. A separate, simpler
 asset, not an `fl_add_symbol()` glyph at all: the Shell tab's own
-per-row list icons (`fd_user.png`/`fd_project.png`, plain bitmaps
-copied in alongside the tab icons above, held by the hidden
+per-row list icons (`fd_user.svg`/`fd_project.svg`, SVG redrawings
+of FLTK's `fd_user.png`/`fd_project.png`, shown at 16x16, held by the hidden
 `shellFdUserBox`/`shellFdProjectBox`) are wired to `fl.browser.
 Browser`'s real per-row `icon()`
 (`shell_settings.d`'s `shellRefreshList()`).
@@ -110,7 +108,7 @@ Function makeSettingsPanel()
                 label {General}
                 xywh {10 60 340 480}
                 scale_image {36 24}
-                image {pixmaps/general_64.png}
+                image {pixmaps/general_64.svg}
                 compress_image 1
               }
               {
@@ -376,7 +374,7 @@ experimental feature) is wired the same way (`mergeback 1`); see
 `fluid.mergeback`.}
                 xywh {10 60 340 480}
                 scale_image {36 24}
-                image {pixmaps/document_64.png}
+                image {pixmaps/document_64.svg}
                 compress_image 1
                 hide
               }
@@ -477,7 +475,7 @@ batching writes that would otherwise happen this same way. The
 (`fluid.pixmaps` registers the glyphs).}
                 xywh {10 60 340 480}
                 scale_image {36 24}
-                image {pixmaps/layout_64.png}
+                image {pixmaps/layout_64.svg}
                 compress_image 1
                 hide
               }
@@ -1071,7 +1069,7 @@ layoutSaveUser();}
                 label {Shell}
                 xywh {10 60 340 480}
                 scale_image {36 24}
-                image {pixmaps/shell_64.png}
+                image {pixmaps/shell_64.svg}
                 compress_image 1
                 hide
               }
@@ -1477,7 +1475,8 @@ list:}
                   {
                     xywh {20 70 16 15}
                     labelsize 11
-                    image {pixmaps/fd_project.png}
+                    scale_image {16 16}
+                    image {pixmaps/fd_project.svg}
                     compress_image 1
                     hide
                     deactivate
@@ -1486,7 +1485,8 @@ list:}
                   {
                     xywh {20 70 16 15}
                     labelsize 11
-                    image {pixmaps/fd_user.png}
+                    scale_image {16 16}
+                    image {pixmaps/fd_user.svg}
                     compress_image 1
                     hide
                     deactivate
@@ -1497,7 +1497,7 @@ list:}
                 label {Locale}
                 xywh {10 60 340 480}
                 scale_image {36 24}
-                image {pixmaps/language_64.png}
+                image {pixmaps/language_64.svg}
                 compress_image 1
                 hide
               }
@@ -1722,7 +1722,7 @@ swatch, persists via `savePrefs()`) plus the same conditional
 live-tree redraw each row's own swatch-button callback already does.}
                 xywh {10 60 340 480}
                 scale_image {36 24}
-                image {pixmaps/user_circle_64.png}
+                image {pixmaps/user_circle_64.svg}
                 compress_image 1
                 hide
               }

@@ -109,7 +109,9 @@ private string keyname(Keysym k)
         return format("f+%d", k - f);
     if (k >= kp && k <= kpLast)
         return format("kp+'%c'", cast(char)(k - kp));
-    if (k >= button && k <= button + 7)
+    // fldtk reports mouse buttons beyond FLTK's 7 too (button 10 is a
+    // common gesture button); the codes up to BackSpace are buttons
+    if (k >= button && k < backSpace)
         return format("button+%d", k - button);
 
     foreach (entry; keyTable)

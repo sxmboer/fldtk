@@ -5,9 +5,9 @@
 //  Fl_Anim_GIF_Image class.
 import fl;
 import std.stdio : writef, writefln;
+import std.path : buildPath;
 import std.string : indexOf;
 import std.conv : to, ConvException;
-import core.stdc.stdlib : exit;
 
 int gGoodCount = 0, gBadCount = 0, gFrameCount = 0;
 
@@ -24,9 +24,15 @@ immutable Color backGroundColor = gray; // use e.g. Color.red to see
                                                // transparent parts better
 enum double redrawDelay = 1. / 20; // interval [sec] for forced redraw
 
+// Set by quitCb(): with no arguments, main() runs fl.run() once per
+// file chosen, so hiding the windows alone would only bring back the
+// file chooser instead of quitting.
+bool quitRequested;
+
 void quitCb(Widget w)
 {
-    exit(0);
+    quitRequested = true;
+    fl.hideAllWindows();
 }
 
 void setTitle(Window win, AnimGifImage animgif)
@@ -256,7 +262,7 @@ bool openDirectory(string dir, string flags)
         if (p < 0) p = name.indexOf(".GIF");
         if (p < 0) continue;
         if (p + 4 != name.length) continue; // is no extension!
-        string path = dir ~ "/" ~ name;
+        string path = buildPath(dir, name);
         string localFlags = flags;
         if (name.indexOf("debug") >= 0) // hack: when name contains 'debug' open single frames
             localFlags ~= "d";
@@ -375,6 +381,8 @@ void main(string[] args)
                 windowAnim.remove(win);
             }
             destroy(win);
+            if (quitRequested)
+                break;
         }
     }
     fl.run();

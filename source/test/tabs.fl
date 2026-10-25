@@ -512,15 +512,13 @@ n++;}
         Button {}
           {
             label {cancel}
-            callback {import core.stdc.stdlib : exit;
-exit(1);}
+            callback {fl.hideAllWindows();}
             xywh {490 345 70 30}
           }
         ReturnButton {}
           {
             label {OK}
-            callback {import core.stdc.stdlib : exit;
-exit(0);}
+            callback {fl.hideAllWindows();}
             xywh {570 345 70 30}
           }
       }

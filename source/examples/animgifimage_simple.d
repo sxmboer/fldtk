@@ -1,6 +1,8 @@
 // D transliteration of FLTK's examples/animgifimage-simple.cxx.
 // Build: rdmd buildsamples.d examples animgifimage_simple
 import fl;
+import std.file : thisExePath;
+import std.path : buildNormalizedPath, dirName;
 import std.stdio : writefln;
 
 void main(string[] args)
@@ -20,7 +22,9 @@ void main(string[] args)
     // of the `canvas` widget and start it immediately.
     // We use the `DONT_RESIZE_CANVAS` flag here to tell the
     // animation *not* to change the canvas size (which is the default).
-    string defaultImage = "../test/images/fltk_animated.gif";
+    // The default image is in source/test/images; the program is in build/.
+    string defaultImage = buildNormalizedPath(dirName(thisExePath()),
+            "..", "source", "test", "images", "fltk_animated.gif");
     auto animgif = new AnimGifImage(args.length > 1 ? args[1] : defaultImage,
             canvas, AnimGifImage.dontResizeCanvas);
     // resize animation to canvas size

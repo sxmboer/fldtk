@@ -54,7 +54,6 @@ import fl;
 import std.format : format;
 import std.math : sqrt, sin, cos, asin, abs;
 import std.stdio : writeln;
-import core.stdc.stdlib : exit;
 
 enum int WIDTH = 4;
 enum int HEIGHT = 5;
@@ -1352,7 +1351,6 @@ void Usage()
 {
     writeln("Usage: puzzle [-s]");
     writeln("   -s:  Run in single buffered mode");
-    exit(-1);
 }
 
 void visibility(int v)
@@ -1382,7 +1380,7 @@ void menu(int choice)
     }
 }
 
-void main(string[] args)
+int main(string[] args)
 {
     fl.useHighResGL(true);
     glutInit(args);
@@ -1400,11 +1398,13 @@ void main(string[] args)
                 break;
             default:
                 Usage();
+                return -1;
             }
         }
         else
         {
             Usage();
+            return -1;
         }
     }
 
@@ -1445,6 +1445,7 @@ void main(string[] args)
     glutAddMenuEntry("Quit", 4);
     glutAttachMenu(GLUT_RIGHT_BUTTON);
     glutMainLoop();
+    return 0;
 }
 
 // --- trackball.c/.h -- virtual trackball / quaternion math -------------

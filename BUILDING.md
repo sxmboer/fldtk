@@ -3,10 +3,18 @@
 Requirements: a D compiler (dmd, ldc or gdc) and dub. Every build step
 here is either dub or an rdmd script, both of which ship with a standard
 D install on every platform D supports. On Linux the library links the
-X11/GL libraries every desktop has, plus Cairo and Pango (the
+X11/GL libraries every desktop has (with libXi, for touch), plus Cairo and Pango (the
 development packages: libcairo2-dev and libpango1.0-dev, or cairo-devel
-and pango-devel); see "Cairo and Pango support" below for building
-without them.
+and pango-devel) and, for the Wayland backend, libwayland-client,
+libwayland-cursor, libwayland-egl, libEGL and libxkbcommon
+(libwayland-dev, libegl-dev and libxkbcommon-dev, or wayland-devel,
+libglvnd-devel and libxkbcommon-devel); see "Cairo and Pango support" below for building
+without them, which also leaves out Wayland.
+
+A Linux program uses Wayland when a Wayland compositor is running and
+X11 otherwise, as FLTK does; the environment variable `FLDTK_BACKEND=x11`
+or `FLDTK_BACKEND=wayland` forces one (in any case: `X11` works too). `PORTING.md`'s `FL/wayland.H` row lists
+what the Wayland backend doesn't do yet.
 
 From the repo root:
 
@@ -458,7 +466,11 @@ explained in dub.sdl's comment on the configuration:
 - `/IMPLIB:NUL` discards the import library (`<program>.lib`) lld-link
   would otherwise write next to every program: MSYS2's static pixman
   still marks its functions for export from a DLL, so each program
-  exports them.
+  exports them. lld-link can't actually write to `NUL` (it writes through
+  a temporary file it renames into place, which fails with "permission
+  denied"), so `buildsamples.d` replaces it with
+  `/IMPLIB:build/obj/<program>.lib`; a program of your own linking
+  against this configuration needs the same substitution.
 
 Several of the libraries (pixman, GLib, GObject, libstdc++) initialize
 themselves in GCC constructor functions, which MinGW's own start-up
@@ -614,7 +626,7 @@ around. Roughly:
     mkdir -p build/release/objs
     dmd -c -release -Isource -odbuild/release/objs source/fl/platform_x11.d      # no -O/-inline: sidesteps the crash
     dmd -c -release -O -inline -Isource -odbuild/release/objs $(other source/fl/*.d)
-    dmd -shared -of=build/release/libfldtk-release.so build/release/objs/*.o -L-lX11 -L-lXft -L-lXinerama -L-lfontconfig -L-lXcursor -L-lXfixes -L-lXext -L-lGL -L-lGLU -L-lGLEW -L-lz
+    dmd -shared -of=build/release/libfldtk-release.so build/release/objs/*.o -L-lX11 -L-lXft -L-lXinerama -L-lfontconfig -L-lXcursor -L-lXfixes -L-lXext -L-lXi -L-lGL -L-lGLU -L-lz
 
 adjusting for whichever file/flag combination the fix you have actually
 needs.

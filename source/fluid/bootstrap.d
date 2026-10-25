@@ -44,39 +44,32 @@ private enum usageLine = "usage: fluid-bootstrap [options] filename.fl\n"
 
 /// Parses the same options as `fluid` (see `app.d`'s `main()`), through
 /// the shared `parseCommandLine()`.
-void main(string[] args)
+int main(string[] args)
 {
     CommandLine cl;
     if (!parseCommandLine(args, cl, usageLine))
-        return;
+        return cl.helpShown ? 0 : 1;
 
     if (cl.showVersion)
-        return;
+        return 0;
 
     if (cl.inPath.length == 0)
     {
         stderr.writefln("fluid-bootstrap: needs a .fl file (try --help)");
-        return;
+        return 1;
     }
 
     if (cl.update)
-    {
-        normalizeProject(cl.inPath);
-        return;
-    }
+        return normalizeProject(cl.inPath) ? 0 : 1;
 
     if (cl.wantsMerge())
     {
         int status = mergeBackProject(cl.inPath, cl.output, cl.mergeMode());
         if (status != 0)
-        {
-            import core.stdc.stdlib : exit;
-
-            exit(status);
-        }
+            return status;
         if (!cl.compile)
-            return;
+            return 0;
     }
 
-    compileFile(cl.inPath, cl.output, cl.strings, cl.dubHeader, cl.stringsName);
+    return compileFile(cl.inPath, cl.output, cl.strings, cl.dubHeader, cl.stringsName) ? 0 : 1;
 }

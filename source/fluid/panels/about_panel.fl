@@ -6,17 +6,10 @@ Ported from FLTK's fluid/panels/about_panel.fl. Two real
 deviations from a mechanical translation, both explained at their own
 point of use below:
 
- - FLTK embeds its animated GIF logo via the .fl dialect's own
-   `image \{path\} compress_image 1` widget property (a byte-embedding
-   mechanism FLTK gives every widget's `.image()`, separate from
-   its `data \{ filename \{...\} \}` node type). This dialect doesn't need
-   a second embedding mechanism for the same job -- a `data` node (see
-   `fluidAboutAnimData` below) plus a `setup \{\}` block that constructs
-   and assigns the image directly is the same real D code an author
-   would write by hand, matching this dialect's own "no magic property
-   auto-translation" philosophy (see code_writer.d's own top comment) and
-   already-proven by `checkers_pieces.fl`/`checkers.d`'s identical
-   pattern.
+ - FLTK's logo is an animated GIF of the flask with bubbles rising in
+   it. Here it is fluid.flask_logo's SVG flask, redrawn every frame by
+   `animateFlask()`, so it is sharp at any scale and its bubbles rise
+   smoothly.
  - The "View License..." button's callback (FLTK:
    `Fluid.show_help("license.html");`) has no real analog here -- this
    editor has no help-browser/HTML-viewer wired in yet, and porting one
@@ -27,12 +20,6 @@ point of use below:
   {
     in_source
     in_header
-  }
-data fluidAboutAnimData
-  {
-    private
-    local
-    filename {pixmaps/fluid-about.gif}
   }
 Function makeAboutPanel()
   {
@@ -62,14 +49,13 @@ if (cbuf.length == 0)
       {
         Box {}
           {
-            comment {FLTK's own box is 115x120, larger than the 96x96 GIF it
-holds (fluidAboutAnimData's own GIF header reports 96x96) -- kept at
-FLTK's literal size rather than shrunk to fit the image exactly,
-matching this dialog's own "identical coordinates" transliteration rule.}
+            comment {FLTK's own box is 115x120, larger than the 96x96 logo it
+holds -- kept at FLTK's literal size, matching this dialog's own
+"identical coordinates" transliteration rule.}
             xywh {10 10 115 120}
             setup {
-auto anim = new AnimGifImage(null, fluidAboutAnimData, fluidAboutAnimData.length, o);
-anim.speed(0.5);
+import fluid.flask_logo : animateFlask;
+animateFlask(o, 96);
 }
           }
         Box {}

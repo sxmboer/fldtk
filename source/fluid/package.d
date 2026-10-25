@@ -70,7 +70,6 @@ public import fluid.node_browser;
 public import fluid.node_order;
 public import fluid.path_util;
 public import fluid.pixmaps;
-public import fluid.pixmaps_xpm;
 public import fluid.project_history;
 public import fluid.project_reader;
 public import fluid.project_settings;

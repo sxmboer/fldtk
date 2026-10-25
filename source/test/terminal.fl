@@ -1697,7 +1697,7 @@ gTty.outputTranslate(oflags);}
         Window win
           {
             label {Terminal Test}
-            callback {import core.stdc.stdlib : exit; exit(0);}
+            callback {fl.hideAllWindows();}
             xywh {800 79 897 838}
             type Double
             size_range {897 330 0 0}

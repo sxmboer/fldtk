@@ -61,6 +61,12 @@
  * which already resolves to the right handle type per platform). See
  * `fl.gl_window_driver`'s own top comment for what Windows deliberately
  * doesn't port (real hardware overlay-plane support).
+ *
+ * **Wayland (EGL)**: the same scope again, through
+ * `fl.wayland_gl_window_driver` (see its module comment). A GL window
+ * is always double-buffered there, and changing `mode()` of a shown
+ * window takes effect at the next `makeCurrent()` without hiding and
+ * showing the window.
  */
 module fl.gl_window;
 
@@ -70,7 +76,6 @@ version (Windows) version = FldtkGl;
 version (FldtkGl):
 
 import fl.window : Window;
-import fl.core : screenScale;
 import fl.enumerations : Boxtype, Mode, Event, modeRgb, modeDepth, modeDouble,
     modeFakeSingle, modeOpengl3, damageAll, Damage, damageOverlay;
 import fl.image : RGBImage;
@@ -79,8 +84,7 @@ import fl.gl_choice : GlChoice;
 import fl.opengl : glDrawBuffer, glReadBuffer, GL_FRONT, GL_BACK, glFlush, glLoadIdentity,
     glViewport, glOrtho, GLint, glGetIntegerv, GL_MAX_VIEWPORT_DIMS;
 
-version (linux) import fl.glx : GLXContext;
-else version (Windows) import core.sys.windows.windef : GLXContext = HGLRC;
+import fl.gl_window_driver : GLContext;
 
 private enum int nonLocalContext = 0x8000_0000; // FLTK's NON_LOCAL_CONTEXT
 
@@ -94,7 +98,7 @@ private:
     int mode_ = modeRgb | modeDepth | modeDouble;
     const(int)* alist_;
     GlChoice g_;
-    GLXContext context_;
+    GLContext context_;
     ubyte validF_;
 
     void init()
@@ -160,6 +164,30 @@ public:
 
     private void applyMode(int m, const(int)* a)
     {
+        if (glDriver.alwaysDoubleBuffered())
+        {
+            // Ported from Fl_Wayland_Gl_Window_Driver::mode_(): always
+            // double-buffered. The window itself needn't be recreated
+            // for another config: a new EGL surface is made for it at the
+            // next makeCurrent(), with the new context.
+            m |= modeDouble;
+            if (m == mode_ && a is alist_) return;
+            mode_ = m;
+            alist_ = a;
+            if (shown())
+            {
+                auto g = glDriver.find(m, a);
+                if (g !is null && g !is g_)
+                {
+                    context(null, 0);
+                    g_ = g;
+                    redraw();
+                }
+            }
+            else
+                g_ = null;
+            return;
+        }
         int oldmode = mode_;
         GlChoice oldg = g_;
         context(null, 0);
@@ -245,15 +273,14 @@ public:
     /// real X11 subwindow underneath it (correctly resized by
     /// `Window.resize()`'s own `isARescale()` check, see that method's
     /// own doc comment) grows, leaving newly-exposed area unpainted.
-    /// FLTK's own `pGlWindowDriver->resize(is_a_resize,
-    /// W, H)` call isn't ported -- the base (non-Wayland-overridden)
-    /// `Fl_Gl_Window_Driver::resize()` FLTK itself falls back to is
-    /// an empty no-op, so there's nothing for the X11-only driver here
-    /// to do at this call.
+    /// `glDriver.resize()` is FLTK's `pGlWindowDriver->resize(is_a_resize,
+    /// W, H)`: on Wayland it resizes the window's EGL buffers; on X11 and
+    /// Windows it does nothing, like FLTK's base driver.
     override void resize(int X, int Y, int W, int H)
     {
         bool isResize = (W != w() || H != h() || Window.isARescale());
         if (isResize) valid(false);
+        glDriver.resize(this, W, H);
         super.resize(X, Y, W, H);
     }
 
@@ -383,7 +410,7 @@ public:
     void makeOverlayCurrent()
     {
         overlay_ = this;
-        glDrawBuffer(GL_FRONT);
+        glDrawBuffer(glDriver.overlayInBackBuffer() ? GL_BACK : GL_FRONT);
     }
 
     /// Hides the hardware overlay-plane window, if there is a separate
@@ -400,15 +427,15 @@ public:
     /// controls whether fldtk destroys the context when the window is
     /// destroyed / mode() changes / context() is called again --
     /// matches FLTK's `Fl_Gl_Window::context(GLContext, int)`.
-    GLXContext context()
+    GLContext context()
     {
         return context_;
     }
 
-    void context(GLXContext v, int destroyFlag = 0)
+    void context(GLContext v, int destroyFlag = 0)
     {
         if (context_ && !(mode_ & nonLocalContext))
-            glDriver.deleteGlContext(context_);
+            glDriver.deleteGlContext(this, context_);
         context_ = v;
         if (destroyFlag) mode_ &= ~nonLocalContext;
         else mode_ |= nonLocalContext;
@@ -430,6 +457,7 @@ public:
     {
         super.makeCurrent();
         if (!shown()) return;
+        glDriver.makeCurrentBefore(this, g_);
         if (!context_)
         {
             mode_ &= ~nonLocalContext;
@@ -437,7 +465,7 @@ public:
             valid(false);
             contextValid(false);
         }
-        glDriver.setGlContext(cast(void*) this, xid(), context_);
+        glDriver.setGlContext(this, context_);
         if (mode_ & modeFakeSingle)
         {
             glDrawBuffer(GL_FRONT);
@@ -455,17 +483,17 @@ public:
     /// `fl.platform_x11.flushGlWindow()`.
     void swapBuffers()
     {
-        glDriver.swapBuffers(xid(), pixelW(), pixelH(), overlayActive());
+        glDriver.swapBuffers(this, pixelW(), pixelH(), overlayActive());
     }
 
     void swapInterval(int frames)
     {
-        glDriver.swapInterval(xid(), frames);
+        glDriver.swapInterval(this, frames);
     }
 
     int swapInterval() const
     {
-        return glDriver.swapInterval(xid());
+        return glDriver.swapInterval(this);
     }
 
     /// Sets the projection so (0,0) is the lower-left corner and each
@@ -482,15 +510,14 @@ public:
     }
 
     /// The number of pixels per FLTK unit of length for this window --
-    /// ported from `Fl_X11_Gl_Window_Driver::pixels_per_unit()`
-    /// (`return Fl::screen_driver()->scale(ns);`), not the base
-    /// (non-X11-overridden) `Fl_Gl_Window_Driver::pixels_per_unit()`
-    /// default. `screenNum()` already resolves correctly for a
-    /// `GlWindow` nested as a subwindow (delegates to `topWindow().
-    /// screenNum()`), matching FLTK's own `pWindow->screen_num()`.
+    /// `fl.gl_window_driver.pixelsPerUnit()`: the screen scale, times
+    /// the screen's buffer scale on Wayland. `screenNum()` already
+    /// resolves correctly for a `GlWindow` nested as a subwindow
+    /// (delegates to `topWindow().screenNum()`), matching FLTK's own
+    /// `pWindow->screen_num()`.
     float pixelsPerUnit() const
     {
-        return screenScale(screenNum());
+        return glDriver.pixelsPerUnit(this);
     }
 
     int pixelW() const
@@ -664,6 +691,9 @@ package(fl) void flushGlWindow(GlWindow win)
     bool saveValid = win.valid();
     win.makeCurrent();
 
+    // On Wayland the overlay goes into the back buffer, over a scene
+    // drawn afresh each time (see glDriver.overlayInBackBuffer()).
+    bool backOverlay = glDriver.overlayInBackBuffer();
     if (win.mode() & modeDouble)
     {
         glDrawBuffer(GL_BACK);
@@ -675,10 +705,15 @@ package(fl) void flushGlWindow(GlWindow win)
         // swapBuffers() below (via win.overlayActive()) recopies that
         // still-good back buffer onto the front buffer instead of
         // presenting a stale one.
-        if (win.damage() != damageOverlay || !saveValid)
+        if (win.damage() != damageOverlay || !saveValid || backOverlay)
         {
             Window.setCurrentForDraw(win);
             win.draw();
+        }
+        if (backOverlay && win.overlayActive())
+        {
+            glDrawBuffer(GL_BACK);
+            win.drawOverlay();
         }
         win.swapBuffers();
 
@@ -693,7 +728,7 @@ package(fl) void flushGlWindow(GlWindow win)
         // it's never part of the back buffer, so it's naturally
         // "erased" the next time swapBuffers() recopies a clean back
         // buffer over it.
-        if (win.overlayActive())
+        if (win.overlayActive() && !backOverlay)
         {
             glDrawBuffer(GL_FRONT);
             win.drawOverlay();

@@ -30,7 +30,8 @@
  *         *.d exist.
  *  2. If ./fluid doesn't exist yet, or any panels/generated/*.d or
  *     source/fluid/*.d (the binary's own hand-written source --
- *     gui_main.d, code_writer.d, ...) is newer than it, `dub build
+ *     gui_main.d, code_writer.d, ...) or pixmaps_svg/*.svg (the
+ *     icons it embeds) is newer than it, `dub build
  *     fldtk:fluid` (the real "fluid" configuration).
  *  3. Otherwise nothing needed doing: print "fluid: 'fluid' is up to
  *     date." (matching make's own wording for a target with nothing to
@@ -65,12 +66,10 @@ int dubBuildFluid(string[] extraArgs, string repoRoot)
     return wait(pid);
 }
 
-/// Latest mtime among every *.d file directly in `dir` (not recursing --
-/// source/fluid/ has exactly two subdirectories, panels/ and templates/,
-/// and neither should count toward this specific check: panels/*.d has
-/// its own dedicated staleness check below, and templates/ holds only .fl
-/// files embedded into a generated panel). SysTime.min (older
-/// than anything) if the directory has no top-level .d files at all.
+/// Latest mtime among every *.d file directly in `dir`, not recursing:
+/// panels/generated/*.d have their own staleness check below, and the
+/// other subdirectories hold no D source. SysTime.min (older than
+/// anything) if the directory has no top-level .d files at all.
 SysTime newestDSourceMtime(string dir)
 {
     SysTime newest = SysTime.min;
@@ -158,6 +157,16 @@ int main(string[] args)
         auto binMtime = timeLastModified(fluidBin);
 
         needBuild = newestDSourceMtime(fluidDir) > binMtime;
+
+        // pixmaps_svg/*.svg are embedded into the binary (pixmaps.d's
+        // string imports).
+        if (!needBuild)
+            foreach (entry; dirEntries(buildPath(fluidDir, "pixmaps_svg"), "*.svg", SpanMode.shallow))
+                if (entry.timeLastModified > binMtime)
+                {
+                    needBuild = true;
+                    break;
+                }
 
         if (!needBuild)
             foreach (fl; flFiles)

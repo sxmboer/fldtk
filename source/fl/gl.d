@@ -85,8 +85,7 @@ import fl.window : Window;
 import fl.core;
 import glDriver = fl.gl_window_driver;
 
-version (linux) import fl.glx : GLXContext;
-else version (Windows) import core.sys.windows.windef : GLXContext = HGLRC;
+import fl.gl_window_driver : GLContext;
 
 /// Ported from `gl_color(Fl_Color)`. FLTK's own `overlay_color()`
 /// hardware/simulated-overlay check is skipped -- no `GlWindow` in this
@@ -478,17 +477,16 @@ private void drawStringWithTexture(const(char)[] str)
     auto win = Window.current();
     if (win is null) return;
 
-    // Real per-screen scale: `displayTexture()` below uses `scale` to
+    // The window's GL pixels per FLTK unit (FLTK's `gl_scale`, set from
+    // `pixels_per_unit()`): `displayTexture()` below uses `scale` to
     // convert the window's own *logical* `w()`/`h()` (passed in as
     // `winW`/`winH`) into the real device-pixel window size it needs to
     // correctly place the cached text texture at the current raster
-    // position -- a stale `1.0` there instead of the real scale
-    // misplaces the quad, worse as the gap between `1.0` and the real
-    // scale widens. `fl.core.screenScale(win.screenNum())` matches
-    // `GlWindow.pixelsPerUnit()`'s own call exactly, without needing to
-    // import `fl.gl_window` itself (which would introduce a module
-    // cycle -- `fl.core` has no such dependency).
-    float scale = fl.core.screenScale(win.screenNum());
+    // position, and the texture is rendered at that scale. It is the
+    // screen scale on X11 and Windows, and on Wayland includes the
+    // screen's buffer scale too -- with the screen scale alone there,
+    // the text lands outside the window on a HiDPI screen.
+    float scale = glDriver.pixelsPerUnit(win);
 
     ensureFifo();
     if (!fifoTexturesGenerated_)
@@ -575,7 +573,7 @@ void gl_draw(const(char)[] str, int x, int y, int w, int h, Align alignment)
 // non-GlWindow window's own draw() -- ported from `src/gl_start.cxx`.
 // ---------------------------------------------------------------------
 
-private GLXContext glStartContext_; // ported from `Fl_Gl_Window_Driver::gl_start_context`
+private GLContext glStartContext_; // ported from `Fl_Gl_Window_Driver::gl_start_context`
 private int glStartPixelW_, glStartPixelH_; // ported from `gl_start.cxx`'s own file-local `pw`/`ph`
 private float glStartScale_ = 1;
 
@@ -589,6 +587,13 @@ private float glStartScale_ = 1;
 /// if no matching visual/pixel-format exists.
 bool glVisual(int mode, const(int)* alist = null)
 {
+    // On Wayland, gl_start() draws into a surface over the window, which
+    // must be transparent where nothing is drawn.
+    if (glDriver.alwaysDoubleBuffered())
+    {
+        import fl.enumerations : modeAlpha;
+        mode |= modeAlpha;
+    }
     auto c = glDriver.find(mode, alist);
     if (c is null) return false;
     glDriver.glVisual(c);
@@ -611,7 +616,10 @@ bool glVisual(int mode, const(int)* alist = null)
  * double-buffered window** -- it draws straight into the front buffer,
  * which a double-buffered window's own repaint can immediately overwrite
  * or leave undrawn depending on the platform/driver, matching
- * `src/gl_start.cxx`'s own top comment exactly.
+ * `src/gl_start.cxx`'s own top comment exactly. On Wayland neither
+ * applies: GL draws into a transparent surface over the window, shown
+ * with the window's own next frame (see `fl.wayland_gl_window_driver`'s
+ * module comment).
  *
  * No `fl_clip_state_number`-style change-counting here (this port's clip
  * model is a plain rectangle stack, not FLTK's general `Fl_Region`) --
@@ -630,11 +638,12 @@ void gl_start()
         if (glDriver.glChoice_ is null) glVisual(0);
         glStartContext_ = glDriver.createGlContext(win, glDriver.glChoice_);
     }
-    glDriver.setGlContext(cast(void*) win, win.xid(), glStartContext_);
-    glDriver.glStart();
+    glDriver.setGlContext(win, glStartContext_);
+    // the pixels per FLTK unit of what GL draws into
+    float s = glDriver.glStart(win, glStartScale_);
 
-    int w = cast(int)(win.w() * glStartScale_);
-    int h = cast(int)(win.h() * glStartScale_);
+    int w = cast(int)(win.w() * s);
+    int h = cast(int)(win.h() * s);
     if (glStartPixelW_ != w || glStartPixelH_ != h)
     {
         glStartPixelW_ = w;
@@ -642,14 +651,14 @@ void gl_start()
         glLoadIdentity();
         glViewport(0, 0, w, h);
         glOrtho(0, win.w(), 0, win.h(), -1, 1);
-        glDrawBuffer(GL_FRONT);
+        glDrawBuffer(glDriver.glStartBuffer());
     }
 
     int x, y, cw, ch;
     if (fldraw.clipBox(0, 0, win.w(), win.h(), x, y, cw, ch))
     {
-        glScissor(cast(int)(x * glStartScale_), cast(int)((win.h() - (y + ch)) * glStartScale_),
-            cast(int)(cw * glStartScale_), cast(int)(ch * glStartScale_));
+        glScissor(cast(int)(x * s), cast(int)((win.h() - (y + ch)) * s),
+            cast(int)(cw * s), cast(int)(ch * s));
         glEnable(GL_SCISSOR_TEST);
     }
     else

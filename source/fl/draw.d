@@ -253,7 +253,7 @@ import fl.enumerations : Color, Align, Font, Fontsize, Boxtype, ArrowType, Orien
 import fl.rect : Rect;
 import fl.core;
 import fl.symbols : drawSymbol;
-import fl.graphics_driver : currentDriver, Point;
+import fl.graphics_driver : currentDriver, GraphicsDriver, Point;
 import std.math : sin, cos, PI, abs, sqrt;
 
 /// Computes `int(x * currentScale())`, ported verbatim from
@@ -445,6 +445,308 @@ version (linux)
         screen_ = screen;
         visual_ = visual;
         colormap_ = colormap;
+        version (FLDTK_HAVE_CAIRO)
+        {
+            import std.process : environment;
+            if (cairoDisplay_ is null && environment.get("FLDTK_GRAPHICS") == "cairo")
+            {
+                cairoDisplay_ = new CairoGraphicsDriver();
+                currentDriver = cairoDisplay_;
+            }
+        }
+    }
+
+    version (FLDTK_HAVE_CAIRO)
+    {
+        import fl.cairo_graphics_driver : CairoGraphicsDriver, pangoFontName;
+        import fl.cairo_c : cairo_surface_t, cairo_t, cairo_create, cairo_destroy,
+            cairo_surface_destroy, cairo_surface_flush, cairo_surface_mark_dirty;
+        import fl.cairo_c_xlib : cairo_xlib_surface_create, cairo_xlib_surface_set_size;
+
+        /**
+         * The Cairo graphics driver, when it is the display driver on
+         * X11 (environment variable `FLDTK_GRAPHICS=cairo`), else null.
+         * Then every window and offscreen buffer is drawn through
+         * Cairo/Pango instead of Xlib/Xft, like FLTK built with
+         * `FLTK_GRAPHICS_CAIRO`; the X11 driver still creates windows,
+         * pixmaps and GCs, and still does `XCopyArea()` blits and
+         * `XGetImage()` reads.
+         */
+        private CairoGraphicsDriver cairoDisplay_;
+
+        /// One Cairo context per drawable drawn into, created on first
+        /// use and freed with the drawable (`releaseDrawable()`,
+        /// `freeOffscreenBuffer()`) -- FLTK's per-window `xlib_cairo_`
+        /// and per-offscreen `cairo_`.
+        private struct CairoTarget
+        {
+            cairo_surface_t* surface;
+            cairo_t* cr;
+            uint w, h;
+        }
+        private CairoTarget[Drawable] cairoTargets_;
+
+        /// The current driver if it draws through Cairo, else null.
+        private CairoGraphicsDriver activeCairo()
+        {
+            return cast(CairoGraphicsDriver) currentDriver;
+        }
+
+        /// Points `cairoDisplay_` at drawable `d`, creating or resizing
+        /// its Cairo surface as needed. The size is read from the X
+        /// server, since a window's size can change between draws.
+        private void cairoTarget(Drawable d)
+        {
+            if (cairoDisplay_ is null) return;
+            if (d == 0)
+            {
+                cairoDisplay_.setCairo(null);
+                return;
+            }
+            uint w, h;
+            if (!drawableSize(d, w, h))
+            {
+                cairoDisplay_.setCairo(null);
+                return;
+            }
+            auto t = d in cairoTargets_;
+            if (t is null)
+            {
+                cairo_surface_t* s = cairo_xlib_surface_create(display_, d, visual_, w, h);
+                cairoTargets_[d] = CairoTarget(s, cairo_create(s), w, h);
+                t = d in cairoTargets_;
+            }
+            else
+            {
+                cairo_surface_mark_dirty(t.surface); // Xlib may have drawn into it
+                if (t.w != w || t.h != h)
+                {
+                    cairo_xlib_surface_set_size(t.surface, w, h);
+                    t.w = w;
+                    t.h = h;
+                }
+            }
+            cairoDisplay_.setCairo(t.cr);
+        }
+
+        /// Sends Cairo's pending drawing on `d` to the X server, before
+        /// Xlib reads or copies its pixels.
+        private void cairoFlush(Drawable d)
+        {
+            if (auto t = d in cairoTargets_) cairo_surface_flush(t.surface);
+        }
+
+        /// Tells Cairo that Xlib changed `d`'s pixels, so it doesn't
+        /// draw over them with an older copy it may be keeping.
+        private void cairoMarkDirty(Drawable d)
+        {
+            if (auto t = d in cairoTargets_) cairo_surface_mark_dirty(t.surface);
+        }
+
+        /// Frees `d`'s Cairo context, if it has one.
+        private void cairoRelease(Drawable d)
+        {
+            auto t = d in cairoTargets_;
+            if (t is null) return;
+            if (cairoDisplay_ !is null && cairoDisplay_.cr() is t.cr) cairoDisplay_.setCairo(null);
+            cairo_destroy(t.cr);
+            cairo_surface_destroy(t.surface);
+            cairoTargets_.remove(d);
+        }
+
+        /// True on Wayland: Cairo draws the display and there is no X
+        /// connection. Offscreen buffers are then Cairo image surfaces,
+        /// not X pixmaps.
+        private bool cairoWithoutX()
+        {
+            return waylandDrawing_;
+        }
+
+        /// Set by `useCairoDisplay()`, which only the Wayland backend calls.
+        private bool waylandDrawing_;
+
+        /// An offscreen buffer on Wayland -- FLTK's
+        /// `Fl_Wayland_Image_Surface_Driver` offscreen: an RGB image
+        /// surface. `Offscreen` values on Wayland are keys of
+        /// `cairoOffscreens_`, not X pixmaps.
+        private final class CairoOffscreen
+        {
+            cairo_surface_t* surface;
+            cairo_t* cr;
+            int w, h;
+        }
+        private CairoOffscreen[Offscreen] cairoOffscreens_;
+        private Offscreen nextCairoOffscreen_ = 1;
+        /// The Cairo targets `beginOffscreen()` replaced, for
+        /// `endOffscreen()` to restore.
+        private cairo_t*[] cairoTargetStack_;
+
+        private Offscreen newCairoOffscreen(int w, int h)
+        {
+            import fl.cairo_c : cairo_image_surface_create, CAIRO_FORMAT_RGB24;
+            if (w <= 0 || h <= 0) return 0;
+            auto o = new CairoOffscreen;
+            o.w = w;
+            o.h = h;
+            o.surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, w, h);
+            o.cr = cairo_create(o.surface);
+            Offscreen id = nextCairoOffscreen_++;
+            cairoOffscreens_[id] = o;
+            return id;
+        }
+
+        private bool freeCairoOffscreen(Offscreen id)
+        {
+            auto o = id in cairoOffscreens_;
+            if (o is null) return false;
+            if (cairoDisplay_ !is null && cairoDisplay_.cr() is o.cr) cairoDisplay_.setCairo(null);
+            cairo_destroy(o.cr);
+            cairo_surface_destroy(o.surface);
+            cairoOffscreens_.remove(id);
+            return true;
+        }
+
+        /// The image surface behind offscreen `id`, or, for any other
+        /// value, the one drawing currently targets (a Wayland window's
+        /// draw buffer); null if neither is an image surface.
+        private cairo_surface_t* cairoImageSurfaceOf(Offscreen id)
+        {
+            import fl.cairo_c : cairo_get_target, cairo_surface_get_type, CAIRO_SURFACE_TYPE_IMAGE;
+            if (auto o = id in cairoOffscreens_) return o.surface;
+            if (cairoDisplay_ is null) return null;
+            auto surf = cairo_get_target(cairoDisplay_.cr());
+            return cairo_surface_get_type(surf) == CAIRO_SURFACE_TYPE_IMAGE ? surf : null;
+        }
+
+        /// Paints `w` x `h` device pixels of `src` from `(srcX, srcY)` to
+        /// `(destX, destY)` of `dst`, both image surfaces.
+        private void cairoCopyPixels(cairo_surface_t* src, cairo_surface_t* dst,
+            int srcX, int srcY, int w, int h, int destX, int destY)
+        {
+            import fl.cairo_c : cairo_set_source_surface, cairo_rectangle, cairo_fill,
+                cairo_set_operator, CAIRO_OPERATOR_SOURCE;
+            if (src is null || dst is null || w <= 0 || h <= 0) return;
+            cairo_surface_flush(src);
+            cairo_t* c = cairo_create(dst);
+            cairo_set_operator(c, CAIRO_OPERATOR_SOURCE);
+            cairo_set_source_surface(c, src, destX - srcX, destY - srcY);
+            cairo_rectangle(c, destX, destY, w, h);
+            cairo_fill(c);
+            cairo_destroy(c);
+            cairo_surface_mark_dirty(dst);
+        }
+
+        /// `(x, y, w, h)` of image surface `surf` as RGB, or RGBA with
+        /// `alpha` set -- the Wayland counterpart of `readPixelsFromDrawable()`
+        /// (FLTK's `Fl_Wayland_Image_Surface_Driver::image()` conversion).
+        private ubyte[] readCairoPixels(cairo_surface_t* surf, int x, int y, int w, int h, int alpha)
+        {
+            import fl.cairo_c : cairo_image_surface_get_data, cairo_image_surface_get_stride,
+                cairo_image_surface_get_width, cairo_image_surface_get_height;
+            if (surf is null || w <= 0 || h <= 0) return null;
+            cairo_surface_flush(surf);
+            ubyte* data = cairo_image_surface_get_data(surf);
+            int stride = cairo_image_surface_get_stride(surf);
+            int sw = cairo_image_surface_get_width(surf), sh = cairo_image_surface_get_height(surf);
+            if (data is null || x < 0 || y < 0 || x + w > sw || y + h > sh) return null;
+            int d = alpha ? 4 : 3;
+            auto rgb = new ubyte[w * h * d];
+            foreach (j; 0 .. h)
+                foreach (i; 0 .. w)
+                {
+                    uint p = *cast(uint*)(data + (y + j) * stride + (x + i) * 4);
+                    auto q = rgb.ptr + (j * w + i) * d;
+                    q[0] = cast(ubyte)(p >> 16);
+                    q[1] = cast(ubyte)(p >> 8);
+                    q[2] = cast(ubyte) p;
+                    if (alpha) q[3] = cast(ubyte) alpha;
+                }
+            return rgb;
+        }
+
+        /// Moves `w` x `h` device pixels from `(sx, sy)` to `(dx, dy)`
+        /// within image surface `surf`, overlapping or not -- FLTK's
+        /// `Fl_Wayland_Window_Driver::scroll()`.
+        private void cairoCopyWithin(cairo_surface_t* surf, int sx, int sy, int w, int h, int dx, int dy)
+        {
+            import core.stdc.string : memmove;
+            import fl.cairo_c : cairo_image_surface_get_data, cairo_image_surface_get_stride,
+                cairo_image_surface_get_width, cairo_image_surface_get_height;
+            if (surf is null || w <= 0 || h <= 0) return;
+            cairo_surface_flush(surf);
+            ubyte* data = cairo_image_surface_get_data(surf);
+            int stride = cairo_image_surface_get_stride(surf);
+            int W = cairo_image_surface_get_width(surf), H = cairo_image_surface_get_height(surf);
+            // keep both rectangles inside the surface
+            if (sx < 0) { w += sx; dx -= sx; sx = 0; }
+            if (dx < 0) { w += dx; sx -= dx; dx = 0; }
+            if (sy < 0) { h += sy; dy -= sy; sy = 0; }
+            if (dy < 0) { h += dy; sy -= dy; dy = 0; }
+            if (sx + w > W) w = W - sx;
+            if (dx + w > W) w = W - dx;
+            if (sy + h > H) h = H - sy;
+            if (dy + h > H) h = H - dy;
+            if (data is null || w <= 0 || h <= 0) return;
+            if (dy > sy)
+                foreach_reverse (j; 0 .. h)
+                    memmove(data + (dy + j) * stride + dx * 4, data + (sy + j) * stride + sx * 4, w * 4);
+            else
+                foreach (j; 0 .. h)
+                    memmove(data + (dy + j) * stride + dx * 4, data + (sy + j) * stride + sx * 4, w * 4);
+            cairo_surface_mark_dirty(surf);
+        }
+
+        /// The Cairo display driver, or null.
+        package(fl) CairoGraphicsDriver cairoDisplayDriver() { return cairoDisplay_; }
+
+        /// Makes the Cairo driver the display driver, without X11 -- for
+        /// the Wayland backend, which draws only through Cairo.
+        package(fl) void useCairoDisplay()
+        {
+            waylandDrawing_ = true;
+            if (cairoDisplay_ !is null) return;
+            cairoDisplay_ = new CairoGraphicsDriver();
+            currentDriver = cairoDisplay_;
+        }
+
+        /// Points the Cairo display driver at `cr` (a Wayland window's
+        /// draw buffer) and applies the current clip to it.
+        package(fl) void setCairoTarget(cairo_t* cr)
+        {
+            useCairoDisplay();
+            cairoDisplay_.setCairo(cr);
+            restoreClip();
+        }
+
+        /// `cr` is about to be destroyed: stop drawing into it.
+        package(fl) void forgetCairoTarget(cairo_t* cr)
+        {
+            if (cairoDisplay_ !is null && cairoDisplay_.cr() is cr) cairoDisplay_.setCairo(null);
+        }
+
+        /// Selects font `face` at `size` on Cairo driver `cd`, under its
+        /// Pango name.
+        private void cairoFont(CairoGraphicsDriver cd, Font face, Fontsize size)
+        {
+            cd.font(pangoFontName(face, getFont(face), (face in fontNameOverride_) !is null), size);
+        }
+    }
+
+    /// The driver `fl.draw` uses for the display: the Cairo driver in
+    /// Cairo mode (see `cairoDisplay_`), else null (Xlib/Xft).
+    /// `fl.image_surface.SurfaceDevice` restores this, not null, when a
+    /// surface without a driver of its own becomes current.
+    package(fl) GraphicsDriver nativeDriver()
+    {
+        version (FLDTK_HAVE_CAIRO) return cairoDisplay_;
+        else return null;
+    }
+
+    /// Flushes pending Cairo drawing on the current drawable, before
+    /// code outside `fl.draw` uses Xlib on it. A no-op without Cairo.
+    package(fl) void flushDrawable()
+    {
+        version (FLDTK_HAVE_CAIRO) cairoFlush(drawable_);
     }
 
     /**
@@ -616,6 +918,14 @@ version (linux)
      */
     package(fl) void setDrawable(Drawable d)
     {
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoDisplay_ !is null)
+            {
+                cairoFlush(drawable_);
+                cairoTarget(d);
+            }
+        }
         drawable_ = d;
         if (d != xftDrawTarget_ || xftDraw_ is null)
         {
@@ -662,6 +972,7 @@ version (linux)
      */
     package(fl) void releaseDrawable(Drawable d)
     {
+        version (FLDTK_HAVE_CAIRO) cairoRelease(d);
         if (xftDraw_ !is null && d == xftDrawTarget_)
         {
             XftDrawDestroy(xftDraw_);
@@ -687,6 +998,7 @@ version (linux)
      */
     package(fl) fl.xlib.Pixmap createOffscreenBuffer(Drawable referenceDrawable, int w, int h)
     {
+        version (FLDTK_HAVE_CAIRO) if (cairoWithoutX()) return newCairoOffscreen(w, h);
         if (display_ is null || w <= 0 || h <= 0) return 0;
         return XCreatePixmap(display_, referenceDrawable, cast(uint) w, cast(uint) h,
             cast(uint) XDefaultDepth(display_, screen_));
@@ -697,6 +1009,11 @@ version (linux)
     package(fl) void freeOffscreenBuffer(fl.xlib.Pixmap p)
     {
         if (p == 0) return;
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (freeCairoOffscreen(p)) return;
+            cairoRelease(p);
+        }
         XFreePixmap(display_, p);
     }
 
@@ -717,14 +1034,38 @@ version (linux)
      */
     package(fl) void copyOffscreen(fl.xlib.Pixmap src, int srcX, int srcY, int w, int h, int destX, int destY)
     {
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoWithoutX())
+            {
+                // through the drawing context, so the clip applies
+                import fl.cairo_c : cairo_save, cairo_restore, cairo_identity_matrix, cairo_translate,
+                    cairo_set_source_surface, cairo_rectangle, cairo_fill;
+                auto s = src in cairoOffscreens_;
+                if (s is null || w <= 0 || h <= 0) return;
+                cairo_surface_flush(s.surface);
+                cairo_t* c = cairoDisplay_.cr();
+                cairo_save(c);
+                cairo_identity_matrix(c);
+                cairo_translate(c, offsetX_, offsetY_);
+                cairo_set_source_surface(c, s.surface, destX - srcX, destY - srcY);
+                cairo_rectangle(c, destX, destY, w, h);
+                cairo_fill(c);
+                cairo_restore(c);
+                if (cairoDisplay_.onDraw !is null) cairoDisplay_.onDraw();
+                return;
+            }
+        }
         if (gc_ is null || w <= 0 || h <= 0) return;
         // Dest only, not src -- src addresses the offscreen buffer's own
         // coordinate space, unaffected by the current drawable's
         // translate offset. Matches FLTK's own equivalent call
         // exactly: `XCopyArea(..., (x+offset_x_)*scale(), (y+offset_y_)*
         // scale())` (`Fl_Xlib_Graphics_Driver.cxx`).
+        version (FLDTK_HAVE_CAIRO) { cairoFlush(src); cairoFlush(drawable_); }
         XCopyArea(display_, src, drawable_, gc_, srcX, srcY, cast(uint) w, cast(uint) h,
             destX + offsetX_, destY + offsetY_);
+        version (FLDTK_HAVE_CAIRO) cairoMarkDirty(drawable_);
     }
 
     /**
@@ -747,9 +1088,21 @@ version (linux)
     package(fl) void copyPixmapToPixmap(fl.xlib.Pixmap src, fl.xlib.Pixmap dst,
         int srcX, int srcY, int w, int h, int destX, int destY)
     {
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoWithoutX())
+            {
+                auto s = src in cairoOffscreens_, d = dst in cairoOffscreens_;
+                if (s !is null && d !is null)
+                    cairoCopyPixels(s.surface, d.surface, srcX, srcY, w, h, destX, destY);
+                return;
+            }
+        }
         if (gc_ is null || w <= 0 || h <= 0) return;
         restoreClip();
+        version (FLDTK_HAVE_CAIRO) { cairoFlush(src); cairoFlush(dst); }
         XCopyArea(display_, src, dst, gc_, srcX, srcY, cast(uint) w, cast(uint) h, destX, destY);
+        version (FLDTK_HAVE_CAIRO) cairoMarkDirty(dst);
     }
 
     /// Stack of drawables saved across nested beginOffscreen()/
@@ -770,8 +1123,11 @@ version (linux)
     /// plain `alias` for `fl.xlib.Pixmap` (matching FLTK's own
     /// `typedef Fl_Pixmap Fl_Offscreen` on X11), so `0`/`Offscreen.init`
     /// still means "no buffer" the same way callers already expect.
-    Offscreen createOffscreen(int w, int h)
+    /// `w`/`h` are device pixels: the public `createOffscreen()` (below,
+    /// shared by every platform) sizes it from FLTK units and the scale.
+    package(fl) Offscreen createOffscreenPixels(int w, int h)
     {
+        version (FLDTK_HAVE_CAIRO) if (cairoWithoutX()) return newCairoOffscreen(w, h);
         if (display_ is null) return 0;
         Drawable reference = drawable_ != 0 ? drawable_ : XRootWindow(display_, screen_);
         return createOffscreenBuffer(reference, w, h);
@@ -780,7 +1136,58 @@ version (linux)
     /// Ported from `fl_delete_offscreen(Fl_Offscreen)`.
     void deleteOffscreen(Offscreen ctx)
     {
+        scaledOffscreens_.remove(ctx);
         freeOffscreenBuffer(ctx);
+    }
+
+    /**
+     * A new offscreen of `nw` x `nh` device pixels holding `old`'s
+     * `ow` x `oh` pixels scaled to fit -- the copy half of
+     * `fl_rescale_offscreen()`: with Cairo on Wayland; on X11, whose
+     * copies can't scale, by reading the pixels and drawing them scaled.
+     */
+    package(fl) Offscreen rescaleOffscreenPixels(Offscreen old, int ow, int oh, int nw, int nh)
+    {
+        Offscreen neu = createOffscreenPixels(nw, nh);
+        if (neu == 0 || ow <= 0 || oh <= 0) return neu;
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoWithoutX())
+            {
+                import fl.cairo_c : cairo_save, cairo_restore, cairo_identity_matrix, cairo_scale,
+                    cairo_set_source_surface, cairo_paint;
+                auto o = old in cairoOffscreens_, n = neu in cairoOffscreens_;
+                if (o is null || n is null) return neu;
+                cairo_surface_flush(o.surface);
+                cairo_t* c = n.cr;
+                cairo_save(c);
+                cairo_identity_matrix(c);
+                cairo_scale(c, cast(double) nw / ow, cast(double) nh / oh);
+                cairo_set_source_surface(c, o.surface, 0, 0);
+                cairo_paint(c);
+                cairo_restore(c);
+                cairo_surface_flush(n.surface);
+                return neu;
+            }
+        }
+        auto pixels = readPixelsFromDrawable(old, 0, 0, ow, oh, 0);
+        if (pixels is null) return neu;
+        auto scaled = new ubyte[nw * nh * 3];
+        foreach (y; 0 .. nh)
+            foreach (x; 0 .. nw)
+            {
+                size_t from = ((y * oh / nh) * ow + x * ow / nw) * 3, to = (y * nw + x) * 3;
+                scaled[to .. to + 3] = pixels[from .. from + 3];
+            }
+        beginOffscreen(neu);
+        pushNoClip();
+        float saved = currentScale();
+        currentScale(1); // device pixels
+        drawImage(scaled.ptr, 0, 0, nw, nh, 3, 0);
+        currentScale(saved);
+        popClip();
+        endOffscreen();
+        return neu;
     }
 
     /// Ported from `fl_begin_offscreen(Fl_Offscreen)`: redirects
@@ -790,7 +1197,19 @@ version (linux)
     /// push_current()/pop_current() stack).
     void beginOffscreen(Offscreen ctx)
     {
+        offscreenScaleBegin(ctx);
         offscreenStack_ ~= drawable_;
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoWithoutX())
+            {
+                cairoTargetStack_ ~= cairoDisplay_.cr();
+                drawable_ = ctx;
+                if (auto o = ctx in cairoOffscreens_) cairoDisplay_.setCairo(o.cr);
+                restoreClip();
+                return;
+            }
+        }
         setDrawable(ctx);
     }
 
@@ -798,27 +1217,25 @@ version (linux)
     void endOffscreen()
     {
         if (offscreenStack_.length == 0) return;
+        offscreenScaleEnd();
         Drawable prev = offscreenStack_[$ - 1];
         offscreenStack_.length -= 1;
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoWithoutX() && cairoTargetStack_.length)
+            {
+                if (auto o = drawable_ in cairoOffscreens_) cairo_surface_flush(o.surface);
+                cairo_t* prevCr = cairoTargetStack_[$ - 1];
+                cairoTargetStack_.length -= 1;
+                drawable_ = prev;
+                cairoDisplay_.setCairo(prevCr);
+                restoreClip();
+                return;
+            }
+        }
         setDrawable(prev);
     }
 
-    /// Ported from `fl_copy_offscreen(int, int, int, int, Fl_Offscreen,
-    /// int, int)`: thin reordering wrapper over `copyOffscreen()`
-    /// (`destX, destY, w, h, src, srcX, srcY` here vs. that function's
-    /// `src, srcX, srcY, w, h, destX, destY` -- matching FLTK's own
-    /// public parameter order, which puts the destination first).
-    void copyOffscreen(int x, int y, int w, int h, Offscreen pixmap, int srcx, int srcy)
-    {
-        copyOffscreen(pixmap, srcx, srcy, w, h, x, y);
-    }
-
-    /// Ported from `fl_rescale_offscreen(Fl_Offscreen&)`: still a no-op
-    /// here -- it exists in FLTK to resize a buffer in place when the
-    /// screen's scale factor changes. `fl.core.screenScale(int)` is real,
-    /// but this module's own offscreen-buffer helpers don't consult it,
-    /// so there is nothing for this function to do yet.
-    void rescaleOffscreen(ref Offscreen ctx) { }
 
     /// Applies the current top-of-clip-stack rectangle (if any) to
     /// both the plain Xlib GC and the Xft drawing handle -- two
@@ -855,6 +1272,14 @@ version (linux)
     /// pre-scaling behavior.
     private void restoreClip()
     {
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (auto cd = activeCairo())
+            {
+                auto cc = currentClip();
+                cd.setClip(cc.active, cc.x, cc.y, cc.w, cc.h);
+            }
+        }
         if (gc_ is null) return;
         auto c = currentClip();
         if (!c.active)
@@ -968,7 +1393,9 @@ version (Windows)
     /// black-or-white offscreen buffer instead of a real color one,
     /// silently corrupting every subsequent GDI(+) draw call into it.
     /// This matches FLTK's own `fl_GetDC(0)` exactly.
-    Offscreen createOffscreen(int w, int h)
+    /// `w`/`h` are device pixels: the public `createOffscreen()` (below,
+    /// shared by every platform) sizes it from FLTK units and the scale.
+    package(fl) Offscreen createOffscreenPixels(int w, int h)
     {
         if (w <= 0 || h <= 0) return null;
         auto driver = cast(GdiGraphicsDriver) currentDriver;
@@ -984,7 +1411,23 @@ version (Windows)
     /// Surface_Driver()`'s `DeleteObject((HBITMAP)offscreen)` half).
     void deleteOffscreen(Offscreen ctx)
     {
+        scaledOffscreens_.remove(ctx);
         if (ctx !is null) DeleteObject(ctx);
+    }
+
+    /// A new offscreen of `nw` x `nh` device pixels holding `old`'s
+    /// `ow` x `oh` pixels scaled to fit (`StretchBlt()`) -- the copy half
+    /// of `fl_rescale_offscreen()`.
+    package(fl) Offscreen rescaleOffscreenPixels(Offscreen old, int ow, int oh, int nw, int nh)
+    {
+        Offscreen neu = createOffscreenPixels(nw, nh);
+        if (neu is null || old is null) return neu;
+        HDC to = makeDcFor(neu), from = makeDcFor(old);
+        SetStretchBltMode(to, HALFTONE);
+        StretchBlt(to, 0, 0, nw, nh, from, 0, 0, ow, oh, SRCCOPY);
+        DeleteDC(from);
+        DeleteDC(to);
+        return neu;
     }
 
     /// One saved "what to restore drawing to afterward" entry per nested
@@ -1007,6 +1450,7 @@ version (Windows)
     {
         auto driver = cast(GdiGraphicsDriver) currentDriver;
         if (driver is null || ctx is null) return;
+        offscreenScaleBegin(ctx);
         offscreenStack_ ~= OffscreenFrame(driver.hdc(), makeDcFor(ctx));
         driver.setHdc(offscreenStack_[$ - 1].ownDc);
     }
@@ -1016,6 +1460,7 @@ version (Windows)
     void endOffscreen()
     {
         if (offscreenStack_.length == 0) return;
+        offscreenScaleEnd();
         auto frame = offscreenStack_[$ - 1];
         offscreenStack_.length -= 1;
         auto driver = cast(GdiGraphicsDriver) currentDriver;
@@ -1042,19 +1487,95 @@ version (Windows)
         DeleteDC(srcDc);
     }
 
-    /// Ported from `fl_copy_offscreen(int, int, int, int, Fl_Offscreen,
-    /// int, int)`: same reordering-wrapper role as the Linux overload
-    /// above.
-    void copyOffscreen(int x, int y, int w, int h, Offscreen pixmap, int srcx, int srcy)
+}
+
+// ---- offscreens in FLTK units (fl_create_offscreen() and friends),
+// shared by every platform
+
+/// The FLTK-unit size of each `createOffscreen()` buffer and the scale
+/// its pixels were made at (FLTK's `Fl_Image_Surface` with `high_res`).
+private struct ScaledOffscreen
+{
+    int w, h;
+    float scale;
+}
+private ScaledOffscreen[Offscreen] scaledOffscreens_;
+
+/// The scales `beginOffscreen()` replaced: drawing into a
+/// `createOffscreen()` buffer happens at the buffer's scale, wherever it
+/// is called from, as FLTK's image surfaces do.
+private float[] offscreenScales_;
+
+private void offscreenScaleBegin(Offscreen ctx)
+{
+    offscreenScales_ ~= currentScale();
+    if (auto info = ctx in scaledOffscreens_) currentScale(info.scale);
+}
+
+private void offscreenScaleEnd()
+{
+    if (offscreenScales_.length == 0) return;
+    currentScale(offscreenScales_[$ - 1]);
+    offscreenScales_.length -= 1;
+}
+
+/**
+ * Ported from `fl_create_offscreen(int, int)`: a buffer of `w` x `h`
+ * FLTK units to draw into between `beginOffscreen()` and
+ * `endOffscreen()`, made at the current scale, so drawing into it is as
+ * sharp as drawing into a window. Free it with `deleteOffscreen()`.
+ */
+Offscreen createOffscreen(int w, int h)
+{
+    import std.math : ceil;
+    float s = currentScale();
+    auto o = createOffscreenPixels(cast(int) ceil(w * s), cast(int) ceil(h * s));
+    if (o) scaledOffscreens_[o] = ScaledOffscreen(w, h, s);
+    return o;
+}
+
+/**
+ * Ported from `fl_copy_offscreen(int, int, int, int, Fl_Offscreen, int,
+ * int)`: copies `(w, h)` of `pixmap` from `(srcx, srcy)` to `(x, y)` of
+ * where drawing goes, all in FLTK units. A buffer made at another scale
+ * than the current one is copied at its own pixel size: call
+ * `rescaleOffscreen()` first when the scale may have changed.
+ */
+void copyOffscreen(int x, int y, int w, int h, Offscreen pixmap, int srcx, int srcy)
+{
+    auto info = pixmap in scaledOffscreens_;
+    if (info is null)
     {
         copyOffscreen(pixmap, srcx, srcy, w, h, x, y);
+        return;
     }
+    // the buffer's pixels, at its scale, to the device pixels of the target
+    int sf(int v, float k) { int r = cast(int)(abs(v) * k + 0.001f); return v >= 0 ? r : -r; }
+    float bs = info.scale;
+    int sx = sf(srcx, bs), sy = sf(srcy, bs);
+    copyOffscreen(pixmap, sx, sy, sf(srcx + w, bs) - sx, sf(srcy + h, bs) - sy, scaledFloor(x), scaledFloor(y));
+}
 
-    /// Ported from `fl_rescale_offscreen(Fl_Offscreen&)` -- still a
-    /// no-op here, same reasoning as the Linux overload above (nothing
-    /// in this port's image/offscreen-buffer handling consults the
-    /// scale factor yet).
-    void rescaleOffscreen(ref Offscreen ctx) { }
+/**
+ * Ported from `fl_rescale_offscreen(Fl_Offscreen&)`: when the scale
+ * changed since `ctx` was made (Ctrl +/-, or its window moved to a
+ * screen with another scale), replaces it by a buffer at the current
+ * scale holding the same picture, scaled. `ctx` is updated.
+ */
+void rescaleOffscreen(ref Offscreen ctx)
+{
+    import std.math : ceil;
+    auto info = ctx in scaledOffscreens_;
+    float s = currentScale();
+    if (info is null || info.scale == s) return;
+    auto old = *info;
+    int ow = cast(int) ceil(old.w * old.scale), oh = cast(int) ceil(old.h * old.scale);
+    int nw = cast(int) ceil(old.w * s), nh = cast(int) ceil(old.h * s);
+    auto neu = rescaleOffscreenPixels(ctx, ow, oh, nw, nh);
+    if (!neu) return;
+    deleteOffscreen(ctx);
+    scaledOffscreens_[neu] = ScaledOffscreen(old.w, old.h, s);
+    ctx = neu;
 }
 
 // ---------------------------------------------------------------------
@@ -1244,6 +1765,7 @@ package(fl) void pushTranslate(int dx, int dy)
     translateStackY_ ~= offsetY_;
     offsetX_ += dx;
     offsetY_ += dy;
+    syncCairoOffset();
     restoreClip();
 }
 
@@ -1259,7 +1781,18 @@ package(fl) void popTranslate()
     offsetY_ = translateStackY_[$ - 1];
     translateStackX_ = translateStackX_[0 .. $ - 1];
     translateStackY_ = translateStackY_[0 .. $ - 1];
+    syncCairoOffset();
     restoreClip();
+}
+
+/// Hands the current offset to a Cairo driver, which applies it
+/// through its matrix rather than to each coordinate.
+private void syncCairoOffset()
+{
+    version (linux) version (FLDTK_HAVE_CAIRO)
+    {
+        if (auto cd = activeCairo()) cd.setOffset(offsetX_, offsetY_);
+    }
 }
 
 unittest
@@ -2863,6 +3396,24 @@ version (linux)
     /// module uses.
     void drawCheck(Rect bb, Color col)
     {
+        if (currentDriver !is null)
+        {
+            // A vertex path, so in device pixels unless the driver
+            // wants unscaled vertices.
+            auto q = computeCheckPoints(bb);
+            bool unscaled = currentDriver.wantsUnscaledVertices();
+            Point dpt(int x, int y)
+            {
+                return unscaled ? Point(x, y) : Point(scaledFloor(x), scaledFloor(y));
+            }
+            Point[6] dp = [dpt(q.x0, q.y0), dpt(q.x1, q.y1), dpt(q.x2, q.y2),
+                dpt(q.x3, q.y3), dpt(q.x4, q.y4), dpt(q.x5, q.y5)];
+            Color prev = fl_color();
+            fl_color(col);
+            currentDriver.endPolygon(dp[]);
+            fl_color(prev);
+            return;
+        }
         if (gc_ is null || drawable_ == 0) return;
         auto p = computeCheckPoints(bb);
         XPoint[6] pts = [
@@ -4457,6 +5008,18 @@ version (linux)
     /// comment).
     void fl_font(Font face, Fontsize size)
     {
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoDisplay_ !is null)
+            {
+                currentFontFace_ = face;
+                currentFontSize_ = size;
+                cairoFont(cairoDisplay_, face, size);
+                auto cd = activeCairo();
+                if (cd !is null && cd !is cairoDisplay_) cairoFont(cd, face, size);
+                return;
+            }
+        }
         float s = currentScale();
         if (face == currentFontFace_ && size == currentFontSize_
             && s == currentFontScale_ && currentXftFont_ !is null)
@@ -4897,6 +5460,17 @@ version (linux)
     /// `int(height_unscaled()/scale())` pattern.
     int height(Font face, Fontsize size)
     {
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoDisplay_ !is null)
+            {
+                // FLTK's fl_height(font, size): select, measure, restore.
+                cairoFont(cairoDisplay_, face, size);
+                int h = cairoDisplay_.height();
+                if (currentFontSize_ > 0) cairoFont(cairoDisplay_, currentFontFace_, currentFontSize_);
+                return h;
+            }
+        }
         float s = currentScale();
         int devSize = cast(int)(size * s);
         if (devSize < 1) devSize = 1;
@@ -4907,6 +5481,14 @@ version (linux)
     /// ditto, for the current fl_font().
     int height()
     {
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoDisplay_ !is null)
+            {
+                if (!cairoDisplay_.hasFont()) cairoFont(cairoDisplay_, 0, 12);
+                return cairoDisplay_.height();
+            }
+        }
         return height(currentFontFace_, currentFontSize_);
     }
 
@@ -4916,6 +5498,8 @@ version (linux)
     /// FLTK units here, matching `Fl_Scalable_Graphics_Driver::descent()`.
     int descent()
     {
+        version (FLDTK_HAVE_CAIRO)
+            if (cairoDisplay_ !is null) return cairoDisplay_.descent();
         return currentXftFont_ !is null
             ? cast(int)(currentXftFont_.descent / currentScale()) : 4;
     }
@@ -4926,6 +5510,14 @@ version (linux)
     /// `Fl_Scalable_Graphics_Driver::width()`.
     double width(const(char)[] str, int nChars)
     {
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoDisplay_ !is null)
+            {
+                if (nChars <= 0) return 0;
+                return cairoDisplay_.width(str[0 .. nChars < str.length ? nChars : str.length]);
+            }
+        }
         if (currentXftFont_ is null || nChars <= 0) return nChars * 6.0;
         XGlyphInfo extents;
         XftTextExtentsUtf8(display_, currentXftFont_, cast(const(ubyte)*) str.ptr, nChars, &extents);
@@ -4954,6 +5546,15 @@ version (linux)
      */
     void textExtents(const(char)[] str, int nChars, out int dx, out int dy, out int w, out int h)
     {
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoDisplay_ !is null)
+            {
+                if (nChars > 0)
+                    cairoDisplay_.textExtents(str[0 .. nChars < str.length ? nChars : str.length], dx, dy, w, h);
+                return;
+            }
+        }
         if (currentXftFont_ is null || nChars <= 0)
         {
             dx = dy = w = h = 0;
@@ -5877,10 +6478,31 @@ version (linux)
             clipH = H - srcH;
         }
 
-        if (gc_ !is null && drawable_ != 0)
+        // XCopyArea() works in device pixels: scale the rectangle as
+        // FLTK's Fl_X11_Window_Driver::scroll() does, with the same
+        // edge rounding as fl_rectf(), so the copied block meets the
+        // strips drawArea() redraws below without a gap.
+        int sx = scaledFloor(srcX), sy = scaledFloor(srcY);
+        int sw = scaledFloor(srcX + srcW) - sx, sh = scaledFloor(srcY + srcH) - sy;
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoWithoutX())
+            {
+                // FLTK's Fl_Wayland_Window_Driver::scroll(): move the
+                // pixels within the draw buffer
+                cairoCopyWithin(cairoImageSurfaceOf(drawable_), sx + offsetX_, sy + offsetY_, sw, sh,
+                    scaledFloor(destX) + offsetX_, scaledFloor(destY) + offsetY_);
+                if (dx) drawArea(clipX, destY, clipW, srcH);
+                if (dy) drawArea(X, clipY, W, clipH);
+                return;
+            }
+            cairoFlush(drawable_);
+        }
+        if (gc_ !is null && drawable_ != 0 && sw > 0 && sh > 0)
             XCopyArea(display_, drawable_, drawable_, gc_,
-                srcX + offsetX_, srcY + offsetY_, cast(uint) srcW, cast(uint) srcH,
-                destX + offsetX_, destY + offsetY_);
+                sx + offsetX_, sy + offsetY_, cast(uint) sw, cast(uint) sh,
+                scaledFloor(destX) + offsetX_, scaledFloor(destY) + offsetY_);
+        version (FLDTK_HAVE_CAIRO) cairoMarkDirty(drawable_);
 
         if (dx) drawArea(clipX, destY, clipW, srcH);
         if (dy) drawArea(X, clipY, W, clipH);
@@ -9434,12 +10056,39 @@ version (linux)
     /// any X failure, never an uncaught error" contract.
     private bool drawableSize(Drawable d, out uint w, out uint h)
     {
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoWithoutX())
+            {
+                import fl.cairo_c : cairo_image_surface_get_width, cairo_image_surface_get_height;
+                auto surf = cairoImageSurfaceOf(d);
+                if (surf is null) return false;
+                w = cairo_image_surface_get_width(surf);
+                h = cairo_image_surface_get_height(surf);
+                return true;
+            }
+        }
         if (display_ is null || d == 0) return false;
         Window rootReturn;
         int xReturn, yReturn;
         uint borderWidthReturn, depthReturn;
         return XGetGeometry(display_, d, &rootReturn, &xReturn, &yReturn,
             &w, &h, &borderWidthReturn, &depthReturn) != 0;
+    }
+
+
+    /// One byte per pixel, the first byte of each of `buf`'s pixels --
+    /// what a mono image draw shows, whatever `d` is (`d`/`l` as in
+    /// `drawImage()`).
+    private ubyte[] grayFromFirstChannel(const(ubyte)* buf, int w, int h, int d, int l)
+    {
+        int ad = d < 0 ? -d : d;
+        if (l == 0) l = w * ad;
+        auto gray = new ubyte[w * h];
+        foreach (j; 0 .. h)
+            foreach (i; 0 .. w)
+                gray[j * w + i] = buf[cast(ptrdiff_t) j * l + cast(ptrdiff_t) i * d];
+        return gray;
     }
 
     /**
@@ -9453,7 +10102,14 @@ version (linux)
      */
     void drawImageMono(const(ubyte)* buf, int x, int y, int w, int h, int d = 1, int l = 0)
     {
-        if (w <= 0 || h <= 0 || buf is null || gc_ is null) return;
+        if (w <= 0 || h <= 0 || buf is null) return;
+        if (currentDriver !is null)
+        {
+            auto gray = grayFromFirstChannel(buf, w, h, d, l);
+            currentDriver.drawImage(gray.ptr, x, y, w, h, 1, 0);
+            return;
+        }
+        if (gc_ is null) return;
 
         int sx = scaledFloor(x), sy = scaledFloor(y);
         int sw = scaledFloor(x + w) - sx, sh = scaledFloor(y + h) - sy;
@@ -9497,13 +10153,21 @@ version (linux)
     /// `currentScale() == 1`.
     private void drawImageViaCallback(DrawImageCb cb, int x, int y, int w, int h, int d, bool mono)
     {
-        if (w <= 0 || h <= 0 || cb is null || gc_ is null) return;
+        if (w <= 0 || h <= 0 || cb is null || (gc_ is null && currentDriver is null)) return;
         auto raw = new ubyte[w * h * d];
         auto line = new ubyte[w * d];
         for (int row = 0; row < h; row++)
         {
             cb(0, row, w, line);
             raw[row * w * d .. (row + 1) * w * d] = line[];
+        }
+        if (currentDriver !is null)
+        {
+            if (mono)
+                currentDriver.drawImage(grayFromFirstChannel(raw.ptr, w, h, d, 0).ptr, x, y, w, h, 1, 0);
+            else
+                currentDriver.drawImage(raw.ptr, x, y, w, h, d, 0);
+            return;
         }
 
         int sx = scaledFloor(x), sy = scaledFloor(y);
@@ -9635,19 +10299,14 @@ version (linux)
      * extends outside the target drawable -- an expected, common
      * outcome for `readPixelsFromDrawable()`'s callers (e.g. reading
      * back a rectangle sized against a different geometry than the
-     * source drawable actually has), not a rare race. Xlib's *default*
-     * error handler prints the error and calls `exit()`, which would
-     * otherwise take the whole process down over a failed capture that
-     * should just return `null` -- e.g. `exit(1)`,
-     * `BadMatch ... X_GetImage`, when capturing an oddly-shaped GIF frame.
+     * source drawable actually has), not a rare race, so it is not
+     * worth the warning `fl.platform_x11`'s global error handler would
+     * print -- e.g. `BadMatch ... X_GetImage` when capturing an
+     * oddly-shaped GIF frame, which should just return `null`.
      * Matches FLTK's own `Fl_X11_Screen_Driver::read_win_rectangle()`,
      * which wraps its `XGetImage()`/`XGetSubImage()` calls the same way
      * (its own `xgetimageerrhandler`, a temporary, locally-scoped
-     * handler swap restored right after the call) -- kept separate
-     * from `fl.platform_x11`'s own global `installErrorHandler()`,
-     * which is deliberately narrow/rare-race-only; this one is
-     * common/expected, so it gets its own local scope here instead of
-     * growing that list.
+     * handler swap restored right after the call).
      */
     extern (C) private int ignoreXGetImageError(Display* display, XErrorEvent* event) @nogc nothrow
     {
@@ -9681,26 +10340,16 @@ version (linux)
 
     package(fl) ubyte[] readPixelsFromDrawable(Drawable d, int x, int y, int w, int h, int alpha = 0)
     {
+        version (FLDTK_HAVE_CAIRO)
+            if (cairoWithoutX()) return readCairoPixels(cairoImageSurfaceOf(d), x, y, w, h, alpha);
         if (display_ is null || d == 0 || w <= 0 || h <= 0) return null;
+        version (FLDTK_HAVE_CAIRO) cairoFlush(d);
 
         // XGetImage() raises an asynchronous BadMatch protocol error
         // (not a synchronous NULL return) whenever the requested
-        // rectangle extends outside the drawable -- an expected,
-        // common occurrence for this function's callers (e.g. reading
-        // back a scaled/resized copy sized differently than the
-        // source drawable), not a rare race. Without a custom handler
-        // installed, Xlib's *default* error handler prints the error
-        // and calls exit(), taking the whole process down over what
-        // should just be a failed capture -- e.g. a
-        // crash (SIGABRT via exit(1), "BadMatch ... X_GetImage")
-        // capturing an oddly-shaped GIF frame. Matches FLTK's own
-        // `Fl_X11_Screen_Driver::read_win_rectangle()`, which wraps its
-        // XGetImage()/XGetSubImage() calls the same way (a temporary,
-        // locally-scoped handler swap, restored right after -- kept
-        // separate from fl.platform_x11's own global installErrorHandler()`,
-        // which is deliberately narrow/rare-race-only; this one is
-        // common/expected, so it gets its own local scope instead of
-        // growing that list).
+        // rectangle extends outside the drawable -- an expected outcome
+        // here, silenced for this one call the way FLTK's own
+        // read_win_rectangle() does (see ignoreXGetImageError()).
         auto oldHandler = XSetErrorHandler(&ignoreXGetImageError);
         auto image = XGetImage(display_, d, x, y, cast(uint) w, cast(uint) h, AllPlanes, ZPixmap);
         XSetErrorHandler(oldHandler);
@@ -9844,7 +10493,9 @@ version (linux)
         import std.math : ceil, floor;
 
         strip = OverlayStrip.init;
-        if (display_ is null || drawable_ == 0) return;
+        bool withoutX = false;
+        version (FLDTK_HAVE_CAIRO) withoutX = cairoWithoutX();
+        if (!withoutX && (display_ is null || drawable_ == 0)) return;
 
         float s = currentScale();
         int m = s == 1 ? 0 : cast(int) ceil(s);
@@ -9856,7 +10507,14 @@ version (linux)
 
         auto pixmap = createOffscreenBuffer(drawable_, x1 - x0, y1 - y0);
         if (pixmap == 0) return;
-        XCopyArea(display_, drawable_, pixmap, gc_, x0, y0, cast(uint)(x1 - x0), cast(uint)(y1 - y0), 0, 0);
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (withoutX)
+                cairoCopyPixels(cairoImageSurfaceOf(drawable_), cairoImageSurfaceOf(pixmap),
+                    x0, y0, x1 - x0, y1 - y0, 0, 0);
+        }
+        if (!withoutX)
+            XCopyArea(display_, drawable_, pixmap, gc_, x0, y0, cast(uint)(x1 - x0), cast(uint)(y1 - y0), 0, 0);
         strip = OverlayStrip(pixmap, x0, y0, x1 - x0, y1 - y0);
     }
 
@@ -9893,6 +10551,17 @@ version (linux)
 
     private void overlayEraseCurrentRect()
     {
+        version (FLDTK_HAVE_CAIRO)
+        {
+            if (cairoWithoutX())
+            {
+                foreach (ref strip; ovStrips_)
+                    if (strip.pixmap != 0)
+                        cairoCopyPixels(cairoImageSurfaceOf(strip.pixmap), cairoImageSurfaceOf(drawable_),
+                            0, 0, strip.w, strip.h, strip.x, strip.y);
+                if (cairoDisplay_.onDraw !is null) cairoDisplay_.onDraw();
+            }
+        }
         if (display_ !is null && gc_ !is null)
         {
             foreach (ref strip; ovStrips_)
@@ -9912,6 +10581,12 @@ version (linux)
      */
     void overlayClear()
     {
+        version (FLDTK_HAVE_CAIRO)
+        {
+            // the overlay reads and draws with Xlib
+            cairoFlush(drawable_);
+            scope (exit) cairoMarkDirty(drawable_);
+        }
         if (ovW_ > 0)
         {
             overlayEraseCurrentRect();
@@ -9939,6 +10614,12 @@ version (linux)
      */
     void overlayRect(int x, int y, int w, int h)
     {
+        version (FLDTK_HAVE_CAIRO)
+        {
+            // the overlay reads and draws with Xlib
+            cairoFlush(drawable_);
+            scope (exit) cairoMarkDirty(drawable_);
+        }
         if (ovW_ > 0)
         {
             if (x == ovX_ && y == ovY_ && w == ovW_ && h == ovH_) return;

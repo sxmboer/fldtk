@@ -55,6 +55,7 @@ struct CommandLine
     string scheme;          /// --scheme: the editor's FLTK scheme
     float scalingFactor = 1.0f; /// -sf: scale the editor's windows
     string inPath;          /// the .fl file, or null
+    bool helpShown;         /// --help: usage was printed, nothing else to do
 
     /// The merge to run, if any.
     bool wantsMerge() const { return mergeBack || mergeBackIfSafe || mergeBackInfo; }
@@ -147,6 +148,7 @@ bool parseCommandLine(ref string[] args, out CommandLine cl, string usageLine, b
         if (info.helpWanted)
         {
             defaultGetoptPrinter(usageLine, info.options);
+            cl.helpShown = true;
             return false;
         }
     }
@@ -228,7 +230,9 @@ private string projectText(Reader reader, Node[] roots)
 /// overrides `code_name` outright, there is no real use case for forcing
 /// the header *off* from the command line when the project file itself
 /// asked for it, so this only ever ORs, never overrides to `false`.
-void compileFile(string inPath, string outPath, bool alsoWriteStrings, bool forceDubHeader = false,
+/// Returns `false` (after reporting why on stderr) if the file could
+/// not be converted.
+bool compileFile(string inPath, string outPath, bool alsoWriteStrings, bool forceDubHeader = false,
     string stringsName = null)
 {
     bool outPathFromCommandLine = outPath.length != 0;
@@ -262,9 +266,7 @@ void compileFile(string inPath, string outPath, bool alsoWriteStrings, bool forc
         // run through `fluid -c` in total silence and produce
         // uncompilable garbage instead of ever being caught here.
         stderr.writefln("fluid: %s: %s", inPath, e.msg);
-        import core.stdc.stdlib : exit;
-
-        exit(1);
+        return false;
     }
     // FLTK's batch-mode report of an unreadable inline-data file.
     foreach (err; writer.dataErrors)
@@ -279,13 +281,14 @@ void compileFile(string inPath, string outPath, bool alsoWriteStrings, bool forc
 
     if (alsoWriteStrings)
         writeStringsFor(inPath, roots, reader.i18n, stringsName);
+    return true;
 }
 
 /// `-u`: load, then immediately resave -- the same "normalize a hand-
 /// authored `.fl` file's formatting to this port's own GNU-style
 /// output" round-trip `project_writer.d`'s own doc comment named as a
-/// still-open follow-up.
-void normalizeProject(string path)
+/// still-open follow-up. Returns `false` if the file was left alone.
+bool normalizeProject(string path)
 {
     auto source = readText(path);
     auto reader = new Reader(source);
@@ -294,12 +297,11 @@ void normalizeProject(string path)
     {
         stderr.writefln("fluid: %s: contains raw FLTK C++, not this project's D-embedded `.fl` "
             ~ "dialect; not rewritten", path);
-        import core.stdc.stdlib : exit;
-
-        exit(1);
+        return false;
     }
     write(path, projectText(reader, roots));
     writefln("fluid: normalized %s", path);
+    return true;
 }
 
 /// `-m`/`--merge-back-if-safe`/`--merge-back-info`: merges edits made directly in the generated `.d` file

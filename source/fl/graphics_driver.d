@@ -54,6 +54,11 @@
  * `fl.image_surface.SurfaceDevice.surface() is null` meaning "the
  * display" -- null-means-default is this codebase's own house style, not
  * a deviation invented for this module.
+ *
+ * The exception is Cairo display mode on X11 (`FLDTK_GRAPHICS=cairo`,
+ * see `fl.draw.nativeDriver()`): then `currentDriver` is
+ * `fl.cairo_graphics_driver.CairoGraphicsDriver` even for plain
+ * on-screen drawing, as on Windows with its GDI driver.
  */
 module fl.graphics_driver;
 

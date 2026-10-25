@@ -24,12 +24,12 @@ name-wiring, emit code close to verbatim," not "translate."
 
 ### The `o` convention
 
-Every callback/`code0`-`code3` body refers to "the widget this code
+Every callback/`setup`/`finalize` body refers to "the widget this code
 concerns" as a bare `o`, matching FLTK's own documented `Fl_Callback`
 parameter-naming convention. Two different physical contexts both use
 it:
 
-- Inside `code0`-`code3`/`setup` (construction-time code, attached to a
+- Inside `setup`/`finalize` (construction-time code, attached to a
   widget's own property list): `o` means "this widget's own variable"
   (which already has a real, distinct name) — the writer substitutes it.
 - Inside a `callback { ... }` property, or a named callback-shaped
@@ -137,7 +137,13 @@ by `isCallbackShape()` in `code_writer.d`:
   shape. Meant to be used *bare* as a `.callback(name)` value; becomes a
   module-level `void delegate(Widget) name;` variable assigned a
   delegate literal (D forbids implicitly converting a plain function to
-  a delegate, so a real closure is unavoidable).
+  a delegate, so a real closure is unavoidable). The assignment sits at
+  the top of `main()`, or, in a file without an anonymous root Function,
+  in a `static this()` module constructor, so it is in place before any
+  widget that uses the callback is built. Code elsewhere can still
+  assign the variable its own delegate before building those widgets,
+  which is how the panels' `liveModeCb`/`overlayCb`/`okCb` work (they
+  are plain `decl {}` nodes in `widget_panel.fl`).
 - **Plain**: anything else — a different return type (a factory that's
   *called* to produce a callback, not assigned directly) or a different
   parameter count (e.g. a zero-parameter window-builder method). Becomes
@@ -262,6 +268,39 @@ helper-function definitions) verbatim at module scope, right after the
 generated file's fixed imports — for text that doesn't belong inside any
 one widget's own construction code.
 
+## Per-widget code: `setup` and `finalize`
+
+A widget has two code slots besides its callback:
+
+- `setup { ... }` performs additional tasks to set up the widget. It
+  runs right after the widget is constructed and its attributes are
+  set, before any of its children are constructed.
+- `finalize { ... }` runs after all of a container's children are
+  constructed, before its `end()`. Only groups and windows have widget
+  children, so for any other widget (a menu widget's items included,
+  which are built before its `setup` code) the two slots would end up
+  next to each other, and the widget panel offers the `finalize` page
+  only for groups and windows. FLTK's Fluid calls this slot "final";
+  the name here avoids the D keyword.
+
+Both refer to the widget as `o` (see "The `o` convention" above). Each
+widget's code is generated as its own `{ ... }` block, nested inside its
+parent's block, so whatever a `setup` slot declares is visible to the
+widget's children and everything they contain, callbacks included.
+
+FLTK's Fluid also has `#include` and declare slots. Both only choose what
+goes into the C++ header file, so this dialect has no counterpart for
+them. Where an import goes instead:
+
+- **Local scope:** an `import` line in the `setup` code of a widget
+  higher up in the tree, so it is visible to every widget below it. A
+  widget's own `setup` is too late for that widget's own `class`
+  override and its own callback: both are generated before its `setup`
+  code, and a local import is only visible after the line it is on.
+- **Module scope:** a `decl {import ...;}` node, for anything outside
+  the widget-building function (other Functions, class members, the
+  outermost widget's own `class` override).
+
 ## Two more literal-text gotchas
 
 - **A literal `"` inside a `callback`/`code` body needs the
@@ -277,11 +316,6 @@ one widget's own construction code.
 
 ## Known dialect gaps (deliberately deferred, not bugs)
 
-- **No post-children (`final`) code slot.** Only one code slot exists
-  per widget (`setup`, emitted before that widget's own children are
-  built) — there is no way today to run code *after* a widget's children
-  are constructed. Add this the day a real `.fl` file actually needs it,
-  not speculatively.
 - **No per-widget member-field declaration inside a `class` body.** A
   `ClassNode`'s children are only ever `Function` nodes (methods) today;
   there's no node type for "add a plain field to the enclosing class."

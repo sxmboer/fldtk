@@ -27,10 +27,16 @@ model, including how a helper module shared between several programs
 (`CubeView.d`, `checkers_pieces.d`, `fracviewer.d`, `resize_arrows.d`)
 gets pulled in automatically.
 
-A handful of programs are knowingly skipped, printing why when you
-build: `cairo_test` (needs a Cairo backend), `forms` (the XForms
-compatibility layer, out of scope for this port), and `penpal` (needs
-pen/tablet input, which FLTK itself has no X11 support for either).
+One program is knowingly skipped, printing why when you build: `forms`
+(the XForms compatibility layer, out of scope for this port). On
+Windows, `list_visuals` (it lists X11 visuals) is skipped too.
+
+## Programs not in FLTK
+
+- `svg_animation`: SVG images that move. Each frame the program writes
+  the SVG text for what should be on screen and shows it as a new
+  `SvgImage`, so the pictures (a wind gauge following a slider, and a
+  sea at sunset whose waves grow with the wind) stay sharp at any scale.
 
 ## The `unittests` program
 

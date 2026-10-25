@@ -12,23 +12,23 @@ import xlib = fl.xlib;
 import std.stdio : writef, writefln, stderr;
 import std.string : toStringz, fromStringz;
 import std.conv : to;
-import core.stdc.stdlib : exit;
 import core.stdc.config : c_ulong;
 
 xlib.Display* flDisplay;
 int flScreen;
 string dname;
 
-void flOpenDisplay()
+bool flOpenDisplay()
 {
     flDisplay = xlib.XOpenDisplay(dname is null ? null : dname.toStringz());
     if (!flDisplay)
     {
         stderr.writefln("Can't open display: %s",
             fromStringz(xlib.XDisplayName(dname.toStringz())));
-        exit(1);
+        return false;
     }
     flScreen = xlib.XDefaultScreen(flDisplay);
+    return true;
 }
 
 string[6] classNames = [
@@ -91,9 +91,10 @@ void printMask(xlib.XVisualInfo* p)
     writef("%7s", buf[0 .. q]);
 }
 
-void listVisuals()
+bool listVisuals()
 {
-    flOpenDisplay();
+    if (!flOpenDisplay())
+        return false;
     xlib.XVisualInfo vTemplate;
     int num;
     xlib.XVisualInfo* visualList = xlib.XGetVisualInfo(flDisplay, 0, &vTemplate, &num);
@@ -166,9 +167,10 @@ void listVisuals()
         xlib.XFree(overlayInfo);
         overlayInfo = null;
     }
+    return true;
 }
 
-void main(string[] args)
+int main(string[] args)
 {
     if (args.length == 1)
     {
@@ -178,7 +180,7 @@ void main(string[] args)
     else
     {
         stderr.writefln("usage: %s <display>", args.length ? args[0] : "list_visuals");
-        return;
+        return 1;
     }
-    listVisuals();
+    return listVisuals() ? 0 : 1;
 }

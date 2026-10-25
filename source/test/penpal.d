@@ -19,7 +19,6 @@
 // delegate handle()/draw() to it (composition standing in for the C++
 // mixin -- the same widget/event structure, just not multiple-inherited).
 import fl;
-import core.stdc.stdlib : exit;
 
 MenuItem[] appMenu;
 int popupAppMenu();
@@ -83,28 +82,28 @@ class CanvasInterface
         switch (event)
         {
             // Event handling for pen events:
-        case fl.Pen.enter: // Return 1 to receive all pen events and suppress mouse events
+        case Event.penEnter: // Return 1 to receive all pen events and suppress mouse events
             // Pen entered the widget area.
             color_++;
             if (color_ > 6)
                 color_ = 1;
             goto case;
-        case fl.Pen.hover:
+        case Event.penHover:
             // Pen move over the surface without touching it.
             overlay_ = Overlay.penHover;
             ovX_ = fl.eventX();
             ovY_ = fl.eventY();
             widget_.redraw();
             return 1;
-        case fl.Pen.buttonPush:
+        case Event.penButtonPush:
             // front barrel button
-            if (fl.Pen.eventState(fl.Pen.State.button0))
+            if (Pen.eventState(Pen.State.button0))
             {
                 popupAppMenu();
                 return 0;
             }
             return 0;
-        case fl.Pen.touch:
+        case Event.penTouch:
             // Pen tip or eraser just touched the surface.
             if (fl.eventState(stateCtrl))
             {
@@ -112,9 +111,9 @@ class CanvasInterface
                 return 0;
             }
             goto case;
-        case fl.Pen.draw:
+        case Event.penDraw:
             // Pen is dragged over the surface, or hovers with a button pressed.
-            if (fl.Pen.eventState(fl.Pen.State.tipDown | fl.Pen.State.eraserDown))
+            if (Pen.eventState(Pen.State.tipDown | Pen.State.eraserDown))
             {
                 overlay_ = Overlay.penDraw;
                 ovX_ = fl.eventX();
@@ -123,10 +122,10 @@ class CanvasInterface
                 widget_.redraw();
             }
             return 1;
-        case fl.Pen.lift:
+        case Event.penLift:
             // Pen was just lifted from the surface and is now hovering
             return 1;
-        case fl.Pen.leave:
+        case Event.penLeave:
             // The pen left the drawing area.
             overlay_ = Overlay.none;
             widget_.redraw();
@@ -210,15 +209,16 @@ class CanvasInterface
             fl_yxline(ovX_, ovY_ - 10, ovY_ + 10);
             break;
         case Overlay.penDraw:
-            r = cast(int)(32.0 * fl.Pen.eventPressure() * fl.Pen.eventPressure());
+            r = cast(int)(32.0 * Pen.eventPressure() * Pen.eventPressure());
             if (r < 1)
                 r = 1;
             fl_color(red);
             // Tilt indicator
-            fl_arc(ovX_ - r / 2 - 40 * fl.Pen.eventTiltX(),
-                    ovY_ - r / 2 - 40 * fl.Pen.eventTiltY(), r, r, 0, 360);
+            // (int coordinates, as C++'s implicit conversion gives FLTK)
+            fl_arc(cast(int)(ovX_ - r / 2 - 40 * Pen.eventTiltX()),
+                    cast(int)(ovY_ - r / 2 - 40 * Pen.eventTiltY()), r, r, 0, 360);
             // Eraser indicator
-            if (fl.Pen.eventState(fl.Pen.State.eraserDown))
+            if (Pen.eventState(Pen.State.eraserDown))
             {
                 fl_line(ovX_ - r, ovY_ - r, ovX_ + r, ovY_ + r);
                 fl_line(ovX_ - r, ovY_ + r, ovX_ + r, ovY_ - r);
@@ -237,13 +237,13 @@ class CanvasInterface
     {
         // Button indicators
         fl_rect(ovX_ - 16, ovY_ - 20, 32, 10);
-        if (fl.Pen.eventState(fl.Pen.State.button0))
+        if (Pen.eventState(Pen.State.button0))
             fl_rectf(ovX_ - 16, ovY_ - 20, 8, 10);
-        if (fl.Pen.eventState(fl.Pen.State.button1))
+        if (Pen.eventState(Pen.State.button1))
             fl_rectf(ovX_ - 8, ovY_ - 20, 8, 10);
-        if (fl.Pen.eventState(fl.Pen.State.button2))
+        if (Pen.eventState(Pen.State.button2))
             fl_rectf(ovX_ - 0, ovY_ - 20, 8, 10);
-        if (fl.Pen.eventState(fl.Pen.State.button3))
+        if (Pen.eventState(Pen.State.button3))
             fl_rectf(ovX_ + 8, ovY_ - 20, 8, 10);
     }
 
@@ -266,12 +266,12 @@ class CanvasInterface
     //
     void cvPenPaint()
     {
-        float pressure = fl.Pen.eventPressure();
+        float pressure = Pen.eventPressure();
         int r = cast(int)(32.0 * pressure * pressure); // squared to make pressure more visible
         if (r < 1)
             r = 1;
         int dx = inWindow_ ? 0 : widget_.x(), dy = inWindow_ ? 0 : widget_.y();
-        Color cc = fl.Pen.eventState(fl.Pen.State.eraserDown) ? white : color_;
+        Color cc = Pen.eventState(Pen.State.eraserDown) ? white : color_;
         beginOffscreen(offscreen_);
         drawCircle(fl.eventX() - dx - r, fl.eventY() - dy - r, 2 * r, cc);
         endOffscreen();
@@ -352,13 +352,13 @@ void nonModalWindowCb(Widget)
 void subscribeCb(Widget)
 {
     if (cv1)
-        fl.Pen.subscribe(cv1);
+        Pen.subscribe(cv1);
 }
 
 void unsubscribeCb(Widget)
 {
     if (cv1)
-        fl.Pen.unsubscribe(cv1);
+        Pen.unsubscribe(cv1);
 }
 
 void deleteCb(Widget)
@@ -366,10 +366,9 @@ void deleteCb(Widget)
     if (cv1)
     {
         cv1.topWindow().redraw();
-        // User *must* unsubscribe before deleting the widget, otherwise the pen driver
-        // will keep a dangling pointer to the deleted widget and will crash when trying
-        // to send events to it.
-        fl.Pen.unsubscribe(cv1);
+        // FLTK requires unsubscribing before deleting a widget; in fldtk,
+        // destroying it unsubscribes it, so this call is optional.
+        Pen.unsubscribe(cv1);
         destroy(cv1);
         cv1 = null;
     }
@@ -377,7 +376,7 @@ void deleteCb(Widget)
 
 void quitCb(Widget)
 {
-    exit(0);
+    fl.hideAllWindows();
 }
 
 // A popup menu with a few test tasks.
@@ -398,9 +397,10 @@ static this()
 //
 int popupAppMenu()
 {
-    auto mi = appMenu.popup(fl.eventX(), fl.eventY(), "Tests");
+    import fl.menu_popup : popup;
+    auto mi = popup(appMenu.ptr, fl.eventX(), fl.eventY(), null, MenuStyle.defaults(), "Tests");
     if (mi)
-        mi.doCallback(cast(Widget) mi);
+        mi.doCallback(null); // FLTK passes the item itself; the callbacks ignore it
     return 1;
 }
 
@@ -416,14 +416,13 @@ void main(string[] args)
     menuBar.add("PenPal/With Modal Window", 0, (w) { modalWindowCb(w); });
     menuBar.add("PenPal/With Non-Modal Window", 0, (w) {
         nonModalWindowCb(w);
-    }, null, menuDivider);
+    }, menuDivider);
     menuBar.add("PenPal/Unsubscribe Middle Canvas", 0, (w) {
         unsubscribeCb(w);
     });
     menuBar.add("PenPal/Subscribe Middle Canvas", 0, (w) { subscribeCb(w); });
-    menuBar.add("PenPal/Delete Middle Canvas", 0, (w) { deleteCb(w); }, null, menuDivider);
+    menuBar.add("PenPal/Delete Middle Canvas", 0, (w) { deleteCb(w); }, menuDivider);
     menuBar.add("PenPal/Quit", stateCommand + 'q', (w) { quitCb(w); });
-    menuBar.menuEnd();
 
     // One testing canvas is just a regular child widget of the window
     auto canvasWidget0 = new CanvasWidget(10, 35, 200, 200, "CV0");
@@ -446,10 +445,10 @@ void main(string[] args)
     //cvwin.resizable(cvwin);
 
     // All canvases subscribe to pen events.
-    fl.Pen.subscribe(canvasWidget0);
-    fl.Pen.subscribe(canvasWidget1);
-    fl.Pen.subscribe(canvasWidget2);
-    fl.Pen.subscribe(cvWindow);
+    Pen.subscribe(canvasWidget0);
+    Pen.subscribe(canvasWidget1);
+    Pen.subscribe(canvasWidget2);
+    Pen.subscribe(cvWindow);
 
     window.show(args);
     canvasWidget2.show();

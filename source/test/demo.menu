@@ -10,7 +10,7 @@
 #
 
 @main:Widget\nTests...:@x
-	@x:Fl_Browser:browser browser.cxx
+	@x:Fl_Browser:browser browser.d
 	@x:Fl_Input:input
 	@x:Fl_Output:output
 	@x:Fl_Button:radio
@@ -43,6 +43,7 @@
 		@di:Fl_Shared\n_Image:pixmap_browser
 		@di:Fl_Tiled\n_Image:tiled_image
 		@di:transparency:animated
+		@di:animated\nSVG:svg_animation
 	@d:cursor:cursor
 	@d:labels:label
 	@d:offscreen:offscreen
@@ -92,7 +93,7 @@
 	@j:ask\n(modified):ask
 	@j:button:button
 	@j:CubeView:CubeView
-	@j:editor:editor editor.cxx
+	@j:editor:editor editor.d
 	@j:hello:hello
 	@j:shape:shape
 

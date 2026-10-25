@@ -2,12 +2,11 @@
 // Build: rdmd buildsamples.d test demo
 //
 // Notes on this transliteration:
-//  - Only the Unix/Linux path-handling and process-launch branches are
-//    transliterated (this project's primary target -- see CONVENTIONS.md);
-//    FLTK's _WIN32 CreateProcess() branch and the macOS
-//    "open '/path/app.app'" bundle branch are dropped entirely, the same
-//    way source/test/sudoku.d keeps only the ALSA branch of its sound
-//    backend. The CMAKE_INTDIR (Visual Studio/Xcode multi-config build
+//  - Paths are built with std.path and programs are started with
+//    std.process.spawnProcess(), which work the same on every platform,
+//    in place of FLTK's per-platform branches (its _WIN32
+//    CreateProcess() branch and the macOS "open '/path/app.app'"
+//    bundle branch). The CMAKE_INTDIR (Visual Studio/Xcode multi-config build
 //    type subdirectory) handling is dropped too -- this project builds
 //    with dub, which has no equivalent concept.
 //  - Fl_Terminal, Fl_Menu_Button, Fl_Scheme_Choice have no fldtk
@@ -19,9 +18,9 @@
 //    displayRows()/displayColumns()/textsize() are new invented methods
 //    (camelCase of FLTK's history_lines()/display_rows()/
 //    display_columns()/textsize()) following the same convention.
-//  - fl_chdir()/fl_getcwd()/fl_putenv() are plain cross-platform libc
+//  - fl_chdir()/fl_getcwd() are plain cross-platform libc
 //    wrappers, not FLTK widget/drawing API, so they're written directly
-//    against Phobos (std.file.chdir/getcwd, std.process.environment,
+//    against Phobos (std.file.chdir/getcwd,
 //    fl.stdc.stdlib.exit) rather than invented as fldtk calls -- the
 //    same reasoning source/examples/table_sort.d (std.process) and
 //    source/examples/nativefilechooser_simple_app.d (std.process/
@@ -42,12 +41,13 @@
 //    Unix-shell-specific and would need a different mechanism on
 //    Windows).
 import fl;
-import std.process : spawnProcess, environment;
+import data_file : dataFile;
+import std.process : spawnProcess;
 import std.file : chdir, getcwd;
 import std.stdio : File;
 import std.string : indexOf, startsWith, strip, split;
 import std.format : format;
-import std.path : dirName, buildPath, dirSeparator;
+import std.path : buildPath, dirName;
 
 enum int FORM_W = 350;
 enum int FORM_H = 440;
@@ -61,13 +61,16 @@ SchemeChoice schemeChoice;
 Button[9] but;
 Button exitButton;
 
-// Global path variables (Unix/Linux only -- see the file header note).
+// Global path variables.
 string appPath;     // directory of all demo binaries
 string fluidPath;   // binary directory of fluid
 string optionsPath; // binary directory of fltk-options
 string dataPath;    // working directory of all demos
 
-enum string suffix = ""; // Linux: no executable suffix (see file header note)
+version (Windows)
+    enum string suffix = ".exe"; // executable suffix
+else
+    enum string suffix = "";
 
 // debug output function
 void debugVar(string varname, string value)
@@ -354,9 +357,8 @@ void dobut(int arg)
     else if (cmdbuf.startsWith("fltk-options"))
         path = optionsPath;
 
-    // format commandline with optional parameters (other platforms:
-    // Unix/Linux, X11, and XQuartz on macOS -- see file header note)
-    string exePath = path ~ "/" ~ cmdbuf ~ suffix;
+    // format commandline with optional parameters
+    string exePath = buildPath(path, cmdbuf ~ suffix);
     string[] argv = params.length ? [exePath] ~ params.split() : [exePath];
     string command = params.length ? exePath ~ " " ~ params : exePath;
 
@@ -449,7 +451,6 @@ string fixPath(string path, bool stripFilename = true)
 
 void main(string[] args)
 {
-    environment["FLTK_DOCDIR"] = "../documentation/html"; // used by fluid
 
     // construct app_path for all executable files
     appPath = fixPath(filenameAbsolute(args[0]));
@@ -460,23 +461,11 @@ void main(string[] args)
     fluidPath = fixPath(appPath);   // remove folder name ("test")
     optionsPath = fixPath(appPath);
 
-    // construct data_path for the menu file and all resources (data files)
-    // CMake: replace "/bin/test" with "/data" -- inert for this project's
-    // own dub-based build (binaries sit flat in build/, never under a
-    // "bin/test" subdirectory on any platform), kept only for parity with
-    // FLTK's own CMake-install-layout logic. Separator-aware via
-    // `std.path.dirSeparator` rather than a hardcoded "/", matching
-    // `fixPath()`'s own fix just above -- see that function's doc comment
-    // for why a hardcoded '/'-only search silently never matches on
-    // Windows.
-    dataPath = appPath;
-    auto binTestPos = dataPath.indexOf(dirSeparator ~ "bin" ~ dirSeparator ~ "test");
-    if (binTestPos >= 0)
-        dataPath = dataPath[0 .. binTestPos] ~ dirSeparator ~ "data";
-
-    // Construct the menu file name, optionally overridden by command args.
+    // The menu file and the demos' data files (rgb.txt, ...) are in
+    // source/test; data_file.dataFile() finds them from build/.
     string fn = filenameName(args[0]);
-    string menu = filenameSetExt(buildPath(dataPath, fn), ".menu");
+    string menu = dataFile(filenameSetExt(fn, ".menu"));
+    dataPath = fixPath(filenameAbsolute(menu));
 
     // parse commandline
     int i = 0;

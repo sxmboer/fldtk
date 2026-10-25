@@ -121,8 +121,12 @@ private final class ColorMenu : Window
             if (px + bx + boxsize + border >= scrX + scrW) px = scrX + scrW - bx - boxsize - border;
             if (py < scrY) py = scrY;
             if (py + by + boxsize + border >= scrY + scrH) py = scrY + scrH - by - boxsize - border;
-            if (px + bx < border) px = border - bx;
-            if (py + by < border) py = border - by;
+            // Keeps the picked swatch on the mouse's monitor. FLTK
+            // compares against 0 here, which pulls the popup onto the
+            // primary monitor from any monitor left of or above it
+            // (negative coordinates); measured from scrX/scrY instead.
+            if (px + bx < scrX + border) px = scrX + border - bx;
+            if (py + by < scrY + border) py = scrY + border - by;
             position(px, py);
         }
         return 1;

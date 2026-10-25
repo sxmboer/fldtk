@@ -87,10 +87,11 @@
  *    landscape output-mode picker is ported too** (`printOutputMode_`,
  *    a `Button[4]` with `type(radioButton)` for mutual exclusion within
  *    their shared `Fl_Group`, matching FLTK's own plain-`Fl_Button`-
- *    with-radio-type design rather than `fl.round_button`). The actual
- *    color-vs-gray XPM icons (`image_print_color`/`image_print_gray`,
- *    ported verbatim as `printColorXpm`/`printGrayXpm`, decoded once
- *    into `colorPixmap_`/`grayPixmap_`) are real too. Note this is
+ *    with-radio-type design rather than `fl.round_button`). The
+ *    color-vs-gray icons are SVG redrawings of FLTK's
+ *    `image_print_color`/`image_print_gray` XPMs (`printColorSvg`/
+ *    `printGraySvg`, loaded once into `colorPixmap_`/`grayPixmap_`), so
+ *    they stay sharp at any scale. Note this is
  *    still cosmetic-only for output correctness:
  *    `PostscriptGraphicsDriver` has no grayscale-vs-color rendering
  *    mode, and neither does FLTK's own
@@ -163,7 +164,7 @@ import fl.spinner : Spinner;
 import fl.check_button : CheckButton;
 import fl.return_button : ReturnButton;
 import fl.widget : Widget;
-import fl.pixmap : Pixmap;
+import fl.svg_image : SvgImage;
 import fl.menu_item : MenuItem, menuDivider;
 import fl.preferences : Preferences, rootCoreUser;
 import fl.enumerations : Boxtype, alignTopLeft, alignLeft, alignInside,
@@ -285,99 +286,30 @@ private static immutable PageFormat[10] pageSizeFormats = [
     letter, a4, legal, executive, a3, a5, b5, envelope, dle, tabloid,
 ];
 
-/// Ported verbatim from `idata_print_color[]` (`print_panel.cxx`) --
-/// the "color" swatch icon shared by `printOutputMode_[0]`/`[1]`.
-private static immutable string[] printColorXpm = [
-    "24 24 17 1",
-    " \tc None",
-    ".\tc #FFFF00",
-    "+\tc #C8FF00",
-    "@\tc #00FF00",
-    "#\tc #FFC800",
-    "$\tc #FF0000",
-    "%\tc #00FFFF",
-    "&\tc #000000",
-    "*\tc #FF00FF",
-    "=\tc #00FFC8",
-    "-\tc #FF00C8",
-    ";\tc #00C800",
-    ">\tc #C80000",
-    ",\tc #0000C8",
-    "'\tc #0000FF",
-    ")\tc #00C8FF",
-    "!\tc #C800FF",
-    "         ......         ",
-    "       ..........       ",
-    "      ............      ",
-    "     ..............     ",
-    "     ..............     ",
-    "    ................    ",
-    "    ................    ",
-    "    ................    ",
-    "    +@@@@@@+#$$$$$$#    ",
-    "   %@@@@@@@&&$$$$$$$*   ",
-    "  %%@@@@@@&&&&$$$$$$**  ",
-    " %%%=@@@@&&&&&&$$$$-*** ",
-    " %%%%@@@;&&&&&&>$$$**** ",
-    "%%%%%%@@&&&&&&&&$$******",
-    "%%%%%%%@&&&&&&&&$*******",
-    "%%%%%%%%,&&&&&&,********",
-    "%%%%%%%%''''''''********",
-    "%%%%%%%%''''''''********",
-    "%%%%%%%%''''''''********",
-    " %%%%%%%)''''''!******* ",
-    " %%%%%%%%''''''******** ",
-    "  %%%%%%%%''''********  ",
-    "   %%%%%%%%''********   ",
-    "     %%%%%%  ******     ",
-];
+/// The "color" swatch shared by `printOutputMode_[0]`/`[1]`: three
+/// overlapping circles of the printing colors. A vector redrawing of
+/// FLTK's `idata_print_color[]` (`print_panel.cxx`), sharp at any scale.
+private enum printColorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <circle cx="16" cy="10.5" r="8" fill="#FFFF00"/>
+  <circle cx="10.5" cy="20" r="8" fill="#00FFFF"/>
+  <circle cx="21.5" cy="20" r="8" fill="#FF00FF"/>
+  <path d="M8.21,12.33 A8,8 0 0 1 18.29,18.17 A8,8 0 0 1 8.21,12.33 Z" fill="#00D000"/>
+  <path d="M13.71,18.17 A8,8 0 0 1 23.79,12.33 A8,8 0 0 1 13.71,18.17 Z" fill="#FF0000"/>
+  <path d="M16.00,25.81 A8,8 0 0 1 16.00,14.19 A8,8 0 0 1 16.00,25.81 Z" fill="#0000FF"/>
+  <path d="M18.29,18.17 A8,8 0 0 1 16.00,14.19 A8,8 0 0 1 13.71,18.17 A8,8 0 0 1 18.29,18.17 Z" fill="#000000"/>
+</svg>`;
 
-/// Ported verbatim from `idata_print_gray[]` (`print_panel.cxx`) --
-/// the "gray" swatch icon shared by `printOutputMode_[2]`/`[3]`.
-private static immutable string[] printGrayXpm = [
-    "24 24 17 1",
-    " \tc None",
-    ".\tc #E3E3E3",
-    "+\tc #D2D2D2",
-    "@\tc #969696",
-    "#\tc #C2C2C2",
-    "$\tc #4C4C4C",
-    "%\tc #B2B2B2",
-    "&\tc #000000",
-    "*\tc #696969",
-    "=\tc #ACACAC",
-    "-\tc #626262",
-    ";\tc #767676",
-    ">\tc #3C3C3C",
-    ",\tc #161616",
-    "'\tc #1C1C1C",
-    ")\tc #929292",
-    "!\tc #585858",
-    "         ......         ",
-    "       ..........       ",
-    "      ............      ",
-    "     ..............     ",
-    "     ..............     ",
-    "    ................    ",
-    "    ................    ",
-    "    ................    ",
-    "    +@@@@@@+#$$$$$$#    ",
-    "   %@@@@@@@&&$$$$$$$*   ",
-    "  %%@@@@@@&&&&$$$$$$**  ",
-    " %%%=@@@@&&&&&&$$$$-*** ",
-    " %%%%@@@;&&&&&&>$$$**** ",
-    "%%%%%%@@&&&&&&&&$$******",
-    "%%%%%%%@&&&&&&&&$*******",
-    "%%%%%%%%,&&&&&&,********",
-    "%%%%%%%%''''''''********",
-    "%%%%%%%%''''''''********",
-    "%%%%%%%%''''''''********",
-    " %%%%%%%)''''''!******* ",
-    " %%%%%%%%''''''******** ",
-    "  %%%%%%%%''''********  ",
-    "   %%%%%%%%''********   ",
-    "     %%%%%%  ******     ",
-];
+/// The "grayscale" swatch shared by `printOutputMode_[2]`/`[3]`: the same
+/// circles in shades of gray, after FLTK's `idata_print_gray[]`.
+private enum printGraySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <circle cx="16" cy="10.5" r="8" fill="#D8D8D8"/>
+  <circle cx="10.5" cy="20" r="8" fill="#B0B0B0"/>
+  <circle cx="21.5" cy="20" r="8" fill="#909090"/>
+  <path d="M8.21,12.33 A8,8 0 0 1 18.29,18.17 A8,8 0 0 1 8.21,12.33 Z" fill="#808080"/>
+  <path d="M13.71,18.17 A8,8 0 0 1 23.79,12.33 A8,8 0 0 1 13.71,18.17 Z" fill="#606060"/>
+  <path d="M16.00,25.81 A8,8 0 0 1 16.00,14.19 A8,8 0 0 1 16.00,25.81 Z" fill="#505050"/>
+  <path d="M18.29,18.17 A8,8 0 0 1 16.00,14.19 A8,8 0 0 1 13.71,18.17 A8,8 0 0 1 18.29,18.17 Z" fill="#000000"/>
+</svg>`;
 
 /**
  * The D name for FLTK's file-static `print_panel`/
@@ -419,8 +351,8 @@ private class PrintPanel
     /// Lazily-shared, matching FLTK's own file-static
     /// `image_print_color`/`image_print_gray` -- built once, reused by
     /// every `printOutputMode_[]` button that needs that color.
-    private static Pixmap colorPixmap_;
-    private static Pixmap grayPixmap_;
+    private static SvgImage colorPixmap_;
+    private static SvgImage grayPixmap_;
 
     /// Ported from `print_collate_group[0]`/`[1]`'s 9 `Fl_Box`es each
     /// (`print_panel.cxx`) -- the "1,1,1 / 2,2,2 / 3,3,3" (unchecked)
@@ -566,8 +498,16 @@ private class PrintPanel
             auto modeGroup = new FlGroup(110, 45, 170, 40, Printer.propertyMode);
             modeGroup.alignment(alignLeft);
             {
-                if (colorPixmap_ is null) colorPixmap_ = new Pixmap(printColorXpm.dup);
-                if (grayPixmap_ is null) grayPixmap_ = new Pixmap(printGrayXpm.dup);
+                if (colorPixmap_ is null)
+                {
+                    colorPixmap_ = new SvgImage(null, printColorSvg);
+                    colorPixmap_.scale(24, 24);
+                }
+                if (grayPixmap_ is null)
+                {
+                    grayPixmap_ = new SvgImage(null, printGraySvg);
+                    grayPixmap_.scale(24, 24);
+                }
 
                 printOutputMode_[0] = new Button(110, 45, 30, 40);
                 printOutputMode_[1] = new Button(150, 50, 40, 30);

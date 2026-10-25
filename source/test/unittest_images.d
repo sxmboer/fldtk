@@ -11,7 +11,6 @@ module unittest_images;
 import fl;
 import unittests;
 
-import core.stdc.stdlib : malloc, free;
 import core.stdc.string : memset;
 
 //
@@ -47,10 +46,14 @@ class UtImageTest : FlGroup
     private static void buildImgs()
     {
         ubyte* dg, dga, drgb, drgba;
-        dg = imgGray = imgGrayBase = cast(ubyte*) malloc((128 + dx) * 128 * 1);
-        dga = imgGrayA = imgGrayABase = cast(ubyte*) malloc((128 + dx) * 128 * 2);
-        drgb = imgRgb = imgRgbBase = cast(ubyte*) malloc((128 + dx) * 128 * 3);
-        drgba = imgRgba = imgRgbaBase = cast(ubyte*) malloc((128 + dx) * 128 * 4);
+        imgGrayBase = new ubyte[(128 + dx) * 128 * 1];
+        imgGrayABase = new ubyte[(128 + dx) * 128 * 2];
+        imgRgbBase = new ubyte[(128 + dx) * 128 * 3];
+        imgRgbaBase = new ubyte[(128 + dx) * 128 * 4];
+        dg = imgGray = imgGrayBase.ptr;
+        dga = imgGrayA = imgGrayABase.ptr;
+        drgb = imgRgb = imgRgbBase.ptr;
+        drgba = imgRgba = imgRgbaBase.ptr;
         for (int y = 0; y < 128; y++)
         {
             for (int x = 0; x < 128; x++)
@@ -84,9 +87,9 @@ class UtImageTest : FlGroup
         }
         // RGBImage takes a bounds-checked D slice, not a raw pointer --
         // the lx<0/lx>0 cases above deliberately hand it a pointer
-        // that's already offset into the malloc'd buffer (paired with
+        // that's already offset into the allocated buffer (paired with
         // a negative/positive ld), so the slice length here is the
-        // *original* malloc'd buffer size for that pointer, not
+        // *original* buffer size for that pointer, not
         // (w*h*d) relative to the offset pointer -- matching what the
         // C pointer itself is still valid to read via ld-based row
         // arithmetic in draw(), same as FLTK's raw pointer.
@@ -102,10 +105,10 @@ class UtImageTest : FlGroup
         if (iRgb !is null) { destroy(iRgb); iRgb = null; }
         if (iGa !is null) { destroy(iGa); iGa = null; }
         if (iG !is null) { destroy(iG); iG = null; }
-        if (imgRgbaBase !is null) { free(imgRgbaBase); imgRgbaBase = null; }
-        if (imgRgbBase !is null) { free(imgRgbBase); imgRgbBase = null; }
-        if (imgGrayABase !is null) { free(imgGrayABase); imgGrayABase = null; }
-        if (imgGrayBase !is null) { free(imgGrayBase); imgGrayBase = null; }
+        imgRgbaBase = null;
+        imgRgbBase = null;
+        imgGrayABase = null;
+        imgGrayBase = null;
     } // end of freeImages method
 
     private static void refreshImgsCb(Widget, UtImageTest it)
@@ -130,10 +133,10 @@ class UtImageTest : FlGroup
         return new UtImageTest(UT_TESTAREA_X, UT_TESTAREA_Y, UT_TESTAREA_W, UT_TESTAREA_H);
     } // create method ends
 
-    private static ubyte* imgGrayBase;
-    private static ubyte* imgGrayABase;
-    private static ubyte* imgRgbBase;
-    private static ubyte* imgRgbaBase;
+    private static ubyte[] imgGrayBase;
+    private static ubyte[] imgGrayABase;
+    private static ubyte[] imgRgbBase;
+    private static ubyte[] imgRgbaBase;
     private static ubyte* imgGray;
     private static ubyte* imgGrayA;
     private static ubyte* imgRgb;

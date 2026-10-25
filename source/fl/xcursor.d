@@ -5,7 +5,8 @@
  * int, int)` (`Fl_Window::cursor(const Fl_RGB_Image*, int, int)`),
  * which FLTK's own X11 driver backs with these exact calls
  * (`src/Fl_x.cxx`'s `Fl_X11_Window_Driver::set_cursor(const
- * Fl_RGB_Image*, int, int)`). Only the handful of functions/types
+ * Fl_RGB_Image*, int, int)`), and for loading a cursor from the
+ * desktop's cursor theme by name. Only the handful of functions/types
  * actually needed are declared.
  */
 module fl.xcursor;
@@ -37,3 +38,5 @@ struct XcursorImage
 XcursorImage* XcursorImageCreate(int width, int height);
 void XcursorImageDestroy(XcursorImage* image);
 Cursor XcursorImageLoadCursor(Display* dpy, const(XcursorImage)* image);
+Cursor XcursorLibraryLoadCursor(Display* dpy, const(char)* file);
+int XcursorGetDefaultSize(Display* dpy);

@@ -8,14 +8,13 @@
  * browser's own per-row icon (`node_browser.d`, via `fl.tree_item.
  * TreeItem.usericon()`, already real).
  *
- * The 62 embedded XPMs backing this table live in `fluid.pixmaps_xpm`
- * (mechanically transliterated from FLTK's real `fluid/pixmaps/
- * *.xpm` files, byte-for-byte identical row content, see that module's
- * own top comment) -- kept in a separate module purely so this file
- * stays readable; nothing here needed to invent a new embedding
- * mechanism, `fl.pixmap.Pixmap(const(string)[] data)` and `fl.image.
- * Image.scale()` were both already real, exactly matching FLTK's
- * `new Fl_Pixmap(xpm_data); pm->scale(16, 16);` pair.
+ * The icons are SVG files in `source/fluid/pixmaps_svg/` (one per
+ * FLTK `fluid/pixmaps/*.xpm`, same name, same 32x32 design), embedded
+ * at compile time with a string import (`dub.sdl`'s `stringImportPaths
+ * "pixmaps_svg"`) and shown at 16x16. Where FLTK scales a bitmap down
+ * (`new Fl_Pixmap(xpm_data); pm->scale(16, 16);`), `fl.svg_image.
+ * SvgImage` draws the vector image at the screen's scale, so the icons
+ * stay sharp at any desktop scale or Ctrl +/- zoom.
  *
  * `loadPixmaps()` matches FLTK's own function name and one-shot
  * call-once-at-startup shape (`Fluid.cxx`'s `make_main_window()`) --
@@ -27,21 +26,20 @@
  */
 module fluid.pixmaps;
 
-import fl.pixmap : Pixmap;
+import fl.image : Image;
+import fl.svg_image : SvgImage;
 import fl.enumerations : Color;
 import fl.draw;
 import fl.symbols : addSymbol;
 
-import fluid.pixmaps_xpm;
-
-Pixmap bindPixmap;
-Pixmap lockPixmap;
-Pixmap protectedPixmap;
-Pixmap invisiblePixmap;
-Pixmap compressedPixmap;
+Image bindPixmap;
+Image lockPixmap;
+Image protectedPixmap;
+Image invisiblePixmap;
+Image compressedPixmap;
 
 /// Icons for node types, keyed by `Node.typeName` (e.g. "Fl_Button").
-private Pixmap[string] pixmaps_;
+private Image[string] pixmaps_;
 
 /// Returns the icon for `typeName`, or `null` if none is registered --
 /// matches FLTK's own `nullptr`-on-miss contract exactly.
@@ -60,18 +58,19 @@ private Pixmap[string] pixmaps_;
 /// covers the real exceptions (`factory.d`'s own second `registry[...]
 /// =` line for a type, where the alias also drops an underscore the
 /// FLTK name keeps, e.g. "ReturnButton" vs "Fl_Return_Button").
-Pixmap pixmapFor(string typeName)
+Image pixmapFor(string typeName)
 {
     if (auto p = typeName in pixmaps_) return *p;
     if (auto p = ("Fl_" ~ typeName) in pixmaps_) return *p;
     return null;
 }
 
-private Pixmap load(const(string)[] xpmData)
+/// The icon `pixmaps_svg/<name>.svg`, shown at 16x16.
+private Image load(string name)()
 {
-    auto pm = new Pixmap(xpmData);
-    pm.scale(16, 16);
-    return pm;
+    auto img = new SvgImage(null, import(name ~ ".svg"));
+    img.scale(16, 16);
+    return img;
 }
 
 /// Populates every icon -- call once at startup (`gui_main.d`'s
@@ -79,80 +78,80 @@ private Pixmap load(const(string)[] xpmData)
 /// site).
 void loadPixmaps()
 {
-    bindPixmap = load(bindXpm);
-    lockPixmap = load(lockXpm);
-    protectedPixmap = load(protectedXpm);
-    invisiblePixmap = load(invisibleXpm);
-    compressedPixmap = load(compressedXpm);
+    bindPixmap = load!"bind";
+    lockPixmap = load!"lock";
+    protectedPixmap = load!"protected";
+    invisiblePixmap = load!"invisible";
+    compressedPixmap = load!"compressed";
 
-    pixmaps_["Fl_Window"] = load(flWindowXpm);
-    pixmaps_["Fl_Button"] = load(flButtonXpm);
-    pixmaps_["Fl_Check_Button"] = load(flCheckButtonXpm);
-    pixmaps_["Fl_Round_Button"] = load(flRoundButtonXpm);
+    pixmaps_["Fl_Window"] = load!"flWindow";
+    pixmaps_["Fl_Button"] = load!"flButton";
+    pixmaps_["Fl_Check_Button"] = load!"flCheckButton";
+    pixmaps_["Fl_Round_Button"] = load!"flRoundButton";
 
-    pixmaps_["Fl_Box"] = load(flBoxXpm);
-    pixmaps_["Fl_Group"] = load(flGroupXpm);
-    pixmaps_["Function"] = load(flFunctionXpm);
-    pixmaps_["code"] = load(flCodeXpm);
-    pixmaps_["codeblock"] = load(flCodeBlockXpm);
-    pixmaps_["decl"] = load(flDeclarationXpm);
+    pixmaps_["Fl_Box"] = load!"flBox";
+    pixmaps_["Fl_Group"] = load!"flGroup";
+    pixmaps_["Function"] = load!"flFunction";
+    pixmaps_["code"] = load!"flCode";
+    pixmaps_["codeblock"] = load!"flCodeBlock";
+    pixmaps_["decl"] = load!"flDeclaration";
 
-    pixmaps_["declblock"] = load(flDeclarationBlockXpm);
-    pixmaps_["class"] = load(flClassXpm);
-    pixmaps_["Fl_Tabs"] = load(flTabsXpm);
-    pixmaps_["Fl_Input"] = load(flInputXpm);
-    pixmaps_["Fl_Choice"] = load(flChoiceXpm);
+    pixmaps_["declblock"] = load!"flDeclarationBlock";
+    pixmaps_["class"] = load!"flClass";
+    pixmaps_["Fl_Tabs"] = load!"flTabs";
+    pixmaps_["Fl_Input"] = load!"flInput";
+    pixmaps_["Fl_Choice"] = load!"flChoice";
 
-    pixmaps_["MenuItem"] = load(flMenuitemXpm);
-    pixmaps_["Fl_Menu_Bar"] = load(flMenubarXpm);
-    pixmaps_["Submenu"] = load(flSubmenuXpm);
-    pixmaps_["Fl_Scroll"] = load(flScrollXpm);
-    pixmaps_["Fl_Tile"] = load(flTileXpm);
-    pixmaps_["Fl_Wizard"] = load(flWizardXpm);
+    pixmaps_["MenuItem"] = load!"flMenuitem";
+    pixmaps_["Fl_Menu_Bar"] = load!"flMenubar";
+    pixmaps_["Submenu"] = load!"flSubmenu";
+    pixmaps_["Fl_Scroll"] = load!"flScroll";
+    pixmaps_["Fl_Tile"] = load!"flTile";
+    pixmaps_["Fl_Wizard"] = load!"flWizard";
 
-    pixmaps_["Fl_Pack"] = load(flPackXpm);
-    pixmaps_["Fl_Return_Button"] = load(flReturnButtonXpm);
-    pixmaps_["Fl_Light_Button"] = load(flLightButtonXpm);
-    pixmaps_["Fl_Repeat_Button"] = load(flRepeatButtonXpm);
-    pixmaps_["Fl_Menu_Button"] = load(flMenuButtonXpm);
+    pixmaps_["Fl_Pack"] = load!"flPack";
+    pixmaps_["Fl_Return_Button"] = load!"flReturnButton";
+    pixmaps_["Fl_Light_Button"] = load!"flLightButton";
+    pixmaps_["Fl_Repeat_Button"] = load!"flRepeatButton";
+    pixmaps_["Fl_Menu_Button"] = load!"flMenuButton";
 
-    pixmaps_["Fl_Output"] = load(flOutputXpm);
-    pixmaps_["Fl_Text_Display"] = load(flTextDisplayXpm);
-    pixmaps_["Fl_Text_Editor"] = load(flTextEditXpm);
-    pixmaps_["Fl_File_Input"] = load(flFileInputXpm);
-    pixmaps_["Fl_Browser"] = load(flBrowserXpm);
+    pixmaps_["Fl_Output"] = load!"flOutput";
+    pixmaps_["Fl_Text_Display"] = load!"flTextDisplay";
+    pixmaps_["Fl_Text_Editor"] = load!"flTextEdit";
+    pixmaps_["Fl_File_Input"] = load!"flFileInput";
+    pixmaps_["Fl_Browser"] = load!"flBrowser";
 
-    pixmaps_["Fl_Check_Browser"] = load(flCheckBrowserXpm);
-    pixmaps_["Fl_File_Browser"] = load(flFileBrowserXpm);
-    pixmaps_["Fl_Clock"] = load(flClockXpm);
-    pixmaps_["Fl_Help_View"] = load(flHelpXpm);
-    pixmaps_["Fl_Progress"] = load(flProgressXpm);
+    pixmaps_["Fl_Check_Browser"] = load!"flCheckBrowser";
+    pixmaps_["Fl_File_Browser"] = load!"flFileBrowser";
+    pixmaps_["Fl_Clock"] = load!"flClock";
+    pixmaps_["Fl_Help_View"] = load!"flHelp";
+    pixmaps_["Fl_Progress"] = load!"flProgress";
 
-    pixmaps_["Fl_Slider"] = load(flSliderXpm);
-    pixmaps_["Fl_Scrollbar"] = load(flScrollBarXpm);
-    pixmaps_["Fl_Value_Slider"] = load(flValueSliderXpm);
-    pixmaps_["Fl_Adjuster"] = load(flAdjusterXpm);
-    pixmaps_["Fl_Counter"] = load(flCounterXpm);
+    pixmaps_["Fl_Slider"] = load!"flSlider";
+    pixmaps_["Fl_Scrollbar"] = load!"flScrollBar";
+    pixmaps_["Fl_Value_Slider"] = load!"flValueSlider";
+    pixmaps_["Fl_Adjuster"] = load!"flAdjuster";
+    pixmaps_["Fl_Counter"] = load!"flCounter";
 
-    pixmaps_["Fl_Dial"] = load(flDialXpm);
-    pixmaps_["Fl_Roller"] = load(flRollerXpm);
-    pixmaps_["Fl_Value_Input"] = load(flValueInputXpm);
-    pixmaps_["Fl_Value_Output"] = load(flValueOutputXpm);
-    pixmaps_["comment"] = load(flCommentXpm);
+    pixmaps_["Fl_Dial"] = load!"flDial";
+    pixmaps_["Fl_Roller"] = load!"flRoller";
+    pixmaps_["Fl_Value_Input"] = load!"flValueInput";
+    pixmaps_["Fl_Value_Output"] = load!"flValueOutput";
+    pixmaps_["comment"] = load!"flComment";
 
-    pixmaps_["Fl_Spinner"] = load(flSpinnerXpm);
-    pixmaps_["widget_class"] = load(flWidgetClassXpm);
-    pixmaps_["data"] = load(flDataXpm);
-    pixmaps_["Fl_Tree"] = load(flTreeXpm);
-    pixmaps_["Fl_Table"] = load(flTableXpm);
+    pixmaps_["Fl_Spinner"] = load!"flSpinner";
+    pixmaps_["widget_class"] = load!"flWidgetClass";
+    pixmaps_["data"] = load!"flData";
+    pixmaps_["Fl_Tree"] = load!"flTree";
+    pixmaps_["Fl_Table"] = load!"flTable";
 
-    pixmaps_["Fl_Terminal"] = load(flSimpleTerminalXpm);
-    pixmaps_["Fl_Input_Choice"] = load(flInputChoiceXpm);
-    pixmaps_["CheckMenuItem"] = load(flCheckMenuitemXpm);
-    pixmaps_["RadioMenuItem"] = load(flRadioMenuitemXpm);
+    pixmaps_["Fl_Terminal"] = load!"flSimpleTerminal";
+    pixmaps_["Fl_Input_Choice"] = load!"flInputChoice";
+    pixmaps_["CheckMenuItem"] = load!"flCheckMenuitem";
+    pixmaps_["RadioMenuItem"] = load!"flRadioMenuitem";
 
-    pixmaps_["Fl_Flex"] = load(flFlexXpm);
-    pixmaps_["Fl_Grid"] = load(flGridXpm);
+    pixmaps_["Fl_Flex"] = load!"flFlex";
+    pixmaps_["Fl_Grid"] = load!"flGrid";
 
     // Explicit aliases for the real exceptions `pixmapFor()`'s own
     // "Fl_" ~ typeName fallback can't cover -- `fluid.factory`'s own
@@ -332,7 +331,7 @@ private void fdFile(Color c)
 /// Ported from `fluid::rsrcs::fd_zoom()` (`fluid/rsrcs/pixmaps.cxx`) --
 /// a small drawn (not pixmap) diagonal zoom-cross glyph, registered as
 /// an `fl.symbols` `@`-symbol (matching FLTK's own `fl_add_symbol(
-/// "fd_zoom", fd_zoom, 1)`) rather than living in this file's own XPM
+/// "fd_zoom", fd_zoom, 1)`) rather than living in this file's own
 /// icon table, since it's a vector glyph, not a bitmap. The Shell tab's
 /// "open the big code editor" button (`settings_panel.fl`) references
 /// it by FLTK's own real label, `@+1fd_zoom`, which fits the button's real

@@ -45,7 +45,7 @@ import fl.enumerations : damageAll, damageChild, white;
 import fl.image : RGBImage;
 import fldraw = fl.draw;
 import fl.core;
-version (linux) import platformX11 = fl.platform_x11;
+version (linux) import platform = fl.platform;
 version (Windows)
 {
     import core.sys.windows.windows;
@@ -264,7 +264,7 @@ class WidgetSurface : SurfaceDevice
         version (linux)
         {
             if (win.shown() && win.border() && win.parent() is null)
-                top = platformX11.captureTitlebarImage(win);
+                top = platform.captureTitlebarImage(win);
         }
 
         bool needPush = !isCurrent();
@@ -419,7 +419,7 @@ class CopySurface : WidgetSurface
         h_ = h;
         version (linux)
         {
-            platformX11.openDisplay();
+            platform.openDisplay();
             offscreen_ = fldraw.createOffscreen(w, h);
             fldraw.beginOffscreen(offscreen_);
             fldraw.fl_color(white);

@@ -6,9 +6,10 @@
  * hierarchy -- `fl.gl_choice` gets the same treatment. This mirrors the
  * existing `fl.platform_x11` <-> `fl.window` relationship exactly (free
  * functions operating on a
- * widget passed in, rather than a separate per-window driver object
- * FLTK needs only because it has several platform subclasses to
- * choose between at runtime -- this port has one).
+ * widget passed in, rather than a separate per-window driver object).
+ * On Linux, each function forwards to `fl.wayland_gl_window_driver`
+ * (EGL, the port of `Fl_Wayland_Gl_Window_Driver`) when the program runs
+ * on the Wayland backend, as `fl.platform` does for windows.
  *
  * FLTK keeps most of this state as `static` members of
  * `Fl_Gl_Window_Driver` (`context_list`, `nContext`, `first`,
@@ -88,15 +89,27 @@ version (linux)
     import fl.xlib : XVisualInfo, Colormap, Display, Window, AllocNone, XRootWindow,
         XCreateColormap;
     import platformX11 = fl.platform_x11;
+    version (FLDTK_HAVE_WAYLAND)
+    {
+        import platform = fl.platform;
+        import eglDriver = fl.wayland_gl_window_driver;
+
+        /// Whether GL goes through EGL on Wayland rather than GLX.
+        private bool onWayland() { return platform.backend() == platform.Backend.wayland; }
+    }
+    else
+        private bool onWayland() { return false; }
+
+    /// An OpenGL context (FLTK's `GLContext`): a `GLXContext` on X11, an
+    /// `EGLContext` on Wayland.
+    alias GLContext = void*;
 }
 else version (Windows)
 {
     import core.sys.windows.windows;
 
-    /// Matches `fl.glx.GLXContext`'s role for the rest of this module's
-    /// (mostly platform-independent) code -- an opaque GL context
-    /// handle, real type `HGLRC` here.
-    alias GLXContext = HGLRC;
+    /// An OpenGL context (FLTK's `GLContext`), an `HGLRC` on Windows.
+    alias GLContext = HGLRC;
 }
 
 /// Ported from `Fl_Gl_Window::flush()`'s local `SWAP_TYPE` values
@@ -124,20 +137,27 @@ private GlChoice first_;
 /// context shares display lists/textures with, matching FLTK's
 /// `create_gl_context()` (`shared_ctx = context_list ? context_list[0]
 /// : 0`).
-private GLXContext[] contextList_;
+private GLContext[] contextList_;
 
 /// `Fl_Gl_Window_Driver::cached_window` -- de-dupes redundant
 /// `glXMakeCurrent()` calls in `setGlContext()` when the same
 /// (window, context) pair is already current.
 private void* cachedWindow_;
 
-void addContext(GLXContext ctx)
+/// The window made current last is no longer current
+/// (`fl.wayland_gl_window_driver` switched contexts itself).
+package(fl) void forgetCachedWindow()
+{
+    cachedWindow_ = null;
+}
+
+void addContext(GLContext ctx)
 {
     if (!ctx) return;
     contextList_ ~= ctx;
 }
 
-void delContext(GLXContext ctx)
+void delContext(GLContext ctx)
 {
     foreach (i, c; contextList_)
     {
@@ -176,6 +196,21 @@ version (linux)
  */
 GlChoice find(int mode, const(int)* alistp)
 {
+    version (FLDTK_HAVE_WAYLAND) if (onWayland())
+    {
+        // Ported from Fl_Wayland_Gl_Window_Driver::find(): Wayland windows
+        // are always double-buffered.
+        mode |= modeDouble;
+        if (auto g = findBegin(mode, alistp))
+            return g;
+        auto conf = eglDriver.chooseConfig(mode);
+        if (conf is null) return null;
+        auto g = new GlChoice(mode, alistp, first_);
+        first_ = g;
+        g.eglConf = conf;
+        return g;
+    }
+
     if (auto g = findBegin(mode, alistp))
         return g;
 
@@ -338,44 +373,90 @@ GlChoice find(int mode, const(int)* alistp)
 
 version (linux)
 {
-/// Ported from `Fl_X11_Gl_Window_Driver::create_gl_context()`. `win` is
-/// unused here (X11 needs only the chosen visual, not the window
-/// itself) -- accepted only so `fl.gl_window.GlWindow.makeCurrent()` has
-/// one call shape shared with the Windows implementation below, which
-/// genuinely does need it.
-GLXContext createGlContext(FlWindow win, GlChoice g)
+/// Ported from `Fl_X11_Gl_Window_Driver::create_gl_context()` and
+/// `Fl_Wayland_Gl_Window_Driver::create_gl_context()`. `win` is unused
+/// here (only the chosen visual or config matters) -- accepted so
+/// `fl.gl_window.GlWindow.makeCurrent()` has one call shape shared with
+/// the Windows implementation below, which does need it.
+GLContext createGlContext(FlWindow win, GlChoice g)
 {
-    GLXContext shared_ = contextList_.length ? contextList_[0] : null;
-    auto ctx = glXCreateContext(platformX11.x11Display(), g.vis, shared_, true);
+    GLContext shared_ = contextList_.length ? contextList_[0] : null;
+    GLContext ctx;
+    version (FLDTK_HAVE_WAYLAND) if (onWayland())
+        ctx = eglDriver.createContext(g.eglConf, shared_);
+    if (!onWayland())
+        ctx = glXCreateContext(platformX11.x11Display(), g.vis, cast(GLXContext) shared_, true);
     if (ctx)
         addContext(ctx);
     return ctx;
 }
 
-/// Ported from `Fl_X11_Gl_Window_Driver::set_gl_context()`. `windowKey`
-/// is an opaque per-window identity (the owning `GlWindow` instance,
-/// as `void*`) standing in for FLTK's raw `Fl_Window*` -- only
-/// ever compared for identity, never dereferenced here.
-void setGlContext(void* windowKey, Window xid, GLXContext context)
+/// Ported from `Fl_X11_Gl_Window_Driver::set_gl_context()` and
+/// `Fl_Wayland_Gl_Window_Driver::set_gl_context()`: makes `context`
+/// current on window `win`.
+void setGlContext(FlWindow win, GLContext context)
 {
+    version (FLDTK_HAVE_WAYLAND) if (onWayland())
+        return eglDriver.setGlContext(win, context, cachedWindow_);
     auto current = glXGetCurrentContext();
-    if (context != current || windowKey != cachedWindow_)
+    if (context != current || cast(void*) win != cachedWindow_)
     {
-        cachedWindow_ = windowKey;
-        glXMakeCurrent(platformX11.x11Display(), xid, context);
+        cachedWindow_ = cast(void*) win;
+        glXMakeCurrent(platformX11.x11Display(), win.xid(), cast(GLXContext) context);
     }
 }
 
-/// Ported from `Fl_X11_Gl_Window_Driver::delete_gl_context()`.
-void deleteGlContext(GLXContext context)
+/// Ported from `Fl_X11_Gl_Window_Driver::delete_gl_context()` and
+/// `Fl_Wayland_Gl_Window_Driver::delete_gl_context()`. `win` is the
+/// window the context belongs to, if any; on Wayland its EGL surface
+/// goes with the context.
+void deleteGlContext(FlWindow win, GLContext context)
 {
+    version (FLDTK_HAVE_WAYLAND) if (onWayland())
+    {
+        eglDriver.deleteGlContext(win, context, cachedWindow_);
+        delContext(context);
+        return;
+    }
     if (glXGetCurrentContext() == context)
     {
         cachedWindow_ = null;
         glXMakeCurrent(platformX11.x11Display(), 0, null);
     }
-    glXDestroyContext(platformX11.x11Display(), context);
+    glXDestroyContext(platformX11.x11Display(), cast(GLXContext) context);
     delContext(context);
+}
+
+/// Ported from `Fl_Wayland_Gl_Window_Driver::make_current_before()`
+/// (a no-op on X11): on Wayland, gives `win` its EGL surface.
+void makeCurrentBefore(FlWindow win, GlChoice g)
+{
+    version (FLDTK_HAVE_WAYLAND) if (onWayland())
+        eglDriver.makeCurrentBefore(win.asGlWindow(), g.eglConf);
+}
+
+/// Ported from `Fl_Wayland_Gl_Window_Driver::resize()` (the X11 driver
+/// has none): `win` is about to take the size `W` x `H`.
+void resize(FlWindow win, int W, int H)
+{
+    version (FLDTK_HAVE_WAYLAND) if (onWayland())
+        eglDriver.resize(win.asGlWindow(), W, H);
+}
+
+/// Whether every GL window is double-buffered whatever its mode, as on
+/// Wayland (`Fl_Wayland_Gl_Window_Driver::mode_()`).
+bool alwaysDoubleBuffered()
+{
+    return onWayland();
+}
+
+/// Whether the software overlay is drawn into the back buffer over a
+/// freshly drawn scene, rather than into the front buffer: on Wayland,
+/// where the back buffer doesn't survive a swap (see
+/// `fl.wayland_gl_window_driver`'s module comment).
+bool overlayInBackBuffer()
+{
+    return onWayland();
 }
 }
 else version (Windows)
@@ -398,7 +479,7 @@ private HDC[HWND] privateDcCache_;
 /// FLTK's own layer-context path is only reachable from the
 /// hardware-overlay code this port deliberately doesn't port, see this
 /// module's own top comment).
-GLXContext createGlContext(FlWindow win, GlChoice g)
+GLContext createGlContext(FlWindow win, GlChoice g)
 {
     HWND hwnd = win.xid();
     HDC hdc = privateDcCache_.get(hwnd, null);
@@ -419,20 +500,19 @@ GLXContext createGlContext(FlWindow win, GlChoice g)
 }
 
 /// Ported from `Fl_WinAPI_Gl_Window_Driver::set_gl_context()`.
-/// `windowKey` is an opaque per-window identity (the owning `GlWindow`
-/// instance, as `void*`) standing in for FLTK's raw `Fl_Window*`.
-void setGlContext(void* windowKey, HWND hwnd, GLXContext context)
+void setGlContext(FlWindow win, GLContext context)
 {
     auto current = wglGetCurrentContext();
-    if (context != current || windowKey != cachedWindow_)
+    if (context != current || cast(void*) win != cachedWindow_)
     {
-        cachedWindow_ = windowKey;
-        wglMakeCurrent(privateDcCache_.get(hwnd, null), context);
+        cachedWindow_ = cast(void*) win;
+        wglMakeCurrent(privateDcCache_.get(win.xid(), null), context);
     }
 }
 
 /// Ported from `Fl_WinAPI_Gl_Window_Driver::delete_gl_context()`.
-void deleteGlContext(GLXContext context)
+/// `win` (the window the context belongs to) is unused on Windows.
+void deleteGlContext(FlWindow win, GLContext context)
 {
     if (wglGetCurrentContext() == context)
     {
@@ -441,6 +521,30 @@ void deleteGlContext(GLXContext context)
     }
     wglDeleteContext(context);
     delContext(context);
+}
+
+/// The base `Fl_Gl_Window_Driver::make_current_before()`: nothing to do
+/// on Windows.
+void makeCurrentBefore(FlWindow win, GlChoice g)
+{
+}
+
+/// The base `Fl_Gl_Window_Driver::resize()`: nothing to do on Windows.
+void resize(FlWindow win, int W, int H)
+{
+}
+
+/// GL windows on Windows are single- or double-buffered as their mode
+/// says.
+bool alwaysDoubleBuffered()
+{
+    return false;
+}
+
+/// The software overlay is drawn into the front buffer on Windows.
+bool overlayInBackBuffer()
+{
+    return false;
 }
 }
 
@@ -490,9 +594,13 @@ version (linux)
 {
 /// Ported from `Fl_X11_Gl_Window_Driver::swap_buffers()`. When
 /// `overlayActive` is false this is just `glXSwapBuffers()`; when true,
-/// see `copyBackToFrontForOverlay()`'s own doc comment above.
-void swapBuffers(Window xid, int pixelW, int pixelH, bool overlayActive)
+/// see `copyBackToFrontForOverlay()`'s own doc comment above. On Wayland,
+/// `fl.wayland_gl_window_driver.swapBuffers()`.
+void swapBuffers(FlWindow win, int pixelW, int pixelH, bool overlayActive)
 {
+    version (FLDTK_HAVE_WAYLAND) if (onWayland())
+        return eglDriver.swapBuffers(win.asGlWindow());
+    Window xid = win.xid();
     if (!xid) return;
     if (overlayActive)
         copyBackToFrontForOverlay(pixelW, pixelH);
@@ -508,8 +616,9 @@ else version (Windows)
 /// `overlayActive` is false this is just `SwapBuffers()` on the
 /// window's cached private DC; when true, see
 /// `copyBackToFrontForOverlay()`'s own doc comment above.
-void swapBuffers(HWND hwnd, int pixelW, int pixelH, bool overlayActive)
+void swapBuffers(FlWindow win, int pixelW, int pixelH, bool overlayActive)
 {
+    HWND hwnd = win.xid();
     if (!hwnd) return;
     if (overlayActive)
         copyBackToFrontForOverlay(pixelW, pixelH);
@@ -589,9 +698,13 @@ version (linux)
         }
     }
 
-    /// Ported from `Fl_X11_Gl_Window_Driver::swap_interval(int)`.
-    void swapInterval(Window xid, int interval)
+    /// Ported from `Fl_X11_Gl_Window_Driver::swap_interval(int)` and
+    /// `Fl_Wayland_Gl_Window_Driver::swap_interval(int)`.
+    void swapInterval(const FlWindow win, int interval)
     {
+        version (FLDTK_HAVE_WAYLAND) if (onWayland())
+            return eglDriver.swapInterval(interval);
+        Window xid = win.xid();
         if (!xid) return;
         if (swapIntervalType_ == -1) initSwapInterval();
         final switch (swapIntervalType_)
@@ -610,9 +723,13 @@ version (linux)
         }
     }
 
-    /// Ported from `Fl_X11_Gl_Window_Driver::swap_interval() const`.
-    int swapInterval(Window xid)
+    /// Ported from `Fl_X11_Gl_Window_Driver::swap_interval() const` and
+    /// `Fl_Wayland_Gl_Window_Driver::swap_interval() const`.
+    int swapInterval(const FlWindow win)
     {
+        version (FLDTK_HAVE_WAYLAND) if (onWayland())
+            return eglDriver.swapInterval();
+        Window xid = win.xid();
         if (!xid) return -1;
         if (swapIntervalType_ == -1) initSwapInterval();
         int interval = -1;
@@ -632,20 +749,36 @@ version (linux)
         return interval;
     }
 
-    /// Ported from `Fl_X11_Gl_Window_Driver::waitGL()`.
+    /// Ported from `Fl_X11_Gl_Window_Driver::waitGL()`; Wayland's driver
+    /// keeps the base class's empty one.
     void waitGL()
     {
-        glXWaitGL();
+        if (!onWayland()) glXWaitGL();
     }
 
-    /// Ported from `Fl_X11_Gl_Window_Driver::gl_start()` -- backs
-    /// `fl.gl.gl_start()`'s own per-platform hook (FLTK's base
-    /// `Fl_Gl_Window_Driver::gl_start()` is an empty no-op; X11 overrides
-    /// it with a `glXWaitX()`, ensuring any pending native-X drawing has
-    /// landed before GL starts drawing into the same window).
-    void glStart()
+    /**
+     * Backs `fl.gl.gl_start()`'s per-platform hook, for window `win`
+     * drawn at `scale` pixels per FLTK unit; returns the pixels per unit
+     * of what GL draws into. Ported from `Fl_X11_Gl_Window_Driver::
+     * gl_start()` -- a `glXWaitX()`, so pending X drawing lands before GL
+     * draws into the same window -- and, on Wayland, from
+     * `Fl_Wayland_Gl_Window_Driver::gl_start()`, which sizes and clears
+     * the transparent surface GL draws into there.
+     */
+    float glStart(FlWindow win, float scale)
     {
+        version (FLDTK_HAVE_WAYLAND) if (onWayland())
+            return eglDriver.glStart(win);
         glXWaitX();
+        return scale;
+    }
+
+    /// The buffer `gl_start()` draws into: the front buffer, or on
+    /// Wayland, where only a swapped back buffer is shown, the back
+    /// buffer (`fl.wayland_gl_window_driver` swaps it).
+    GLenum glStartBuffer()
+    {
+        return onWayland() ? GL_BACK : GL_FRONT;
     }
 
     /// Ported from `Fl_X11_Gl_Window_Driver::before_show()`: creates the
@@ -653,9 +786,11 @@ version (linux)
     /// rather than the display default (see `createWindow()`'s own doc
     /// comment in fl.platform_x11 for why a per-call override is used
     /// instead of temporarily reassigning `fl_visual`/`fl_colormap`).
+    /// Wayland's driver keeps the base class's empty one: the window is
+    /// shown like any other.
     void beforeShow(FlWindow win, GlChoice g)
     {
-        platformX11.createWindow(win, g.vis, g.colormap);
+        if (!onWayland()) platformX11.createWindow(win, g.vis, g.colormap);
     }
 
     /**
@@ -671,6 +806,8 @@ version (linux)
     void glVisual(GlChoice c)
     {
         glChoice_ = c;
+        version (FLDTK_HAVE_WAYLAND) if (onWayland())
+            return eglDriver.glVisual(c.eglConf);
         platformX11.fl_visual = c.vis;
         platformX11.fl_colormap = c.colormap;
     }
@@ -678,10 +815,26 @@ version (linux)
     /// Ported from `Fl_Gl_Window_Driver::GetProcAddress()`'s X11/GLX
     /// branch (`HAVE_GLXGETPROCADDRESSARB` -- the only one relevant here,
     /// GLX always has this; FLTK's `dlsym()` fallback is Windows/older-
-    /// GLX-only and not needed on any target this port builds for).
+    /// GLX-only and not needed on any target this port builds for); on
+    /// Wayland, `eglGetProcAddress()`.
     void* getProcAddress(const(char)* procName)
     {
+        version (FLDTK_HAVE_WAYLAND) if (onWayland())
+            return eglDriver.getProcAddress(procName);
         return glXGetProcAddressARB(cast(const(ubyte)*) procName);
+    }
+
+    /// The number of pixels per FLTK unit of GL window `win`: ported
+    /// from `Fl_X11_Gl_Window_Driver::pixels_per_unit()`
+    /// (`Fl::screen_driver()->scale(ns)`) and, on Wayland, from
+    /// `Fl_Wayland_Gl_Window_Driver::pixels_per_unit()`, which multiplies
+    /// in the screen's buffer scale.
+    float pixelsPerUnit(const FlWindow win)
+    {
+        version (FLDTK_HAVE_WAYLAND) if (onWayland())
+            return eglDriver.pixelsPerUnit(win);
+        import fl.core : screenScale;
+        return screenScale(win.screenNum());
     }
 }
 else version (Windows)
@@ -726,10 +879,10 @@ else version (Windows)
     }
 
     /// Ported from `Fl_WinAPI_Gl_Window_Driver::swap_interval(int)`.
-    /// `hwnd` is unused -- WGL's swap interval is a per-*context*
+    /// `win` is unused -- WGL's swap interval is a per-*context*
     /// (current-context-wide) setting, not a per-window one, matching
     /// FLTK's own identical parameter-ignoring implementation.
-    void swapInterval(HWND hwnd, int interval)
+    void swapInterval(const FlWindow win, int interval)
     {
         if (swapIntervalType_ == -1) initSwapInterval();
         if (swapIntervalType_ == 1 && wglSwapIntervalExt_ !is null)
@@ -737,7 +890,7 @@ else version (Windows)
     }
 
     /// Ported from `Fl_WinAPI_Gl_Window_Driver::swap_interval() const`.
-    int swapInterval(HWND hwnd)
+    int swapInterval(const FlWindow win)
     {
         if (swapIntervalType_ == -1) initSwapInterval();
         if (swapIntervalType_ == 1 && wglGetSwapIntervalExt_ !is null)
@@ -757,8 +910,15 @@ else version (Windows)
     /// never overrides it either (confirmed against the real source: no
     /// `Fl_WinAPI_Gl_Window_Driver::gl_start()` exists), so the base
     /// empty-`{}` default applies here too.
-    void glStart()
+    float glStart(FlWindow win, float scale)
     {
+        return scale;
+    }
+
+    /// `gl_start()` draws into the front buffer.
+    GLenum glStartBuffer()
+    {
+        return GL_FRONT;
     }
 
     /// Ported from the base `Fl_Gl_Window_Driver::before_show()` --
@@ -793,6 +953,13 @@ else version (Windows)
     void* getProcAddress(const(char)* procName)
     {
         return cast(void*) wglGetProcAddress(procName);
+    }
+
+    /// The number of pixels per FLTK unit of GL window `win`.
+    float pixelsPerUnit(const FlWindow win)
+    {
+        import fl.core : screenScale;
+        return screenScale(win.screenNum());
     }
 }
 

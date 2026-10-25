@@ -47,9 +47,14 @@ agreed direction:
 
 - **Pen/touch input beyond X11.** FLTK's `Fl::Pen` namespace
   (`FL/core/pen_events.H`) has real driver implementations for Wayland and
-  Windows but none for X11. Once fldtk's Wayland driver exists and proves out
-  the pen-event model, retrofitting equivalent support onto the X11 driver
-  via the XInput2 extension is in scope.
+  Windows but none for X11. fldtk has both (`fl.wayland_pen_driver`,
+  `fl.win32_pen_driver`); the Windows one has proven the pen-event
+  model on a real pen, so adding equivalent support to the X11 driver via the
+  XInput2 extension is in scope.
+- **Touch and gestures.** `fl.touch`: one finger acts as the mouse on
+  every platform, two make zoom, rotate and scroll gestures, touchpads
+  add swipes, and subscribed widgets can take raw contacts; FLTK has only
+  a macOS zoom gesture. See `PORTING.md`'s `FL/core/events.H` row.
 - **Pango for text instead of Xft.** `fl.draw`'s text primitives are backed
   by `fl.xft`, matching FLTK's own X11 approach (simple name-string font
   matching via `XftFontOpenName()`, no complex-script shaping). Replacing
@@ -93,7 +98,8 @@ Decided and done:
 - **OpenGL** uses hand-written `extern(C)` D bindings against the system
   `libGL` (the same treatment as `fl.xlib` for Xlib), not a third-party D
   binding package. `Fl_Gl_Window`, GL text, overlays, the GL3/core-profile
-  samples (via GLEW) and a minimal GLUT layer (`fl.glut`/`fl.glu`, only what
+  samples (through `fl.glew`, fldtk's own replacement for GLEW's function
+  lookup) and a minimal GLUT layer (`fl.glut`/`fl.glu`, only what
   the demo programs use; see PORTING.md's `FL/glut.H` row) are all in. A GL module that is not re-exported from `fl` (`fl.opengl`,
   `fl.glx`, `fl.gl_choice`, `fl.gl_window_driver`) needs its own explicit
   import in a program.
@@ -122,12 +128,11 @@ Decided and done:
   on by default on Linux, left out by `linux-no-cairo`), under the same
   rule.
 
-Still deferred: the **Cairo graphics driver** (`FLTK_GRAPHICS_CAIRO`, all
-of FLTK's own drawing done through Cairo, and with it the Wayland
-driver's drawing) and with it fldtk's own **Pango-based text** (see
-above). Their bindings are done; the drivers are not. A stub whose only
-blocker is one of these is a deliberate gap, marked `Deferred` in
-`PORTING.md`, not an oversight.
+The **Cairo graphics driver** (`fl.cairo_graphics_driver`, FLTK's
+`FLTK_GRAPHICS_CAIRO`: all drawing done through Cairo, text through
+Pango) is built on these bindings. It is the Wayland driver's drawing,
+and on X11 it replaces the Xlib/Xft path when the environment variable
+`FLDTK_GRAPHICS=cairo` is set.
 
 ## Out of scope: XForms/Forms Library compatibility
 
@@ -332,12 +337,11 @@ wrapper class.
 The primary targets are **Linux X11 and Wayland**; **Windows** is secondary.
 macOS is out of scope for testing (no hardware available), though the driver
 abstraction should still leave room for a Cocoa backend later, matching
-FLTK's own structure. Only X11 and Windows drivers exist so far.
+FLTK's own structure. X11, Wayland and Windows drivers exist.
 
 This applies to GL too: `fl.gl_window`/`fl.gl_window_driver` cover Linux/X11
-(GLX) and Windows (WGL). Wayland's GL story is EGL-based, a genuinely
-different API from GLX/WGL, so it waits for a Wayland driver. Cocoa (NSOpenGL)
-is out of scope.
+(GLX), Linux/Wayland (EGL, `fl.wayland_gl_window_driver`) and Windows
+(WGL). Cocoa (NSOpenGL) is out of scope.
 
 ## Build commands
 

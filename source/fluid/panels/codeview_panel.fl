@@ -53,13 +53,12 @@ translation:
    sites instead, so the light button's value genuinely gates the
    refresh (a version that instead called
    `codeviewRefresh()` directly, unconditionally, whenever the panel was
-   visible would make this light button decorative-only). One
-   deliberate simplification from FLTK's own mechanism: no debounce
-   timer (`Fl::add_timeout(0.5, ...)`) -- every call site already fires
-   at most once per discrete edit (not per drag-frame), so there's
-   nothing to coalesce; unchecking the button is a plain on/off gate on
-   `codeviewAutoRefresh()`, not a rate limiter. The plain "Refresh"
-   button stays unconditional either way. Every automatic refresh
+   visible would make this light button decorative-only). The widget
+   panel's `onEditSettled` hook is one of those call sites: it fires
+   once per completed property edit, for a text field when it loses the
+   focus, so typing doesn't regenerate the code per keystroke. Unlike
+   FLTK (`Fl::add_timeout(0.5, ...)`), there is no debounce timer. The
+   plain "Refresh" button stays unconditional either way. Every automatic refresh
    re-applies the current selection's highlight too
    (`codeviewUpdatePosition()`, called at the end of `codeviewRefresh()`),
    so toggling Auto-Refresh back on never loses the pan/highlight state.

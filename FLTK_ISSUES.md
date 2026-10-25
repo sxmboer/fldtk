@@ -1973,6 +1973,24 @@ in the port** (`fluid.mergeback.Mergeback`): any `WidgetNode`, menu items
 included, is a valid callback target, and a block ends at the start of
 the tag line that closes it.
 
+### `Group_Node::write_code2()`/`Window_Node::write_code2()`/`Widget_Class_Node::write_code2()` (`fluid/nodes/Group_Node.cxx`, `fluid/nodes/Window_Node.cxx`): a group's or window's `final` code gets no `FINALIZE` tag, so it can't be merged back
+
+**FLTK status:** Open. Inferred from reading the source, not observed in a
+run. fltk/fltk's GitHub issues and pull requests have not been searched
+for an existing report yet.
+
+`Widget_Node::write_code2()` writes `extra_code(3)` (the widget panel's
+"final" page) between a `FINALIZE` opening and closing tag. The three
+overrides that every group, window and Widget Class goes through write
+`extra_code(3)` with a plain `f.write_c_indented()` and no tags, and
+don't call `Widget_Node::write_code2()` for it. MergeBack therefore only
+sees `final` code of widgets without children, which is where the slot
+matters least: for those it ends up right after the `SETUP` block.
+
+**Deviated from in the port** (`fluid.code_writer.writeFinalCode()`):
+"final" code (`finalize` in fldtk) is tagged for every widget, groups,
+windows and Widget Classes included.
+
 ### `Fl_Screen_Driver::transient_scale_display()` (`src/Fl_Screen_Driver.cxx`) + `Fl_WinAPI_Window_Driver::makeWindow()` (`Fl_win32.cxx`): the Ctrl-`+`/Ctrl-`-`/Ctrl-`0` percentage popup steals focus on Windows
 
 **FLTK status:** Withdrawn: the popup is borderless, so FLTK shows it without activating it.

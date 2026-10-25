@@ -52,7 +52,7 @@ private bool hasRawDirective(string s)
 /// unconverted FLTK C++: a C preprocessor directive in any code-bearing
 /// field (`callback`, `comment`, a `DeclNode`'s own text -- stored in
 /// the shared `Node.instanceName` slot, see that field's own doc
-/// comment -- or a `WidgetNode`'s `setupCode`), or a `::`-scoped
+/// comment -- or a `WidgetNode`'s `setupCode`/`finalizeCode`), or a `::`-scoped
 /// (C++ namespace-qualified) class-override name.
 bool looksLikeRawCpp(Node[] roots)
 {
@@ -66,7 +66,7 @@ bool looksLikeRawCpp(Node[] roots)
                 found = true;
             if (auto wn = cast(WidgetNode) n)
             {
-                if (hasRawDirective(wn.setupCode)) found = true;
+                if (hasRawDirective(wn.setupCode) || hasRawDirective(wn.finalizeCode)) found = true;
                 if (wn.hasClassOverride && wn.classOverride.canFind("::")) found = true;
             }
             walk(n.children);

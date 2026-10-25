@@ -9,9 +9,11 @@
 // The drag path works by faking a "dragged outside the button" FL_DRAG/
 // FL_RELEASE pair (via `fl.core.eventX(int)`) to un-arm the button
 // without firing its own click callback, then starting a real
-// cross-window drag-and-drop (`fl.copy()` + `fl.dnd()`) carrying the
+// cross-window drag-and-drop (`fl.copy()` + `fl.dnd(true)`) carrying the
 // widget's type name as the payload -- the same XDND infrastructure
-// `source/examples/howto_drag_and_drop.d` exercises. See
+// `source/examples/howto_drag_and_drop.d` exercises, limited to
+// Fluid's own windows (another application would only receive the type
+// name as text). See
 // `fluid.canvas.ProjectCanvas.handle()`'s `Event.paste` case for the
 // receiving side.
 //
@@ -96,7 +98,7 @@ final class BinButton : Button
                 super.handle(Event.release);
                 // make it into a dnd event
                 fl.copy(typeName_, 0);
-                fl.dnd();
+                fl.dnd(true); // only Fluid's own windows can take it
                 return 1;
             }
             return ret;

@@ -174,7 +174,7 @@ class SimpleGl3Window : GlWindow
             if (err)
                 stderr.writefln("glewInit() failed returning %u", err); // fl.warning() has no equivalent here
             else
-                addOutput(format("Using GLEW %s\n", fromStringz(cast(const(char)*) glewGetString(GLEW_VERSION))));
+                addOutput(format("Using %s\n", fromStringz(cast(const(char)*) glewGetString(GLEW_VERSION))));
             const(ubyte)* glv = glGetString(GL_VERSION);
             addOutput(format("GL_VERSION=%s\n", fromStringz(cast(const(char)*) glv)));
             {

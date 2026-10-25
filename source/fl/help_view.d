@@ -20,8 +20,8 @@
  *
  * **Real `<img>` pixel rendering**: `getImage()` (ported from
  * `Impl::get_image()`), a fixed "broken
- * image" `Pixmap` fallback (`brokenImage()`, a verbatim transcription
- * of FLTK's own inline `broken_xpm[]`), and `initialLoad_`
+ * image" fallback (`brokenImage()`, an SVG redrawing of FLTK's own
+ * inline `broken_xpm[]`), and `initialLoad_`
  * (FLTK's own `get()`-vs-`find()` refcount-management flag, an
  * instance field here rather than a process-wide `static`) are wired
  * into all four real call sites: `format()`'s and `formatTable()`'s
@@ -82,7 +82,7 @@ import fl.menu_item : MenuItem;
 import fl.menu_popup;
 import fl.filename : openUri;
 import fl.image : Image;
-import fl.pixmap : Pixmap;
+import fl.svg_image : SvgImage;
 import fl.shared_image : SharedImage;
 
 /// `Fl_Help_Func*` substitute -- see `fl.widget`'s own module comment
@@ -863,45 +863,18 @@ class HelpView : FlGroup
         targetLineMap_ = null;
     }
 
-    // Verbatim transcription of FLTK's own `broken_xpm[]` (src/
-    // Fl_Help_View.cxx) -- the fallback icon `getImage()` returns for a
-    // missing/unloadable `<IMG SRC="...">`, or when `linkFunc_` rejects
-    // the resolved URL.
-    private static immutable string[] brokenXpm = [
-        "16 24 4 1",
-        "@ c #000000",
-        "  c #ffffff",
-        "+ c none",
-        "x c #ff0000",
-        "@@@@@@@+++++++++",
-        "@    @++++++++++",
-        "@   @+++++++++++",
-        "@   @++@++++++++",
-        "@    @@+++++++++",
-        "@     @+++@+++++",
-        "@     @++@@++++@",
-        "@ xxx  @@  @++@@",
-        "@  xxx    xx@@ @",
-        "@   xxx  xxx   @",
-        "@    xxxxxx    @",
-        "@     xxxx     @",
-        "@    xxxxxx    @",
-        "@   xxx  xxx   @",
-        "@  xxx    xxx  @",
-        "@ xxx      xxx @",
-        "@              @",
-        "@              @",
-        "@              @",
-        "@              @",
-        "@              @",
-        "@              @",
-        "@              @",
-        "@@@@@@@@@@@@@@@@",
-    ];
-    private Pixmap brokenImage_;
-    private Pixmap brokenImage()
+    // The fallback icon `getImage()` returns for a missing/unloadable
+    // `<IMG SRC="...">`, or when `linkFunc_` rejects the resolved URL: a
+    // page with a torn corner and a red cross. A vector redrawing of
+    // FLTK's `broken_xpm[]` (src/Fl_Help_View.cxx), same 16x24 size.
+    private enum brokenSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="24" viewBox="0 0 16 24">`
+        ~ `<path d="M0.5,0.5 H7 L5.5,3.5 L7.5,5.5 L10,4 L12,6.5 L15.5,3.5 V23.5 H0.5 Z" fill="#FFFFFF" stroke="#000000" stroke-linejoin="round"/>`
+        ~ `<path d="M3,8 L13,16 M13,8 L3,16" fill="none" stroke="#FF0000" stroke-width="2" stroke-linecap="round"/>`
+        ~ `</svg>`;
+    private SvgImage brokenImage_;
+    private SvgImage brokenImage()
     {
-        if (brokenImage_ is null) brokenImage_ = new Pixmap(brokenXpm);
+        if (brokenImage_ is null) brokenImage_ = new SvgImage(null, brokenSvg);
         return brokenImage_;
     }
 

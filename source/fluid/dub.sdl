@@ -11,6 +11,10 @@ dependency "fldtk" version="*" path="../../"
 targetPath "../.."
 lflags "-rpath=$$ORIGIN" platform="linux"
 
+// Fluid's icons (`pixmaps_svg/*.svg`), embedded by `pixmaps.d`'s
+// `loadPixmaps()` with a string import; both configurations build it.
+stringImportPaths "pixmaps_svg"
+
 // Default configuration: the real, full interactive `fluid` binary.
 // Requires `panels/generated/*.d` to already exist (generated from
 // `panels/*.fl`, not checked in -- see BUILDING), since `gui_main.d`

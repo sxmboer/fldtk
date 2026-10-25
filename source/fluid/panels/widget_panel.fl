@@ -547,10 +547,9 @@ gui_main.d's own call sites need only a mechanical swap, not a
 rewrite. `onBeforeEdit`/`onEdited`/`onOpenExternalEditor` are the
 same delegate-hook contract that class exposed too, assigned by
 gui_main.d once, before `make_widget_panel()` runs (matching
-`liveModeCb`/`overlayCb`/`okCb`'s own existing pre-construction
-assignment requirement -- see those three's own comment above for
-why: a `.callback(name)` assignment captures the delegate's *value*
-at that statement, not a live reference to the variable).
+`liveModeCb`/`overlayCb`/`okCb`'s own pre-construction assignment
+requirement: a `.callback(name)` assignment captures the delegate's
+*value* at that statement, not a live reference to the variable).
 `wireEditHooks()` is what actually threads `onBeforeEdit`/`onEdited`
 through every property-editing widget under `widgetTabs` (including
 both Grid sub-panels, reached transitively): gui_main.d calls it once
@@ -761,6 +760,25 @@ decl {private Object[Widget] editKeys_;}
 decl {void delegate() onEdited;}
   {
     public
+    local
+  }
+decl {/// Called once an edit is complete: right after any edit that isn't
+/// typing, and for a text field once it loses the focus (pressing Enter
+/// closes the panel, which also takes the focus away). `onEdited` runs
+/// on every keystroke as well.
+void delegate() onEditSettled;}
+  {
+    public
+    local
+  }
+decl {private Widget settlePending_; // the text field being typed in, if any}
+  {
+    private
+    local
+  }
+decl {private bool settleCheckAdded_;}
+  {
+    private
     local
   }
 decl {void delegate(Node) onOpenExternalEditor;}
@@ -1592,6 +1610,25 @@ vCodeInput2.buffer().text(wn.setupCode);
 codeChoice3.labelfont(wn.setupCode.length ? helveticaBoldItalic : helvetica);
 codeChoice3.redraw();
 
+vCodeInput3.buffer().text(wn.finalizeCode);
+codeChoice4.labelfont(wn.finalizeCode.length ? helveticaBoldItalic : helvetica);
+// `finalize` only differs from `setup` for a widget whose children are
+// widgets: a group or a window. A menu widget's items are built before
+// its setup code, so for it, as for any other widget, the two run one
+// right after the other. Code already stored there stays editable.
+if (cast(GroupNode) wn || cast(WindowNode) wn || wn.finalizeCode.length)
+  codeChoice4.activate();
+else
+  \{
+    codeChoice4.deactivate();
+    if (codeWiz.value() is codeWiz.child(2))
+      \{
+        codeChoice3.setonly();
+        codeWiz.value(1);
+      \}
+  \}
+codeChoice4.redraw();
+
 wCallback.buffer().text(wn.callback);
 codeChoice5.labelfont(wn.callback.length ? helveticaBoldItalic : helvetica);
 codeChoice5.redraw();
@@ -2078,7 +2115,37 @@ root.callback((w) \{
       refreshLiveMenuOf(wn);
   if (gridCellChanged) widgetTabGridChild.load(currentWidgetNode_);
   if (onEdited !is null) onEdited();
+  if (typing)
+  \{
+    // Settled by settleCheck() once the focus leaves this field.
+    settlePending_ = w;
+    if (!settleCheckAdded_)
+    \{
+      addCheck(() \{ settleCheck(); \});
+      settleCheckAdded_ = true;
+    \}
+  \}
+  else if (onEditSettled !is null)
+    onEditSettled();
 \});}
+      {
+      }
+  }
+Function settleCheck()
+  {
+    comment {Runs after every pass of the event loop (`addCheck()`): once the
+text field being typed in has lost the focus, its edit is complete and
+`onEditSettled` is called. A ValueInput's focus sits in its embedded
+input, hence `contains()`.}
+    return_type void
+    open
+  }
+  {
+    code {if (settlePending_ is null) return;
+auto f = fl.core.focus();
+if (f !is null && (f is settlePending_ || settlePending_.contains(f))) return;
+settlePending_ = null;
+if (onEditSettled !is null) onEditSettled();}
       {
       }
   }
@@ -3707,9 +3774,9 @@ wn.instanceName = cppNameInput.value();}
                       {
                         Button codeChoice0
                           {
-                            label {// comment}
+                            label {comment}
                             callback {codeWiz.value(0);}
-                            xywh {20 95 85 20}
+                            xywh {20 95 95 20}
                             selection_color 45
                             labelsize 11
                             value {1}
@@ -3717,55 +3784,33 @@ wn.instanceName = cppNameInput.value();}
                             type Radio
                             tooltip {Write a comment that will appear in the source code and in the widget tree overview.}
                           }
-                        Button codeChoice1
-                          {
-                            label {import}
-                            callback {codeWiz.value(1);}
-                            xywh {105 95 70 20}
-                            selection_color 45
-                            labelsize 11
-                            compact {1}
-                            type Radio
-                            tooltip {Import lines for this widget (this section is currently ignored by fluid).}
-                          }
-                        Button codeChoice2
-                          {
-                            label {declare}
-                            callback {codeWiz.value(2);}
-                            xywh {175 95 58 20}
-                            selection_color 45
-                            labelsize 11
-                            compact {1}
-                            type Radio
-                            tooltip {D declarations for this widget (this section is currently ignored by fluid).}
-                          }
                         Button codeChoice3
                           {
                             label {setup}
-                            callback {codeWiz.value(3);}
-                            xywh {233 95 52 20}
+                            callback {codeWiz.value(1);}
+                            xywh {115 95 95 20}
                             selection_color 45
                             labelsize 11
                             compact {1}
                             type Radio
-                            tooltip {D code inserted right after this widget is created and its attributes are set, but before its children are instantiated. Use 'o' to refer to the widget.}
+                            tooltip {D code that performs additional tasks to properly set up this widget, inserted right after it is created and its attributes are set, before any children are instantiated. Use 'o' to refer to the widget.}
                           }
                         Button codeChoice4
                           {
-                            label {final}
-                            callback {codeWiz.value(4);}
-                            xywh {285 95 50 20}
+                            label {finalize}
+                            callback {codeWiz.value(2);}
+                            xywh {210 95 95 20}
                             selection_color 45
                             labelsize 11
                             compact {1}
                             type Radio
-                            tooltip {D code for after this widget and all its children have been instantiated (this section is currently ignored by fluid).}
+                            tooltip {D code inserted after this container and all its children have been instantiated, before its end(). Use 'o' to refer to the container. The split between setup and finalize only matters for a group or window with children; for any other widget the two would run one right after the other, so this page is only available for groups and windows.}
                           }
                         Button codeChoice5
                           {
                             label {callback}
-                            callback {codeWiz.value(5);}
-                            xywh {335 95 65 20}
+                            callback {codeWiz.value(3);}
+                            xywh {305 95 95 20}
                             selection_color 45
                             labelsize 11
                             compact {1}
@@ -3811,48 +3856,6 @@ codeChoice0.redraw();}
                           }
                         Group {}
                           {
-                            comment {Include}
-                            xywh {15 120 390 235}
-                            labelsize 11
-                            hide
-                          }
-                          {
-                            TextEditor {}
-                              {
-                                xywh {15 120 390 235}
-                                box DOWN_BOX
-                                labelfont 1
-                                labelsize 11
-                                textsize 11
-                                textfont 4
-                                align 4
-                                setup {o.buffer(new TextBuffer());}
-                                tooltip {Import lines for this widget (this section is currently ignored by fluid).}
-                              }
-                          }
-                        Group {}
-                          {
-                            comment {Declare}
-                            xywh {15 120 390 235}
-                            labelsize 11
-                            hide
-                          }
-                          {
-                            TextEditor {}
-                              {
-                                xywh {15 120 390 235}
-                                box DOWN_BOX
-                                labelfont 1
-                                labelsize 11
-                                textsize 11
-                                textfont 4
-                                align 4
-                                setup {o.buffer(new TextBuffer());}
-                                tooltip {D declarations for this widget (this section is currently ignored by fluid).}
-                              }
-                          }
-                        Group {}
-                          {
                             comment {Setup}
                             xywh {15 120 390 235}
                             labelsize 11
@@ -3866,7 +3869,9 @@ foreach (wn; selectedWidgetNodes())
 \{
   wn.setupCode = v;
   wn.hasSetupCode = v.length > 0;
-\}}
+\}
+codeChoice3.labelfont(v.length ? helveticaBoldItalic : helvetica);
+codeChoice3.redraw();}
                                 xywh {15 120 390 235}
                                 box DOWN_BOX
                                 labelfont 1
@@ -3877,7 +3882,7 @@ foreach (wn; selectedWidgetNodes())
                                 setup {o.buffer(new TextBuffer());
 enableHighlighting(o);
 enableAutoIndent(o);}
-                                tooltip {D code inserted right after this widget is created and its attributes are set, but before its children are instantiated. Use 'o' to refer to the widget.}
+                                tooltip {D code that performs additional tasks to properly set up this widget, inserted right after it is created and its attributes are set, before any children are instantiated. Use 'o' to refer to the widget.}
                               }
                           }
                         Group {}
@@ -3888,8 +3893,16 @@ enableAutoIndent(o);}
                             hide
                           }
                           {
-                            TextEditor {}
+                            TextEditor vCodeInput3
                               {
+                                callback {auto v = vCodeInput3.buffer().text();
+foreach (wn; selectedWidgetNodes())
+\{
+  wn.finalizeCode = v;
+  wn.hasFinalizeCode = v.length > 0;
+\}
+codeChoice4.labelfont(v.length ? helveticaBoldItalic : helvetica);
+codeChoice4.redraw();}
                                 xywh {15 120 390 235}
                                 box DOWN_BOX
                                 labelfont 1
@@ -3897,8 +3910,10 @@ enableAutoIndent(o);}
                                 textsize 11
                                 textfont 4
                                 align 4
-                                setup {o.buffer(new TextBuffer());}
-                                tooltip {D code for after this widget and all its children have been instantiated (this section is currently ignored by fluid).}
+                                setup {o.buffer(new TextBuffer());
+enableHighlighting(o);
+enableAutoIndent(o);}
+                                tooltip {D code inserted after this container and all its children have been instantiated, before its end(). Use 'o' to refer to the container. The split between setup and finalize only matters for a group or window with children; for any other widget the two would run one right after the other, so this page is only available for groups and windows.}
                               }
                           }
                         Group {}
@@ -5111,59 +5126,27 @@ o.add(widgetTabGridChild);}
           }
       }
   }
-comment {`liveModeCb`/`overlayCb`/`okCb` (the bottom bar's own three
-buttons) have empty bodies *in this file*, and are implemented in
-`gui_main.d`. A Function referenced only as a bare `.callback(name)`
-value (as all three are, from `wLiveMode`/`overlayButton`/the Close
-`ReturnButton` respectively) is classified callback-shaped by
-`code_writer.d` and becomes a module-level `void delegate(Widget) name;`
-variable instead of an ordinary function -- and `code_writer.d`'s own
-`generate()` only ever emits a callback-shaped Function's *body* as an
-assignment inside a `main()`-shaped root Function
-(`writeFunctionBody(mainFn, callbackFns)`, gated on `mainFn !is null`).
-This file has no anonymous root Function (it is a panel, not a
-program), so `mainFn` is always null here and any code written into one
-of these three Functions' own `code` block would be generated nowhere:
-the delegate variable would stay permanently null. The three stay
-`void delegate(Widget)` variables (public, matching
-`fluid.function_panel`'s own `binButtonCb`/`codeButtonCb`) that
-`gui_main.d` assigns externally: `liveModeCb` runs Live Resize
-(ported from FLTK's `live_mode_cb()`), `overlayCb` forwards to
-`toggleOverlays()`, and `okCb` closes the panel.}
+comment {`liveModeCb`/`overlayCb`/`okCb` are the callbacks of the bottom
+bar's three buttons (`wLiveMode`, `overlayButton` and the Close
+`ReturnButton`). `gui_main.d` assigns them before it builds this panel:
+`liveModeCb` runs Live Resize (ported from FLTK's `live_mode_cb()`),
+`overlayCb` forwards to `toggleOverlays()`, and `okCb` closes the panel.}
   {
     in_source
     in_header
   }
-Function {liveModeCb(Widget o)}
+decl {void delegate(Widget) liveModeCb;}
   {
-    return_type void
-    open
+    public
+    global
   }
+decl {void delegate(Widget) overlayCb;}
   {
-    code {// See this file's own comment just above -- the real implementation
-// lives in gui_main.d, assigned externally (this body is unreachable).}
-      {
-      }
+    public
+    global
   }
-Function {overlayCb(Widget o)}
+decl {void delegate(Widget) okCb;}
   {
-    return_type void
-    open
-  }
-  {
-    code {// See this file's own comment just above -- the real implementation
-// lives in gui_main.d, assigned externally (this body is unreachable).}
-      {
-      }
-  }
-Function {okCb(Widget o)}
-  {
-    return_type void
-    open
-  }
-  {
-    code {// See this file's own comment just above -- the real implementation
-// lives in gui_main.d, assigned externally (this body is unreachable).}
-      {
-      }
+    public
+    global
   }

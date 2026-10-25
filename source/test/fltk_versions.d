@@ -3,7 +3,7 @@
 import fl;
 import std.stdio : writef, writefln, stdout;
 import std.format : format;
-version (linux) import platformX11 = fl.platform_x11;
+version (linux) import flPlatform = fl.platform;
 
 enum int ww = 640, mw = 750; // initial, max. window width
 enum int wh = 200, mh = 300; // initial, max. window height
@@ -14,11 +14,11 @@ string getPlatform()
 {
     version (linux)
     {
-        if (platformX11.x11Display())
-            return "Unix/Linux (X11)";
-        if (platformX11.wlDisplay())
-            return "Unix/Linux (Wayland)";
-        return "X11 or Wayland (backend unknown or display not opened)";
+        final switch (flPlatform.backend())
+        {
+            case flPlatform.Backend.x11: return "Unix/Linux (X11)";
+            case flPlatform.Backend.wayland: return "Unix/Linux (Wayland)";
+        }
     }
     else version (Windows)
     {
@@ -47,7 +47,7 @@ Box[9] box_;
 void main(string[] args)
 {
     int versions = 0;
-    version (linux) platformX11.openDisplay();
+    version (linux) flPlatform.openDisplay();
     string platform = getPlatform();
     writefln("System/platform   = %s", platform);
 

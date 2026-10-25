@@ -11,13 +11,12 @@
  * drawn appearance) are all ported 1:1.
  *
  * draw() is structurally ported (same box-splitting/layout math as
- * FLTK), including the three little directional-arrow icons:
- * `fastArrow_`/`mediumArrow_`/`slowArrow_`, transcribed verbatim from
- * FLTK's own `src/fastarrow.h`/`mediumarrow.h`/`slowarrow.h` (16x16
- * XBM bit patterns, one arrow-glyph per adjustment speed), drawn via
- * `fl.bitmap.Bitmap.draw()` centered in each of the three boxes, in
+ * FLTK), including the three little directional-arrow icons, one per
+ * adjustment speed, centered in each of the three boxes in
  * `activeR() ? selectionColor() : inactive(selectionColor())` --
- * matching FLTK's own color choice exactly. The three box
+ * matching FLTK's own color choice exactly. Unlike FLTK's 16x16 bitmaps
+ * (`src/fastarrow.h`/`mediumarrow.h`/`slowarrow.h`), they are drawn as
+ * polygons (`drawSpeedArrows()`), so they stay sharp at any scale. The three box
  * backgrounds (and focus rectangle) draw through `drawBox()`/
  * `drawFocus()`, same as every other widget in this project.
  *
@@ -31,39 +30,33 @@ module fl.adjuster;
 import fl.enumerations;
 import fl.valuator : Valuator;
 import fl.widget_tracker : WidgetTracker;
-import fl.bitmap : Bitmap;
 import fl.draw;
 import fl.core;
 
-// Verbatim transcriptions of FLTK's src/fastarrow.h/mediumarrow.h/
-// slowarrow.h -- 16x16 XBM bit patterns (one arrow glyph per adjustment
-// speed), unchanged byte-for-byte from the real FLTK source.
+// The three speed glyphs, after FLTK's src/fastarrow.h/mediumarrow.h/
+// slowarrow.h (16x16 bitmaps): an arrow pointing left above one pointing
+// right, with a bigger head the faster the button adjusts. Drawn as
+// polygons in the current color, so they are sharp at any scale. The
+// coordinates are those of the bitmaps' 16x16 grid; the lower arrow is
+// the upper one mirrored left to right, 7 units lower.
 private enum int arrowW = 16;
 private enum int arrowH = 16;
-private immutable ubyte[32] fastArrowBits = [
-    0x00, 0x00, 0x00, 0x07, 0xe0, 0x07, 0xfc, 0x03, 0xff, 0xff, 0xfc, 0x03,
-    0xe0, 0x07, 0x00, 0x07, 0xe0, 0x00, 0xe0, 0x07, 0xc0, 0x3f, 0xff, 0xff,
-    0xc0, 0x3f, 0xe0, 0x07, 0xe0, 0x00, 0x00, 0x00];
-private immutable ubyte[32] mediumArrowBits = [
-    0x40, 0x00, 0x60, 0x00, 0x70, 0x00, 0x78, 0x00, 0xfc, 0x3f, 0x78, 0x00,
-    0x70, 0x00, 0x60, 0x02, 0x40, 0x06, 0x00, 0x0e, 0x00, 0x1e, 0xfc, 0x3f,
-    0x00, 0x1e, 0x00, 0x0e, 0x00, 0x06, 0x00, 0x02];
-private immutable ubyte[32] slowArrowBits = [
-    0x40, 0x00, 0x40, 0x00, 0x60, 0x00, 0x60, 0x00, 0xf0, 0x0f, 0x60, 0x00,
-    0x60, 0x00, 0x40, 0x02, 0x40, 0x02, 0x00, 0x06, 0x00, 0x06, 0xf0, 0x0f,
-    0x00, 0x06, 0x00, 0x06, 0x00, 0x02, 0x00, 0x02];
+private immutable double[][][3] arrowShapes = [
+    [[0, 4.5, 11, 0.8, 9.5, 4.5, 11, 8.2], [9.5, 4, 16, 4, 16, 5, 9.5, 5]],  // fast
+    [[2, 4.5, 7, 0, 7, 9], [7, 4, 14, 4, 14, 5, 7, 5]],                       // medium
+    [[4, 4.5, 7, 0, 7, 9], [7, 4, 12, 4, 12, 5, 7, 5]],                       // slow
+];
 
-// Lazily constructed (not a module constructor -- see fl.symbols's own
-// note on a real circular module-constructor dependency this pattern
-// sidesteps; these three are trivial data-only Bitmaps with no such
-// risk here, but the lazy pattern costs nothing and stays consistent).
-private Bitmap fastArrow_, mediumArrow_, slowArrow_;
-private void ensureArrowBitmaps()
+private void drawSpeedArrows(int speed, int x, int y)
 {
-    if (fastArrow_ !is null) return;
-    fastArrow_ = new Bitmap(fastArrowBits, arrowW, arrowH);
-    mediumArrow_ = new Bitmap(mediumArrowBits, arrowW, arrowH);
-    slowArrow_ = new Bitmap(slowArrowBits, arrowW, arrowH);
+    foreach (lower; [false, true])
+        foreach (shape; arrowShapes[speed])
+        {
+            beginPolygon();
+            for (size_t i = 0; i + 1 < shape.length; i += 2)
+                vertex(x + (lower ? arrowW - shape[i] : shape[i]), y + shape[i + 1] + (lower ? 7 : 0));
+            endPolygon();
+        }
 }
 
 class Adjuster : Valuator
@@ -117,11 +110,14 @@ class Adjuster : Valuator
         drawBox(drag_ == 2 ? Boxtype.downBox : box(), x() + dx, y() + dy, W, H, color());
         drawBox(drag_ == 3 ? Boxtype.downBox : box(), x() + 2 * dx, y(), W, H, color());
 
-        ensureArrowBitmaps();
         fl_color(activeR() ? selectionColor() : inactive(selectionColor()));
-        fastArrow_.draw(x() + (W - arrowW) / 2, y() + 2 * dy + (H - arrowH) / 2, W, H);
-        mediumArrow_.draw(x() + dx + (W - arrowW) / 2, y() + dy + (H - arrowH) / 2, W, H);
-        slowArrow_.draw(x() + 2 * dx + (W - arrowW) / 2, y() + (H - arrowH) / 2, W, H);
+        foreach (i; 0 .. 3)
+        {
+            int bx = x() + i * dx, by = y() + (2 - i) * dy;
+            pushClip(bx, by, W, H);
+            drawSpeedArrows(i, bx + (W - arrowW) / 2, by + (H - arrowH) / 2);
+            popClip();
+        }
 
         if (fl.core.focus() is this) drawFocus();
     }

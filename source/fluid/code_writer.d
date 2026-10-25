@@ -605,6 +605,8 @@ class Writer
 
         if (mainFn !is null)
             writeFunctionBody(mainFn, callbackFns);
+        else if (callbackFns.length)
+            writeCallbackModuleConstructor(callbackFns);
 
         return buf.data;
     }
@@ -687,7 +689,9 @@ class Writer
 
     /// Module-level `void delegate(Widget) name;` for every named,
     /// callback-shaped Function (e.g. radio.fl's `buttonCB`) -- these
-    /// are assigned a delegate literal inside `main()`
+    /// are assigned a delegate literal inside `main()`, or inside a
+    /// module constructor in a file without one
+    /// (`writeCallbackModuleConstructor()`)
     /// (`writeNamedFunctionAssignment()`), not declared with `auto`,
     /// since they need to exist (even if not yet assigned) the moment
     /// `main()`'s body starts, matching how a plain widget's own
@@ -1311,6 +1315,25 @@ class Writer
         line("}");
     }
 
+    /// A file without an anonymous root Function (a module of
+    /// widget-building functions called from elsewhere) has no `main()`
+    /// to assign its callback-shaped Functions in, so they are assigned
+    /// in a module constructor instead. It runs before any code of the
+    /// module can construct a widget, so `o.callback(name)` always
+    /// picks up the delegate. Code elsewhere may still assign the
+    /// variable a different delegate before building the widgets.
+    private void writeCallbackModuleConstructor(FunctionNode[] callbackFns)
+    {
+        line("static this()");
+        line("{");
+        indent_++;
+        foreach (nf; callbackFns)
+            writeNamedFunctionAssignment(nf);
+        indent_--;
+        line("}");
+        blank();
+    }
+
     /// Whether the widget tree currently being written is the
     /// top-level main Function's own (which has an `args` parameter in
     /// scope) as opposed to a class method's (e.g. mandelbrot_ui.fl's
@@ -1322,7 +1345,8 @@ class Writer
     private bool inMainFunction_;
 
     /// Assigns a callback-shaped named Function's D delegate variable
-    /// at the top of `main()` -- e.g. radio.fl's `buttonCB(Button b)`
+    /// at the top of `main()` (or in `writeCallbackModuleConstructor()`)
+    /// -- e.g. radio.fl's `buttonCB(Button b)`
     /// becomes `buttonCB = (raw) { auto b = cast(Button) raw; ... };`.
     /// The body is emitted verbatim: it already refers to its own
     /// declared parameter name ("b"), which is exactly what the cast
@@ -1754,11 +1778,19 @@ class Writer
         blank();
         if (wcn.resizableFlag && !hasResizableChild(wcn))
             line("resizable(this);");
+        writeFinalizeCode(wcn, "this");
         line("end();");
     }
 
     private void writeWidgetTree(Node n)
     {
+        // The node's comment belongs to its own setup code, as in FLTK,
+        // where `write_code1()` writes it inside the `setup_node` span:
+        // the Code View then highlights the comment with the widget.
+        immutable commentStart = pos();
+        scope (exit)
+            if (n.setupSpan.start > commentStart)
+                n.setupSpan.start = commentStart;
         writeNodeComment(n);
         // A `codeblock {}` can sit directly among a container's own
         // widget-tree children too (not just at a function/method
@@ -1943,6 +1975,7 @@ class Writer
         // self-designate if no *direct* child also claims resizable.
         if (n.resizableFlag && !hasResizableChild(n))
             line(format("%s.resizable(%s);", v, v));
+        writeFinalizeCode(n, v);
         line(format("%s.end();", v));
         if (inMainFunction_ && !isNestedWindow(n))
             line(format("%s.show(args);", v));
@@ -1979,6 +2012,7 @@ class Writer
         n.finalizeSpan.start = pos();
         if (auto grid = cast(GridNode) n) writeGridChildPlacement(grid, v);
         else if (auto flex = cast(FlexNode) n) writeFlexExtras(flex, v);
+        writeFinalizeCode(n, v);
         line(format("%s.end();", v));
         writeNestedResizable(n, v);
         indent_--;
@@ -2069,6 +2103,7 @@ class Writer
         n.setupSpan.end = pos();
         n.finalizeSpan.start = n.setupSpan.end;
         writeNestedResizable(n, v);
+        writeFinalizeCode(n, v);
         indent_--;
         line("}");
         n.finalizeSpan.end = pos();
@@ -2160,6 +2195,7 @@ class Writer
         writeCommonProps(n, v);
         n.setupSpan.end = pos();
         n.finalizeSpan.start = n.setupSpan.end;
+        writeFinalizeCode(n, v);
         indent_--;
         line("}");
         n.finalizeSpan.end = pos();
@@ -2389,6 +2425,17 @@ class Writer
             writeCallback(n, v);
         if (n.hasSetupCode && n.setupCode.length)
             writeTaggedBlock(Tag.setup, n.uid, translateOwnSlot(n.setupCode, v));
+    }
+
+    /// A widget's `finalize` code: after its children and, for a group or
+    /// window, before its `end()`, as FLTK's `write_code2()` places
+    /// `extra_code(3)`. FLTK only tags this block for MergeBack in
+    /// `Widget_Node::write_code2()` (widgets without children); here it
+    /// is tagged for every widget, groups and windows included.
+    private void writeFinalizeCode(WidgetNode n, string v)
+    {
+        if (n.hasFinalizeCode && n.finalizeCode.length)
+            writeTaggedBlock(Tag.finalize, n.uid, translateOwnSlot(n.finalizeCode, v));
     }
 
     private void writeCallback(WidgetNode n, string v)
@@ -2846,7 +2893,7 @@ private bool referencedAnywhereInText(Node[] roots, string fnName)
         {
             if (found) return;
             scan(n.callback);
-            if (auto wn = cast(WidgetNode) n) scan(wn.setupCode);
+            if (auto wn = cast(WidgetNode) n) { scan(wn.setupCode); scan(wn.finalizeCode); }
             if (auto cn = cast(CodeNode) n) scan(cn.instanceName);
             if (auto dn = cast(DeclNode) n) scan(dn.instanceName);
             if (auto mi = cast(MenuItemNode) n) scan(mi.callback);
@@ -3888,6 +3935,86 @@ unittest
 
 unittest
 {
+    // A widget's `finalize` code: written after its children and before a
+    // group's or window's `end()`, tagged for MergeBack (groups and
+    // windows included), and round-tripped through the .fl text.
+    import std.algorithm : canFind;
+    import std.string : indexOf;
+    import fluid.mergeback : Mergeback;
+    import fluid.project_reader : Reader;
+    import fluid.project_writer : ProjectWriter;
+
+    auto mainFn = new FunctionNode();
+    mainFn.typeName = "Function";
+
+    auto win = new WindowNode();
+    win.typeName = "Fl_Window";
+    win.instanceName = "win";
+    win.x = 0; win.y = 0; win.w = 200; win.h = 100;
+    win.hasXywh = true;
+    win.finalizeCode = "o.label(\"done\");";
+    win.hasFinalizeCode = true;
+    mainFn.addChild(win);
+
+    auto grp = new GroupNode();
+    grp.typeName = "Fl_Group";
+    grp.instanceName = "grp";
+    grp.x = 0; grp.y = 0; grp.w = 100; grp.h = 50;
+    grp.hasXywh = true;
+    grp.setupCode = "o.tooltip(\"before\");";
+    grp.hasSetupCode = true;
+    grp.finalizeCode = "o.tooltip(\"after\");";
+    grp.hasFinalizeCode = true;
+    win.addChild(grp);
+
+    auto btn = new WidgetNode();
+    btn.typeName = "Fl_Button";
+    btn.instanceName = "btn";
+    btn.x = 0; btn.y = 0; btn.w = 32; btn.h = 32;
+    btn.hasXywh = true;
+    btn.finalizeCode = "o.deactivate();";
+    btn.hasFinalizeCode = true;
+    grp.addChild(btn);
+
+    ProjectSettings on;
+    on.writeMergebackData = true;
+    string text = new Writer().generate([mainFn], ".", I18nSettings.init, false, on);
+    auto setupAt = text.indexOf(`grp.tooltip("before");`);
+    auto btnAt = text.indexOf("btn = new");
+    auto grpFinalAt = text.indexOf(`grp.tooltip("after");`);
+    auto grpEndAt = text.indexOf("grp.end();");
+    auto winFinalAt = text.indexOf(`win.label("done");`);
+    auto winEndAt = text.indexOf("win.end();");
+    assert(setupAt >= 0 && setupAt < btnAt && btnAt < grpFinalAt && grpFinalAt < grpEndAt);
+    assert(grpEndAt < winFinalAt && winFinalAt < winEndAt);
+    assert(text.canFind("btn.deactivate();"));
+
+    // Every `finalize` block merges back with `o` restored.
+    auto mb = new Mergeback([mainFn]);
+    assert(mb.analyse(text) == 0 && mb.numChangedCode == 0 && mb.numChangedStructure == 0);
+    string edited = text
+        .replace(`grp.tooltip("after");`, `grp.tooltip("later");`)
+        .replace(`win.label("done");`, `win.label("ready");`)
+        .replace("btn.deactivate();", "btn.hide();");
+    assert(mb.analyse(edited) == 0);
+    assert(mb.numChangedCode == 3 && mb.numUidNotFound == 0 && mb.numPossibleOverride == 0);
+    assert(mb.apply(edited) == 1);
+    assert(grp.finalizeCode == `o.tooltip("later");`);
+    assert(win.finalizeCode == `o.label("ready");`);
+    assert(btn.finalizeCode == "o.hide();");
+    assert(grp.setupCode == `o.tooltip("before");`);
+
+    // `finalize {}` survives a write and read of the .fl text.
+    string fl = new ProjectWriter().generate([mainFn], I18nSettings.init, [], "", null, false, false, on);
+    assert(fl.canFind("finalize {o.hide();}"));
+    auto again = new Reader(fl).readProject();
+    auto grp2 = cast(WidgetNode) again[0].children[0].children[0];
+    assert(grp2.hasFinalizeCode && grp2.finalizeCode == `o.tooltip("later");`);
+    assert(grp2.hasSetupCode && grp2.setupCode == `o.tooltip("before");`);
+}
+
+unittest
+{
     // `mergeback 1` and every node's uid round-trip through the .fl text,
     // and a project with duplicate uids is repaired on write.
     import std.algorithm : canFind;
@@ -4064,4 +4191,33 @@ unittest
     assert(d.canFind("SysMenuBar sys;"));
     assert(d.canFind("MenuBar bar;"));
     assert(!d.canFind("sys.type(") && !d.canFind("twice.type("));
+}
+
+unittest
+{
+    // A callback-shaped Function in a file without an anonymous root
+    // Function is assigned in a module constructor, body included; with
+    // a root Function it is assigned at the top of `main()`.
+    import std.algorithm : canFind;
+    import std.string : indexOf;
+    import fluid.project_reader : Reader;
+
+    string fns = "Function {quitCb(Widget w)} {open return_type void\n} {\n"
+        ~ "  code {quitBody();} {}\n}\n";
+    string win = "  Fl_Window win {open\n    xywh {0 0 100 100}\n  } {\n"
+        ~ "    Fl_Button {} {\n      callback quitCb\n      xywh {0 0 50 20}\n    }\n  }\n";
+
+    string d = new Writer().generate(new Reader("version 1.0000\n" ~ fns
+        ~ "Function {make()} {open\n} {\n" ~ win ~ "}\n").readProject());
+    assert(d.canFind("void delegate(Widget) quitCb;"));
+    auto ctor = d.indexOf("static this()");
+    assert(ctor >= 0);
+    assert(d.indexOf("quitCb = (raw) {", ctor) > ctor);
+    assert(d.indexOf("quitBody();", ctor) > ctor);
+    assert(!d.canFind("void main("));
+
+    string m = new Writer().generate(new Reader("version 1.0000\n" ~ fns
+        ~ "Function {} {open\n} {\n" ~ win ~ "}\n").readProject());
+    assert(!m.canFind("static this()"));
+    assert(m.indexOf("quitBody();") > m.indexOf("void main("));
 }

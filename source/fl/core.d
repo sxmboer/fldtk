@@ -214,7 +214,7 @@
  */
 module fl.core;
 
-import fl.enumerations : CallbackReason, Boxtype, Event, Keysym, EventState,
+import fl.enumerations : CallbackReason, Boxtype, Event, Keysym, EventState, GesturePhase,
     button, keyMask, stateShift, stateCtrl, stateCommand, stateAlt, stateMeta,
     stateCapsLock, stateButtons, stateButton1, stateButton2, stateButton3,
     stateButton4, stateButton5, Beep, escape, FdWhen, fdRead, fdWrite, fdExcept,
@@ -252,7 +252,15 @@ import core.sync.mutex : Mutex;
 // indirection rather than porting that trick too.
 import fl.tooltip;
 
-version (linux) import platformX11 = fl.platform_x11;
+version (linux) import platform = fl.platform;
+version (linux) import platformX11 = fl.platform_x11; // X11-only: display name, X resources, visuals
+
+/// Whether the program runs on X11, where the X11-only functions above
+/// (`fl.platform_x11`'s X resources, display name and visuals) apply.
+version (linux) private bool onX11()
+{
+    return platform.backend() == platform.Backend.x11;
+}
 version (Windows) import platformWin32 = fl.platform_win32;
 
 // FLTK declares Fl::cairo_make_current()/cairo_cc()/cairo_flush()/
@@ -378,6 +386,33 @@ package(fl) void setWheelDelta(float dx, float dy)
 
 /// Number of consecutive clicks; N-1 for N clicks.
 int eventClicks() { return eClicks_; }
+
+package(fl)
+{
+    float eZoom_ = 1, eRotation_ = 0;
+    int eFingers_;
+    GesturePhase ePhase_;
+}
+
+/**
+ * During `Event.zoomGesture` (fingers pinched or spread on a touchpad or
+ * a touchscreen): how much larger to make the view since the previous
+ * zoom event -- 1.05 is 5% larger, 0.95 5% smaller. `eventDy()` holds
+ * the same change as FLTK reports it on macOS ((zoom - 1) x 1000), and
+ * `eventX()`/`eventY()` the point between the fingers.
+ */
+float eventZoom() { return eZoom_; }
+
+/// During `Event.rotateGesture`: how many degrees the fingers turned
+/// since the previous rotate event, clockwise positive.
+float eventRotation() { return eRotation_; }
+
+/// During a gesture event: the number of fingers making it.
+int eventFingers() { return eFingers_; }
+
+/// During a gesture event: whether it begins, updates, ends or cancels
+/// the gesture.
+GesturePhase eventGesturePhase() { return ePhase_; }
 void eventClicks(int i) { eClicks_ = i; }
 
 /// Whether the mouse hasn't moved far/long enough since the last
@@ -420,7 +455,7 @@ Keysym eventOriginalKey() { return eOriginalKeysym_; }
  */
 bool eventKey(Keysym k)
 {
-    version (linux) return platformX11.eventKey(k);
+    version (linux) return platform.eventKey(k);
     else version (Windows) return platformWin32.eventKey(k);
     else return false;
 }
@@ -432,7 +467,7 @@ bool eventKey(Keysym k)
  */
 bool getKey(Keysym k)
 {
-    version (linux) return platformX11.getKey(k);
+    version (linux) return platform.getKey(k);
     else version (Windows) return platformWin32.getKey(k);
     else return false;
 }
@@ -446,7 +481,7 @@ bool getKey(Keysym k)
  */
 int getMouse(out int x, out int y)
 {
-    version (linux) return platformX11.getMouse(x, y);
+    version (linux) return platform.getMouse(x, y);
     else version (Windows) return platformWin32.getMouse(x, y);
     else return 0;
 }
@@ -474,7 +509,7 @@ RGBImage captureWindow(CoreWindow win, int x, int y, int w, int h)
 {
     version (linux)
     {
-        auto pixels = platformX11.captureWindowPixels(win, x, y, w, h);
+        auto pixels = platform.captureWindowPixels(win, x, y, w, h);
         return pixels is null ? null : new RGBImage(pixels, w, h, 3);
     }
     else return null;
@@ -501,7 +536,7 @@ RGBImage captureWindow(CoreWindow win, int x, int y, int w, int h)
  *
  * `win` is used for real on Windows: for X11 (a single process-wide input context,
  * no per-window coordinate walk left to do by the time a caller's
- * coordinates reach `platformX11.setSpot()`) it is accepted only for
+ * coordinates reach `fl.platform_x11.setSpot()`) it is accepted only for
  * signature fidelity and otherwise unused, but
  * `platformWin32.setSpot()` genuinely needs `win` to resolve the
  * right top-level HWND's own IME input context and to convert `win`'s
@@ -511,7 +546,7 @@ RGBImage captureWindow(CoreWindow win, int x, int y, int w, int h)
  */
 void setSpot(Font font, Fontsize size, int X, int Y, int W, int H, CoreWindow win = null)
 {
-    version (linux) platformX11.setSpot(font, size, X, Y, W, H);
+    version (linux) platform.setSpot(font, size, X, Y, W, H);
     else version (Windows) platformWin32.setSpot(font, size, X, Y, W, H, win);
 }
 
@@ -526,7 +561,7 @@ void setSpot(Font font, Fontsize size, int X, int Y, int W, int H, CoreWindow wi
 /// Windows driver *does* override for real.
 void resetSpot()
 {
-    version (linux) platformX11.resetSpot();
+    version (linux) platform.resetSpot();
 }
 
 /**
@@ -649,6 +684,7 @@ package(fl) void markComposeState(int n) { composeState_ = n; }
  */
 bool compose(out int del)
 {
+    version (linux) version (FLDTK_HAVE_WAYLAND) if (!onX11()) return composeWayland(del);
     ubyte ascii = eText_.length > 0 ? cast(ubyte) eText_[0] : 0;
     bool functionKey = (eState_ & (stateAlt | stateMeta | stateCtrl)) != 0 && !(ascii & 128);
     version (Windows)
@@ -666,6 +702,39 @@ bool compose(out int del)
 }
 
 /**
+ * Ported from `Fl_Wayland_Screen_Driver::compose()`. On Wayland an
+ * input method's provisional text, and a dead key's accent, arrive as
+ * "marked" text: `fl.platform_wayland` says how long it is
+ * (`nextMarkedLength()`), and the next keystroke's `del` replaces it.
+ * Keys with Ctrl/Alt/Meta, modifier, navigation and function keys, Tab,
+ * Scroll Lock and Pause are never text.
+ */
+version (linux) version (FLDTK_HAVE_WAYLAND) private bool composeWayland(out int del)
+{
+    import platformWayland = fl.platform_wayland;
+    import fl.enumerations : shiftL, altR, altGr, home, numLock, f, fLast, tab, scrollLock, pause;
+    ubyte ascii = eText_.length > 0 ? cast(ubyte) eText_[0] : 0;
+    bool notText = (eState_ & (stateAlt | stateMeta | stateCtrl)) != 0 && ascii < 128;
+    notText |= (eKeysym_ >= shiftL && eKeysym_ <= altR) || eKeysym_ == altGr;
+    notText |= eKeysym_ >= home && eKeysym_ <= numLock;
+    notText |= eKeysym_ >= f && eKeysym_ <= fLast;
+    notText |= eKeysym_ == tab || eKeysym_ == scrollLock || eKeysym_ == pause;
+    if (notText)
+    {
+        del = 0;
+        return false;
+    }
+    del = composeState_;
+    composeState_ = platformWayland.nextMarkedLength();
+    if (ascii && !composeState_ && (ascii <= 31 || ascii == 127))
+    {
+        del = 0;
+        return false;
+    }
+    return true;
+}
+
+/**
  * Ported from Fl_X11_Screen_Driver::compose_reset(). Call after moving
  * the cursor so the next compose() call doesn't set a stale `del`.
  * Also resets the real input context's own composition state, via
@@ -675,7 +744,7 @@ bool compose(out int del)
 void composeReset()
 {
     composeState_ = 0;
-    version (linux) platformX11.resetIC();
+    version (linux) platform.resetIC();
 }
 
 private string primarySelection_;
@@ -741,7 +810,7 @@ void copy(string text, int clipboard)
     else primarySelection_ = text;
     selectionType_[clipboard] = clipboardPlainText;
     weOwnSelection_[clipboard] = true;
-    version (linux) platformX11.setSelectionOwner(clipboard);
+    version (linux) platform.setSelectionOwner(clipboard);
     version (Windows) platformWin32.setSelectionOwner(clipboard);
 }
 
@@ -799,7 +868,7 @@ void copyImage(const(ubyte)[] rgbData, int w, int h, int clipboard)
         ownedImageBmp_[clipboard] = createBmp(rgbData, w, h);
         selectionType_[clipboard] = clipboardImage;
         weOwnSelection_[clipboard] = true;
-        platformX11.setSelectionOwner(clipboard);
+        platform.setSelectionOwner(clipboard);
     }
 }
 
@@ -894,9 +963,9 @@ void paste(Widget receiver, int clipboard, string type = clipboardPlainText)
     {
         pendingPasteReceiver_ = receiver;
         if (type == clipboardImage)
-            platformX11.requestSelectionImage(clipboard);
+            platform.requestSelectionImage(clipboard);
         else
-            platformX11.requestSelection(clipboard);
+            platform.requestSelection(clipboard);
     }
 
     // Reached only for clipboard == 1 here (clipboard == 0 already
@@ -1083,7 +1152,7 @@ bool clipboardContains(string type)
         return type == clipboardPlainText;
 
     version (linux)
-        return platformX11.clipboardContains(type);
+        return platform.clipboardContains(type);
     else version (Windows)
         return platformWin32.clipboardContains(type);
     else
@@ -1112,7 +1181,7 @@ void addClipboardNotify(ClipboardNotifyHandler h)
 {
     removeClipboardNotify(h);
     clipNotifyHandlers_ = h ~ clipNotifyHandlers_;
-    version (linux) platformX11.clipboardNotifyChange();
+    version (linux) platform.clipboardNotifyChange();
     version (Windows) platformWin32.clipboardNotifyChange();
 }
 
@@ -1126,7 +1195,7 @@ void removeClipboardNotify(ClipboardNotifyHandler h)
     clipNotifyHandlers_ = kept;
     if (kept.length != before)
     {
-        version (linux) platformX11.clipboardNotifyChange();
+        version (linux) platform.clipboardNotifyChange();
         version (Windows) platformWin32.clipboardNotifyChange();
     }
 }
@@ -1264,7 +1333,7 @@ private string addModifierKeySeparator(string name)
 /// generic key-name table).
 private string platformKeyName(uint key)
 {
-    version (linux) return platformX11.keyName(key);
+    version (linux) return platform.keyName(key);
     else version (Windows) return platformWin32.keyName(key);
     else return null;
 }
@@ -1404,15 +1473,19 @@ Widget grab()
 /// ditto
 void grab(Widget win)
 {
+    // a window grabbing events ends the pen's claim on a widget, as in
+    // FLTK's Fl::grab()
+    import fl.pen : Pen;
+    Pen.release();
     grabWidget_ = win;
     if (win !is null)
     {
         auto w = win.asWindow();
-        version (linux) if (w !is null) platformX11.grabPointer(w);
+        version (linux) if (w !is null) platform.grabPointer(w);
     }
     else
     {
-        version (linux) platformX11.ungrabPointer();
+        version (linux) platform.ungrabPointer();
     }
     // Ungrabbing: FLTK calls fl_fix_focus() here to reconcile focus()
     // with whatever window X now reports as focused, since a real grab
@@ -1484,7 +1557,7 @@ package(fl) void modal(Widget win)
  */
 CoreWindow firstWindow()
 {
-    version (linux) return platformX11.firstWindowWidget();
+    version (linux) return platform.firstWindowWidget();
     else version (Windows) return platformWin32.firstWindowWidget();
     else return null;
 }
@@ -1499,7 +1572,7 @@ CoreWindow firstWindow()
  */
 CoreWindow nextWindow(CoreWindow window)
 {
-    version (linux) return window !is null ? platformX11.nextWindowWidget(window) : null;
+    version (linux) return window !is null ? platform.nextWindowWidget(window) : null;
     else version (Windows) return window !is null ? platformWin32.nextWindowWidget(window) : null;
     else return null;
 }
@@ -1539,7 +1612,7 @@ void redraw()
 void firstWindow(CoreWindow window)
 {
     if (window is null || !window.shown()) return;
-    version (linux) platformX11.makeWindowFirst(window);
+    version (linux) platform.makeWindowFirst(window);
     else version (Windows) platformWin32.makeWindowFirst(window);
 }
 
@@ -2482,7 +2555,7 @@ int arg(string[] cmdArgs, ref int i)
     }
     else if (argMatch(s, "display", 2))
     {
-        version (linux) platformX11.setDisplayName(v);
+        version (linux) if (onX11()) platformX11.setDisplayName(v);
     }
     else if (argMatch(s, "title", 2))
     {
@@ -2816,7 +2889,7 @@ void display(string name)
     {
         import std.process : environment;
         environment["DISPLAY"] = name;
-        platformX11.setDisplayName(name);
+        if (onX11()) platformX11.setDisplayName(name);
     }
 }
 
@@ -3123,7 +3196,8 @@ version (linux) bool flParseColor(string spec, out ubyte r, out ubyte g, out uby
     // Not "None", not hex -- ask the X server's own color database
     // (the standard X11 `rgb.txt` name list), matching FLTK's
     // XParseColor() fallback exactly.
-    if (platformX11.x11Display() is null) platformX11.openDisplay();
+    if (!onX11()) return false; // the color database is the X server's
+    if (platformX11.x11Display() is null) platform.openDisplay();
     auto display = platformX11.x11Display();
     if (display is null) return false;
     int screenNum = XDefaultScreen(display);
@@ -3168,7 +3242,7 @@ version (linux) void getSystemColors()
     {
         if (arg.length == 0)
         {
-            arg = platformX11.getDefaultResource(k1, k2);
+            if (onX11()) arg = platformX11.getDefaultResource(k1, k2);
             if (arg.length == 0) arg = defarg;
         }
         ubyte r, g, b;
@@ -3473,7 +3547,7 @@ private string getSystemScheme()
         auto win = firstWindow();
         string key = win !is null ? win.xclass() : null;
         if (key.length == 0) key = "fltk";
-        return platformX11.getDefaultResource(key, "scheme");
+        return onX11() ? platformX11.getDefaultResource(key, "scheme") : null;
     }
     else return null;
 }
@@ -4150,6 +4224,10 @@ int handle(Event e, Widget window)
         return 0;
 
     case Event.mouseWheel:
+    // gestures go where the wheel goes (fldtk; FLTK sends its macOS
+    // FL_ZOOM_GESTURE to the window, whose group offers it to the
+    // focused child first)
+    case Event.zoomGesture, Event.rotateGesture, Event.swipeGesture:
         // Ported from Fl::handle_()'s own FL_MOUSEWHEEL case:
         // `if (grab() && grab()!=modal() && grab()!=window) {...}
         // if (modal()) {...} if (send_event(...,window,...)) return 1;
@@ -4160,11 +4238,11 @@ int handle(Event e, Widget window)
         // explicit call instead, same effect.
         if (grab() !is null && grab() !is modal() && grab() !is window)
         {
-            if (sendEvent(Event.mouseWheel, grab(), window)) return 1;
+            if (sendEvent(e, grab(), window)) return 1;
         }
         if (modal() !is null)
         {
-            sendEvent(Event.mouseWheel, modal(), window);
+            sendEvent(e, modal(), window);
             return 1;
         }
         if (sendEvent(e, window, window)) return 1;
@@ -4278,7 +4356,7 @@ private int sendEvent(Event e, Widget w, Widget window)
  */
 void run()
 {
-    version (linux) platformX11.run();
+    version (linux) platform.run();
     else version (Windows) platformWin32.run();
 }
 
@@ -4337,7 +4415,7 @@ package(fl) void doWidgetDeletion()
  */
 void wait()
 {
-    version (linux) platformX11.wait();
+    version (linux) platform.wait();
     else version (Windows) platformWin32.wait();
 }
 
@@ -4354,7 +4432,7 @@ void wait()
  */
 double wait(double timeToWait)
 {
-    version (linux) return platformX11.wait(timeToWait);
+    version (linux) return platform.wait(timeToWait);
     else version (Windows) return platformWin32.wait(timeToWait);
     else return 0.0;
 }
@@ -4372,7 +4450,7 @@ double wait(double timeToWait)
  */
 bool check()
 {
-    version (linux) return platformX11.check();
+    version (linux) return platform.check();
     else version (Windows) return platformWin32.check();
     else return false;
 }
@@ -4392,7 +4470,7 @@ bool check()
  */
 void flush()
 {
-    version (linux) platformX11.flushDamage();
+    version (linux) platform.flushDamage();
     else version (Windows) platformWin32.flush();
 }
 
@@ -4547,7 +4625,7 @@ TimeoutData[] timeoutList()
 bool ready()
 {
     if (timeToWait(dur!"seconds"(1)) <= Duration.zero) return true;
-    version (linux) return platformX11.eventsReady();
+    version (linux) return platform.eventsReady();
     else return false;
 }
 
@@ -5272,7 +5350,7 @@ int awakeOnce(AwakeHandler handler)
  */
 void beep(Beep type = Beep.default_)
 {
-    version (linux) platformX11.beep(type);
+    version (linux) platform.beep(type);
     else version (Windows) platformWin32.beep(type);
 }
 
@@ -5288,7 +5366,7 @@ void beep(Beep type = Beep.default_)
  */
 bool visual(Mode flags)
 {
-    version (linux) return platformX11.setVisual(flags);
+    version (linux) return onX11() ? platformX11.setVisual(flags) : true;
     else return true;
 }
 
@@ -5307,11 +5385,18 @@ bool visual(Mode flags)
  * loop. `0` on any other platform
  * (matches FLTK's own base `Fl_Screen_Driver::dnd()`, which does
  * nothing and returns `0` too).
+ *
+ * With `localOnly` set, the drag can only be dropped on this program's
+ * own windows: other applications never see it on X11, and releasing
+ * over another application's window cancels the drop on Windows (that
+ * application may still show its own drag feedback while the pointer
+ * is over it). FLTK has no such option; Fluid's widget bin uses it,
+ * since its payload (a widget type name) means nothing outside Fluid.
  */
-int dnd()
+int dnd(bool localOnly = false)
 {
-    version (linux) return platformX11.dnd();
-    else version (Windows) return platformWin32.dnd();
+    version (linux) return platform.dnd(localOnly);
+    else version (Windows) return platformWin32.dnd(localOnly);
     else return 0;
 }
 
@@ -5324,7 +5409,7 @@ int dnd()
  */
 int screenCount()
 {
-    version (linux) return platformX11.screenCount();
+    version (linux) return platform.screenCount();
     else version (Windows) return platformWin32.screenCount();
     else return 1;
 }
@@ -5449,61 +5534,22 @@ package(fl) void currentScale(float factor)
     currentScale_ = factor;
 }
 
-/// Preferences vendor/group/key persisting the last interactively-chosen
-/// GUI scale factor, shared by every fldtk application -- a genuine
-/// fldtk-only addition, not a port of anything: grepping FLTK's
-/// `Fl_Screen_Driver::scale_handler()`/`rescale()` chain in
-/// FLTK's source turns up no `Fl_Preferences` use at all, so
-/// FLTK's own Ctrl-+/Ctrl--/Ctrl-0 handler never remembers the
-/// chosen scale across a restart. Requested explicitly by the user
-/// ("a user-wide setting that remembers the last scale used... a
-/// global factor applying to all applications at once"), which is what
-/// satisfies CONVENTIONS.md's "raise any other beyond-FLTK idea before
-/// acting" rule here -- the user raised it. **Deliberately vendor
-/// `"fldtk"`, not `readOptions_()`'s `"fltk.org"`** -- that pair is a
-/// faithful port reading FLTK's own real `Fl_Option` settings
-/// file on purpose (so `fltk-options`, which ships with real FLTK,
-/// configures this port too); this feature has no FLTK counterpart
-/// at all, so it belongs in fldtk's own namespace, same reasoning
-/// `fluid/app_prefs.d` uses to diverge from
-/// FLTK Fluid's own `"fltk.org"`/`"fluid"` pair. Application
-/// `"core"` (not `"fluid"` or any other single app) since this is
-/// shared, global state for every fldtk application, not one app's own
-/// UI state -- resolves to `~/.config/fldtk/core.prefs`.
+/// Where fldtk remembers the zoom last chosen with Ctrl +/-/0, shared by
+/// every fldtk program -- a fldtk addition: FLTK's scale handler doesn't
+/// remember it. The value is the zoom relative to the base scale (the
+/// desktop's scale times `FLTK_SCALING_FACTOR`, see `baseScale()`), not
+/// the absolute drawing scale, so it means the same on X11, whose base
+/// includes the desktop scale, and on Wayland, whose compositor applies
+/// its scale separately. Vendor `"fldtk"`, application `"core"`:
+/// `~/.config/fldtk/core.prefs`, group `scaling`, key `Zoom`.
 private enum scaleFactorPrefsGroup_ = "scaling";
-private enum scaleFactorPrefsKey_ = "ScaleFactor"; // matches optionKeys_'s PascalCase key-naming style above
+private enum zoomPrefsKey_ = "Zoom"; // PascalCase, like optionKeys_ above
 
-/// Reads the persisted global scale factor written by `persistScaleFactor()`
-/// below, or `float.nan` if none has ever been saved (first run, or a
-/// user preferences file that predates this feature). A plain read with
-/// no caching -- called once, at startup, from `fl.platform_x11.
-/// useStartupScaleFactor()`.
-///
-/// **Always `float.nan` in a `version(unittest)` build, real disk read
-/// skipped entirely** -- found the hard way: `dub test` links against
-/// a live X display on this dev machine, so `fl.draw`'s own display-
-/// needing tests really call `openDisplay()` -> `useStartupScaleFactor()`
-/// -> this function mid-suite, which read the *real*
-/// `~/.config/fldtk/core.prefs` this same feature's own live testing in
-/// Fluid had already written a persisted scale into, silently setting
-/// `screenScale_` to that real value process-wide and failing an
-/// unrelated `screenScale(0) == 1.0f` "starts at its documented
-/// default" assertion later in the same run. Exactly the same category
-/// of bug `resetForTest()`'s own `optionsRead_ = true` comment already
-/// documents for `readOptions_()`/`Fl_Option` and a stray real
-/// `fltk.org/fltk.prefs` -- except that fix works there because
-/// `option()`'s real read is lazy (deferred until first call, so
-/// pre-seeding a "the real read already ran" flag before any test body
-/// executes suppresses it every time); this one is eager, unconditional
-/// disk I/O the moment *any* module's test happens to trigger
-/// `openDisplay()`, before any test-specific reset flag could run.
-/// `version(unittest)` (checked at compile time, so it's unaffected by
-/// which module's unittest happens to run first) is the right tool
-/// instead: the whole `fldtk-test-library` test-runner binary simply
-/// never touches this file, matching `CONVENTIONS.md`'s "Shared static
-/// state needs hermetic tests" convention as directly as `optionsRead_`
-/// does, just via a different mechanism suited to eager vs. lazy reads.
-package(fl) float loadPersistedScaleFactor()
+/// The zoom `persistZoom()` last stored, or `float.nan` when none was.
+/// Called once at startup by the platform's `useStartupScaleFactor()`.
+/// Always `float.nan` in a unittest build, so the tests never depend on
+/// the user's preferences file.
+package(fl) float loadPersistedZoom()
 {
     version (unittest) return float.nan;
     else
@@ -5513,30 +5559,23 @@ package(fl) float loadPersistedScaleFactor()
         auto prefs = new prefsmod.Preferences(prefsmod.rootCoreUserL, "fldtk", "core");
         auto scalePrefs = new prefsmod.Preferences(prefs, scaleFactorPrefsGroup_);
         float value;
-        if (scalePrefs.get(scaleFactorPrefsKey_, value, -1.0f) && value > 0)
+        if (scalePrefs.get(zoomPrefsKey_, value, -1.0f) && value > 0)
             return value;
         return float.nan;
     }
 }
 
-/// Writes `factor` to the same user-level `Fl_Preferences` location
-/// `loadPersistedScaleFactor()` reads, so the next process (this one or
-/// any other fldtk application) starts up at this scale -- called from
-/// `scaleHandler()` after every successful live rescale via Ctrl-+/
-/// Ctrl--/Ctrl-0. **Calls `.flush()` explicitly** -- `set()` alone only
-/// marks the in-memory tree dirty; per `fl.preferences`'s own module
-/// doc comment, a GC-collected `Preferences`/`RootNode`'s `~this()`
-/// (which would otherwise write a dirty tree) may run late or not at
-/// all before the process exits, so relying on it here would silently drop
-/// every rescale made shortly before quitting (e.g. scaling to 150%,
-/// closing, and reopening at 100% instead).
-private void persistScaleFactor(float factor)
+/// Stores `zoom` for the next fldtk program to start with -- called by
+/// `scaleHandler()` after each Ctrl +/-/0. Flushed at once: a
+/// `Preferences` object finalized by the garbage collector may write late
+/// or never.
+private void persistZoom(float zoom)
 {
     import prefsmod = fl.preferences;
 
     auto prefs = new prefsmod.Preferences(prefsmod.rootCoreUserL, "fldtk", "core");
     auto scalePrefs = new prefsmod.Preferences(prefs, scaleFactorPrefsGroup_);
-    scalePrefs.set(scaleFactorPrefsKey_, factor);
+    scalePrefs.set(zoomPrefsKey_, zoom);
     prefs.flush();
 }
 
@@ -5611,8 +5650,8 @@ void normalizedScreenScale(int n, float factor)
 /// Explicitly seeds screen `n`'s `baseScale()` reference value -- called
 /// once per screen at startup (`fl.platform_x11.useStartupScaleFactor()`/
 /// `fl.platform_win32.seedScaleFromPrimaryMonitor()`), right after
-/// desktop-scale detection is established but *before* any persisted-
-/// scale override (`loadPersistedScaleFactor()`) is applied on top.
+/// desktop-scale detection is established but *before* the remembered
+/// zoom (`loadPersistedZoom()`) is applied on top.
 /// Without this, `baseScale()`'s plain lazy-capture fallback would seed
 /// itself from whatever `screenScale()` already is the first time any
 /// Ctrl-+/Ctrl--/Ctrl-0 press needs it -- which, with a
@@ -5770,12 +5809,23 @@ private void transientScaleDisplay(float f, int nscreen)
     win.setNonModal();
     win.screenNum(nscreen);
     win.forcePosition(true);
-
     if (transientScaleWindow_ !is null)
     {
         removeTimeout(delTransientWindowHandler());
         delTransientWindow();
     }
+    version (linux)
+    {
+        // Wayland has no screen positions: as FLTK does there, the
+        // indicator is a tooltip-like popup centred on the top window.
+        if (!onX11())
+        {
+            if (auto top = firstWindow())
+                win.position((top.w() - win.w()) / 2, (top.h() - win.h()) / 2);
+            win.setTooltipWindow();
+        }
+    }
+
     transientScaleWindow_ = win;
     win.show();
     addTimeout(1, delTransientWindowHandler());
@@ -5821,8 +5871,9 @@ package(fl) void rescaleAllWindowsFromScreen(int screen, float f, float oldF)
  * Responds to Ctrl-'+'/Ctrl-'-'/Ctrl-'0' (Ctrl-'=' is the same key as
  * Ctrl-'+' on most layouts) by rescaling every window on the focused
  * widget's screen -- ported verbatim from `Fl_Screen_Driver::scale_
- * handler()`. Installed as an event handler by `fl.platform_x11.
- * openDisplay()`; not exported, since
+ * handler()`. Installed as an event handler when the display opens
+ * (`fl.platform_x11`/`fl.platform_wayland`'s `openDisplay()`); not
+ * exported, since
  * FLTK's own equivalent isn't public API either -- `Fl::add_
  * handler()` is how callers ever see the effect (via `Event.zoomEvent`,
  * dispatched after a successful rescale) or disable it entirely
@@ -5903,14 +5954,14 @@ private int scaleHandler(Event event)
     if (f == oldF) return 1;
 
     rescaleAllWindowsFromScreen(screen, f * initialScale, screenScale(screen));
-    persistScaleFactor(screenScale(screen));
+    persistZoom(f);
     transientScaleDisplay(f, screen);
     dispatch(Event.zoomEvent, null);
     return 1;
 }
 
-/// Installs `scaleHandler()` -- called once from `fl.platform_x11.
-/// openDisplay()`'s own one-time setup, matching FLTK's exact call
+/// Installs `scaleHandler()` -- called once from the platform's
+/// `openDisplay()` one-time setup (X11 or Wayland), matching FLTK's exact call
 /// site and timing (`Fl_Screen_Driver::open_display()`, at the end of
 /// `open_display_platform()`). Registered via the two-argument
 /// `addHandler()` overload, right after whatever was most recently
@@ -5942,7 +5993,7 @@ package(fl) void installScaleHandler()
 void screenDpi(out float h, out float v, int n = 0)
 {
     h = v = 0.0f;
-    version (linux) platformX11.screenDpi(h, v, n);
+    version (linux) platform.screenDpi(h, v, n);
     else version (Windows) platformWin32.screenDpi(h, v, n);
 }
 
@@ -5952,7 +6003,7 @@ void screenDpi(out float h, out float v, int n = 0)
 /// non-Linux platforms.
 void screenXYWH(out int x, out int y, out int w, out int h, int n)
 {
-    version (linux) platformX11.screenXYWH(x, y, w, h, n);
+    version (linux) platform.screenXYWH(x, y, w, h, n);
     else version (Windows) platformWin32.screenXYWH(x, y, w, h, n);
 }
 
@@ -5996,7 +6047,7 @@ void screenXYWH(out int x, out int y, out int w, out int h)
  */
 void screenWorkArea(out int x, out int y, out int w, out int h, int n)
 {
-    version (linux) platformX11.screenWorkArea(x, y, w, h, n);
+    version (linux) platform.screenWorkArea(x, y, w, h, n);
     else version (Windows) platformWin32.screenWorkArea(x, y, w, h, n);
     else screenXYWH(x, y, w, h, n);
 }
@@ -6036,7 +6087,7 @@ int h() { int rx, ry, rw, rh; screenWorkArea(rx, ry, rw, rh, 0); return rh; } //
 /// non-Linux platforms).
 int screenNum(int x, int y)
 {
-    version (linux) return platformX11.screenNum(x, y);
+    version (linux) return platform.screenNum(x, y);
     else version (Windows)
     {
         int r = platformWin32.screenNum(x, y);
@@ -6049,7 +6100,7 @@ int screenNum(int x, int y)
 /// monitor overlapping rectangle `(x,y,w,h)` the most, by pixel area.
 int screenNum(int x, int y, int w, int h)
 {
-    version (linux) return platformX11.screenNum(x, y, w, h);
+    version (linux) return platform.screenNum(x, y, w, h);
     else version (Windows)
     {
         // fl.platform_win32 doesn't yet have a real "most-overlap"
@@ -6103,6 +6154,10 @@ void clearWidgetPointer(Widget w)
         if (*entry is w) *entry = null;
 
     fl.tooltip.exit(w);
+    import fl.pen : forgetPenWidget;
+    forgetPenWidget(w);
+    import fl.touch : forgetTouchWidget;
+    forgetTouchWidget(w);
 }
 
 /// The widget-watch list backing fl.widget_tracker's WidgetTracker --
