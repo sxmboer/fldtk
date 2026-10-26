@@ -93,7 +93,7 @@ import fluid.grid_node : GridNode;
 import fluid.flex_node : FlexNode;
 import fluid.layout_edit : flexInsertChildAt, flexKeyboardMoveChild, gridInsertChildAt,
     gridKeyboardMoveChild, gridChildResized, syncLayoutFromLive;
-import fluid.instantiate : instantiate, LiveTree, geometryFromLive, syncDescendantsFromLive, nestedWindowFactory, idealSizeFor, menuItemNodeMap, applyMenuItems;
+import fluid.instantiate : instantiate, LiveTree, geometryFromLive, syncDescendantsFromLive, nestedWindowFactory, idealSizeFor, standsUp, menuItemNodeMap, applyMenuItems;
 import fluid.menu_item_node : MenuItemNode;
 import fluid.snap_action : SnapData, checkAll, drawAll, getMoveStepsize, getResizeStepsize;
 
@@ -1685,7 +1685,10 @@ final class ProjectCanvas : OverlayWindow
                         pw = (*pwid).w();
                         ph = (*pwid).h();
                     }
-                idealSizeFor(dragOrigins_[0].node.typeName, data.wgtIdealW, data.wgtIdealH, pw, ph);
+                auto dn = dragOrigins_[0].node;
+                auto dwn = cast(WidgetNode) dn;
+                idealSizeFor(dn.typeName, data.wgtIdealW, data.wgtIdealH, pw, ph,
+                    dwn !is null && standsUp(dn.typeName, dwn.typeWord));
                 checkAll(data);
                 if (data.xDist < 4) ddx = data.dxOut;
                 if (data.yDist < 4) ddy = data.dyOut;
@@ -2259,3 +2262,4 @@ shared static this()
 {
     nestedWindowFactory = (WindowNode wn, string projectDir) => cast(Widget) new ProjectCanvas(wn, projectDir);
 }
+

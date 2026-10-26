@@ -993,7 +993,8 @@ damage-rectangle-clipped repainting; window manager negotiation (size
 hints, fullscreen/maximize/iconify via EWMH, icons via `_NET_WM_ICON`,
 `WM_CLASS`/`_NET_WM_PID`/etc.); real X11 clipboard ownership (text and
 image, with instant Xfixes-based change notification and a polling
-fallback); full XDND drag-and-drop (same-process and cross-application);
+fallback); full XDND drag-and-drop (same-process and cross-application,
+with the dragged text shown next to the pointer);
 real XIM/IME composition (including "preedit at cursor spot" positioning);
 and multi-monitor/Xinerama-aware screen geometry, including keeping a
 new top-level window on screen as `make_xid()` does (clamped to the
@@ -1239,8 +1240,6 @@ Missing:
   fullscreen on its current screen; spanning screens needs the X11
   backend. FLTK sizes a borderless window to cover the screens and leaves
   its placement to the compositor, which can leave it partly off screen.
-- Drag and drop with `localOnly` (a fldtk addition) can't be limited to
-  the program: the compositor offers the drag to every program.
 - The work area: the whole of screen 0 is reported, where FLTK measures
   it with maximized test windows.
 
@@ -5105,7 +5104,15 @@ dialog already applies its own edit live, unlike FLTK's own
 balance check of the widget's code, callback and user data
 (`fluid.code_check`, extended for D's backtick/`r"..."` strings and
 `/+ +/` comments): an unbalanced one reports "Error in code/callback/
-user_data: ..." and keeps the panel open. An image file that can't be
+user_data: ..." and keeps the panel open. A property that isn't set
+shows the value the widget actually has (read from its widget on the
+canvas, or from a widget of its class with nothing set), and an edit
+that sets a property to its class default unsets it again, so only
+real differences are saved and generated
+(`fluid.instantiate.defaultWidgetFor()`/`clearDefaultProperties()`).
+A control with no effect in the current state is inactive: the Inside
+alignment button shows pressed and inactive for a centred label. An
+image file that can't be
 opened or decoded is reported with FLTK's "Can't open image file" /
 "Can't read image file" messages, once per path per loaded project.
 `rdmd buildfluid.d` regenerates all three files like every other panel,

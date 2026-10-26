@@ -481,6 +481,7 @@ alias KeySym = c_ulong;
 /// for XCreateFontCursor(). Only the ones fl.platform_x11's
 /// setCursor() actually uses are named -- same "only what's used"
 /// scoping this file's other constant blocks follow.
+enum uint XC_X_cursor = 0;
 enum uint XC_left_ptr = 68;
 enum uint XC_tcross = 130;
 enum uint XC_watch = 150;

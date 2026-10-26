@@ -993,14 +993,30 @@ decl {/// FLTK: `wp_gui_values`'s own LOAD-side field population.
 /// own `applyProperties()` already uses for these same type families.
 private void loadValuesFields(WidgetNode wn)
 \{
-    auto liveW = liveTree_.widgetOf.get(wn, null);
+    // An unset value shows what the widget actually has.
+    auto liveW = shownWidget(wn);
 
     if (cast(Slider) liveW !is null) valuesSize.activate();
     else valuesSize.deactivate();
     double sliderSizeVal = 0;
+    if (auto slider = cast(Slider) liveW) sliderSizeVal = slider.sliderSize();
     if (wn.hasSliderSize)
-        try sliderSizeVal = to!double(wn.sliderSizeRaw); catch (ConvException) sliderSizeVal = 0;
+        try sliderSizeVal = to!double(wn.sliderSizeRaw); catch (ConvException) \{\}
     valuesSize.value(sliderSizeVal);
+
+    double minimumVal = 0, maximumVal = 1, stepVal = 0, valueVal = 0;
+    if (auto val = cast(Valuator) liveW)
+    \{
+        minimumVal = val.minimum(); maximumVal = val.maximum();
+        stepVal = val.step(); valueVal = val.value();
+    \}
+    else if (auto sp = cast(Spinner) liveW)
+    \{
+        minimumVal = sp.minimum(); maximumVal = sp.maximum();
+        stepVal = sp.step(); valueVal = sp.value();
+    \}
+    else if (auto btn = cast(Button) liveW)
+        valueVal = btn.value();
 
     bool isValuatorOrSpinner = cast(Valuator) liveW !is null || cast(Spinner) liveW !is null;
     if (isValuatorOrSpinner)
@@ -1031,21 +1047,17 @@ private void loadValuesFields(WidgetNode wn)
         valuesValue.activate();
     else
         valuesValue.deactivate();
-    double minimumVal = 0;
     if (wn.hasMinimum)
-        try minimumVal = to!double(wn.minimumRaw); catch (ConvException) minimumVal = 0;
+        try minimumVal = to!double(wn.minimumRaw); catch (ConvException) \{\}
     valuesMinimum.value(minimumVal);
-    double maximumVal = 1;
     if (wn.hasMaximum)
-        try maximumVal = to!double(wn.maximumRaw); catch (ConvException) maximumVal = 1;
+        try maximumVal = to!double(wn.maximumRaw); catch (ConvException) \{\}
     valuesMaximum.value(maximumVal);
-    double stepVal = 0;
     if (wn.hasStep)
-        try stepVal = to!double(wn.stepRaw); catch (ConvException) stepVal = 0;
+        try stepVal = to!double(wn.stepRaw); catch (ConvException) \{\}
     valuesStep.value(stepVal);
-    double valueVal = 0;
     if (wn.hasValue)
-        try valueVal = to!double(wn.valueRaw); catch (ConvException) valueVal = 0;
+        try valueVal = to!double(wn.valueRaw); catch (ConvException) \{\}
     valuesValue.value(valueVal);
 \}
 
@@ -1233,9 +1245,36 @@ private void onAlignBitChanged(int bit, bool set)
 \{
     foreach (wn; selectedWidgetNodes())
     \{
-        int x = wn.alignRaw >= 0 ? wn.alignRaw : cast(int) alignLeft;
+        int x = effectiveAlign(wn);
         wn.alignRaw = set ? (x | bit) : (x & ~bit);
     \}
+\}
+
+/// What the panel shows for an unset property of `wn`: its widget on the
+/// design canvas, built with only the properties that are set, or else a
+/// widget of its class with nothing set. Null for a menu item.
+private Widget shownWidget(WidgetNode wn)
+\{
+    if (auto w = liveTree_.widgetOf.get(wn, null)) return w;
+    return defaultWidgetFor(wn);
+\}
+
+/// The label alignment in effect for `wn`.
+private int effectiveAlign(WidgetNode wn)
+\{
+    if (wn.alignRaw >= 0) return wn.alignRaw;
+    auto w = shownWidget(wn);
+    return w !is null ? cast(int) w.alignment() : 0;
+\}
+
+/// Shows alignment `a` on the Inside button. A centred label is always
+/// inside, so for one the button is pressed and inactive.
+private void showInside(int a, bool editable)
+\{
+    bool centred = (a & alignPositionMask) == alignCenter;
+    alignInsideBtn.value(centred || (a & alignInside) != 0);
+    if (editable && !centred) alignInsideBtn.activate();
+    else alignInsideBtn.deactivate();
 \}}
   {
     private
@@ -1327,16 +1366,20 @@ else if (widgetTabGridChild.parent() is widgetTabs)
 
 wpGuiLabel.value(wn.label);
 
-int ltIdx = cast(int) labeltypeKeywords[].countUntil(wn.labeltype);
+// An unset property shows what the widget actually has (`shownWidget()`).
+auto shown = shownWidget(wn);
+
+string ltKeyword = wn.labeltype;
+if (!ltKeyword.length && shown !is null) ltKeyword = labeltypeKeyword(shown.labeltype());
+int ltIdx = cast(int) labeltypeKeywords[].countUntil(ltKeyword);
 if (ltIdx >= 0) wpGuiLabeltype.value(ltIdx);
 
 widgetImageInput.value(wn.imageFilename);
 widgetDeimageInput.value(wn.deimageFilename);
 
-int align_ = wn.alignRaw >= 0 ? wn.alignRaw : cast(int) alignLeft;
+int align_ = effectiveAlign(wn);
 alignClipBtn.value((align_ & alignClip) != 0);
 alignWrapBtn.value((align_ & alignWrap) != 0);
-alignInsideBtn.value((align_ & alignInside) != 0);
 int posIdx = cast(int) alignPositionChoiceValues[].countUntil(align_ & alignPositionMask);
 if (posIdx >= 0) wpGuiAlignPosChoice.value(posIdx);
 int imgIdx = cast(int) alignImageChoiceValues[].countUntil(align_ & alignImageMask);
@@ -1494,44 +1537,68 @@ wpGuiTooltip.value(wn.tooltip);
 
 // ---- Style tab ----
 bool isMenuItem = mi !is null;
-int labelfontIdx = wn.labelfont;
+int labelfontIdx = wn.labelfont >= 0 ? wn.labelfont
+    : shown !is null ? cast(int) shown.labelfont() : 0;
 if (labelfontIdx < 0 || labelfontIdx > 15) labelfontIdx = 0;
 styleLabelFont.value(labelfontIdx);
-styleLabelSize.value(wn.labelsize > 0 ? wn.labelsize : 14);
+styleLabelSize.value(wn.labelsize > 0 ? wn.labelsize : shown !is null ? shown.labelsize() : 14);
 \{
-  Color c = wn.labelcolorRaw >= 0 ? cast(Color) wn.labelcolorRaw : black;
+  Color c = wn.labelcolorRaw >= 0 ? cast(Color) wn.labelcolorRaw
+      : shown !is null ? shown.labelcolor() : black;
   wLabelcolor.color(c);
   wLabelcolor.labelcolor(contrast(black, c));
 \}
 
 if (isMenuItem) styleBox.deactivate(); else styleBox.activate();
-int boxIdx = wn.hasBoxtype ? cast(int) boxtypeNames.countUntil(wn.boxtype) : -1;
+string boxKeyword = wn.hasBoxtype ? wn.boxtype
+    : shown !is null ? boxtypeKeyword(shown.box()) : null;
+int boxIdx = boxKeyword.length ? cast(int) boxtypeNames.countUntil(boxKeyword) : -1;
 if (boxIdx >= 0) styleBox.value(styleBoxMenuIdx[boxIdx]);
 \{
-  Color c = wn.color >= 0 ? cast(Color) wn.color : backgroundColor;
+  Color c = wn.color >= 0 ? cast(Color) wn.color
+      : shown !is null ? shown.color() : backgroundColor;
   wColor.color(c);
   wColor.labelcolor(contrast(black, c));
 \}
 
-int downBoxIdx = wn.hasDownBoxtype ? cast(int) boxtypeNames.countUntil(wn.downBoxtype) : -1;
+string downBoxKeyword = wn.downBoxtype;
+\{
+  Boxtype shownDownBox;
+  if (!wn.hasDownBoxtype)
+    downBoxKeyword = shown !is null && getDownBox(shown, shownDownBox)
+        ? boxtypeKeyword(shownDownBox) : null;
+\}
+int downBoxIdx = downBoxKeyword.length ? cast(int) boxtypeNames.countUntil(downBoxKeyword) : -1;
 if (downBoxIdx >= 0) styleDownbox.value(styleDownboxMenuIdx[downBoxIdx]);
 \{
-  Color c = wn.selectionColor >= 0 ? cast(Color) wn.selectionColor : selectionColor;
+  Color c = wn.selectionColor >= 0 ? cast(Color) wn.selectionColor
+      : shown !is null ? shown.selectionColor() : selectionColor;
   wSelectcolor.color(c);
   wSelectcolor.labelcolor(contrast(black, c));
 \}
 
-styleTextFont.value(wn.textfont >= 0 && wn.textfont <= 15 ? wn.textfont : 0);
-styleTextSize.value(wn.textsize > 0 ? wn.textsize : 14);
 \{
-  Color c = wn.textcolorRaw >= 0 ? cast(Color) wn.textcolorRaw : black;
+  Font shownTextFont = helvetica;
+  int shownTextSize = 14;
+  if (shown !is null) getTextStuff(shown, shownTextFont, shownTextSize);
+  int tf = wn.textfont >= 0 ? wn.textfont : cast(int) shownTextFont;
+  styleTextFont.value(tf >= 0 && tf <= 15 ? tf : 0);
+  styleTextSize.value(wn.textsize > 0 ? wn.textsize : shownTextSize);
+\}
+\{
+  Color shownTextColor = black;
+  if (shown !is null) getTextColor(shown, shownTextColor);
+  Color c = wn.textcolorRaw >= 0 ? cast(Color) wn.textcolorRaw : shownTextColor;
   wTextcolor.color(c);
   wTextcolor.labelcolor(contrast(black, c));
 \}
 
-marginHorizontal.value(wn.hLabelMargin >= 0 ? wn.hLabelMargin : 0);
-marginVertical.value(wn.vLabelMargin >= 0 ? wn.vLabelMargin : 0);
-marginImageGap.value(wn.imageSpacing >= 0 ? wn.imageSpacing : 0);
+marginHorizontal.value(wn.hLabelMargin >= 0 ? wn.hLabelMargin
+    : shown !is null ? shown.horizontalLabelMargin() : 0);
+marginVertical.value(wn.vLabelMargin >= 0 ? wn.vLabelMargin
+    : shown !is null ? shown.verticalLabelMargin() : 0);
+marginImageGap.value(wn.imageSpacing >= 0 ? wn.imageSpacing
+    : shown !is null ? shown.labelImageSpacing() : 0);
 
 auto liveForGating = liveTree_.widgetOf.get(wn, null);
 if (isMenuItem || cast(Button) liveForGating is null)
@@ -1541,7 +1608,8 @@ if (isMenuItem || cast(Button) liveForGating is null)
 else
   \{
     styleCompact.show();
-    styleCompact.value(wn.compactRaw == "1");
+    styleCompact.value(wn.compactRaw.length ? wn.compactRaw == "1"
+        : (cast(Button) liveForGating).compact());
   \}
 
 // ---- C++ tab ----
@@ -1675,7 +1743,7 @@ else
   // a menu item has no label alignment of its own.
   gate(alignClipBtn, !isMenuItem);
   gate(alignWrapBtn, !isMenuItem);
-  gate(alignInsideBtn, !isMenuItem);
+  showInside(align_, !isMenuItem);
   gate(wpGuiAlignPosChoice, !isMenuItem);
   gate(wpGuiAlignImageChoice, !isMenuItem);
 
@@ -2108,6 +2176,10 @@ root.callback((w) \{
       if (layoutContainer !is null)
         syncLayoutFromLive(layoutContainer, liveTree_);
     \}
+  // A property set back to its class default goes back to unset, so it is
+  // neither saved nor generated. The live widget already has the value.
+  foreach (wn; selectedWidgetNodes())
+    clearDefaultProperties(wn);
   // A menu item has no live widget of its own: as in FLTK's
   // `Widget_Node::redraw()`, an edit to one rebuilds the menu it sits in.
   foreach (wn; selectedWidgetNodes())
@@ -2471,7 +2543,7 @@ int v = alignImageChoiceValues[idx];
 if (v == -1) return; // the bold "Image Alignment" header -- not a real selection
 foreach (wn; selectedWidgetNodes())
 \{
-  int x = wn.alignRaw >= 0 ? wn.alignRaw : cast(int) alignLeft;
+  int x = effectiveAlign(wn);
   wn.alignRaw = (x & ~alignImageMask) | v;
 \}}
                             xywh {172 115 116 20}
@@ -2526,9 +2598,13 @@ int v = alignPositionChoiceValues[idx];
 if (v == -1) return; // one of the two bold section headers -- not a real selection
 foreach (wn; selectedWidgetNodes())
 \{
-  int x = wn.alignRaw >= 0 ? wn.alignRaw : cast(int) alignLeft;
-  wn.alignRaw = (x & ~alignPositionMask) | v;
-\}}
+  int x = (effectiveAlign(wn) & ~alignPositionMask) | v;
+  // Centred is always inside: a set Inside bit would only add code.
+  if (v == alignCenter) x &= ~alignInside;
+  wn.alignRaw = x;
+\}
+if (auto pn = cast(WidgetNode) primaryNode_)
+  showInside(effectiveAlign(pn), true);}
                             xywh {293 115 86 20}
                             down_box BORDER_BOX
                             labelsize 11
@@ -3329,9 +3405,7 @@ foreach (wn; selectedWidgetNodes())
                         Button wLabelcolor
                           {
                             label {Label Color}
-                            callback {Color c = black;
-auto wn = cast(WidgetNode) primaryNode_;
-if (wn !is null && wn.labelcolorRaw >= 0) c = cast(Color) wn.labelcolorRaw;
+                            callback {Color c = wLabelcolor.color();
 Color d = showColormap(c);
 if (d == c) return;
 applyLabelColor(d);}
@@ -3384,9 +3458,7 @@ foreach (wn; selectedWidgetNodes())
                         Button wColor
                           {
                             label {Color}
-                            callback {Color c = backgroundColor;
-auto wn = cast(WidgetNode) primaryNode_;
-if (wn !is null && wn.color >= 0) c = cast(Color) wn.color;
+                            callback {Color c = wColor.color();
 Color d = showColormap(c);
 if (d == c) return;
 applyColor(d);}
@@ -3439,9 +3511,7 @@ foreach (wn; selectedWidgetNodes())
                         Button wSelectcolor
                           {
                             label {Select Color}
-                            callback {Color c = selectionColor;
-auto wn = cast(WidgetNode) primaryNode_;
-if (wn !is null && wn.selectionColor >= 0) c = cast(Color) wn.selectionColor;
+                            callback {Color c = wSelectcolor.color();
 Color d = showColormap(c);
 if (d == c) return;
 applySelectColor(d);}
@@ -3503,9 +3573,7 @@ foreach (wn; selectedWidgetNodes())
                         Button wTextcolor
                           {
                             label {Text Color}
-                            callback {Color c = black;
-auto wn = cast(WidgetNode) primaryNode_;
-if (wn !is null && wn.textcolorRaw >= 0) c = cast(Color) wn.textcolorRaw;
+                            callback {Color c = wTextcolor.color();
 Color d = showColormap(c);
 if (d == c) return;
 applyTextColor(d);}

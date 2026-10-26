@@ -43,6 +43,13 @@ import fl;
 /// pointer's screen position. Set by `gui_main.d`.
 void delegate(int x, int y) onWindowDropped;
 
+/// Whether `window` takes a widget dragged from the bin; while such a
+/// drag runs, every other window is offered no drag-and-drop events, so
+/// the drag shows it can't be dropped there and nothing there pastes the
+/// type name as text. Null lets every window take it. Set by
+/// `gui_main.d`.
+bool delegate(Widget window) acceptsWidgetDrop;
+
 final class BinButton : Button
 {
     private string typeName_;
@@ -98,6 +105,15 @@ final class BinButton : Button
                 super.handle(Event.release);
                 // make it into a dnd event
                 fl.copy(typeName_, 0);
+                auto saved = fl.core.eventDispatch();
+                if (acceptsWidgetDrop !is null)
+                    fl.core.eventDispatch((Event e, Widget win) {
+                        if ((e == Event.dndEnter || e == Event.dndDrag || e == Event.dndRelease)
+                            && !acceptsWidgetDrop(win))
+                            return 0;
+                        return saved !is null ? saved(e, win) : fl.core.handle(e, win);
+                    });
+                scope (exit) fl.core.eventDispatch(saved);
                 fl.dnd(true); // only Fluid's own windows can take it
                 return 1;
             }

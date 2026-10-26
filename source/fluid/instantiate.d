@@ -939,7 +939,7 @@ private alias TextStuffTypes = AliasSeq!(Input_, ValueOutput, ValueInput, ValueS
     Menu_, Browser_, Counter, Spinner, TextDisplay, HelpView, Terminal, InputChoice);
 
 /// Reads `w`'s text font and size; `false` if `w` has none.
-package(fluid) bool getTextStuff(Widget w, out Font font, out int size)
+bool getTextStuff(Widget w, out Font font, out int size)
 {
     foreach (T; TextStuffTypes)
         if (auto t = cast(T) w)
@@ -949,6 +949,214 @@ package(fluid) bool getTextStuff(Widget w, out Font font, out int size)
             return true;
         }
     return false;
+}
+
+/// Reads `w`'s text color; `false` if `w` has none.
+bool getTextColor(Widget w, out Color color)
+{
+    foreach (T; TextStuffTypes)
+        if (auto t = cast(T) w)
+        {
+            static if (__traits(compiles, t.textcolor()))
+            {
+                color = t.textcolor();
+                return true;
+            }
+            else
+                return false;
+        }
+    return false;
+}
+
+private void setTextColor(Widget w, Color color)
+{
+    foreach (T; TextStuffTypes)
+        if (auto t = cast(T) w)
+        {
+            static if (__traits(compiles, t.textcolor(color)))
+                t.textcolor(color);
+            return;
+        }
+}
+
+/// Reads the down box of `w`; `false` if `w` has none.
+bool getDownBox(Widget w, out Boxtype box)
+{
+    if (auto btn = cast(Button) w) box = btn.downBox();
+    else if (auto m = cast(Menu_) w) box = m.downBox();
+    else if (auto fi = cast(FileInput) w) box = fi.downBox();
+    else if (auto ic = cast(InputChoice) w) box = ic.downBox();
+    else return false;
+    return true;
+}
+
+/// The `.fl` keyword of boxtype `b`, or null.
+string boxtypeKeyword(Boxtype b)
+{
+    foreach (k, v; boxtypeMap)
+        if (v == b) return k;
+    return null;
+}
+
+/// The `.fl` keyword of label type `t`, or null.
+string labeltypeKeyword(Labeltype t)
+{
+    foreach (k, v; labeltypeMap)
+        if (v == t) return k;
+    return null;
+}
+
+private Widget[string] defaultWidgets_;
+
+/**
+ * A widget of `n`'s class and subtype with nothing else set, built once
+ * per class and subtype and never shown: its properties are the values
+ * an unset property of `n` has. Null for a node with no widget class
+ * (a menu item, say).
+ */
+Widget defaultWidgetFor(WidgetNode n)
+{
+    string key = n.typeName ~ "\0" ~ n.typeWord;
+    if (auto w = key in defaultWidgets_) return *w;
+
+    auto saved = FlGroup.current();
+    FlGroup.current(null);
+    scope (exit) FlGroup.current(saved);
+    Widget w;
+    if (cast(WindowNode) n !is null)
+        w = new Window(100, 100);
+    else if (auto ctor = n.typeName in registry)
+        w = (*ctor)(0, 0, 100, 100, null);
+    if (w is null) return null;
+    if (auto g = cast(FlGroup) w) g.end();
+    if (n.typeWord.length && cast(WindowNode) n is null)
+    {
+        if (auto st = subtypeFor(n.typeName, n.typeWord))
+            w.type(st.value);
+        else if (auto p = n.typeWord in typeWordValueMap)
+            w.type(*p);
+    }
+    defaultWidgets_[key] = w;
+    return w;
+}
+
+/**
+ * Unsets every property of `n` whose value is what its class has by
+ * default, so it is neither saved nor generated: a property set back to
+ * its default goes back to unset.
+ */
+void clearDefaultProperties(WidgetNode n)
+{
+    auto d = defaultWidgetFor(n);
+    if (d is null) return;
+
+    static bool parse(string raw, out double v)
+    {
+        try { v = to!double(raw); return true; }
+        catch (Exception) { return false; }
+    }
+
+    if (n.hasBoxtype)
+        if (auto p = n.boxtype in boxtypeMap)
+            if (*p == d.box()) { n.boxtype = null; n.hasBoxtype = false; }
+    Boxtype downBox;
+    if (n.hasDownBoxtype && getDownBox(d, downBox))
+        if (auto p = n.downBoxtype in boxtypeMap)
+            if (*p == downBox) { n.downBoxtype = null; n.hasDownBoxtype = false; }
+    if (n.color >= 0 && n.color == cast(int) d.color()) n.color = -1;
+    if (n.selectionColor >= 0 && n.selectionColor == cast(int) d.selectionColor()) n.selectionColor = -1;
+    if (n.labelcolorRaw >= 0 && n.labelcolorRaw == cast(int) d.labelcolor()) n.labelcolorRaw = -1;
+    if (n.labelfont >= 0 && n.labelfont == cast(int) d.labelfont()) n.labelfont = -1;
+    if (n.labelsize >= 0 && n.labelsize == d.labelsize()) n.labelsize = -1;
+    if (n.labeltype.length)
+        if (auto p = n.labeltype in labeltypeMap)
+            if (*p == d.labeltype()) n.labeltype = null;
+    if (n.alignRaw >= 0 && n.alignRaw == cast(int) d.alignment()) n.alignRaw = -1;
+    if (n.whenRaw >= 0 && n.whenRaw == cast(int) d.when()) n.whenRaw = -1;
+
+    Font font;
+    int size;
+    if (getTextStuff(d, font, size))
+    {
+        if (n.textfont >= 0 && n.textfont == cast(int) font) n.textfont = -1;
+        if (n.textsize >= 0 && n.textsize == size) n.textsize = -1;
+    }
+    Color textColor;
+    if (n.textcolorRaw >= 0 && getTextColor(d, textColor) && n.textcolorRaw == cast(int) textColor)
+        n.textcolorRaw = -1;
+
+    if (n.hLabelMargin >= 0 && n.hLabelMargin == d.horizontalLabelMargin()) n.hLabelMargin = -1;
+    if (n.vLabelMargin >= 0 && n.vLabelMargin == d.verticalLabelMargin()) n.vLabelMargin = -1;
+    if (n.imageSpacing >= 0 && n.imageSpacing == d.labelImageSpacing()) n.imageSpacing = -1;
+
+    if (auto btn = cast(Button) d)
+    {
+        if (n.compactRaw.length && (n.compactRaw == "1") == btn.compact())
+        {
+            n.compactRaw = null;
+            n.hasCompact = false;
+        }
+    }
+
+    double v;
+    if (auto slider = cast(Slider) d)
+        if (n.hasSliderSize && parse(n.sliderSizeRaw, v) && cast(float) v == slider.sliderSize())
+        {
+            n.sliderSizeRaw = null;
+            n.hasSliderSize = false;
+        }
+    double minimum, maximum, step, value;
+    bool hasRange = true;
+    if (auto val = cast(Valuator) d)
+    {
+        minimum = val.minimum(); maximum = val.maximum(); step = val.step(); value = val.value();
+    }
+    else if (auto sp = cast(Spinner) d)
+    {
+        minimum = sp.minimum(); maximum = sp.maximum(); step = sp.step(); value = sp.value();
+    }
+    else
+    {
+        hasRange = false;
+        if (auto btn = cast(Button) d) value = btn.value();
+        else value = double.nan;
+    }
+    if (hasRange)
+    {
+        if (n.hasMinimum && parse(n.minimumRaw, v) && v == minimum) { n.minimumRaw = null; n.hasMinimum = false; }
+        if (n.hasMaximum && parse(n.maximumRaw, v) && v == maximum) { n.maximumRaw = null; n.hasMaximum = false; }
+        if (n.hasStep && parse(n.stepRaw, v) && v == step) { n.stepRaw = null; n.hasStep = false; }
+    }
+    if (n.hasValue && parse(n.valueRaw, v) && v == value) { n.valueRaw = null; n.hasValue = false; }
+}
+
+unittest
+{
+    // A property equal to the class default goes back to unset; one that
+    // differs stays.
+    auto n = new WidgetNode();
+    n.typeName = "Button";
+    auto d = defaultWidgetFor(n);
+    assert(d !is null && defaultWidgetFor(n) is d);
+    n.alignRaw = cast(int) d.alignment();
+    n.boxtype = boxtypeKeyword(d.box());
+    n.hasBoxtype = true;
+    n.valueRaw = "0";
+    n.hasValue = true;
+    n.labelsize = d.labelsize() + 2;
+    clearDefaultProperties(n);
+    assert(n.alignRaw == -1 && !n.hasBoxtype && !n.hasValue);
+    assert(n.labelsize == d.labelsize() + 2);
+
+    auto s = new WidgetNode();
+    s.typeName = "Slider";
+    s.maximumRaw = "1";
+    s.hasMaximum = true;
+    s.minimumRaw = "-5";
+    s.hasMinimum = true;
+    clearDefaultProperties(s);
+    assert(!s.hasMaximum && s.hasMinimum);
+    FlGroup.current(null);
 }
 
 private void setTextFont(Widget w, Font font)
@@ -1098,26 +1306,7 @@ void applyProperties(WidgetNode n, Widget w, string projectDir = ".", bool apply
     // hierarchies at once, so a plain `if`/`else if` chain is exhaustive
     // and unambiguous.
     if (n.labelcolorRaw >= 0) w.labelcolor(cast(Color) n.labelcolorRaw);
-    if (auto in_ = cast(Input_) w)
-    {
-        if (n.textcolorRaw >= 0) in_.textcolor(cast(Color) n.textcolorRaw);
-    }
-    else if (auto vout = cast(ValueOutput) w)
-    {
-        if (n.textcolorRaw >= 0) vout.textcolor(cast(Color) n.textcolorRaw);
-    }
-    else if (auto vin = cast(ValueInput) w)
-    {
-        if (n.textcolorRaw >= 0) vin.textcolor(cast(Color) n.textcolorRaw);
-    }
-    else if (auto vslider = cast(ValueSlider) w)
-    {
-        if (n.textcolorRaw >= 0) vslider.textcolor(cast(Color) n.textcolorRaw);
-    }
-    else if (auto menu = cast(Menu_) w)
-    {
-        if (n.textcolorRaw >= 0) menu.textcolor(cast(Color) n.textcolorRaw);
-    }
+    if (n.textcolorRaw >= 0) setTextColor(w, cast(Color) n.textcolorRaw);
     if (n.textfont >= 0) setTextFont(w, cast(Font) n.textfont);
     if (n.textsize >= 0) setTextSize(w, n.textsize);
     if (n.hLabelMargin >= 0) w.horizontalLabelMargin(n.hLabelMargin);
@@ -1713,7 +1902,7 @@ unittest
 /// without a node of its own in FLTK) falls back to `120x100`,
 /// FLTK's `Widget_Node::ideal_size()` default.
 package(fluid) void idealSizeFor(string typeName, out int w, out int h,
-    int parentW = 0, int parentH = 0)
+    int parentW = 0, int parentH = 0, bool vertical = false)
 {
     import fluid.layout_suite : layoutList;
     import fluid.snap_action : betterSize;
@@ -1784,9 +1973,16 @@ package(fluid) void idealSizeFor(string typeName, out int w, out int h,
         w = 160; h = 120;
         break;
 
-    case "Slider": case "ValueSlider": case "Scrollbar":
-        w = layout.labelsize + 8;
-        h = 4 * w;
+    case "Slider": case "ValueSlider": case "Scrollbar": case "Roller":
+        // Lying down, the way the widget bin draws them and Fluid creates
+        // them (see `startsHorizontal()`); standing up when `vertical`.
+        h = layout.labelsize + 8;
+        w = 4 * h;
+        if (vertical)
+        {
+            import std.algorithm.mutation : swap;
+            swap(w, h);
+        }
         break;
     case "Input": case "Output": case "FloatInput": case "IntInput":
     case "MenuBar": case "MenuButton": case "Choice": case "InputChoice":
@@ -1812,10 +2008,6 @@ package(fluid) void idealSizeFor(string typeName, out int w, out int h,
         break;
     case "Dial":
         w = 60; h = 60;
-        break;
-    case "Roller":
-        w = layout.labelsize + 8;
-        h = 4 * w;
         break;
     case "ValueOutput":
         h = layout.textsizeNotNull() + 8;
@@ -1931,13 +2123,50 @@ unittest
     assert(w == 120 && h == 100);
 
     // Menu bars and inputs are one text line high; sliders are 4x as
-    // tall as wide; containers halve their parent.
+    // wide as tall, or as tall as wide standing up; containers halve
+    // their parent.
     idealSizeFor("MenuBar", w, h);
     assert(h < 40);
     idealSizeFor("Slider", w, h);
+    assert(w > h);
+    idealSizeFor("Roller", w, h, 0, 0, true);
     assert(h > w);
     idealSizeFor("Group", w, h, 400, 300);
     assert(w >= 200 && h >= 150 && w < 240 && h < 190);
+}
+
+/// Whether a new widget of `typeName` is created lying down: the
+/// valuators whose class defaults to standing up but whose widget-bin
+/// icon lies down get the Horizontal subtype when Fluid creates them.
+package(fluid) bool startsHorizontal(string typeName)
+{
+    import fluid.code_writer : stripFlPrefix;
+    switch (stripFlPrefix(typeName))
+    {
+    case "Slider": case "ValueSlider": case "Scrollbar": case "Roller":
+        return true;
+    default:
+        return false;
+    }
+}
+
+/// Whether a widget of `typeName` with the `type` keyword `typeWord`
+/// stands up: one of the `startsHorizontal()` kinds without a horizontal
+/// subtype (no keyword at all is the class's own vertical default).
+package(fluid) bool standsUp(string typeName, string typeWord)
+{
+    return startsHorizontal(typeName)
+        && (typeWord.length == 0 || typeWord == "Vertical" || typeWord == "Vert Fill"
+            || typeWord == "Vert Knob");
+}
+
+unittest
+{
+    assert(startsHorizontal("Fl_Value_Slider") && startsHorizontal("Roller"));
+    assert(!startsHorizontal("Dial"));
+    assert(standsUp("Slider", "") && standsUp("Fl_Slider", "Vert Knob"));
+    assert(!standsUp("Slider", "Horizontal") && !standsUp("Slider", "Horz Fill"));
+    assert(!standsUp("Dial", ""));
 }
 
 unittest

@@ -3945,6 +3945,11 @@ private zwp_primary_selection_offer_v1* primaryOffer_;
 /// The MIME type Wayland uses for text.
 private enum plainTextMime = "text/plain;charset=utf-8";
 
+/// The only MIME type a `localOnly` drag offers. No other program knows
+/// it, so none of them takes the drop; fldtk's own windows read the
+/// dragged text straight from the selection buffer.
+private enum localDragMime = "application/x-fldtk-local-drag";
+
 /// The best MIME type an offer has for text and for an image, by FLTK's
 /// priorities (`clipboard_mimetypes_map`).
 private struct OfferTypes
@@ -4124,7 +4129,8 @@ private immutable(ubyte)[] ownedData(int rank, string mime)
 {
     import fl.core : clipboardPlainText, clipboardImage;
     string type = selectionOwnedType(rank);
-    if ((mime == plainTextMime || mime == "text/plain") && type == clipboardPlainText)
+    if ((mime == plainTextMime || mime == "text/plain" || mime == localDragMime)
+        && type == clipboardPlainText)
         return cast(immutable(ubyte)[]) clipboardContents(rank);
     if (mime == "image/bmp" && type == clipboardImage)
         return ownedImageBmpBytes(rank).idup;
@@ -4147,6 +4153,7 @@ extern (C) private void dataSourceSend(void* data, wl_data_source* source, const
 private FlWindow dndTargetWindow_;
 private wl_surface* dndTargetSurface_;
 private bool doingDnd_;
+private bool dndLocalOnly_; // the drag in progress offers only localDragMime
 private bool dndStarted_; // the compositor took our drag (it entered a surface)
 
 /// Ported from `data_source_handle_cancelled()`: another program took the
@@ -4359,7 +4366,9 @@ extern (C) private void dataDeviceMotion(void* data, wl_data_device* device, uin
     uint actions = ret && (pushed() !is null || !doingDnd_)
         ? WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY : WL_DATA_DEVICE_MANAGER_DND_ACTION_NONE;
     wl_data_offer_set_actions(dragOffer_, actions, actions);
-    wl_data_offer_accept(dragOffer_, dndSerial_, ret ? "text/plain".ptr : null);
+    // A type the offer has: our own local-only drag has only localDragMime.
+    auto mime = doingDnd_ && dndLocalOnly_ ? localDragMime.ptr : "text/plain".ptr;
+    wl_data_offer_accept(dragOffer_, dndSerial_, ret ? mime : null);
     });
 }
 
@@ -4509,19 +4518,25 @@ private void freeDragIcon()
 /**
  * Drags the selection buffer's text (`fl.core.copy(text, 0)`) -- ported
  * from `Fl_Wayland_Screen_Driver::dnd()`, the text itself shown as the
- * drag's icon. Returns once the drag is over, as on X11 and Windows. The
- * compositor decides who may receive it: `localOnly` (no FLTK
- * equivalent) can't be honored, and other programs see the drag too.
+ * drag's icon. Returns once the drag is over, as on X11 and Windows.
+ * With `localOnly` (no FLTK equivalent) the drag offers only
+ * `localDragMime`, which no other program takes.
  */
 package(fl) int dnd(bool localOnly)
 {
     if (dataDeviceManager_ is null || dataDevice_ is null || pointerFocus_ is null) return 0;
     wl_data_source* source = wl_data_device_manager_create_data_source(dataDeviceManager_);
     wl_data_source_add_listener(source, &dataSourceListener, null);
-    wl_data_source_offer(source, plainTextMime.ptr);
-    wl_data_source_offer(source, "text/plain");
+    if (localOnly)
+        wl_data_source_offer(source, localDragMime.ptr);
+    else
+    {
+        wl_data_source_offer(source, plainTextMime.ptr);
+        wl_data_source_offer(source, "text/plain");
+    }
     wl_data_source_set_actions(source, WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY);
     doingDnd_ = true;
+    dndLocalOnly_ = localOnly;
     dndStarted_ = false;
     int iconScale = cursorImageScale();
     dragIcon_ = dragIconFor(clipboardContents(0), iconScale);

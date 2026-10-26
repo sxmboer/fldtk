@@ -5390,7 +5390,8 @@ bool visual(Mode flags)
  * own windows: other applications never see it on X11, and releasing
  * over another application's window cancels the drop on Windows (that
  * application may still show its own drag feedback while the pointer
- * is over it). FLTK has no such option; Fluid's widget bin uses it,
+ * is over it), and on Wayland the drag is offered only as a data type
+ * no other program takes. FLTK has no such option; Fluid's widget bin uses it,
  * since its payload (a widget type name) means nothing outside Fluid.
  */
 int dnd(bool localOnly = false)

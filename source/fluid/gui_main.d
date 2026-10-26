@@ -104,7 +104,7 @@ import widget_panel : make_widget_panel, wireEditHooks, widgetPanelLoad = load,
     overlayCb, okCb, liveModeCb, wLiveMode, thePanel, widgetTabs, tabsWizard, overlayButton,
     vCodeInput2, vCodeInput3, wCallback, userDataInput;
 import fluid.factory : createNode;
-import fluid.instantiate : instantiateOne, instantiateChild, instantiateStandalone, idealSizeFor, defaultLabelFor, defaultNameFor, LiveTree, loadImageFile, applyMenuItems, applyProperties, scrollOffsetWithin, getTextStuff, onImageLoadError;
+import fluid.instantiate : instantiateOne, instantiateChild, instantiateStandalone, idealSizeFor, startsHorizontal, defaultLabelFor, defaultNameFor, LiveTree, loadImageFile, applyMenuItems, applyProperties, scrollOffsetWithin, getTextStuff, onImageLoadError;
 import fluid.menu_owner_node : MenuOwnerNode;
 import fluid.menu_item_node : MenuItemNode, SubmenuNode;
 import fluid.grid_node : GridNode, GridCellInfo;
@@ -134,7 +134,7 @@ import codeview_panel : codeviewToggleVisibility, codeviewRefresh, codeviewPanel
 import settings_panel : settingsToggleVisibility, settingsShowShellTab, settingsShowLayoutTab,
     layoutRefreshTabIfOpen, layoutSaveUser;
 import function_panel : makeWidgetBin, widgetBinPanel, binButtonCb, codeButtonCb, widgetBinToggleVisibility;
-import fluid.bin_button : BinButton, onWindowDropped;
+import fluid.bin_button : BinButton, onWindowDropped, acceptsWidgetDrop;
 import fluid.shell_process;
 import shell_run_window : makeShellRunWindow, showShellRunWindow, shellRunWindow,
     shellRunTerminal, shellRunButton;
@@ -1053,6 +1053,7 @@ void runEditor(string[] args)
         win.y = y;
         if (auto cv = canvases_.get(win, null)) cv.position(x, y);
     };
+    acceptsWidgetDrop = (Widget win) => cast(ProjectCanvas) win !is null;
     binButtonCb = (w) {
         auto btn = cast(BinButton) w;
         if (btn is null) return;
@@ -2694,6 +2695,7 @@ private void insertWidget(string typeName, Node parentNode, int x, int y, int w,
         return; // defensive only, should never actually be null
     wn.hasXywh = true;
     wn.x = x; wn.y = y; wn.w = w; wn.h = h;
+    if (startsHorizontal(typeName)) wn.typeWord = "Horizontal";
     // FLTK's `Grid_Node::widget()` makes every new grid 3x3.
     if (auto gridNode = cast(GridNode) wn) gridNode.hasDimensions = true;
 

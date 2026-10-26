@@ -1651,19 +1651,24 @@ private int localHandle(Event event, FlWindow window)
  */
 package(fl) int dnd(bool localOnly)
 {
+    // The drag starts from the window holding the pressed widget.
     FlWindow sourceFlWin = fl.core.firstWindow();
+    if (auto pw = fl.core.pushed())
+        if (auto top = pw.topWindow())
+            if (top.shown()) sourceFlWin = top;
     if (sourceFlWin is null) return 0;
     // The pointer is implicitly grabbed by the window holding the pressed
     // widget, and while that grab lasts X shows that window's cursor
-    // everywhere -- so the move cursor goes on that window (usually, but
-    // not always, `firstWindow()`), and is flushed before the nested
-    // loop below starts waiting.
-    FlWindow cursorWin = sourceFlWin;
-    if (auto pw = fl.core.pushed())
-        if (auto top = pw.topWindow())
-            cursorWin = top;
-    cursorWin.cursor(CursorShape.move);
-    XFlush(display_);
+    // everywhere, so the drag cursor goes on that window: the normal
+    // arrow, its tip on the drop point, over a window that can take the
+    // drop, and "not allowed" over one that can't.
+    int shownAccepts = -1; // the drop state the cursor shows; -1 for none yet
+    DragPreview preview;   // shown on the loop's first pass
+    scope (exit) if (preview !is null)
+    {
+        preview.hide();
+        fl.core.deleteWidget(preview);
+    }
     Window sourceWindow = sourceFlWin.xid();
     fl.core.localGrab_ = (e) => grabFunc(e);
     Window targetWindow = 0;
@@ -1701,6 +1706,15 @@ package(fl) int dnd(bool localOnly)
             if (auto rec = find(child)) { newLocalWindow = rec.widget; break; }
             if ((newVersion = dndAware(newWindow)) != 0) break;
         }
+
+        // The preview's top-left corner sits on the pointer's tip, where
+        // a dropped widget's top-left corner goes. Its input region is
+        // empty, so the walk above sees the window under it.
+        if (preview is null)
+            preview = DragPreview.create(fl.core.clipboardContents(0),
+                fl.core.eXRoot_, fl.core.eYRoot_);
+        if (preview !is null)
+            XMoveWindow(display_, preview.xid(), fl.core.eXRoot_, fl.core.eYRoot_);
         // localOnly: another application's window is no target at all,
         // so it gets no XDND messages and no fake middle-click drop.
         if (localOnly && newLocalWindow is null)
@@ -1772,8 +1786,11 @@ package(fl) int dnd(bool localOnly)
             }
         }
 
+        // One of our windows takes the drop if it takes Event.dndDrag;
+        // another application's window, if there is one, is assumed to.
+        int accepts = !localOnly && targetWindow != 0;
         if (localWindow !is null)
-            localHandle(Event.dndDrag, localWindow);
+            accepts = localHandle(Event.dndDrag, localWindow) != 0;
         else if (dndVersion)
         {
             // Only when the target or the pointer position changed --
@@ -1795,8 +1812,17 @@ package(fl) int dnd(bool localOnly)
             }
         }
 
+        if (accepts != shownAccepts)
+        {
+            shownAccepts = accepts;
+            XDefineCursor(display_, sourceWindow, dragCursor(accepts != 0));
+            XFlush(display_);
+        }
+
         fl.core.wait();
     }
+
+    if (preview !is null) preview.hide(); // gone before the drop is handled
 
     if (localWindow !is null)
     {
@@ -1835,9 +1861,104 @@ package(fl) int dnd(bool localOnly)
 
     fl.core.localGrab_ = null;
     fl.core.dispatch(Event.release, sourceFlWin);
-    cursorWin.cursor(CursorShape.default_);
-    if (cursorWin !is sourceFlWin) sourceFlWin.cursor(CursorShape.default_);
+    sourceFlWin.cursor(CursorShape.default_);
+    XFlush(display_);
     return 1;
+}
+
+/**
+ * The window that follows the pointer during `dnd()`, showing the dragged
+ * text: up to 20 lines in 10-point Helvetica, at most 300 units wide,
+ * black on white. Override-redirect, so the window manager leaves it
+ * alone, and with an empty input region, so the pointer is never over it.
+ */
+private final class DragPreview : FlWindow
+{
+    private string[] lines_;
+
+    private this(string[] lines, int x, int y, int w, int h)
+    {
+        super(x, y, w, h);
+        lines_ = lines;
+        setOverride();
+        end();
+    }
+
+    /// The preview for `text`, shown at the device-pixel root position
+    /// (`px`, `py`); null if there is nothing to show or the server has no
+    /// SHAPE extension to make it transparent to the pointer.
+    static DragPreview create(string text, int px, int py)
+    {
+        import std.string : lineSplitter;
+        import fl.group : FlGroup;
+        import fl.enumerations : helvetica;
+
+        if (text.length == 0 || !shapeExtensionAvailable()) return null;
+        string[] lines;
+        foreach (l; text.lineSplitter)
+        {
+            if (lines.length == 20) break;
+            lines ~= l;
+        }
+        fldraw.fl_font(helvetica, 10);
+        int width = 0;
+        foreach (l; lines)
+        {
+            int lw = cast(int) fldraw.width(l);
+            if (lw > width) width = lw;
+        }
+        if (width > 300) width = 300;
+        int w = width + 8, h = cast(int) lines.length * fldraw.height() + 6;
+
+        auto saved = FlGroup.current();
+        FlGroup.current(null);
+        float scale = screenScale(0);
+        auto p = new DragPreview(lines, cast(int)(px / scale), cast(int)(py / scale), w, h);
+        FlGroup.current(saved);
+        p.show();
+        if (p.xid() == 0) return p;
+        XShapeCombineRectangles(display_, p.xid(), ShapeInput, 0, 0, null, 0, ShapeSet, 0);
+        return p;
+    }
+
+    override void draw()
+    {
+        import fl.enumerations : Boxtype, helvetica, black, white;
+
+        drawBox(Boxtype.borderBox, 0, 0, w(), h(), white);
+        fldraw.pushClip(1, 1, w() - 2, h() - 2);
+        fldraw.fl_color(black);
+        fldraw.fl_font(helvetica, 10);
+        int lh = fldraw.height();
+        foreach (i, l; lines_)
+            fldraw.fl_draw(l, 4, 3 + cast(int) i * lh + lh - fldraw.descent());
+        fldraw.popClip();
+    }
+}
+
+/**
+ * The cursor `dnd()` shows while dragging: the theme's arrow where the
+ * drop would be accepted, and its "not allowed" cursor, by its
+ * freedesktop name or an older one, where it wouldn't. Without a themed
+ * one, the cursor font's X stands in for "not allowed". Loaded once.
+ */
+private Cursor dragCursor(bool accepts)
+{
+    import std.string : toStringz;
+
+    static Cursor arrow, refused;
+    if (accepts)
+    {
+        if (arrow == None) arrow = XCreateFontCursor(display_, XC_left_ptr);
+        return arrow;
+    }
+    if (refused == None)
+    {
+        foreach (name; ["not-allowed", "no-drop", "crossed_circle", "circle"])
+            if (refused == None) refused = XcursorLibraryLoadCursor(display_, name.toStringz);
+        if (refused == None) refused = XCreateFontCursor(display_, XC_X_cursor);
+    }
+    return refused;
 }
 
 ////////////////////////////////////////////////////////////////
@@ -6170,7 +6291,14 @@ private void processNextEvent()
             // (Widget.contains(null) is always false, so the whole
             // chain gets notified), matching fl.group's Event.enter
             // case in reverse.
-            fl.core.belowmouse(null);
+            //
+            // Not while a drag-and-drop is in progress: releasing the
+            // button over another of our windows ends the implicit grab
+            // with a LeaveNotify on the source window, and clearing
+            // belowmouse() there would lose the drop target dnd() needs
+            // for Event.dndRelease.
+            if (fl.core.localGrab_ is null)
+                fl.core.belowmouse(null);
         }
         break;
 
@@ -6538,3 +6666,4 @@ private const(char)* toStringzTemp(string s)
 
     return toStringz(s);
 }
+

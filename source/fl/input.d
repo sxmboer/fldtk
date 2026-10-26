@@ -745,8 +745,6 @@ class Input : Input_
                 fl.core.focus(dndSaveFocus_);
                 handle(Event.unfocus);
             }
-            if (fl.core.firstWindow() !is null)
-                fl.core.firstWindow().cursor(Cursor.move);
             dndSaveFocus_ = null;
             return 1;
 
