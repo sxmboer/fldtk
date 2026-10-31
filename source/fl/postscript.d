@@ -636,7 +636,7 @@ class PostscriptGraphicsDriver : GraphicsDriver
     /// `ps_origin()`; only `Fl_PostScript_File_Device::start_postscript()`
     /// (a different, unported call path -- see this module's own top
     /// comment) sets `left_margin`/`top_margin` for real. Filed as an
-    /// `FLTK_ISSUES.md` candidate rather than ported as an
+    /// `FLTK_ISSUES_n.md` candidate rather than ported as an
     /// uninitialized read.
     int leftMargin_ = 0, topMargin_ = 0;
     double scaleX_ = 1, scaleY_ = 1; /// ditto
@@ -907,6 +907,8 @@ class PostscriptGraphicsDriver : GraphicsDriver
     /// `GraphicsDriver.wantsUnscaledVertices()`'s own doc comment.
     override bool wantsUnscaledVertices() const { return true; }
 
+    override bool resolutionIndependent() const { return true; }
+
     /**
      * Ported from `Fl_PostScript_Graphics_Driver::transformed_draw()`
      * (real vector text) -- see this module's own top comment for what
@@ -1012,13 +1014,21 @@ class PostscriptGraphicsDriver : GraphicsDriver
      */
     override void drawImage(const(ubyte)* buf, int x, int y, int w, int h, int d, int l)
     {
-        if (w <= 0 || h <= 0 || buf is null) return;
+        drawImageScaled(buf, w, h, d, l, x, y, w, h);
+    }
+
+    /// `drawImage()` with the pixel grid (`w` x `h` here) and the
+    /// destination box (`boxW` x `boxH` units) apart: `CII`/`GII` scale
+    /// one onto the other.
+    override void drawImageScaled(const(ubyte)* buf, int w, int h, int d, int l, int x, int y, int boxW, int boxH)
+    {
+        if (w <= 0 || h <= 0 || boxW <= 0 || boxH <= 0 || buf is null) return;
         if (l == 0) l = w * d;
-        if (d < 3) { drawImageMono(buf, x, y, w, h, d, l); return; }
+        if (d < 3) { drawImageMono(buf, x, y, w, h, d, l, boxW, boxH); return; }
 
         output_.write("save\n");
         output_.writef("%g %g %g %g %d %d %s CII\n",
-            cast(double) x, cast(double)(y + h), cast(double) w, cast(double)(-h), w, h,
+            cast(double) x, cast(double)(y + boxH), cast(double) boxW, cast(double)(-boxH), w, h,
             interpolate_ ? "true" : "false");
 
         auto rle = Rle85Encoder(output_);
@@ -1050,11 +1060,11 @@ class PostscriptGraphicsDriver : GraphicsDriver
     /// from `Fl_PostScript_Graphics_Driver::draw_image_mono(const
     /// uchar*,...)`'s callback-based body, same "no separate scale
     /// transform needed" simplification.
-    private void drawImageMono(const(ubyte)* buf, int x, int y, int w, int h, int d, int l)
+    private void drawImageMono(const(ubyte)* buf, int x, int y, int w, int h, int d, int l, int boxW, int boxH)
     {
         output_.write("save\n");
         output_.writef("%g %g %g %g %d %d %s GII\n",
-            cast(double) x, cast(double)(y + h), cast(double) w, cast(double)(-h), w, h,
+            cast(double) x, cast(double)(y + boxH), cast(double) boxW, cast(double)(-boxH), w, h,
             interpolate_ ? "true" : "false");
 
         int bg = (bgR_ + bgG_ + bgB_) / 3;
@@ -1952,3 +1962,37 @@ unittest
     assert(text.canFind("%%EOF"));
 }
 
+
+unittest
+{
+    // An image drawn smaller than its pixel size keeps its own pixels:
+    // CII gets the 4x4 box and the 8x8 pixel grid. The screen scale
+    // doesn't matter on a page.
+    import fl.image : RGBImage;
+    import fl.image_surface : SurfaceDevice;
+    import fl.core : currentScale;
+    import std.file : tempDir, exists, remove, readText;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import std.algorithm : canFind;
+
+    auto path = buildPath(tempDir(), "fldtk-eps-native-test-" ~ randomUUID().toString() ~ ".eps");
+    scope (exit) if (exists(path)) remove(path);
+    float screenScale = currentScale();
+    currentScale(2);
+    scope (exit) currentScale(screenScale);
+
+    {
+        auto f = File(path, "wb");
+        auto surf = new EpsFileSurface(100, 100, f);
+        SurfaceDevice.pushCurrent(surf);
+        auto img = new RGBImage(new ubyte[8 * 8 * 3], 8, 8, 3);
+        img.scale(4, 4, false, false);
+        img.draw(10, 10);
+        SurfaceDevice.popCurrent();
+        surf.close();
+    }
+
+    auto text = readText(path);
+    assert(text.canFind("10 14 4 -4 8 8 false CII\n"));
+}

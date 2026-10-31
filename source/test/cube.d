@@ -360,11 +360,11 @@ void main(string[] args)
     fl.setColor(freeColor, 255, 255, 0, 75);
     makeform(args[0]);
 
-    speed.bounds(6, 0);
+    speed.bounds(0, 6);
     speed.value(ltCube.speed = rtCube.speed = 2.0);
     speed.callback((w) { speedCb(w); });
 
-    size.bounds(4, 0.2);
+    size.bounds(0.2, 4);
     size.value(ltCube.size = rtCube.size = 2.0);
     size.callback((w) { sizeCb(w); });
 

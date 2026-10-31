@@ -117,7 +117,7 @@ immutable string[] fontNames = [
 /**
  * Ported from `fl_fontname_str()`. **Faithfully replicates a real
  * FLTK off-by-one, not silently corrected** (logged in
- * `FLTK_ISSUES.md`): FLTK's own bounds check is
+ * `FLTK_ISSUES_n.md`): FLTK's own bounds check is
  * `if ((font < 0) || (font >= FL_ZAPF_DINGBATS)) return "FL_FONT_" +
  * to_string(font);` -- but `FL_ZAPF_DINGBATS` (15) is the *last valid*
  * index into a 16-entry array, so `font >= 15` incorrectly also
@@ -164,7 +164,7 @@ immutable string[] callbackReasonNames = [
 /**
  * Ported from `fl_callback_reason_str()`. **Faithfully replicates the
  * same off-by-one pattern as `fontNameStr()` above, not silently
- * corrected** (logged in `FLTK_ISSUES.md`):
+ * corrected** (logged in `FLTK_ISSUES_n.md`):
  * FLTK's bounds check is `if ((reason < 0) || (reason >=
  * FL_REASON_USER+3) || (fl_callback_reason_names[reason] == nullptr))`
  * -- but `FL_REASON_USER+3` (35) is the *last valid* index into a

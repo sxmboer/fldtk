@@ -3,25 +3,20 @@
  * `gl_draw()`/etc -- built on the raw GL/GLX bindings in `fl.opengl`/
  * `fl.glx`) + `src/gl_draw.cxx` (FLTK 1.5.0).
  *
- * **Scope decision: texture-rectangle-based text rendering only, no
- * legacy fallback.** FLTK's own `gl_draw.cxx` supports two
- * rendering paths (see that file's own doc comment): a GL_EXT/ARB_
- * texture_rectangle-backed texture cache (`gl_texture_fifo`,
- * `draw_string_with_texture()` -- the modern, cross-platform default),
- * and a legacy fallback for hardware/drivers lacking that extension
- * (either a platform's own `glXUseXFont()`-based bitmap-display-list
- * path, `get_list()`/`gl_bitmap_font()`, needing per-platform
- * `Fl_XXX_Gl_Window_Driver` code this port never ported, or a
- * `glutStrokeString()`-based ASCII-only stroke font, needing the glut
- * compatibility layer's own stroke-font primitives -- a deliberate
- * omission, see `fl.glut`'s own doc comment). `GL_EXT_texture_rectangle`/
- * `GL_ARB_texture_rectangle` has been effectively universal on real
- * GPU hardware for well over a decade; this port targets that case
- * only, checked once at runtime (`checkTextureRectangle()`) -- if
- * genuinely unavailable, text drawing is a silent, documented no-op
- * rather than falling back to either legacy path. No new dependency
- * (no glut, no `XLoadFont()`/`glXUseXFont()` X11 bitmap fonts) beyond
- * what `fl.opengl`/`fl.glx` and `fl.gl_graphics_driver` already link.
+ * **Two text paths, as in FLTK's `gl_draw.cxx`.** By default text is
+ * drawn through a cache of textures (`gl_texture_fifo`,
+ * `draw_string_with_texture()`), which needs OpenGL 3 or the
+ * GL_EXT/ARB_texture_rectangle extension. When neither is there, or the
+ * program calls `fl.core.drawGlTextWithTextures(false)` (at any time;
+ * the next `gl_font()` or `gl_draw()` follows it), text goes through the platform's bitmap fonts in
+ * GL display lists instead (`draw_string_legacy_get_list()`): on X11 a
+ * core X font close to the current font, loaded with `XLoadQueryFont()`
+ * and turned into lists by `glXUseXFont()` (FLTK's
+ * `load_xfont_for_xft2()`), so only its Latin-1 range draws; on Windows
+ * the GDI font itself through `wglUseFontBitmapsW()`, loaded 1024 code
+ * points at a time. FLTK's last resort, GLUT's stroke font, is not
+ * ported, so on Wayland, which has no bitmap fonts for GL, text always
+ * uses textures.
  *
  * **The texture cache (`Fifo`) is a faithful, if D-idiomatic, port of
  * FLTK's `gl_texture_fifo`**: a fixed-size circular buffer of
@@ -154,17 +149,15 @@ void gl_draw_image(const(ubyte)* buf, int x, int y, int w, int h, int d = 3, int
 // own doc comment for why metrics never dispatch) -- ported from
 // gl_height()/gl_descent()/gl_width()*3/gl_font()/gl_measure().
 
-/// Sets the current OpenGL font to the same font `fl_font()` would use.
-/// Ported from `gl_font(int,int)`: **simplified relative to FLTK**
-/// (see this module's own top comment) to a plain `fl_font()` call --
-/// no separate `has_texture_rectangle` detection/legacy-fallback dance,
-/// no separate `gl_fontsize` descriptor mirror to maintain (this port's
-/// text-cache keys off the plain `(face,size)` tuple directly, read
-/// fresh from `fl.draw.fl_font()`/`fl_size()` at draw time -- nothing
-/// FLTK's own `Fl_Font_Descriptor*` identity tracking would add).
+/// Sets the font `gl_draw()` uses, the same font as `fl_font()`. Ported
+/// from `gl_font(int, int)`. It needs a current GL context, and decides
+/// how text is drawn: see this module's top comment
+/// and `fl.core.drawGlTextWithTextures()`.
 void gl_font(Font face, Fontsize size)
 {
+    chooseTextPath();
     fldraw.fl_font(face, size);
+    if (!hasTextureRectangle_) glBitmapFont(face, size);
 }
 
 int gl_height() { return fldraw.height(); } /// Ported from `gl_height()`.
@@ -187,26 +180,233 @@ void gl_measure(const(char)[] str, out int x, out int y)
 // ---- Texture-cache text drawing (see this module's own top comment
 // for the full mechanism and what's deliberately not ported) ----
 
-private bool textureRectangleChecked_;
+private bool textPathChosen_;
 private bool hasTextureRectangle_;
 
-private bool checkTextureRectangle()
+/// Ported from the check at the top of `gl_font()`: textures are used
+/// when `drawGlTextWithTextures()` allows them and the GL driver is
+/// version 3 or later or has a texture-rectangle extension. The choice
+/// is made again whenever the program changes
+/// `drawGlTextWithTextures()`, so text can switch paths at run time.
+private void chooseTextPath()
 {
-    if (!textureRectangleChecked_)
+    if (textPathChosen_ && drawGlTextWithTextures() == hasTextureRectangle_) return;
+    textPathChosen_ = true;
+    hasTextureRectangle_ = false;
+    if (drawGlTextWithTextures())
     {
-        textureRectangleChecked_ = true;
-        auto ext = cast(const(char)*) glGetString(GL_EXTENSIONS);
-        if (ext !is null)
-        {
-            import std.string : fromStringz;
-            import std.algorithm.searching : canFind;
+        import core.stdc.stdio : sscanf;
+        import std.string : fromStringz;
+        import std.algorithm.searching : canFind;
 
-            auto extStr = fromStringz(ext);
-            hasTextureRectangle_ = extStr.canFind("GL_EXT_texture_rectangle")
-                || extStr.canFind("GL_ARB_texture_rectangle");
+        int major;
+        auto ver = cast(const(char)*) glGetString(GL_VERSION);
+        if (ver !is null) sscanf(ver, "%d", &major);
+        if (major >= 3)
+            hasTextureRectangle_ = true;
+        else
+        {
+            auto ext = cast(const(char)*) glGetString(GL_EXTENSIONS);
+            if (ext !is null)
+            {
+                auto extStr = fromStringz(ext);
+                hasTextureRectangle_ = extStr.canFind("GL_EXT_texture_rectangle")
+                    || extStr.canFind("GL_ARB_texture_rectangle");
+            }
         }
     }
-    return hasTextureRectangle_;
+    if (!hasTextureRectangle_ && !haveBitmapFonts())
+        hasTextureRectangle_ = true; // no other way to draw text here
+    drawGlTextWithTextures(hasTextureRectangle_);
+}
+
+// ---- Bitmap-font text in display lists, used when textures are not ----
+
+/// Whether this platform can turn fonts into GL display lists.
+private bool haveBitmapFonts()
+{
+    version (Windows) return true;
+    else
+    {
+        import fl.platform : backend, Backend;
+        return backend() == Backend.x11;
+    }
+}
+
+private struct ListFont
+{
+    Font face;
+    Fontsize size;
+}
+
+/// The display lists for one font, ported from `Fl_Font_Descriptor`'s
+/// `listbase` (and, on Windows, `glok`).
+private struct FontLists
+{
+    GLuint base;
+    version (Windows) bool[64] planeLoaded; // per 1024 code points
+}
+
+private FontLists[ListFont] fontLists_;
+
+/// How many lists each font gets -- ported from `genlistsize()`.
+private int listCount()
+{
+    version (Windows) return 0x10000;
+    else return 256;
+}
+
+/// Makes the display lists for `(face, size)` current, creating them if
+/// needed. Ported from `Fl_X11_Gl_Window_Driver::gl_bitmap_font()` and
+/// `Fl_WinAPI_Gl_Window_Driver::gl_bitmap_font()`.
+private FontLists* glBitmapFont(Font face, Fontsize size)
+{
+    auto key = ListFont(face, size);
+    auto lists = key in fontLists_;
+    if (lists is null)
+    {
+        FontLists entry;
+        entry.base = glGenLists(listCount());
+        version (Windows) {}
+        else
+        {
+            import fl.xlib : XFreeFont;
+            import platformX11 = fl.platform_x11;
+
+            auto font = loadCoreFont(face, size);
+            if (font !is null)
+            {
+                int first = font.minCharOrByte2;
+                int count = font.maxCharOrByte2 - first + 1;
+                if (first + count > 256) count = 256 - first;
+                if (count > 0) glXUseXFont(font.fid, first, count, entry.base + first);
+                XFreeFont(platformX11.x11Display(), font);
+            }
+        }
+        fontLists_[key] = entry;
+        lists = key in fontLists_;
+    }
+    glListBase(lists.base);
+    return lists;
+}
+
+version (Windows)
+{
+    /// Loads the 1024 code points of plane `r` into `lists`. Ported from
+    /// `Fl_WinAPI_Gl_Window_Driver::get_list()`.
+    private void loadPlane(FontLists* lists, Font face, Fontsize size, int r)
+    {
+        import core.sys.windows.windef : HDC;
+        import core.sys.windows.wingdi : CreateCompatibleDC, DeleteDC, SelectObject, wglUseFontBitmapsW;
+        import platformWin32 = fl.platform_win32;
+
+        if (lists.planeLoaded[r]) return;
+        lists.planeLoaded[r] = true;
+        HDC dc = CreateCompatibleDC(null);
+        SelectObject(dc, platformWin32.plainGraphicsDriver().fontHandle(face, size));
+        uint first = r * 0x400;
+        wglUseFontBitmapsW(dc, first, 0x400, lists.base + first);
+        DeleteDC(dc);
+    }
+}
+else
+{
+    import fl.glx : glXUseXFont;
+    import fl.xlib : XFontStruct;
+
+    /// Finds a core X font close to `(face, size)`, falling back through
+    /// similar names and finally "fixed". Ported from
+    /// `load_xfont_for_xft2()` (`Fl_Xlib_Graphics_Driver_font_xft.cxx`).
+    private XFontStruct* loadCoreFont(Font face, Fontsize size)
+    {
+        import std.format : format;
+        import std.string : toStringz;
+        import fl.xlib : XLoadQueryFont, XFreeFont;
+        import platformX11 = fl.platform_x11;
+
+        auto dpy = platformX11.x11Display();
+        XFontStruct* load(string xlfd) { return XLoadQueryFont(dpy, xlfd.toStringz); }
+
+        string weight = "medium";
+        char slant = 'r';
+        string name = fldraw.getFont(face);
+        if (name.length)
+        {
+            switch (name[0])
+            {
+                case 'I': slant = 'i'; name = name[1 .. $]; break;
+                case 'P': slant = 'i'; weight = "bold"; name = name[1 .. $]; break;
+                case 'B': weight = "bold"; name = name[1 .. $]; break;
+                case ' ': name = name[1 .. $]; break;
+                default: break;
+            }
+        }
+
+        // Does the face exist at all, and then at this size?
+        XFontStruct* font = load(format("-*-%s-%s-%c-*--*-*-*-*-*-*-*-*", name, weight, slant));
+        if (font !is null)
+        {
+            XFreeFont(dpy, font);
+            font = load(format("-*-%s-%s-%c-*--*-%d-*-*-*-*-*-*", name, weight, slant, size * 10));
+        }
+        if (font is null)
+        {
+            switch (name)
+            {
+                case "sans": name = "helvetica"; if (slant == 'i') slant = 'o'; break;
+                case "mono", "monospace": name = "courier"; break;
+                case "serif": name = "times"; break;
+                case "screen": name = "lucidatypewriter"; break;
+                case "dingbats": name = "zapf dingbats"; break;
+                default: break;
+            }
+            font = load(format("-*-*%s*-%s-%c-*--*-%d-*-*-*-*-*-*", name, weight, slant, size * 10));
+        }
+        if (font is null)
+            font = load(format("-*-helvetica-*-%c-*--*-%d-*-*-*-*-*-*", slant, size * 10));
+        if (font is null && weight != "medium")
+            font = load(format("-*-courier*-%s-%c-*--*-%d-*-*-*-*-*-*", weight, slant, size * 10));
+        if (font is null)
+            font = load(format("-*-courier*-medium-%c-*--*-%d-*-*-*-*-*-*", slant, size * 10));
+        if (font is null) font = load("fixed");
+        return font;
+    }
+}
+
+/// Draws `str` with the current font's display lists at the current
+/// raster position. Ported from `draw_string_legacy_get_list()`.
+private void drawStringLegacy(const(char)[] str)
+{
+    import std.utf : toUTF16;
+
+    wstring buf = toUTF16(str);
+    Font face = fldraw.fl_font();
+    Fontsize size = fldraw.fl_size();
+    if (glStartScale_ != 1) // between gl_start() and gl_finish()
+        fldraw.fl_font(face, cast(Fontsize)(size * glStartScale_));
+    auto lists = glBitmapFont(fldraw.fl_font(), fldraw.fl_size());
+    version (Windows)
+        foreach (wchar c; buf)
+            loadPlane(lists, fldraw.fl_font(), fldraw.fl_size(), (c & 0xFC00) >> 10);
+    glCallLists(cast(GLsizei) buf.length, GL_UNSIGNED_SHORT, buf.ptr);
+    if (glStartScale_ != 1) fldraw.fl_font(face, size);
+}
+
+/// Deletes the display lists made for drawing text without textures.
+/// Ported from `gl_remove_displaylist_fonts()` (`FL/gl_draw.H`); call it
+/// with the GL context current before that context goes away.
+void gl_remove_displaylist_fonts()
+{
+    foreach (ref lists; fontLists_)
+        glDeleteLists(lists.base, listCount());
+    fontLists_ = null;
+}
+
+/// Drops the record of display lists that went away with the last GL
+/// context.
+package(fl) void forgetDisplaylistFonts()
+{
+    fontLists_ = null;
 }
 
 /// One cached string texture -- ported from `gl_texture_fifo::data`.
@@ -416,7 +616,7 @@ private int computeTexture(const(char)[] str, Font face, Fontsize size, float sc
 
 /// Ported from `gl_texture_fifo::display_texture()` -- draws a cached
 /// texture as a blended quad at the current raster position.
-private void displayTexture(int rank, float scale, int winW, int winH)
+private void displayTexture(int rank, float scale, int winW, int winH, int angle = 0)
 {
     glPushAttrib(GL_TRANSFORM_BIT | GL_ENABLE_BIT | GL_TEXTURE_BIT | GL_COLOR_BUFFER_BIT);
     glMatrixMode(GL_PROJECTION);
@@ -445,17 +645,24 @@ private void displayTexture(int rank, float scale, int winW, int winH)
     glGetTexLevelParameteriv(GL_TEXTURE_RECTANGLE_ARB, 0, GL_TEXTURE_WIDTH, &width);
     glGetTexLevelParameteriv(GL_TEXTURE_RECTANGLE_ARB, 0, GL_TEXTURE_HEIGHT, &height);
 
+    // The quad's corners relative to the start of the baseline, turned
+    // `angle` degrees counter-clockwise about it (y points up here).
+    import std.math : cos, sin, PI;
+
+    float top = height - scale * fldraw.descent();
+    float bottom = top - height;
+    float c = cos(angle * PI / 180), sn = sin(angle * PI / 180);
+    void corner(float tx, float ty, float dx, float dy)
+    {
+        glTexCoord2f(tx, ty);
+        glVertex2f(pos[0] + dx * c - dy * sn, pos[1] + dx * sn + dy * c);
+    }
+
     glBegin(GL_QUADS);
-    float ox = pos[0];
-    float oy = pos[1] + height - scale * fldraw.descent();
-    glTexCoord2f(0.0f, 0.0f);
-    glVertex2f(ox, oy);
-    glTexCoord2f(0.0f, cast(GLfloat) height);
-    glVertex2f(ox, oy - height);
-    glTexCoord2f(cast(GLfloat) width, cast(GLfloat) height);
-    glVertex2f(ox + width, oy - height);
-    glTexCoord2f(cast(GLfloat) width, 0.0f);
-    glVertex2f(ox + width, oy);
+    corner(0, 0, 0, top);
+    corner(0, height, 0, bottom);
+    corner(width, height, width, bottom);
+    corner(width, 0, width, top);
     glEnd();
 
     glMatrixMode(GL_MODELVIEW);
@@ -468,7 +675,7 @@ private void displayTexture(int rank, float scale, int winW, int winH)
     // comment (needs gluUnProject(), not ported).
 }
 
-private void drawStringWithTexture(const(char)[] str)
+private void drawStringWithTexture(const(char)[] str, int angle = 0)
 {
     GLint valid;
     glGetIntegerv(GL_CURRENT_RASTER_POSITION_VALID, &valid);
@@ -491,29 +698,42 @@ private void drawStringWithTexture(const(char)[] str)
     ensureFifo();
     if (!fifoTexturesGenerated_)
     {
-        if (checkTextureRectangle())
-            foreach (ref e; fifo_)
-            {
-                GLuint t;
-                glGenTextures(1, &t);
-                e.texName = t;
-            }
+        foreach (ref e; fifo_)
+        {
+            GLuint t;
+            glGenTextures(1, &t);
+            e.texName = t;
+        }
         fifoTexturesGenerated_ = true;
     }
-    if (!hasTextureRectangle_) return; // documented gap, see this module's own top comment
 
     auto face = fldraw.fl_font();
     auto size = fldraw.fl_size();
     int idx = alreadyKnown(str, face, size, scale);
     if (idx == -1) idx = computeTexture(str, face, size, scale);
-    displayTexture(idx, scale, win.w(), win.h());
+    displayTexture(idx, scale, win.w(), win.h(), angle);
 }
 
 /// Draws n characters of str in the current font at the current
 /// raster position. Ported from `gl_draw(const char*, int)`.
 void gl_draw(const(char)[] str, int n)
 {
-    if (n > 0) drawStringWithTexture(str[0 .. n]);
+    if (n <= 0) return;
+    chooseTextPath();
+    if (hasTextureRectangle_) drawStringWithTexture(str[0 .. n]);
+    else drawStringLegacy(str[0 .. n]);
+}
+
+/// Draws `str` at the current raster position, turned `angle` degrees
+/// counter-clockwise about the start of its baseline -- the GL graphics
+/// driver's rotated text. Bitmap-font text cannot turn, so without
+/// textures the string is drawn level.
+package(fl) void glDrawRotated(int angle, const(char)[] str)
+{
+    if (str.length == 0) return;
+    chooseTextPath();
+    if (hasTextureRectangle_) drawStringWithTexture(str, angle);
+    else drawStringLegacy(str);
 }
 
 /// Ported from `gl_draw(const char*, int, int, int)`.

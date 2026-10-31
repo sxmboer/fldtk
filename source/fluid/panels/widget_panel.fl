@@ -2106,8 +2106,10 @@ it).}
     open
   }
   {
-    code {auto grp = cast(FlGroup) root;
-if (grp !is null)
+    code {// A text editor is a group too (it holds its scrollbars), but it is a
+// field: wrap its own callback instead of walking into its children.
+auto grp = cast(FlGroup) root;
+if (grp !is null && cast(TextDisplay) root is null)
   \{
     foreach (i; 0 .. grp.children())
       wireEditHooks(grp.child(i));

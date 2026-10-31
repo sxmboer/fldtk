@@ -274,7 +274,7 @@ class Window : FlGroup
      * updates the on-screen icon right away; calling `freeIcons()`
      * alone leaves the previous icon showing until something else
      * (e.g. a later `icons()`/`icon()` call) triggers a repaint of the
-     * property. Logged as an `FLTK_ISSUES.md` candidate rather than
+     * property. Logged as an `FLTK_ISSUES_n.md` candidate rather than
      * fixed here, per this project's standing policy on suspected
      * FLTK inconsistencies.
      */
@@ -297,7 +297,7 @@ class Window : FlGroup
      * GIF-animation/pixmap samples do exactly this) needs its own
      * live push to reach the window manager.
      * Overriding `label()` here to also push the change live
-     * via `fl.platform_x11.updateWindowLabel()` whenever this window is
+     * via the platform driver's `updateWindowLabel()` whenever this window is
      * already `shown()` (a no-op otherwise, matching FLTK's own
      * `if (shown() && !parent())` guard -- see that function's doc
      * comment). `Widget.copyLabel()` isn't overridden separately: it
@@ -307,7 +307,11 @@ class Window : FlGroup
     override void label(string text)
     {
         super.label(text);
-        if (shown()) version (linux) platform.updateWindowLabel(this);
+        if (shown())
+        {
+            version (linux) platform.updateWindowLabel(this);
+            version (Windows) platformWin32.updateWindowLabel(this);
+        }
     }
 
     /// D hides a base class's entire overload set once a derived class
@@ -1647,7 +1651,7 @@ class Window : FlGroup
     /// Set only around the `resize()` call inside
     /// `resizeAfterScaleChange()`'s own non-clamped case (no FLTK
     /// equivalent -- a deliberate improvement, see that function's own
-    /// doc comment and `FLTK_ISSUES.md`). `int.min` (the sentinel
+    /// doc comment and `FLTK_ISSUES_n.md`). `int.min` (the sentinel
     /// `fl.platform_x11.resizeWindow()`'s own default parameters use) means
     /// "no override, compute the device-pixel position from FLTK units
     /// as usual." Set to the window's own *already-known-correct*
@@ -1762,7 +1766,7 @@ class Window : FlGroup
         // its position confirmed yet (shouldn't normally happen -- a
         // window being rescaled is by definition already shown()). No
         // FLTK equivalent -- a deliberate improvement, see
-        // `FLTK_ISSUES.md`.
+        // `FLTK_ISSUES_n.md`.
         int devX = devicePosX_ != int.min ? devicePosX_ : cast(int) lround(x() * cast(double) oldF);
         int devY = devicePosY_ != int.min ? devicePosY_ : cast(int) lround(y() * cast(double) oldF);
 
@@ -1980,8 +1984,9 @@ class Window : FlGroup
      * then resize to the screen's work area, less the window's own
      * decorations. Ported from `Fl_Window_Driver::maximize()`
      * (`src/Fl_Window_Driver.cxx`), which a platform driver falls back to
-     * when it can't ask the system to maximize -- on Windows, for a
-     * borderless window (`fl.platform_win32.maximizeOn()`).
+     * when it can't ask the system to maximize: on X11 under a window
+     * manager without EWMH (`fl.platform_x11.maximizeOn()`), on Windows
+     * for a borderless window (`fl.platform_win32.maximizeOn()`).
      * `needsHideShow` is FLTK's `maximize_needs_hide()` (true on
      * Windows): the window is hidden around the resize and shown again.
      */
@@ -2063,21 +2068,17 @@ class Window : FlGroup
 
     /**
      * Turns off any side effects of fullscreen() and moves/resizes the
-     * window to (X,Y,W,H) -- except on Linux's EWMH path, where the
-     * window manager restores the pre-fullscreen geometry on its own
-     * once `_NET_WM_STATE_FULLSCREEN` is cleared, so (X,Y,W,H) go
-     * unused there. On Windows there's no such window-manager-side
-     * restore at all -- `fl.platform_win32.fullscreenOff()` is the
-     * "future non-EWMH/other-platform path" this doc comment used to
-     * describe hypothetically; it actually needs and uses (X,Y,W,H),
-     * matching FLTK's own `Fl_WinAPI_Window_Driver::fullscreen_off(
-     * int,int,int,int)` exactly.
+     * window to (X,Y,W,H). Under an X11 window manager with EWMH, and on
+     * Wayland, the window manager restores the size from before
+     * fullscreen() itself, and (X,Y,W,H) go unused; under an X11 window
+     * manager without EWMH and on Windows the window takes (X,Y,W,H).
+     * Ported from `Fl_Window::fullscreen_off(int,int,int,int)`.
      */
     void fullscreenOff(int X, int Y, int W, int H)
     {
         if (shown() && fullscreenActive())
         {
-            version (linux) platform.fullscreenOff(this);
+            version (linux) platform.fullscreenOff(this, X, Y, W, H);
             version (Windows) platformWin32.fullscreenOff(this, X, Y, W, H);
         }
         else

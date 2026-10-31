@@ -202,7 +202,7 @@ import std.array : join;
 import std.utf : toUTF16, toUTF16z, toUTF8;
 
 import fl.window : FlWindow = Window, resizeBugFix_;
-import fl.enumerations : Event, Keysym, EventState, stateShift, stateCtrl, stateAlt,
+import fl.enumerations : Event, Keysym, EventState, stateShift, stateCtrl, stateAlt, stateMeta,
     stateCapsLock, stateNumLock, stateButton1, stateButton2, stateButton3, stateButton4,
     stateButton5, stateButtons, button, backSpace, tab, enter, escape, home, left, up,
     right, down, pageUp, pageDown, end, insert, deleteKey, capsLock, numLock, shiftL, shiftR,
@@ -571,26 +571,18 @@ private void seedScaleFromPrimaryMonitor()
         fl.core.screenScale(cast(int) i, dpiX / 96.0f);
     }
 
-    // baseScale() -- the Ctrl-'0' reset target and the indicator's "100%"
-    // reference -- is a genuine per-screen value on Windows, matching
-    // FLTK's own real `Fl_WinAPI_Screen_Driver::base_scale(int n) {
-    // return float(dpi[n][0] / 96.); }` override. Each screen simply uses
-    // its own `rawDpiX_[i]` -- already the true per-monitor DPI the loop
-    // above just queried.
-    //
-    // Matches `fl.platform_x11.useStartupScaleFactor()`'s own call to
-    // `fl.core.seedBaseScale()` right after establishing the native
-    // scale: this seeds `fl.core.baseScale()` from the real
-    // native DPI here too, rather than relying on
-    // `baseScale()`'s own lazy-capture fallback, which grabs whatever
-    // `screenScale()` happens to be the first time anything needs it --
-    // usually still correct by coincidence (nothing has zoomed yet at
-    // that point on a fresh run), but not guaranteed once a persisted
-    // absolute scale is loaded before the first zoom key press, the
-    // exact failure mode `seedBaseScale()`'s own doc comment documents
-    // for the Linux side.
+    // The base scale -- the Ctrl-0 reset target and the indicator's
+    // "100%" -- is each screen's own DPI, as FLTK's `base_scale()` on
+    // Windows; seeded before the starting zoom (`fl.core.startupZoom()`:
+    // `FLDTK_SCALING_FACTOR` or the remembered zoom) goes on top (see
+    // `fl.core.seedBaseScale()`).
+    float zoom = fl.core.startupZoom();
     foreach (i; 0 .. rawDpiX_.length)
-        fl.core.seedBaseScale(cast(int) i, rawDpiX_[i] / 96.0f);
+    {
+        float base = rawDpiX_[i] / 96.0f;
+        fl.core.seedBaseScale(cast(int) i, base);
+        fl.core.screenScale(cast(int) i, base * zoom);
+    }
 
     // Seeds the live drawing scale too, not just the per-screen table --
     // `fl.core.currentScale()` otherwise stays at its own hardcoded `1.0`
@@ -615,7 +607,7 @@ private void seedScaleFromPrimaryMonitor()
         if (getDpi(primaryMon, 0 /* MDT_EFFECTIVE_DPI */, &dx, &dy) == 0 /* S_OK */)
             primaryDpiX = cast(float) dx;
     }
-    fl.core.currentScale(primaryDpiX / 96.0f);
+    fl.core.currentScale(primaryDpiX / 96.0f * zoom);
 }
 
 // ---------------------------------------------------------------------
@@ -744,11 +736,10 @@ private void registerWindowClass()
  * this port doesn't have, needing only the single DPI value that
  * actually matters for `win`'s own target screen.
  *
- * **That DPI value is `fl.core.baseScale()`, not `fl.core.screenScale()`
- * -- the real, physical monitor DPI ratio only, deliberately excluding
- * fldtk's own manual Ctrl-+/Ctrl--/Ctrl-0 zoom multiplier `f`
- * (`screenScale() == f * baseScale()`, see `fl.core.
- * rescaleAllWindowsFromScreen()`).** A real window's real, physical-pixel
+ * **That DPI value is the monitor's own (`rawDpiXFor()`), not
+ * `fl.core.screenScale()` -- the real, physical monitor DPI ratio only,
+ * deliberately excluding the zoom (`FLDTK_SCALING_FACTOR` or Ctrl-+/
+ * Ctrl--/Ctrl-0) `f`.** A real window's real, physical-pixel
  * border/title-bar size is governed entirely by the real monitor's real
  * DPI -- an in-app zoom is a purely internal fldtk rendering decision
  * that changes nothing about it. Passing the zoom-inclusive `screenScale()`
@@ -857,7 +848,7 @@ private int fakeXWm(FlWindow win, out int X, out int Y, out int bt, out int bx, 
     // own rendered client-area content genuinely does grow with `f`, by
     // design -- only the *OS chrome* size computation needs the narrower
     // DPI-only value.
-    float dpiScale = fl.core.baseScale(win.screenNum());
+    float dpiScale = rawDpiXFor(win.screenNum()) / 96.0f;
     bool fallback = adjustForDpi !is null
         ? adjustForDpi(&r, style, FALSE, exStyle, cast(uint)(96.0f * dpiScale)) == 0
         : AdjustWindowRectEx(&r, style, FALSE, exStyle) == 0;
@@ -1417,6 +1408,30 @@ private WindowRecord* recordFor(FlWindow win)
     for (auto rec = first_; rec !is null; rec = rec.next)
         if (rec.widget is win) return rec;
     return null;
+}
+
+/// Backs `fl.core.captureWindow()` -- reads `(x, y, w, h)` (device
+/// pixels) of `win` as RGB. Ported from
+/// `Fl_WinAPI_Screen_Driver::read_win_rectangle_unscaled()`
+/// (`CreateCompatibleBitmap()` + `BitBlt()` + `GetDIBits()`, through
+/// `fl.draw.readPixelsFromDc()`). As in `fl.platform_x11.
+/// captureWindowPixels()`, a double-buffered window is read from its
+/// offscreen bitmap, so windows covering it on screen don't show up in
+/// the result; any other window is read from its own DC, where covered
+/// parts come back black. Returns `null` if `win` isn't currently shown.
+package(fl) ubyte[] captureWindowPixels(FlWindow win, int x, int y, int w, int h)
+{
+    import fl.draw : readPixelsFromDc;
+
+    if (!win.shown()) return null;
+    auto rec = recordFor(win);
+    if (rec is null || rec.hwnd is null) return null;
+    if (win.type() == doubleWindowTypeTag && rec.offscreenDc !is null)
+        return readPixelsFromDc(rec.offscreenDc, x, y, w, h);
+    HDC dc = GetDC(rec.hwnd);
+    if (dc is null) return null;
+    scope(exit) ReleaseDC(rec.hwnd, dc);
+    return readPixelsFromDc(dc, x, y, w, h);
 }
 
 /// Frees `rec`'s off-screen double-buffer, if it has one -- called both
@@ -3029,12 +3044,9 @@ private extern (Windows) LRESULT wndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LP
                     if (screen >= 0 && screen < rawDpiY_.length) rawDpiY_[screen] = newDpiX;
                     targetScale = newDpiX / 96.0f;
                     fl.core.screenScale(screen, targetScale);
-                    // Matches FLTK's own `base_scale(int n) { return
-                    // float(dpi[n][0] / 96.); }`, which reads `dpi[n]`
-                    // live -- without re-seeding this too, a live Settings
-                    // DPI change would leave `fakeXWm()`'s own border
-                    // computation and the Ctrl-'0' reset target both
-                    // anchored to the *old* baseline for this screen.
+                    // The new DPI becomes this screen's base scale, the
+                    // Ctrl-0 reset target, as FLTK's `base_scale()` reads
+                    // `dpi[n]` live.
                     fl.core.seedBaseScale(screen, targetScale);
                 }
                 else
@@ -3085,7 +3097,7 @@ private extern (Windows) LRESULT wndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LP
             // touchpads send fractions, accumulated into whole lines.
             float delta = -(cast(short) HIWORD(wParam)) / 120.0f;
             if (delta == 0) return 0;
-            if (fl.core.eventState(stateShift)) fl.core.setWheelDelta(delta, 0);
+            if (fl.core.eventState(stateShift)) fl.core.setWheelDelta(delta, 0, true);
             else fl.core.setWheelDelta(0, delta);
             fl.core.dispatch(Event.mouseWheel, win);
             return 0;
@@ -3102,7 +3114,7 @@ private extern (Windows) LRESULT wndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LP
         {
             float delta = (cast(short) HIWORD(wParam)) / 120.0f;
             if (delta == 0) return 0;
-            if (fl.core.eventState(stateShift)) fl.core.setWheelDelta(0, delta);
+            if (fl.core.eventState(stateShift)) fl.core.setWheelDelta(0, delta, true);
             else fl.core.setWheelDelta(delta, 0);
             fl.core.dispatch(Event.mouseWheel, win);
             return 0;
@@ -3368,6 +3380,7 @@ private EventState keyModifierState()
     if (GetKeyState(VK_SHIFT) & 0x8000) s |= stateShift;
     if (GetKeyState(VK_CONTROL) & 0x8000) s |= stateCtrl;
     if (GetKeyState(VK_MENU) & 0x8000) s |= stateAlt;
+    if ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) s |= stateMeta;
     if (GetKeyState(VK_CAPITAL) & 1) s |= stateCapsLock;
     if (GetKeyState(VK_NUMLOCK) & 1) s |= stateNumLock;
     return s;
@@ -3921,7 +3934,7 @@ package(fl) void setSpot(int fontFace, int fontSize, int X, int Y, int W, int H,
 /// (AltGr) are extended keys, and so is the numpad Enter key
 /// (`kpEnter`). Right Shift is the exception: Windows never sets the
 /// extended bit for it, so `ms2fltk()`'s `{VK_SHIFT, FL_Shift_L,
-/// FL_Shift_R}` entry can't reach `FL_Shift_R` (see `FLTK_ISSUES.md`).
+/// FL_Shift_R}` entry can't reach `FL_Shift_R` (see `FLTK_ISSUES_n.md`).
 /// This port tells the two Shift keys apart by `scanCode` (lParam bits
 /// 16-23) instead, which `MAPVK_VSC_TO_VK_EX` resolves to `VK_LSHIFT`/
 /// `VK_RSHIFT` -- a deliberate deviation beyond FLTK. Callers with
@@ -4793,7 +4806,7 @@ package(fl) void fullscreenOff(FlWindow win, int X, int Y, int W, int H)
  * that `show()`. In FLTK the `WM_SIZE` the re-shown window receives
  * reports `SIZE_RESTORED`, which clears the flag, so `maximize_active()`
  * is false straight after `maximize()` and `un_maximize()` does nothing
- * (see `FLTK_ISSUES.md`).
+ * (see `FLTK_ISSUES_n.md`).
  *
  * **Deviation**: `maximizeOff()` picks its path from the window's real
  * state (`IsZoomed()`), not from `border()` as FLTK's `un_maximize()`
@@ -4904,6 +4917,17 @@ private const(RGBImage) findBestIcon(int idealWidth, const(RGBImage)[] icons)
             bestIdx = idx;
     }
     return icons[bestIdx];
+}
+
+/// Sets a shown top-level window's title bar text to its current
+/// `label()`. Windows has no separate icon title, so `iconlabel()` is
+/// not used. Ported from `Fl_WinAPI_Window_Driver::label()`.
+package(fl) void updateWindowLabel(FlWindow win)
+{
+    if (win.parent() !is null) return;
+    auto hwnd = hwndFor(win);
+    if (hwnd is null) return;
+    SetWindowTextW(hwnd, win.label().toUTF16z);
 }
 
 /**

@@ -41,7 +41,7 @@
  * genuine 2-bit fields (`(style>>8)&3`/`(style>>12)&3`), and this
  * port's own already-correct, already-shipped plain-GDI `applyLine
  * StyleUnscaled()` (`fl.gdi_graphics_driver`) already extracts them
- * that way, via a 4-entry lookup table. Logged as an `FLTK_ISSUES.md`
+ * that way, via a 4-entry lookup table. Logged as an `FLTK_ISSUES_n.md`
  * candidate; deviated from here (not faithfully reproduced) by reusing
  * that exact same, already-proven-correct table shape for the GDI+
  * pen too, matching this project's "verify, then fix" precedent for a

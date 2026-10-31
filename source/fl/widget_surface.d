@@ -27,11 +27,10 @@
  * (`fl.postscript`, `fl.printer_win32`) give it a real answer.
  *
  * `printWindowPart()` reads the window's pixels through
- * `fl.core.captureWindow()`, so it is Linux-only. As in FLTK, a
- * double-buffered window is read from its offscreen buffer and any other
- * window from the screen, where parts covered by another window come
- * back black. GL subwindows are included only as far as `XGetImage()`
- * returns their contents along with the parent's.
+ * `fl.core.captureWindow()`. As in FLTK, a double-buffered window is
+ * read from its offscreen buffer and any other window from the screen,
+ * where parts covered by another window come back black; GL subwindows
+ * are captured separately (see `fl.core.captureWindow()`).
  */
 module fl.widget_surface;
 
@@ -123,10 +122,10 @@ class WidgetSurface : SurfaceDevice
     /**
      * Draws widget onto this surface at the current origin() (plus
      * deltaX/deltaY). Ported from `Fl_Widget_Surface::draw(Fl_Widget*,
-     * int, int)` -- faithful line-for-line port apart from the GL-
-     * plugin detour FLTK takes for an `Fl_Gl_Window`, which is not
-     * ported: every widget, a `GlWindow` included, takes FLTK's own
-     * `drawn_by_plugin == 0` path.
+     * int, int)`. A shown `GlWindow` is drawn as an image of itself
+     * (`GlWindow.capture()`: redraw, `glReadPixels()`), as FLTK's GL
+     * plugin `print()` does, since its `draw()` issues GL calls a
+     * surface can't record.
      */
     void draw(Widget widget, int deltaX = 0, int deltaY = 0)
     {
@@ -167,11 +166,37 @@ class WidgetSurface : SurfaceDevice
         if (isWindow)
             fldraw.pushClip(0, 0, widget.w(), widget.h());
 
-        widget.draw();
-        if (isWindow)
+        bool drawnAsImage = false;
+        auto glw = widget.asGlWindow();
+        if (glw !is null && glw.shown())
         {
-            auto over = cast(OverlayWindow) win;
-            if (over !is null) over.drawOverlay();
+            // Capturing redraws the GL window, which makes it the current
+            // window (`Window.makeCurrent()` moves the drawing target and
+            // the scale to it). Step out of this surface for that, then
+            // make the previously current window current again and step
+            // back in, so the image is drawn here.
+            Window prevWin = Window.current();
+            float prevScale = currentScale();
+            doEndCurrent();
+            auto img = glw.capture(0, 0, glw.w(), glw.h());
+            if (prevWin !is null && prevWin.shown()) prevWin.makeCurrent();
+            doSetCurrent();
+            currentScale(prevScale);
+            if (img !is null)
+            {
+                img.scale(glw.w(), glw.h());
+                img.draw(0, 0);
+                drawnAsImage = true;
+            }
+        }
+        if (!drawnAsImage)
+        {
+            widget.draw();
+            if (isWindow)
+            {
+                auto over = cast(OverlayWindow) win;
+                if (over !is null) over.drawOverlay();
+            }
         }
 
         if (isWindow) fldraw.popClip();
@@ -211,8 +236,8 @@ class WidgetSurface : SurfaceDevice
      * `Fl_Widget_Surface::print_window_part()`: shows win, lets it
      * repaint, reads its pixels back from the screen, then raises the
      * window that was in front before, if that was another one. Does
-     * nothing if win isn't shown, or (Windows) if the readback isn't
-     * available. Coordinates are in FLTK units; the readback is taken
+     * nothing if win isn't shown or the readback fails. Coordinates are
+     * in FLTK units; the readback is taken
      * at the window's screen scale and drawn back at (w, h).
      */
     void printWindowPart(Window win, int x, int y, int w, int h, int deltaX = 0, int deltaY = 0)
@@ -480,7 +505,7 @@ class CopySurface : WidgetSurface
      * contract: it gives the clipboard duplicates
      * (`CopyEnhMetaFileW()`/`CopyImage(..., IMAGE_BITMAP, ...)`), so the
      * cleanup below only frees this object's own `hmf`/`surf`. See
-     * `FLTK_ISSUES.md`'s matching entry.
+     * `FLTK_ISSUES_n.md`'s matching entry.
      */
     ~this()
     {

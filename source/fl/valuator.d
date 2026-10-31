@@ -85,6 +85,38 @@ abstract class Valuator : Widget
         }
     }
 
+    /// How many steps one notch of the mouse wheel moves a value: 10, or
+    /// 1 with Shift held (fine control), or 100 with Ctrl held (coarse).
+    static int wheelStepFactor()
+    {
+        auto state = fl.core.eventState();
+        if (state & stateShift) return 1;
+        if (state & stateCtrl) return 100;
+        return 10;
+    }
+
+    /// The notches of an `Event.mouseWheel` for a value that grows when
+    /// the wheel turns up, or a sideways wheel to the right.
+    protected static int wheelNotches()
+    {
+        int dx, dy;
+        fl.core.wheelUnswapped(dx, dy);
+        return dx - dy;
+    }
+
+    /// Sets the value to `v` for a turn of the mouse wheel, as one
+    /// complete change: the callback runs as for a drag followed by a
+    /// release.
+    protected void changeByWheel(double v)
+    {
+        import fl.widget_tracker : WidgetTracker;
+        auto wp = WidgetTracker(this);
+        handlePush();
+        handleDrag(v);
+        if (wp.deleted()) return;
+        handleRelease();
+    }
+
     /// Called after an FL_WHEN_RELEASE event is received and before
     /// the callback.
     protected void handleRelease()

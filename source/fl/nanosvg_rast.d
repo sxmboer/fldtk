@@ -1025,7 +1025,7 @@ final class NsvgRasterizer
             // i++) cache->colors[i] = nsvg__applyOpacity(grad->stops[i].color,
             // opacity);` -- reading `stops[i]` for i up to 255 when the
             // array holds exactly 1 element, a real out-of-bounds C read
-            // (filed as an FLTK_ISSUES.md candidate). A literal
+            // (filed as an FLTK_ISSUES_n.md candidate). A literal
             // transliteration would be a D `RangeError` on every one-stop
             // gradient, not a faithfully-reproduced quirk -- this is the
             // one deliberate correction in this port's nanosvg transliteration
@@ -1271,7 +1271,7 @@ unittest
     // A gradient with exactly one <stop> -- a real, valid, if unusual SVG
     // construct. Exercises initPaint()'s nstops==1 branch directly, which
     // FLTK's own C reads out of bounds for (`stops[i]` up to i=255 on
-    // a 1-element array -- see FLTK_ISSUES.md's nsvg__initPaint()
+    // a 1-element array -- see FLTK_ISSUES_n.md's nsvg__initPaint()
     // entry). This is the one place this port deliberately deviates from
     // "port faithfully, don't fix" -- a literal transliteration would be a
     // D RangeError on every single-stop gradient. This test's real job is

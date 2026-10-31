@@ -631,7 +631,7 @@ class HelpView : FlGroup
         // entries (line[32]) and silently stops advancing past index
         // 31 (do_align()'s `if (line < 31) line++`); a block with more
         // than 32 lines just re-uses line[31] for everything past it.
-        // Ported faithfully, not "fixed" -- see FLTK_ISSUES.md.
+        // Ported faithfully, not "fixed" -- see FLTK_ISSUES_n.md.
         int[32] line;
         int ol;
         int olNum;
@@ -2809,7 +2809,7 @@ class HelpView : FlGroup
                             // (vs. format()'s unconditional overwrite
                             // for the same tag) -- a real FLTK
                             // inconsistency, ported faithfully; see
-                            // FLTK_ISSUES.md.
+                            // FLTK_ISSUES_n.md.
                             if (width == 0)
                                 width = img.w();
                             if (height == 0)

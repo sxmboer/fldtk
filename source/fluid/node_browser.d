@@ -123,7 +123,7 @@ void loadPrefs()
     p.get("comment_color", c, darkGreen); commentColor = cast(Color) c;
     // FLTK's own `load_prefs()` default here is `FL_HELVETICA`, not
     // the `FL_DARK_GREEN` its "Reset" button callback mistakenly
-    // assigns (a real FLTK bug -- see `FLTK_ISSUES.md` and this
+    // assigns (a real FLTK bug -- see `FLTK_ISSUES_n.md` and this
     // module's own `commentFont` static-initializer comment above) --
     // faithfully matched here, not the buggy value.
     p.get("comment_font", c, helvetica); commentFont = cast(Font) c;

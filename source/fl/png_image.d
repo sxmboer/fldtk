@@ -57,24 +57,14 @@
  *    a caller would need a separate palette lookup for.
  *  - The nested `for` loop plus labeled `break loop` arsd.png's own
  *    `convertPngData()` uses to walk a bit-packed (sub-8-bit-depth)
- *    scanline collapses to a single `while` loop here (`expandScanline`
- *    below) -- a pure restructuring with identical per-pixel behavior,
- *    not a functional change; D has no equivalent readability problem
- *    to solve, this is just less to follow.
- *  - Known, deliberate gap vs. FLTK: `tRNS`-based single-color-key
- *    transparency for plain greyscale/truecolor (types 0/2) is NOT
- *    applied -- those load fully opaque. This is a real, narrower
- *    FLTK feature (`png_set_tRNS_to_alpha()` handles it for every
- *    color type, not just indexed) that's genuinely rare in practice
- *    (color-keyed transparency predates PNG's own alpha-channel types
- *    and fell out of common use once types 4/6 arrived) -- flagged
- *    here rather than silently dropped, and easy to add later if a
- *    real `.png` file ever needs it.
- *  - Interlaced (Adam7, `interlaceMethod != 0`) PNGs are NOT supported
- *    -- neither arsd.png's eager `imageFromPng()` path nor this
- *    adaptation deinterlaces; rejected with `errFormat` rather than
- *    silently producing a scrambled image. A real gap, not yet needed
- *    by any `.fl`/sample file in this project.
+ *    scanline becomes a shift-and-mask loop over each byte here
+ *    (`expandScanline` below), with identical per-pixel behavior.
+ *  - A `tRNS` chunk gives greyscale and truecolor images (types 0/2)
+ *    an alpha channel too, from their single colour key, compared at
+ *    the image's full bit depth as the PNG specification says -- what
+ *    FLTK gets from libpng's `png_set_tRNS_to_alpha()`.
+ *  - Adam7-interlaced images are deinterlaced pass by pass
+ *    (`decodePngPixels()`); arsd.png's eager path has no deinterlacer.
  *  - PNG write always emits filter-type 0 (None) per scanline, exactly
  *    matching arsd.png's own `addImageDatastreamToPng()` (no filter
  *    heuristic/minimum-sum-of-absolute-differences selection like
@@ -362,22 +352,22 @@ private int channelsInStream(ubyte type)
     }
 }
 
-private int bytesPerScanline(PngHeader h)
+private int bytesPerScanline(PngHeader h, uint width)
 {
-    long bits = cast(long) h.width * channelsInStream(h.type) * h.depth;
+    long bits = cast(long) width * channelsInStream(h.type) * h.depth;
     return cast(int)((bits + 7) / 8);
 }
 
 /// The channel count `RGBImage.d()` reports -- matches FLTK
-/// `Fl_PNG_Image::load_png_()`'s own `channels` calculation exactly
-/// (see this module's own top comment for the one narrow case, plain
-/// grey/truecolor `tRNS` color-keying, this doesn't cover).
+/// `Fl_PNG_Image::load_png_()`'s own `channels` calculation exactly: a
+/// `tRNS` chunk adds an alpha channel for greyscale, truecolor and
+/// indexed images alike.
 private int outputChannels(ubyte type, bool hasTrns)
 {
     switch (type)
     {
-        case PngType.greyscale: return 1;
-        case PngType.truecolor: return 3;
+        case PngType.greyscale: return hasTrns ? 2 : 1;
+        case PngType.truecolor: return hasTrns ? 4 : 3;
         case PngType.indexed: return hasTrns ? 4 : 3;
         case PngType.greyscaleWithAlpha: return 2;
         case PngType.truecolorWithAlpha: return 4;
@@ -389,8 +379,14 @@ private int outputChannels(ubyte type, bool hasTrns)
 /// pixel output, resolving indexed pixels through `palette`. Adapted
 /// from arsd.png's own `convertPngData()` -- see this module's top
 /// comment for exactly what changed and why.
+///
+/// `key` is a greyscale or truecolor image's `tRNS` colour key (one grey
+/// sample, or red, green and blue), compared at the image's full bit
+/// depth; a pixel matching it gets alpha 0, every other pixel 255. Empty
+/// when the image has no `tRNS` chunk.
 private void expandScanline(ubyte type, ubyte depth, const(ubyte)[] data, int width,
-    int outChannels, const(PngColor)[] palette, ubyte[] idata, ref size_t idataIdx)
+    int outChannels, const(PngColor)[] palette, const(uint)[] key,
+    ubyte[] idata, ref size_t idataIdx)
 {
     ubyte consumeOne()
     {
@@ -399,7 +395,16 @@ private void expandScanline(ubyte type, ubyte depth, const(ubyte)[] data, int wi
         return r;
     }
 
-    void acceptPixel(ubyte p)
+    // Reads one 8- or 16-bit sample, returning its high byte and the full
+    // value.
+    ubyte sample(out uint full)
+    {
+        ubyte hi = consumeOne();
+        full = depth == 16 ? (hi << 8) | consumeOne() : hi;
+        return hi;
+    }
+
+    void acceptPixel(ubyte p, uint full)
     {
         if (type == PngType.indexed)
         {
@@ -416,7 +421,13 @@ private void expandScanline(ubyte type, ubyte depth, const(ubyte)[] data, int wi
         else if (depth == 2) { p |= p << 2; p |= p << 4; }
         else if (depth == 4) p |= p << 4;
         idata[idataIdx++] = p;
-        if (type == PngType.greyscaleWithAlpha) idata[idataIdx++] = consumeOne();
+        if (type == PngType.greyscaleWithAlpha)
+        {
+            uint unused;
+            idata[idataIdx++] = sample(unused);
+        }
+        else if (key.length)
+            idata[idataIdx++] = full == key[0] ? 0 : 255;
     }
 
     int pixel = 0;
@@ -425,61 +436,40 @@ private void expandScanline(ubyte type, ubyte depth, const(ubyte)[] data, int wi
         if (type == PngType.truecolor || type == PngType.truecolorWithAlpha)
         {
             // Truecolor(+alpha) samples are always 8 or 16 bits each,
-            // never sub-8-bit-packed -- one pixel per iteration.
-            if (depth == 8)
+            // never sub-8-bit-packed -- one pixel per iteration. A 16-bit
+            // sample keeps its high byte only (matches FLTK's 16->8 strip).
+            uint r, g, b;
+            idata[idataIdx++] = sample(r);
+            idata[idataIdx++] = sample(g);
+            idata[idataIdx++] = sample(b);
+            if (type == PngType.truecolorWithAlpha)
             {
-                idata[idataIdx++] = consumeOne();
-                idata[idataIdx++] = consumeOne();
-                idata[idataIdx++] = consumeOne();
-                if (type == PngType.truecolorWithAlpha) idata[idataIdx++] = consumeOne();
+                uint unused;
+                idata[idataIdx++] = sample(unused);
             }
-            else // depth == 16: keep the high byte only (matches FLTK's 16->8 strip)
-            {
-                idata[idataIdx++] = consumeOne(); consumeOne();
-                idata[idataIdx++] = consumeOne(); consumeOne();
-                idata[idataIdx++] = consumeOne(); consumeOne();
-                if (type == PngType.truecolorWithAlpha) { idata[idataIdx++] = consumeOne(); consumeOne(); }
-            }
+            else if (key.length)
+                idata[idataIdx++] = (r == key[0] && g == key[1] && b == key[2]) ? 0 : 255;
             pixel++;
             continue;
         }
 
         // greyscale / greyscale+alpha / indexed: may be sub-8-bit packed.
-        auto b = consumeOne();
-        final switch (depth)
+        // The raw sample (before scaling up to 8 bits) is what a colour
+        // key is compared against.
+        if (depth >= 8)
         {
-            case 1:
-                acceptPixel((b >> 7) & 0x01); if (++pixel >= width) break;
-                acceptPixel((b >> 6) & 0x01); if (++pixel >= width) break;
-                acceptPixel((b >> 5) & 0x01); if (++pixel >= width) break;
-                acceptPixel((b >> 4) & 0x01); if (++pixel >= width) break;
-                acceptPixel((b >> 3) & 0x01); if (++pixel >= width) break;
-                acceptPixel((b >> 2) & 0x01); if (++pixel >= width) break;
-                acceptPixel((b >> 1) & 0x01); if (++pixel >= width) break;
-                acceptPixel(b & 0x01);
-                pixel++;
-                break;
-            case 2:
-                acceptPixel((b >> 6) & 0x03); if (++pixel >= width) break;
-                acceptPixel((b >> 4) & 0x03); if (++pixel >= width) break;
-                acceptPixel((b >> 2) & 0x03); if (++pixel >= width) break;
-                acceptPixel(b & 0x03);
-                pixel++;
-                break;
-            case 4:
-                acceptPixel((b >> 4) & 0x0f); if (++pixel >= width) break;
-                acceptPixel(b & 0x0f);
-                pixel++;
-                break;
-            case 8:
-                acceptPixel(b);
-                pixel++;
-                break;
-            case 16:
-                acceptPixel(b);
-                consumeOne(); // discard low byte, matching FLTK's/arsd's 16->8 truncation
-                pixel++;
-                break;
+            uint full;
+            ubyte v = sample(full);
+            acceptPixel(v, full);
+            pixel++;
+            continue;
+        }
+        auto byte_ = consumeOne();
+        uint mask = (1u << depth) - 1;
+        for (int shift = 8 - depth; shift >= 0 && pixel < width; shift -= depth, pixel++)
+        {
+            uint v = (byte_ >> shift) & mask;
+            acceptPixel(cast(ubyte) v, v);
         }
     }
 }
@@ -489,42 +479,91 @@ private ubyte[] decodePngPixels(PNG* p, out int width, out int height, out int c
     PngHeader h = getHeader(p);
     if (h.compressionMethod != 0) throw new Exception("unsupported PNG compression method");
     if (h.filterMethod != 0) throw new Exception("unsupported PNG filter method");
-    if (h.interlaceMethod != 0) throw new Exception("interlaced PNG not supported");
+    if (h.interlaceMethod > 1) throw new Exception("unsupported PNG interlace method");
     if (h.width == 0 || h.height == 0) throw new Exception("empty PNG");
 
     width = cast(int) h.width;
     height = cast(int) h.height;
 
     PngColor[] palette;
-    bool hasTrns;
+    uint[] key;
+    auto trns = p.getChunkNullable("tRNS");
     if (h.type == PngType.indexed)
-    {
         palette = fetchPalette(p);
-        hasTrns = p.getChunkNullable("tRNS") !is null;
+    else if (trns !is null && (h.type == PngType.greyscale || h.type == PngType.truecolor))
+    {
+        // tRNS for these types holds one 16-bit value per channel.
+        int n = h.type == PngType.greyscale ? 1 : 3;
+        if (trns.payload.length < 2 * n) throw new Exception("bad PNG tRNS chunk");
+        foreach (i; 0 .. n)
+            key ~= (trns.payload[2 * i] << 8) | trns.payload[2 * i + 1];
     }
+    bool hasTrns = trns !is null && (h.type == PngType.indexed || key.length);
 
     channels = outputChannels(h.type, hasTrns);
 
     auto idata = new ubyte[cast(size_t) width * height * channels];
-    size_t idataIdx;
 
     auto raw = getDatastream(p);
-    int lineBytes = bytesPerScanline(h);
     int bpp = bytesPerPixel(h);
-
-    immutable(ubyte)[] previousLine;
     size_t pos;
-    foreach (y; 0 .. height)
+
+    // Unfilters and expands `rows` scanlines of `cols` pixels each,
+    // handing every expanded row to `store`. Filtering restarts with
+    // each Adam7 pass.
+    void decodeRows(uint cols, uint rows, scope void delegate(uint row, const(ubyte)[] pixels) store)
     {
-        if (pos + 1 + lineBytes > raw.length) throw new Exception("truncated PNG image data");
-        ubyte filterType = raw[pos];
-        auto lineData = raw[pos + 1 .. pos + 1 + lineBytes];
-        pos += 1 + lineBytes;
+        if (cols == 0 || rows == 0) return;
+        int lineBytes = bytesPerScanline(h, cols);
+        auto rowBuf = new ubyte[cast(size_t) cols * channels];
+        immutable(ubyte)[] previousLine;
+        foreach (row; 0 .. rows)
+        {
+            if (pos + 1 + lineBytes > raw.length) throw new Exception("truncated PNG image data");
+            ubyte filterType = raw[pos];
+            if (filterType > 4) throw new Exception("bad PNG filter type");
+            auto lineData = raw[pos + 1 .. pos + 1 + lineBytes];
+            pos += 1 + lineBytes;
 
-        auto unfiltered = unfilter(filterType, lineData, previousLine, bpp);
-        previousLine = unfiltered;
+            auto unfiltered = unfilter(filterType, lineData, previousLine, bpp);
+            previousLine = unfiltered;
 
-        expandScanline(h.type, h.depth, unfiltered, width, channels, palette, idata, idataIdx);
+            size_t idx;
+            expandScanline(h.type, h.depth, unfiltered, cast(int) cols, channels, palette, key, rowBuf, idx);
+            store(row, rowBuf);
+        }
+    }
+
+    if (h.interlaceMethod == 0)
+    {
+        size_t stride = cast(size_t) width * channels;
+        decodeRows(width, height, (row, pixels) {
+            idata[row * stride .. (row + 1) * stride] = pixels[];
+        });
+    }
+    else
+    {
+        // Adam7: seven passes, each a reduced image of every
+        // colStep-th pixel of every rowStep-th row.
+        static immutable int[4][7] passes = [
+            // startRow, startCol, rowStep, colStep
+            [0, 0, 8, 8], [0, 4, 8, 8], [4, 0, 8, 4], [0, 2, 4, 4],
+            [2, 0, 4, 2], [0, 1, 2, 2], [1, 0, 2, 1],
+        ];
+        foreach (ref ps; passes)
+        {
+            uint passW = width > ps[1] ? (width - ps[1] + ps[3] - 1) / ps[3] : 0;
+            uint passH = height > ps[0] ? (height - ps[0] + ps[2] - 1) / ps[2] : 0;
+            decodeRows(passW, passH, (row, pixels) {
+                size_t y = ps[0] + cast(size_t) row * ps[2];
+                foreach (i; 0 .. passW)
+                {
+                    size_t x = ps[1] + cast(size_t) i * ps[3];
+                    size_t dst = (y * width + x) * channels;
+                    idata[dst .. dst + channels] = pixels[i * channels .. (i + 1) * channels];
+                }
+            });
+        }
     }
 
     return idata;
@@ -629,8 +668,7 @@ private ubyte[] serializePng(PNG* p)
 /// Ported from `Fl_PNG_Image` (`FL/Fl_PNG_Image.H` + `src/
 /// Fl_PNG_Image.cxx`) -- a PNG file/buffer reader, decoding into an
 /// already-expanded `RGBImage` pixel buffer. See this module's own top
-/// comment for the decoder's origin and the specific, documented gaps
-/// (no interlacing, no grey/truecolor tRNS color-keying) vs. FLTK.
+/// comment for the decoder's origin.
 class PngImage : RGBImage
 {
     this(string filename)
@@ -989,4 +1027,31 @@ unittest
 
     new PngImage(null, bytes);
     assert(SharedImage.find("") is null);
+}
+
+unittest
+{
+    // A 5x4 8-bit greyscale image, Adam7-interlaced, with a tRNS colour
+    // key of 74: pixel i is grey (i * 37) % 256, and only the pixel equal
+    // to the key is transparent.
+    static immutable ubyte[] file = [
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+        0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x04,
+        0x08, 0x00, 0x00, 0x00, 0x01, 0x14, 0x5f, 0x9a, 0x0a, 0x00, 0x00, 0x00,
+        0x02, 0x74, 0x52, 0x4e, 0x53, 0x00, 0x4a, 0xe0, 0x9a, 0x65, 0xb6, 0x00,
+        0x00, 0x00, 0x24, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0x60, 0x60,
+        0x98, 0xc2, 0xe0, 0xc5, 0x50, 0xb4, 0x87, 0x8d, 0x51, 0xd5, 0x8b, 0x61,
+        0xfa, 0x43, 0xc6, 0x9d, 0xaa, 0xaa, 0xaa, 0xaa, 0x8c, 0xda, 0xaa, 0xaa,
+        0xaa, 0xaa, 0x00, 0x57, 0xc0, 0x06, 0x09, 0xa5, 0xdf, 0xfb, 0x8d, 0x00,
+        0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ];
+    auto img = new PngImage(null, file);
+    assert(img.fail() == 0);
+    assert(img.w() == 5 && img.h() == 4 && img.d() == 2);
+    foreach (i; 0 .. 20)
+    {
+        ubyte grey = cast(ubyte)((i * 37) % 256);
+        assert(img.array[2 * i] == grey);
+        assert(img.array[2 * i + 1] == (grey == 74 ? 0 : 255));
+    }
 }

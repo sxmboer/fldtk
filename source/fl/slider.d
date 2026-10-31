@@ -14,6 +14,15 @@
  * fl.draw's fl_line()/fl_yxline()/fl_xyline()/darker()/lighter()
  * (some already added for fl.light_button, the rest new here).
  *
+ * A vertical slider has its maximum at the top and its minimum at the
+ * bottom; a horizontal one its minimum on the left. `Scrollbar` keeps
+ * the minimum at the top, where the start of what it scrolls is
+ * (`maximumAtTop()`).
+ *
+ * The mouse wheel moves the knob by Valuator.wheelStepFactor() steps
+ * per notch, in the direction the wheel turns: up, or a sideways wheel
+ * to the right, adds.
+ *
  * handleAt()'s Fl_Widget_Tracker "was `this` deleted mid-callback?"
  * guards are ported too (fl.widget_tracker.WidgetTracker), matching
  * FLTK exactly: FL_PUSH's handle_push() call and each of
@@ -161,6 +170,27 @@ class Slider : Valuator
             w() - fl.core.boxDw(box()), h() - fl.core.boxDh(box()));
     }
 
+    /// Whether a vertical slider has its maximum at the top: true, except
+    /// for `Scrollbar`, whose top is the start of what it scrolls.
+    protected bool maximumAtTop() const { return true; }
+
+    /// Whether the slider's top (vertical) or left end (horizontal)
+    /// stands for maximum() rather than minimum().
+    private bool maximumAtStart() const { return !horizontal() && maximumAtTop(); }
+
+    /// Where val sits along the slider, 0..1 from its top or left end.
+    private double axisPosition(double val) const
+    {
+        double pos = valueToPosition(val);
+        return maximumAtStart() ? 1 - pos : pos;
+    }
+
+    /// The value at `pos`, 0..1 from the slider's top or left end.
+    private double axisValue(double pos) const
+    {
+        return positionToValue(maximumAtStart() ? 1 - pos : pos);
+    }
+
     /// Converts val to a normalized 0..1 position, using scale().
     protected double valueToPosition(double val) const
     {
@@ -235,14 +265,15 @@ class Slider : Valuator
     /// full bounds.
     protected void drawSlider(int x, int y, int w, int h)
     {
-        double val = (minimum() == maximum()) ? 0.5 : valueToPosition(value());
+        double val = (minimum() == maximum()) ? 0.5 : axisPosition(value());
 
         int ww = horizontal() ? w : h;
         int xx, s;
         if (type() == horFillSlider || type() == vertFillSlider)
         {
+            // Filled from the end with the smaller number up to the value.
             s = cast(int)(val * ww + .5);
-            if (minimum() > maximum()) { s = ww - s; xx = ww - s; }
+            if (axisValue(0) > axisValue(1)) { xx = s; s = ww - s; }
             else xx = 0;
         }
         else
@@ -403,7 +434,7 @@ class Slider : Valuator
         }
 
         // Same mapping the knob uses, so ticks line up with it.
-        int tickOffset(double v) { return cast(int)(valueToPosition(v) * w + .5); }
+        int tickOffset(double v) { return cast(int)(axisPosition(v) * w + .5); }
 
         // Long ticks span major1..major2; minor ticks the middle half.
         int major1, major2;
@@ -499,7 +530,7 @@ class Slider : Valuator
 
         case Event.drag:
         {
-            double val = (minimum() == maximum()) ? 0.5 : valueToPosition(value());
+            double val = (minimum() == maximum()) ? 0.5 : axisPosition(value());
 
             int ww = horizontal() ? w : h;
             int mx = horizontal() ? fl.core.eventX() - x : fl.core.eventY() - y;
@@ -555,7 +586,7 @@ class Slider : Valuator
                     if (offcenter > s) offcenter = s;
                 }
                 double pos = (ww - s) > 0 ? cast(double) xx / cast(double)(ww - s) : 0.0;
-                v = round(positionToValue(pos));
+                v = round(axisValue(pos));
                 // Make sure a click outside the slider bar moves it.
                 if (event == Event.push && v == value())
                 {
@@ -572,6 +603,16 @@ class Slider : Valuator
             handleRelease();
             return 1;
 
+        case Event.mouseWheel:
+        {
+            // Up or right adds; the knob moves the way the wheel turns.
+            int n = wheelNotches();
+            if (!horizontal() && !maximumAtTop()) n = -n;
+            if (n == 0) return 0;
+            changeByWheel(clamp(incrementLinLog(value(), n * wheelStepFactor(), horizontal() ? w : h)));
+            return 1;
+        }
+
         case Event.keyDown:
         {
             auto wp = WidgetTracker(this);
@@ -581,7 +622,7 @@ class Slider : Valuator
                 if (horizontal()) return 0;
                 handlePush();
                 if (wp.deleted()) return 1;
-                handleDrag(clamp(incrementLinLog(value(), -1, h)));
+                handleDrag(clamp(incrementLinLog(value(), maximumAtTop() ? 1 : -1, h)));
                 if (wp.deleted()) return 1;
                 handleRelease();
                 return 1;
@@ -589,7 +630,7 @@ class Slider : Valuator
                 if (horizontal()) return 0;
                 handlePush();
                 if (wp.deleted()) return 1;
-                handleDrag(clamp(incrementLinLog(value(), 1, h)));
+                handleDrag(clamp(incrementLinLog(value(), maximumAtTop() ? -1 : 1, h)));
                 if (wp.deleted()) return 1;
                 handleRelease();
                 return 1;
@@ -653,8 +694,8 @@ unittest
 
 unittest
 {
-    // Dragging from one end of a vertical slider to the other moves
-    // value() from minimum() toward maximum().
+    // A vertical slider has its maximum at the top: dragging from the
+    // bottom to the top moves value() from minimum() toward maximum().
     import fl.group : FlGroup;
 
     FlGroup.current(null);
@@ -665,11 +706,11 @@ unittest
     s.sliderSize(0.1);
 
     fl.core.eX_ = 10;
-    fl.core.eY_ = 0; // top of a vertical slider
+    fl.core.eY_ = 99; // bottom of a vertical slider
     s.handle(Event.push);
     assert(s.value() < 1); // near the minimum
 
-    fl.core.eY_ = 99; // bottom
+    fl.core.eY_ = 0; // top
     s.handle(Event.drag);
     assert(s.value() > 9); // near the maximum
 
@@ -698,9 +739,12 @@ unittest
 
     assert(s.handle(Event.keyDown) == 0); // no key set yet: falls through to default
 
-    fl.core.eKeysym_ = down;
+    fl.core.eKeysym_ = up; // toward the maximum, at the top
     assert(s.handle(Event.keyDown) == 1);
     assert(s.value() == 6);
+    fl.core.eKeysym_ = down;
+    assert(s.handle(Event.keyDown) == 1);
+    assert(s.value() == 5);
 
     fl.core.eKeysym_ = left; // ignored: this slider is vertical
     assert(s.handle(Event.keyDown) == 0);
@@ -725,4 +769,41 @@ unittest
     assert(s.value() == 0);
 
     FlGroup.current(null);
+}
+
+unittest
+{
+    // Up, or a sideways wheel to the right, adds, and the knob moves the
+    // way the wheel turns (a vertical slider's maximum is at the top).
+    // Shift makes a notch one step.
+    import fl.group : FlGroup;
+    FlGroup.current(null);
+
+    auto v = new Slider(0, 0, 20, 200);
+    v.bounds(0, 100);
+    v.step(1);
+    v.value(50);
+    fl.core.eDy_ = -1;
+    assert(v.handle(Event.mouseWheel) == 1);
+    assert(v.value() == 60);
+    fl.core.eState_ = stateShift;
+    fl.core.eDy_ = 1;
+    v.handle(Event.mouseWheel);
+    assert(v.value() == 59);
+    fl.core.eState_ = 0;
+
+    auto h = new Slider(0, 0, 200, 20);
+    h.type(horSlider);
+    h.bounds(0, 100);
+    h.step(1);
+    h.value(50);
+    fl.core.eDy_ = -1;
+    h.handle(Event.mouseWheel);
+    assert(h.value() == 60);
+    fl.core.eDy_ = 0;
+    fl.core.eDx_ = -1;
+    h.handle(Event.mouseWheel);
+    assert(h.value() == 50);
+
+    fl.core.resetForTest();
 }

@@ -145,7 +145,7 @@ package(fl) bool decoratedWinSize(FlWindow win, out int w, out int h) { mixin(fw
 package(fl) void updateWindowLabel(FlWindow win) { mixin(fwd!q{updateWindowLabel(win)}); }
 package(fl) void setIcons(FlWindow win) { mixin(fwd!q{setIcons(win)}); }
 package(fl) void fullscreenOn(FlWindow win) { mixin(fwd!q{fullscreenOn(win)}); }
-package(fl) void fullscreenOff(FlWindow win) { mixin(fwd!q{fullscreenOff(win)}); }
+package(fl) void fullscreenOff(FlWindow win, int x, int y, int w, int h) { mixin(fwd!q{fullscreenOff(win, x, y, w, h)}); }
 package(fl) void maximizeOn(FlWindow win) { mixin(fwd!q{maximizeOn(win)}); }
 package(fl) void maximizeOff(FlWindow win) { mixin(fwd!q{maximizeOff(win)}); }
 

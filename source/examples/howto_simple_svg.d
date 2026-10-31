@@ -43,7 +43,7 @@ void main()
     auto win = new Window(720, 486, "howto-simple-svg");
     auto box = new Box(10, 10, 720 - 20, 486 - 20);
     // Deliberate, one-line deviation from FLTK's own transliteration
-    // (see FLTK_ISSUES.md-adjacent reasoning): FLTK's Fl_Widget::
+    // (see FLTK_ISSUES_n.md-adjacent reasoning): FLTK's Fl_Widget::
     // image() never auto-scales an image to its box -- this port's
     // Widget.image() matches that exactly -- so FLTK's own sample
     // relies entirely on this box (700x466) happening to closely match

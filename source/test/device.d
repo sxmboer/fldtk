@@ -671,21 +671,7 @@ void copy(Widget, Object)
         SurfaceDevice.popCurrent();
     }
 
-    if (operation == "PdfFileSurface")
-    {
-        // fl.pdf_file_surface doesn't exist yet -- PORTING.md's own
-        // FL/Fl_PDF_File_Surface.H row marks this Deferred (Pango):
-        // FLTK's own implementation is unconditionally gated on Pango
-        // on Linux too, the same project-wide deferred decision (see
-        // CONVENTIONS.md's "Deferred: external-library-backed features"),
-        // not a fresh gap this sample can just port around.
-        message("PDF output isn't ported yet (see PORTING.md's\n"
-            ~ "FL/Fl_PDF_File_Surface.H row -- deferred pending the\n"
-            ~ "project-wide Pango decision).");
-        return;
-    }
-
-    if (operation == "Printer" || operation == "PostscriptFileDevice")
+    if (operation == "Printer" || operation == "PostscriptFileDevice" || operation == "PdfFileSurface")
     {
         PagedDevice p;
         int err;
@@ -695,6 +681,12 @@ void copy(Widget, Object)
             auto printer = new Printer();
             err = printer.beginJob(1, errMessage);
             p = printer;
+        }
+        else if (operation == "PdfFileSurface")
+        {
+            auto pdf = new PdfFileSurface();
+            err = pdf.beginJob("FLTK.pdf", errMessage);
+            p = pdf;
         }
         else
         {

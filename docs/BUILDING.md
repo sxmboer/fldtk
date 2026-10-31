@@ -121,6 +121,12 @@ A dub project depending on fldtk gets both versions and all of these
 libraries automatically from the default configuration, and opts out
 with `subConfiguration "fldtk" "linux-no-cairo"`.
 
+A dub project normally selects fldtk's `program` configuration
+(`subConfiguration "fldtk" "program"`, see `docs/TUTORIAL02.md`): its
+program links the libfldtk.so in the fldtk folder and loads it from
+there, so rebuilding fldtk updates every such program. With any other
+configuration, dub copies libfldtk.so next to the program.
+
 
 ## Building your own program in Linux (e.g. an exported .d file from a fluid project)
 
@@ -163,10 +169,13 @@ LD_LIBRARY_PATH set (e.g. for Phobos): that replaces it.
 
 ## The dub single-file-package header
 
-`fluid -c` can put a one-line dub comment at the very top of the
-generated .d file:
+`fluid -c` can put a dub comment at the very top of the generated .d
+file:
 
-    /+ dub.sdl: dependency "fldtk" path="." +/
+    /+ dub.sdl:
+    dependency "fldtk" path="."
+    subConfiguration "fldtk" "program"
+    +/
     import fl;
     ...
 
@@ -176,6 +185,9 @@ directory of the .fl file (the nearest ancestor holding a `dub.sdl`, as
 `.`, so edit it by hand for a checkout elsewhere. Any absolute path
 works too. It is relative to the .fl file, not to the output, so if `-o`
 puts the .d in another directory, fix the path by hand.
+`subConfiguration "fldtk" "program"` selects fldtk's configuration for
+programs: the program links libfldtk.so in the fldtk folder and finds
+it there when it runs.
 
 To turn it on, either:
 
@@ -197,17 +209,10 @@ linker flags are needed, since dub gets all of that from the dependency
     dub build --single example.d           # builds ./example next to example.d
     dub run --single example.d             # builds and runs
 
-Two things to know:
-
-- The header only matters to dub. `dmd example.d ...` and `rdmd example.d`
-  treat it as a comment and ignore it, so use the command lines from the
-  previous section for those.
-- `dub run --single` does not tell the loader where libfldtk.so is, so
-  the program stops with "error while loading shared libraries:
-  libfldtk.so". Run `dub build --single example.d` and start the binary
-  with `LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/fldtk ./example`
-  instead. (The Fluid and demo builds avoid this with a relative
-  rpath; the header does not add one.)
+The header only matters to dub. `dmd example.d ...` and `rdmd
+example.d` treat it as a comment and ignore it, so use the command lines
+from the previous section for those. `docs/TUTORIAL01.md` walks through
+both ways.
 
 
 ## Windows

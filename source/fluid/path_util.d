@@ -22,11 +22,11 @@
  * for any realistic `maxChars`, but a `dstring` slice with an
  * out-of-range bound throws in D rather than reading adjacent memory
  * the way an unchecked `fl_utf8strlen()` byte offset could -- see
- * `FLTK_ISSUES.md`'s entry on this function's own unclamped
+ * `FLTK_ISSUES_n.md`'s entry on this function's own unclamped
  * `left_chars`/`remove_chars` math for a tiny `max_chars`).
  *
  * `endWithSlash()`/`fixSeparators()` are trivial, ported as-is except
- * `endWithSlash("")` -- see `FLTK_ISSUES.md` for why FLTK's
+ * `endWithSlash("")` -- see `FLTK_ISSUES_n.md` for why FLTK's
  * own `str[str.size()-1]` is undefined behavior on an empty string,
  * faithfully NOT reproduced here (this port just returns `""`
  * unchanged for that one input instead).

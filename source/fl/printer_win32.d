@@ -25,23 +25,18 @@
  * `HDC` via this port's existing `fl.gdi_graphics_driver.
  * GdiGraphicsDriver` -- not PostScript text at all.
  *
- * `Printer` extends `fl.paged_device.PagedDevice` directly (not
- * `fl.postscript.PostscriptFileDevice`, unlike the POSIX half) --
- * matching FLTK's own `Fl_WinAPI_Printer_Driver : public
- * Fl_Paged_Device` exactly, since nothing here is PostScript-shaped.
+ * The page handling (margins, origin, scale, rotation, pages) is in
+ * `GdiPagedDevice`, a `fl.paged_device.PagedDevice` (not
+ * `fl.postscript.PostscriptFileDevice`, unlike the POSIX half: nothing
+ * here is PostScript-shaped). `Printer` adds the print dialog on top;
+ * `fl.pdf_file_surface.PdfFileSurface` uses the same base with the
+ * "Microsoft Print to PDF" printer.
+ *
  * `WIN_SetupPrinterDeviceContext()` configures the printer HDC for
  * point-unit coordinates (`SetMapMode(MM_ANISOTROPIC)` + matched
  * `SetWindowExtEx()`/`SetViewportExtEx()` so 720 logical units span the
  * physical page's real 10-inch reference size, `SetGraphicsMode(GM_
  * ADVANCED)` to allow rotation) -- ported as `setupPrinterDeviceContext()`.
- *
- * **Deliberately not ported**: `Fl_PDF_GDI_File_Surface` (FLTK's
- * `Fl_PDF_File_Surface` backing implementation, using Windows' own
- * "Microsoft Print to PDF" virtual printer) -- `fl.pdf_file_surface`
- * itself is `Deferred` project-wide (see `CONVENTIONS.md`'s Pango note and
- * `PORTING.md`'s `FL/Fl_PDF_File_Surface.H` row), so there is no PDF
- * surface class here for it to back. Revisit together with that
- * decision, not before.
  *
  * **Deliberately simplified from FLTK's own `Fl_GDI_Printer_
  * Graphics_Driver`**: FLTK gives printing a *second*, dedicated
@@ -100,22 +95,15 @@ import fl.ask : alert;
 import fldraw = fl.draw;
 
 /**
- * OS-independent print support, Windows half. See `fl.printer_posix.
- * Printer` (built on non-Windows platforms instead) for the X11/Wayland
- * half, and `fl.printer`'s own doc comment for the dispatch that picks
- * one or the other. Usage is identical either way -- see `fl.printer_
- * posix.Printer`'s own doc comment for the shared example.
+ * Drawing into a printer's device context, one page at a time, in
+ * point units: the part of `Fl_WinAPI_Printer_Driver` that `Printer`
+ * and `fl.pdf_file_surface.PdfFileSurface` (through the "Microsoft
+ * Print to PDF" printer) share. A subclass opens the document with
+ * `StartDoc()` and hands the device context to `startOutput()`.
  */
-class Printer : PagedDevice
+class GdiPagedDevice : PagedDevice
 {
     private GdiGraphicsDriver gdiDriver_;
-
-    /// Ported from `Fl_WinAPI_Printer_Driver::pd` -- the common dialog's
-    /// own in/out state (selected printer, `DEVMODE`/`DEVNAMES` handles,
-    /// page range, ...). Zero-initialized via `PRINTDLGA`'s own default
-    /// field initializers (`lStructSize`), matching FLTK's `memset
-    /// (&pd, 0, sizeof(PRINTDLG))` + explicit `lStructSize` assignment.
-    private PRINTDLGA pd_;
 
     /// Ported from `Fl_WinAPI_Printer_Driver::hPr` -- `null` when no job
     /// is open.
@@ -228,107 +216,16 @@ class Printer : PagedDevice
         SetWorldTransform(gc, &oldTransform);
     }
 
-    /// Convenience overload for callers that don't need the resulting
-    /// page range back -- see `fl.printer_posix.Printer.beginJob()`'s
-    /// identical overload for why this exists.
-    int beginJob(int pageCount, out string errMessage)
+    /// Starts drawing into `dc`, a printer device context on which
+    /// `StartDoc()` succeeded.
+    protected final void startOutput(HDC dc)
     {
-        int fromPage, toPage;
-        return beginJob(pageCount, fromPage, toPage, errMessage);
-    }
-
-    /// Ported from `Fl_WinAPI_Printer_Driver::begin_job()`. Runs the
-    /// native `PrintDlg()` common dialog -- this is what lists every
-    /// printer Windows itself knows about, fixing the reported "no
-    /// printers found" bug (see this module's own top comment): unlike
-    /// the POSIX half, there's no FLTK-drawn dialog here at all to have
-    /// gotten out of sync with the OS.
-    override int beginJob(int pageCount, out int fromPage, out int toPage,
-        out string errMessage)
-    {
-        if (pageCount == 0) pageCount = 10000;
+        hPr_ = dc;
         abortPrint_ = false;
-        pd_ = PRINTDLGA.init;
-        pd_.hwndOwner = GetForegroundWindow();
-        pd_.Flags = PD_RETURNDC | PD_USEDEVMODECOPIESANDCOLLATE | PD_NOSELECTION;
-        pd_.nMinPage = 1;
-        pd_.nMaxPage = cast(WORD)(pageCount > ushort.max ? ushort.max : pageCount);
-
-        BOOL ok = PrintDlgA(&pd_);
-        if (pd_.hwndOwner)
-        {
-            // Restores the correct state of mouse buttons/keyboard
-            // modifier keys after the dialog closes -- ported from
-            // FLTK's own "STR #3221" fix.
-            auto windproc = cast(WNDPROC) GetWindowLongPtrW(pd_.hwndOwner, GWLP_WNDPROC);
-            if (windproc !is null)
-                CallWindowProcW(windproc, pd_.hwndOwner, WM_ACTIVATEAPP, 1, 0);
-        }
-
-        int err = 0;
-        if (ok != 0)
-        {
-            hPr_ = pd_.hDC;
-            if (hPr_ !is null)
-            {
-                DOCINFOA di;
-                di.lpszDocName = "FLTK";
-                int prerr = StartDocA(hPr_, &di);
-                if (prerr < 1)
-                {
-                    abortPrint_ = true;
-                    DWORD dw = GetLastError();
-                    err = (dw == ERROR_CANCELLED) ? 1 : 2;
-                    if (err == 2) errMessage = formatLastError(dw, "begin_job()");
-                }
-            }
-        }
-        else
-        {
-            err = 1;
-        }
-
-        if (!err)
-        {
-            if ((pd_.Flags & PD_PAGENUMS) != 0)
-            {
-                fromPage = pd_.nFromPage;
-                toPage = pd_.nToPage;
-            }
-            else
-            {
-                fromPage = 1;
-                toPage = pageCount;
-            }
-            xOffset_ = 0;
-            yOffset_ = 0;
-            setupPrinterDeviceContext(hPr_);
-            gdiDriver_.setHdc(hPr_);
-        }
-        return err;
-    }
-
-    /// Builds the same `"<call>() failed with error <n>: <system
-    /// message>"` string FLTK's own `FormatMessageW()` call produces
-    /// -- shared by `beginJob()`/`endJob()` (FLTK duplicates a
-    /// smaller version of this inline in `begin_job()` only; `end_job()`
-    /// just calls `fl_alert("EndDoc error %d", prerr)` without a system
-    /// message, ported faithfully as-is in `endJob()` below, so this
-    /// helper exists for `beginJob()`'s own richer error path).
-    private static string formatLastError(DWORD dw, string what)
-    {
-        wchar* lpMsgBuf;
-        DWORD retval = FormatMessageW(
-            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM
-                | FORMAT_MESSAGE_IGNORE_INSERTS,
-            null, dw, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-            cast(LPWSTR)&lpMsgBuf, 0, null);
-        if (retval == 0) return format("%s() failed with error %d", what, dw);
-        scope (exit) LocalFree(cast(HLOCAL) lpMsgBuf);
-        size_t srclen = cast(size_t) lstrlenW(lpMsgBuf);
-        while (srclen > 0 && (lpMsgBuf[srclen - 1] == '\n' || lpMsgBuf[srclen - 1] == '\r'))
-            srclen--;
-        return format("%s() failed with error %d: %s", what, dw, toUTF8(lpMsgBuf[0 .. srclen]));
+        xOffset_ = 0;
+        yOffset_ = 0;
+        setupPrinterDeviceContext(dc);
+        gdiDriver_.setHdc(dc);
     }
 
     /// Ported from `Fl_WinAPI_Printer_Driver::begin_page()`.
@@ -359,14 +256,28 @@ class Printer : PagedDevice
         return 0;
     }
 
+    /// The screen's drawing scale while a page is current, restored by
+    /// `doEndCurrent()`.
+    private float screenScale_ = 1;
+
+    /// Makes the page the drawing target. A page has one point per unit,
+    /// so `fl.core.currentScale()` is 1 while it is current: `fl.draw`'s
+    /// own scaled computations (vertex paths, check marks, line widths)
+    /// then agree with the driver's fixed scale instead of using the
+    /// monitor's.
     protected override void doSetCurrent()
     {
+        import fl.core : currentScale;
         gdiDriver_.setHdc(hPr_);
+        screenScale_ = currentScale();
+        currentScale(1);
     }
 
     protected override void doEndCurrent()
     {
+        import fl.core : currentScale;
         gdiDriver_.setHdc(null);
+        currentScale(screenScale_);
     }
 
     /// Ported from `Fl_WinAPI_Printer_Driver::margins()`. `right`/
@@ -478,7 +389,8 @@ class Printer : PagedDevice
         return 0;
     }
 
-    /// Ported from `Fl_WinAPI_Printer_Driver::end_job()`.
+    /// Ported from `Fl_WinAPI_Printer_Driver::end_job()`: ends the
+    /// document and releases the device context.
     override void endJob()
     {
         if (hPr_ !is null)
@@ -489,9 +401,135 @@ class Printer : PagedDevice
                 if (prerr < 0) alert(format("EndDoc error %d", prerr));
             }
             DeleteDC(hPr_);
+        }
+        hPr_ = null;
+    }
+}
+
+/**
+ * OS-independent print support, Windows half. See `fl.printer_posix.
+ * Printer` (built on non-Windows platforms instead) for the X11/Wayland
+ * half, and `fl.printer`'s own doc comment for the dispatch that picks
+ * one or the other. Usage is identical either way -- see `fl.printer_
+ * posix.Printer`'s own doc comment for the shared example.
+ */
+class Printer : GdiPagedDevice
+{
+    /// Ported from `Fl_WinAPI_Printer_Driver::pd` -- the common dialog's
+    /// own in/out state (selected printer, `DEVMODE`/`DEVNAMES` handles,
+    /// page range, ...). Zero-initialized via `PRINTDLGA`'s own default
+    /// field initializers (`lStructSize`), matching FLTK's `memset
+    /// (&pd, 0, sizeof(PRINTDLG))` + explicit `lStructSize` assignment.
+    private PRINTDLGA pd_;
+    /// Convenience overload for callers that don't need the resulting
+    /// page range back -- see `fl.printer_posix.Printer.beginJob()`'s
+    /// identical overload for why this exists.
+    int beginJob(int pageCount, out string errMessage)
+    {
+        int fromPage, toPage;
+        return beginJob(pageCount, fromPage, toPage, errMessage);
+    }
+
+    /// Ported from `Fl_WinAPI_Printer_Driver::begin_job()`. Runs the
+    /// native `PrintDlg()` common dialog -- this is what lists every
+    /// printer Windows itself knows about, fixing the reported "no
+    /// printers found" bug (see this module's own top comment): unlike
+    /// the POSIX half, there's no FLTK-drawn dialog here at all to have
+    /// gotten out of sync with the OS.
+    override int beginJob(int pageCount, out int fromPage, out int toPage,
+        out string errMessage)
+    {
+        if (pageCount == 0) pageCount = 10000;
+        abortPrint_ = false;
+        pd_ = PRINTDLGA.init;
+        pd_.hwndOwner = GetForegroundWindow();
+        pd_.Flags = PD_RETURNDC | PD_USEDEVMODECOPIESANDCOLLATE | PD_NOSELECTION;
+        pd_.nMinPage = 1;
+        pd_.nMaxPage = cast(WORD)(pageCount > ushort.max ? ushort.max : pageCount);
+
+        BOOL ok = PrintDlgA(&pd_);
+        if (pd_.hwndOwner)
+        {
+            // Restores the correct state of mouse buttons/keyboard
+            // modifier keys after the dialog closes -- ported from
+            // FLTK's own "STR #3221" fix.
+            auto windproc = cast(WNDPROC) GetWindowLongPtrW(pd_.hwndOwner, GWLP_WNDPROC);
+            if (windproc !is null)
+                CallWindowProcW(windproc, pd_.hwndOwner, WM_ACTIVATEAPP, 1, 0);
+        }
+
+        int err = 0;
+        if (ok != 0)
+        {
+            hPr_ = pd_.hDC;
+            if (hPr_ !is null)
+            {
+                DOCINFOA di;
+                di.lpszDocName = "FLTK";
+                int prerr = StartDocA(hPr_, &di);
+                if (prerr < 1)
+                {
+                    abortPrint_ = true;
+                    DWORD dw = GetLastError();
+                    err = (dw == ERROR_CANCELLED) ? 1 : 2;
+                    if (err == 2) errMessage = formatLastError(dw, "begin_job()");
+                }
+            }
+        }
+        else
+        {
+            err = 1;
+        }
+
+        if (!err)
+        {
+            if ((pd_.Flags & PD_PAGENUMS) != 0)
+            {
+                fromPage = pd_.nFromPage;
+                toPage = pd_.nToPage;
+            }
+            else
+            {
+                fromPage = 1;
+                toPage = pageCount;
+            }
+            startOutput(hPr_);
+        }
+        return err;
+    }
+
+    /// Builds the same `"<call>() failed with error <n>: <system
+    /// message>"` string FLTK's own `FormatMessageW()` call produces
+    /// -- shared by `beginJob()`/`endJob()` (FLTK duplicates a
+    /// smaller version of this inline in `begin_job()` only; `end_job()`
+    /// just calls `fl_alert("EndDoc error %d", prerr)` without a system
+    /// message, ported faithfully as-is in `endJob()` below, so this
+    /// helper exists for `beginJob()`'s own richer error path).
+    private static string formatLastError(DWORD dw, string what)
+    {
+        wchar* lpMsgBuf;
+        DWORD retval = FormatMessageW(
+            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM
+                | FORMAT_MESSAGE_IGNORE_INSERTS,
+            null, dw, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            cast(LPWSTR)&lpMsgBuf, 0, null);
+        if (retval == 0) return format("%s() failed with error %d", what, dw);
+        scope (exit) LocalFree(cast(HLOCAL) lpMsgBuf);
+        size_t srclen = cast(size_t) lstrlenW(lpMsgBuf);
+        while (srclen > 0 && (lpMsgBuf[srclen - 1] == '\n' || lpMsgBuf[srclen - 1] == '\r'))
+            srclen--;
+        return format("%s() failed with error %d: %s", what, dw, toUTF8(lpMsgBuf[0 .. srclen]));
+    }
+
+    /// Ported from `Fl_WinAPI_Printer_Driver::end_job()`.
+    override void endJob()
+    {
+        bool open = hPr_ !is null;
+        super.endJob();
+        if (open)
+        {
             if (pd_.hDevMode !is null) GlobalFree(pd_.hDevMode);
             if (pd_.hDevNames !is null) GlobalFree(pd_.hDevNames);
         }
-        hPr_ = null;
     }
 }

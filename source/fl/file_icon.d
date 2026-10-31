@@ -86,7 +86,7 @@
  *    assigned anything path-like. This looks like a copy/paste leftover
  *    (the variable name "tmp" back when it may have held a scratch
  *    directory string) rather than intentional. Noted as an
- *    `FLTK_ISSUES.md` candidate. Since this branch is already
+ *    `FLTK_ISSUES_n.md` candidate. Since this branch is already
  *    unreachable on any modern system (it only runs for KDE 1.x, which
  *    additionally requires the *outer* `!fl_access(icondir, F_OK)`
  *    check above it to have failed, i.e. no KDE 2/3 icon theme

@@ -13,7 +13,8 @@
  * `wantsUnscaledVertices()`); the driver's base matrix maps them to device pixels: a translation by
  * the current `fl.draw` offset (in device pixels), the drawing scale,
  * and FLTK's half-pixel shift that puts one-unit lines on pixel
- * centers. The scale is read from `fl.core.currentScale()` and the
+ * centers. The scale is read from `fl.core.currentScale()` (one unit
+ * per point on a page, see `drawingScale()`), and the
  * matrix is rebuilt whenever that changes, as
  * `Fl_X11_Cairo_Graphics_Driver::scale()` does.
  *
@@ -157,6 +158,7 @@ class CairoGraphicsDriver : GraphicsDriver
     private int clipX_, clipY_, clipW_, clipH_;
     private string fontKey_;
     private bool hairline_ = true; // solid, undashed, default width
+    private cairo_matrix_t pageMatrix_ = cairo_matrix_t(1, 0, 0, 1, 0, 0);
 
     this()
     {
@@ -197,13 +199,47 @@ class CairoGraphicsDriver : GraphicsDriver
     }
 
     /// Sets the device-pixel offset `fl.draw.pushTranslate()` adds to
-    /// every coordinate.
+    /// every coordinate (already scaled and rounded down there, as on
+    /// the Xlib path).
     void setOffset(int x, int y)
     {
         offsetX_ = x;
         offsetY_ = y;
         appliedScale_ = 0;
         applyBaseMatrix();
+    }
+
+    /**
+     * Sets the matrix device space itself is placed with: identity for
+     * a window or image, the page margins and the page device's
+     * origin/scale/rotation for a page (`fl.pdf_file_surface`). Every
+     * coordinate, including the clip, goes through it.
+     */
+    protected void pageMatrix(cairo_matrix_t m)
+    {
+        pageMatrix_ = m;
+        appliedScale_ = 0;
+        applyBaseMatrix();
+    }
+
+    /// Puts the context's matrix back to plain device space.
+    private void deviceMatrix()
+    {
+        cairo_set_matrix(cairo_, &pageMatrix_);
+    }
+
+    /// The number of device pixels per FLTK unit: the display's
+    /// `fl.core.currentScale()`. A page has one point per unit.
+    protected float drawingScale()
+    {
+        import fl.core : currentScale;
+        return currentScale();
+    }
+
+    /// Moves the device-pixel origin by the offset.
+    private void translateOffset()
+    {
+        cairo_translate(cairo_, offsetX_, offsetY_);
     }
 
     /**
@@ -241,8 +277,8 @@ class CairoGraphicsDriver : GraphicsDriver
         int xs = scaledFloor(clipX_), ys = scaledFloor(clipY_);
         cairo_matrix_t m;
         cairo_get_matrix(cairo_, &m);
-        cairo_identity_matrix(cairo_);
-        cairo_translate(cairo_, offsetX_, offsetY_);
+        deviceMatrix();
+        translateOffset();
         cairo_rectangle(cairo_, xs, ys, scaledFloor(clipX_ + w) - xs, scaledFloor(clipY_ + h) - ys);
         cairo_set_antialias(cairo_, CAIRO_ANTIALIAS_NONE);
         cairo_clip(cairo_);
@@ -254,17 +290,15 @@ class CairoGraphicsDriver : GraphicsDriver
     /// was last built. Called at the start of every primitive.
     private void prepare()
     {
-        import fl.core : currentScale;
-        if (currentScale() != appliedScale_) applyBaseMatrix();
+        if (drawingScale() != appliedScale_) applyBaseMatrix();
     }
 
     private void applyBaseMatrix()
     {
-        import fl.core : currentScale;
-        float s = currentScale();
+        float s = drawingScale();
         appliedScale_ = s;
-        cairo_identity_matrix(cairo_);
-        cairo_translate(cairo_, offsetX_, offsetY_);
+        deviceMatrix();
+        translateOffset();
         cairo_scale(cairo_, s, s);
         cairo_translate(cairo_, 0.5, 0.5);
         applyClip();
@@ -320,8 +354,8 @@ class CairoGraphicsDriver : GraphicsDriver
         if (ws <= 0 || hs <= 0) return;
         cairo_matrix_t m;
         cairo_get_matrix(cairo_, &m);
-        cairo_identity_matrix(cairo_);
-        cairo_translate(cairo_, offsetX_, offsetY_);
+        deviceMatrix();
+        translateOffset();
         cairo_rectangle(cairo_, xs, ys, ws, hs);
         cairo_set_antialias(cairo_, CAIRO_ANTIALIAS_NONE);
         cairo_fill(cairo_);
@@ -651,7 +685,7 @@ class CairoGraphicsDriver : GraphicsDriver
     {
         prepare();
         cairo_save(cairo_);
-        cairo_identity_matrix(cairo_);
+        deviceMatrix();
         cairo_translate(cairo_, offsetX_ + 0.5 * appliedScale_, offsetY_ + 0.5 * appliedScale_);
         cairo_new_path(cairo_);
         foreach (i, p; pts)
@@ -670,8 +704,8 @@ class CairoGraphicsDriver : GraphicsDriver
         if (pts.length == 0) return;
         prepare();
         cairo_save(cairo_);
-        cairo_identity_matrix(cairo_);
-        cairo_translate(cairo_, offsetX_, offsetY_);
+        deviceMatrix();
+        translateOffset();
         double size = appliedScale_ < 1 ? 1 : appliedScale_;
         foreach (p; pts) cairo_rectangle(cairo_, p.x, p.y, size, size);
         cairo_set_antialias(cairo_, CAIRO_ANTIALIAS_NONE);
@@ -718,7 +752,7 @@ class CairoGraphicsDriver : GraphicsDriver
         if (pts.length == 0) return;
         prepare();
         cairo_save(cairo_);
-        cairo_identity_matrix(cairo_);
+        deviceMatrix();
         cairo_translate(cairo_, offsetX_ + 0.5 * appliedScale_, offsetY_ + 0.5 * appliedScale_);
         cairo_new_path(cairo_);
         size_t i = 0;
@@ -786,7 +820,8 @@ class CairoGraphicsDriver : GraphicsDriver
         return cast(int)(font_.descent / cast(float) PANGO_SCALE + 0.5f);
     }
 
-    private int layoutWidth(const(char)[] str)
+    /// The width of `str` laid out in the current font, in Pango units.
+    protected int layoutWidth(const(char)[] str)
     {
         if (str.length == 0) return 0;
         str = utf8Clean(str);
@@ -867,9 +902,18 @@ class CairoGraphicsDriver : GraphicsDriver
     {
         if (nChars <= 0 || font_ is null) return;
         if (nChars < str.length) str = str[0 .. nChars];
+        showText(str, x, y, 1);
+    }
+
+    /// Draws `str` in the current font with its baseline's left end at
+    /// `(x, y)`, scaled by `s` about that point.
+    protected void showText(const(char)[] str, double x, double y, double s)
+    {
         prepare();
         cairo_save(cairo_);
-        cairo_translate(cairo_, x - 0.5, y - font_.ascent / cast(float) PANGO_SCALE - 0.5);
+        cairo_translate(cairo_, x - 0.5, y - 0.5);
+        if (s != 1) cairo_scale(cairo_, s, s);
+        cairo_translate(cairo_, 0, -font_.ascent / cast(double) PANGO_SCALE);
         str = utf8Clean(str);
         pango_layout_set_text(pangoLayout_, str.ptr, cast(int) str.length);
         pango_cairo_show_layout(cairo_, pangoLayout_);
@@ -966,8 +1010,8 @@ class CairoGraphicsDriver : GraphicsDriver
         if (ws <= 0 || hs <= 0) return;
         prepare();
         cairo_save(cairo_);
-        cairo_identity_matrix(cairo_);
-        cairo_translate(cairo_, offsetX_, offsetY_);
+        deviceMatrix();
+        translateOffset();
         cairo_rectangle(cairo_, xs, ys, ws, hs);
         cairo_set_antialias(cairo_, CAIRO_ANTIALIAS_NONE);
         cairo_clip(cairo_);
@@ -1004,11 +1048,16 @@ class CairoGraphicsDriver : GraphicsDriver
     /// `(x, y, w, h)` -- ported from `draw_image()`.
     override void drawImage(const(ubyte)* buf, int x, int y, int w, int h, int d, int l)
     {
-        if (buf is null || w <= 0 || h <= 0 || d == 0) return;
+        drawImageScaled(buf, w, h, d, l, x, y, w, h);
+    }
+
+    override void drawImageScaled(const(ubyte)* buf, int dataW, int dataH, int d, int l, int x, int y, int w, int h)
+    {
+        if (buf is null || dataW <= 0 || dataH <= 0 || w <= 0 || h <= 0 || d == 0) return;
         prepare();
-        cairo_surface_t* surf = surfaceFromBuffer(buf, w, h, d, l);
+        cairo_surface_t* surf = surfaceFromBuffer(buf, dataW, dataH, d, l);
         int xs = scaledFloor(x), ys = scaledFloor(y);
-        paintSurface(surf, w, h, xs, ys, scaledFloor(x + w) - xs, scaledFloor(y + h) - ys,
+        paintSurface(surf, dataW, dataH, xs, ys, scaledFloor(x + w) - xs, scaledFloor(y + h) - ys,
             0, 0, true, false);
         cairo_surface_destroy(surf);
     }

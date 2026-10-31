@@ -25,9 +25,9 @@ split across `FL/core/events.H`, `FL/core/options.H`,
 `Fl::visible_focus()` now routes through a general `Fl_Option`/`option()`
 mechanism instead of a dedicated static bool.
 
-Where a likely bug in FLTK itself is found while reading its source, it is
-recorded in [`FLTK_ISSUES.md`](FLTK_ISSUES.md) (with file, line and
-reasoning) rather than silently worked around or fixed in the port.
+A bug fldtk inherits from FLTK is fixed in fldtk. If it is worth reporting
+to FLTK, it is recorded (file, line and reasoning) in the newest
+`FLTK_ISSUES_n.md` at the repository root.
 
 FLTK's own graphics backend may be Cairo+Pango rather than classic Xlib+Xft,
 depending on how it was built. Cairo antialiases every fill (including plain
@@ -85,8 +85,7 @@ Decided and done:
   `fl.svg_image`).
 - **PNG** adapts Adam D. Ruppe's high-level D `arsd.png`, retargeted onto
   `fl.image.RGBImage`, with only `std.zlib` (Phobos' zlib binding) for the
-  DEFLATE/INFLATE work PNG genuinely requires (`fl.png_image`). Gaps narrower
-  than FLTK: no Adam7 interlacing and no grey/truecolor `tRNS` color-keying.
+  DEFLATE/INFLATE work PNG genuinely requires (`fl.png_image`).
 - **JPEG** is a D implementation of Rich Geldreich's public-domain jpgd/jpge,
   following the structure of Ketmar's D translation in `arsd`'s `jpeg.d`
   (`fl.jpeg_decoder`, `fl.jpeg_encoder`, `fl.jpeg_common`, glued by

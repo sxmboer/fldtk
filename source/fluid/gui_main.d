@@ -47,7 +47,7 @@
  * `show_help()` is real -- `showHelp()` below,
  * wired to `&Help/&Rapid development with FLUID.../&FLTK Programmers
  * Manual...`. Ported from `Application::show_help()` (`Fluid.cxx`); see
- * its own doc comment for the fallback chain (`$FLTK_DOCDIR`, a canned
+ * its own doc comment for the fallback chain (`$FLDTK_DOCDIR`, a canned
  * page, or `fl.openUri()` to fltk.org).
  *
  * `topLevelSelection()` reaches a
@@ -879,6 +879,7 @@ void runEditor(string[] args)
     okCb = (w) {
         import fluid.code_check : codeCheck;
 
+        flushTextWidgets();
         if (tabsWizard.value() is widgetTabs)
         {
             if (auto d = codeCheck(vCodeInput2.buffer().text())) { fl.message("Error in code: " ~ d); return; }
@@ -1911,6 +1912,21 @@ private void checkpoint()
     updateShelfTitle();
 }
 
+/// Makes the property panel's focused text field apply its text. A text
+/// field (the callback editor, a code field, the label input) only stores
+/// its text in the project when it loses focus, so an action that reads
+/// the project -- saving, writing code, cut/copy, a new selection -- calls
+/// this first. Taking the focus away and giving it back fires that
+/// field's callback, which also marks the project modified. Ported from
+/// FLTK's `Application::flush_text_widgets()` (`fluid/Fluid.cxx`).
+private void flushTextWidgets()
+{
+    auto old = fl.core.focus();
+    if (old is null || old.topWindow() !is thePanel) return;
+    fl.core.focus(null);
+    fl.core.focus(old);
+}
+
 /// FLTK's `Undo::OnceType`: the kind of change a run of same-kind changes
 /// (one resize drag sends many resize events) is recording as one undo step.
 private enum OnceType { always, windowResize }
@@ -1970,11 +1986,16 @@ private EditSession textEditSession_;
 
 /// `checkpoint()` for one change of a text field: typing in a field calls
 /// back on every keystroke, so only the first change of a session (see
-/// `fluid.edit_session`) records an undo step.
+/// `fluid.edit_session`) records an undo step. Every change marks the
+/// project modified: a session can outlast a save.
 private void checkpointTextEdit(Object key)
 {
     if (!textEditSession_.needsCheckpoint(key, undoStack_.length))
+    {
+        dirty_ = true;
+        updateShelfTitle();
         return;
+    }
     checkpoint();
     textEditSession_.started(key, undoStack_.length);
 }
@@ -3616,6 +3637,7 @@ private string clipboardText_;
 /// `fl_beep()`) if nothing selected.
 private void cutSelected()
 {
+    flushTextWidgets();
     auto roots = topLevelSelection();
     if (roots.length == 0) { fl.beep(); return; }
 
@@ -3651,6 +3673,7 @@ private void cutSelected()
 /// touching the tree, matching FLTK's `copy_selected()`.
 private void copySelected()
 {
+    flushTextWidgets();
     auto roots = topLevelSelection();
     if (roots.length == 0) { fl.beep(); return; }
 
@@ -3775,6 +3798,7 @@ private void duplicateSelected()
 {
     import std.algorithm : countUntil;
     import std.format : format;
+    flushTextWidgets();
 
     auto roots = topLevelSelection();
     if (roots.length == 0) { fl.beep(); return; }
@@ -4276,6 +4300,7 @@ private void revealAncestorTabs(Node s, LiveTree live)
 /// port hasn't caught up.
 private void selectFromCanvas(Node[] selected)
 {
+    flushTextWidgets();
     browser_.syncSelection(selected);
     // `activeWindow_` is already set correctly by the caller
     // (`showWindowCanvas()`'s own `onSelectionChanged` wiring marks it
@@ -4301,6 +4326,7 @@ private void selectFromCanvas(Node[] selected)
 /// `selected`'s own primary member belongs to.
 private void selectFromBrowser(Node[] selected)
 {
+    flushTextWidgets();
     auto primary = selected.length ? selected[$ - 1] : null;
     activeWindow_ = primary is null ? null : enclosingWindowNode(primary);
 
@@ -4321,12 +4347,14 @@ private void selectFromBrowser(Node[] selected)
 
 private void saveProject()
 {
+    flushTextWidgets();
     if (projectPath_.length == 0) { saveProjectAs(); return; }
     writeProjectTo(projectPath_);
 }
 
 private void saveProjectAs()
 {
+    flushTextWidgets();
     string path = chooseSavePath("Save .fl file as");
     if (path.length == 0) return;
     projectPath_ = path;
@@ -4338,6 +4366,7 @@ private void saveProjectAs()
 /// project's own file name, modified state or recent-files list.
 private void saveProjectCopy()
 {
+    flushTextWidgets();
     string path = chooseSavePath("Save a copy as");
     if (path.length == 0) return;
     writeProjectTo(path, true);
@@ -4419,9 +4448,10 @@ private void writeProjectTo(string path, bool copy = false)
 /// launch directory instead).
 private void writeStringsFile()
 {
-    import std.path : dirName, baseName, buildPath;
+    import std.path : dirName, baseName, buildNormalizedPath;
     import std.format : format;
     import fluid.string_writer : writeStrings;
+    flushTextWidgets();
 
     if (projectRoots_.length == 0) return;
 
@@ -4439,7 +4469,7 @@ private void writeStringsFile()
     case I18nType.posix: ext = ".msg"; break;
     }
 
-    string outPath = buildPath(dirName(projectPath_), filenameSetExt(baseName(projectPath_), ext));
+    string outPath = buildNormalizedPath(dirName(projectPath_), filenameSetExt(baseName(projectPath_), ext));
 
     if (writeStrings(projectRoots_, projectI18n_, outPath) != 0)
     {
@@ -4467,6 +4497,7 @@ private void writeCodeFile()
     import std.path : stripExtension, isAbsolute, buildPath, extension;
     import std.format : format;
     import fluid.code_writer : Writer;
+    flushTextWidgets();
 
     if (projectRoots_.length == 0) return;
 
@@ -4623,13 +4654,15 @@ private void printSnapshots()
 /// absolute. Requires a saved project.
 private string codeFilePath_()
 {
-    import std.path : stripExtension, isAbsolute, buildPath, extension;
+    import std.path : stripExtension, isAbsolute, buildNormalizedPath, extension;
 
+    // buildNormalizedPath() gives the path one kind of separator (`\` on
+    // Windows), however the project path and "Code File:" were written.
     if (codeFileName_.length == 0)
-        return projectPath_.stripExtension() ~ ".d";
+        return buildNormalizedPath(projectPath_.stripExtension() ~ ".d");
     string name = codeFileName_;
     if (name.extension().length == 0) name ~= ".d";
-    return name.isAbsolute() ? name : buildPath(projectDir_(), name);
+    return name.isAbsolute() ? buildNormalizedPath(name) : buildNormalizedPath(projectDir_(), name);
 }
 
 /// Shows or hides `&File/MergeBack Code` to match the project's
@@ -4666,6 +4699,7 @@ private int mergebackCodeFiles(bool chatty)
 {
     import std.file : exists;
     import std.format : format;
+    flushTextWidgets();
 
     if (mergebackBusy_) return 2;
     mergebackBusy_ = true;
@@ -5008,6 +5042,7 @@ private void delegate(Widget) quitMenuCallback()
 private void doQuit()
 {
     import fluid.shell_process : shellCommandRunning;
+    flushTextWidgets();
 
     if (shellCommandRunning()
         && fl.ask.choice("Previous shell command still running!", "Cancel", "Exit", null) == 0)
@@ -5269,9 +5304,9 @@ private HelpDialog helpDialog_;
 /// `&Help/&Rapid development with FLUID...` (`name == "fluid.html"`) and
 /// `&Help/&FLTK Programmers Manual...` (`name == "index.html"`) --
 /// ported from `Application::show_help()` (`Fluid.cxx`). Tries
-/// `$FLTK_DOCDIR/name` first, exactly like FLTK (this project ships
+/// `$FLDTK_DOCDIR/name` first (this project ships
 /// none of FLTK's own HTML doc tree, so that lookup only succeeds if the
-/// user points `FLTK_DOCDIR` at a real one); falls back to FLTK's
+/// user points `FLDTK_DOCDIR` at a real one); falls back to FLTK's
 /// own per-name special cases otherwise: a small canned page for
 /// "fluid.html" (describing this port's single-`.d`-module output
 /// instead of FLTK's `.cxx`/`.h` pair, with a D flow chart in place of
@@ -5286,7 +5321,7 @@ private void showHelp(string name)
 
     if (helpDialog_ is null) helpDialog_ = new HelpDialog();
 
-    auto docdir = environment.get("FLTK_DOCDIR");
+    auto docdir = environment.get("FLDTK_DOCDIR");
     string helpname = docdir ? docdir ~ "/" ~ name : "";
 
     if (helpname.length && exists(helpname))
@@ -5380,5 +5415,21 @@ unittest
     assert(n.scaleImageW == 64, "model not updated");
     assert(box.image() !is null, "no image applied");
     assert(box.image().w() == 64, "live image not scaled");
+    FlGroup.current(null);
+}
+
+unittest
+{
+    // A text editor in the panel is a group (it holds its scrollbars); its
+    // own callback still goes through the edit hooks.
+    FlGroup.current(null);
+    make_widget_panel();
+    bool hooked;
+    auto saved = widgetPanelOnBeforeTextEdit;
+    widgetPanelOnBeforeTextEdit = (Object key) { hooked = true; };
+    scope (exit) widgetPanelOnBeforeTextEdit = saved;
+    wireEditHooks(tabsWizard);
+    wCallback.doCallback();
+    assert(hooked, "callback editor not wired to the edit hooks");
     FlGroup.current(null);
 }

@@ -46,7 +46,7 @@
 //    that reset deliberately, since it already did the same reset
 //    itself a few lines earlier).
 //
-// Deliberate deviation from FLTK (see FLTK_ISSUES.md): in
+// Deliberate deviation from FLTK (see FLTK_ISSUES_n.md): in
 // `movepiece()`, FLTK's kinging check `!(oldpiece&KING) && n->who ?
 // (j>=36) : (j<=8)` parses (`&&` binds tighter than `?:`) as
 // `(!(oldpiece&KING) && n->who) ? (j>=36) : (j<=8)`, so a piece that's

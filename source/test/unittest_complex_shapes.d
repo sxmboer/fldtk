@@ -70,7 +70,7 @@ class UtComplexShapesTest : FlGroup
 
     void setTransformation()
     {
-        fl_translate(position.xvalue(), position.yvalue());
+        fl_translate(position.xvalue(), -position.yvalue()); // the positioner's y grows upward
         fl_rotate(-rotate.value());
         fl_scale(scale.value(), scale.value());
     }

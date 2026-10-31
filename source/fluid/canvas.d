@@ -1152,7 +1152,7 @@ final class ProjectCanvas : OverlayWindow
     /// faithfully-preserved FLTK quirk: the `FD_BOTTOM` branch's
     /// "don't invert past the new bound" check compares against
     /// `dragBt_ + ddx` (not `+ ddy`) -- almost certainly an FLTK
-    /// typo (see `FLTK_ISSUES.md`), ported as-is rather than
+    /// typo (see `FLTK_ISSUES_n.md`), ported as-is rather than
     /// silently corrected, matching this port's own "log it, don't
     /// quietly fix it" policy for unconfirmed FLTK bugs.
     private void applyDrag(int ddx, int ddy)

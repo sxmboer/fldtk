@@ -217,7 +217,7 @@ module fl.core;
 import fl.enumerations : CallbackReason, Boxtype, Event, Keysym, EventState, GesturePhase,
     button, keyMask, stateShift, stateCtrl, stateCommand, stateAlt, stateMeta,
     stateCapsLock, stateButtons, stateButton1, stateButton2, stateButton3,
-    stateButton4, stateButton5, Beep, escape, FdWhen, fdRead, fdWrite, fdExcept,
+    stateButton4, stateButton5, Beep, escape, kp, FdWhen, fdRead, fdWrite, fdExcept,
     Labeltype, alignCenter, alignInside, alignClip, backgroundColor, Font, Fontsize,
     symbol, screen, screenBold, zapfDingbats, bold, italic,
     FL_VERSION, FL_API_VERSION, FL_ABI_VERSION,
@@ -231,6 +231,7 @@ import fl.widget;
 // this alias too, so the same collision would hit fl.platform_x11's
 // `import fl.core;` without it.
 import fl.window : CoreWindow = Window;
+import fl.group : FlGroup;
 import fl.image : Image, RGBImage;
 import fl.bmp_image : BMPImage, createBmp;
 import fl.pixmap : Pixmap;
@@ -314,6 +315,7 @@ package(fl)
     int delegate(Event) localGrab_;
     int eX_, eY_, eXRoot_, eYRoot_, eDx_, eDy_;
     float eDxF_ = 0, eDyF_ = 0;       // hi-res wheel deltas
+    bool eWheelSwapped_;              // Shift turned the wheel sideways
     float eDxErr_ = 0.5f, eDyErr_ = 0.5f; // fraction carried between hi-res -> int conversions
     int eClicks_;
     bool eIsClick_;
@@ -359,13 +361,26 @@ float eventDxF() { return eDxF_; }
 /// Vertical counterpart of eventDxF(); down is positive.
 float eventDyF() { return eDyF_; }
 
+/// The wheel movement of an `Event.mouseWheel` the way the user made it,
+/// for widgets that change a value. With Shift held, every platform
+/// reports the vertical wheel as a sideways scroll and a sideways one as
+/// vertical, for scrolling widgets; this swaps them back.
+package(fl) void wheelUnswapped(out int dx, out int dy)
+{
+    dx = eWheelSwapped_ ? eDy_ : eDx_;
+    dy = eWheelSwapped_ ? eDx_ : eDy_;
+}
+
 /// Sets the wheel state for one FL_MOUSEWHEEL event from hi-res deltas
 /// (in lines): eventDxF()/eventDyF() get the exact value, eventDx()/
 /// eventDy() the whole lines accumulated so far. Only one axis is
-/// non-zero per event.
-package(fl) void setWheelDelta(float dx, float dy)
+/// non-zero per event. `swapped` says the platform turned the wheel
+/// sideways (or a sideways one vertical) because Shift is held
+/// (`wheelUnswapped()`).
+package(fl) void setWheelDelta(float dx, float dy, bool swapped = false)
 {
     import std.math : floor;
+    eWheelSwapped_ = swapped;
     eDxF_ = dx; eDyF_ = dy;
     eDx_ = 0; eDy_ = 0;
     if (dx != 0)
@@ -495,24 +510,109 @@ int getMouse(out int x, out int y)
  * depend on) and `RGBImage` construction, the same reason `getMouse()`
  * and friends live here rather than in `fl.draw` too. Returns `null`
  * if `win` isn't currently shown or the underlying pixel read failed,
- * matching FLTK's own `NULL`-on-failure contract. Unlike FLTK,
- * no GL-subwindow traversal or display-scale handling: x/y/w/h are
- * device pixels. A double-buffered window is read from its offscreen
- * buffer, any other window from the screen (see
- * `fl.platform_x11.captureWindowPixels()`). Same "window must be viewable" `XGetImage()`
- * caveat as `fl.draw.readImage()` applies here too -- see that
- * function's own doc comment; `win.shown()` being true isn't quite
- * enough on its own if called too soon after that same window's own
- * `show()` (before the server has confirmed it viewable).
+ * matching FLTK's own `NULL`-on-failure contract. x/y/w/h are device
+ * pixels (FLTK's are FLTK units). A double-buffered window is read from
+ * its offscreen buffer, any other window from the screen (see
+ * `fl.platform_x11.captureWindowPixels()` and
+ * `fl.platform_win32.captureWindowPixels()`). On X11 the same "window
+ * must be viewable" `XGetImage()` caveat as `fl.draw.readImage()`
+ * applies here too -- see that function's own doc comment;
+ * `win.shown()` being true isn't quite enough on its own if called too
+ * soon after that same window's own `show()` (before the server has
+ * confirmed it viewable).
+ *
+ * A double-buffered window's offscreen buffer holds none of its
+ * subwindows, and GL draws into a surface of its own, so every
+ * subwindow inside the rectangle, at any depth, is then captured by
+ * itself and copied over its part of the result, as FLTK's
+ * `Fl_Screen_Driver::traverse_to_gl_subwindows()` does: a GL window
+ * with `GlWindow.capture()` (redraw, `glReadPixels()`), any other
+ * through the same platform readback.
  */
 RGBImage captureWindow(CoreWindow win, int x, int y, int w, int h)
 {
-    version (linux)
+    ubyte[] pixels;
+    version (linux) pixels = platform.captureWindowPixels(win, x, y, w, h);
+    else version (Windows) pixels = platformWin32.captureWindowPixels(win, x, y, w, h);
+    if (pixels is null) return null;
+    pasteSubwindows(win, pixels, x, y, w, h, screenScale(win.screenNum()), 0, 0);
+    return new RGBImage(pixels, w, h, 3);
+}
+
+/// The traversal half of `captureWindow()`, ported from
+/// `Fl_Screen_Driver::traverse_to_gl_subwindows()`: walks `g`'s
+/// children for subwindows and copies each one's own capture into
+/// `pixels`, the RGB capture of the device-pixel rectangle `(x, y, w,
+/// h)` of the window being captured. `s` is that window's scale
+/// (device pixels per FLTK unit); `(ox, oy)` is `g`'s own window
+/// origin within it, in FLTK units.
+private void pasteSubwindows(FlGroup g, ubyte[] pixels, int x, int y, int w, int h,
+    float s, int ox, int oy)
+{
+    int n = g.children();
+    for (int i = 0; i < n; i++)
     {
-        auto pixels = platform.captureWindowPixels(win, x, y, w, h);
-        return pixels is null ? null : new RGBImage(pixels, w, h, 3);
+        Widget c = g.child(i);
+        if (c is null || !c.visible() || c.asGroup() is null) continue;
+        auto cw = c.asWindow();
+        if (cw is null)
+        {
+            pasteSubwindows(c.asGroup(), pixels, x, y, w, h, s, ox, oy);
+            continue;
+        }
+        int cx = ox + c.x(), cy = oy + c.y();
+        if (cw.shown())
+        {
+            // c's device-pixel rectangle, clipped to the captured one.
+            int dx0 = cast(int)(cx * s), dy0 = cast(int)(cy * s);
+            int dx1 = cast(int)((cx + c.w()) * s), dy1 = cast(int)((cy + c.h()) * s);
+            int ix0 = dx0 > x ? dx0 : x, iy0 = dy0 > y ? dy0 : y;
+            int ix1 = dx1 < x + w ? dx1 : x + w, iy1 = dy1 < y + h ? dy1 : y + h;
+            if (ix0 < ix1 && iy0 < iy1)
+            {
+                RGBImage img;
+                auto glw = c.asGlWindow();
+                if (glw !is null)
+                    img = glw.capture(0, 0, glw.w(), glw.h());
+                else
+                {
+                    ubyte[] sub;
+                    version (linux) sub = platform.captureWindowPixels(cw, 0, 0, dx1 - dx0, dy1 - dy0);
+                    else version (Windows) sub = platformWin32.captureWindowPixels(cw, 0, 0, dx1 - dx0, dy1 - dy0);
+                    if (sub !is null) img = new RGBImage(sub, dx1 - dx0, dy1 - dy0, 3);
+                }
+                if (img !is null) copyCapture(img, dx1 - dx0, dy1 - dy0,
+                    ix0 - dx0, iy0 - dy0, pixels, w, ix0 - x, iy0 - y, ix1 - ix0, iy1 - iy0);
+            }
+        }
+        pasteSubwindows(cw, pixels, x, y, w, h, s, cx, cy);
     }
-    else return null;
+}
+
+/// Copies the `(fx, fy, cw, ch)` part of a subwindow's capture `img`,
+/// whose window covers `(fw, fh)` device pixels, into `pixels` (RGB,
+/// `pw` pixels per row) at `(tx, ty)` -- FLTK's `write_image_inside()`.
+/// A GL window's capture is its own pixel size, which can differ from
+/// `(fw, fh)` by rounding, so it is sampled to fit.
+private void copyCapture(RGBImage img, int fw, int fh, int fx, int fy,
+    ubyte[] pixels, int pw, int tx, int ty, int cw, int ch)
+{
+    int iw = img.dataW(), ih = img.dataH(), d = img.d();
+    int ld = img.ld() ? img.ld() : iw * d;
+    if (iw <= 0 || ih <= 0 || fw <= 0 || fh <= 0) return;
+    foreach (row; 0 .. ch)
+    {
+        int sy = (fy + row) * ih / fh;
+        if (sy >= ih) sy = ih - 1;
+        foreach (col; 0 .. cw)
+        {
+            int sx = (fx + col) * iw / fw;
+            if (sx >= iw) sx = iw - 1;
+            auto src = img.array[sy * ld + sx * d .. sy * ld + sx * d + 3];
+            auto dst = ((ty + row) * pw + tx + col) * 3;
+            pixels[dst .. dst + 3] = src[];
+        }
+    }
 }
 
 /**
@@ -2024,7 +2124,7 @@ package(fl) void resetForTest()
     eNumber_ = Event.noEvent;
     eState_ = 0;
     eX_ = 0; eY_ = 0; eXRoot_ = 0; eYRoot_ = 0; eDx_ = 0; eDy_ = 0;
-    eDxF_ = 0; eDyF_ = 0; eDxErr_ = 0.5f; eDyErr_ = 0.5f;
+    eDxF_ = 0; eDyF_ = 0; eDxErr_ = 0.5f; eDyErr_ = 0.5f; eWheelSwapped_ = false;
     eClicks_ = 0;
     eIsClick_ = false;
     eKeysym_ = 0;
@@ -3524,7 +3624,7 @@ unittest
 }
 
 /// Ported from `Fl_X11_Screen_Driver::get_system_scheme()`
-/// (`src/drivers/X11/Fl_X11_Screen_Driver.cxx`): the `FLTK_SCHEME`
+/// (`src/drivers/X11/Fl_X11_Screen_Driver.cxx`): the `FLDTK_SCHEME`
 /// environment variable first, then the X resource database
 /// (`XGetDefault(fl_display, key, "scheme")`, `key` being
 /// `firstWindow()->xclass()` if a window exists yet, else `"fltk"`
@@ -3539,7 +3639,7 @@ private string getSystemScheme()
 {
     import std.process : environment;
 
-    string s = environment.get("FLTK_SCHEME");
+    string s = environment.get("FLDTK_SCHEME");
     if (s.length != 0) return s;
 
     version (linux)
@@ -3554,7 +3654,7 @@ private string getSystemScheme()
 
 /**
  * Sets the current widget scheme; `null`/empty re-reads
- * `getSystemScheme()` (the `FLTK_SCHEME` environment variable). Ported
+ * `getSystemScheme()` (the `FLDTK_SCHEME` environment variable). Ported
  * from `Fl::scheme(const char*)`: "none"/"base"/unrecognized all
  * normalize to `null` (the default look); "gtk+"/"plastic"/"gleam"/
  * "oxy" normalize to their lowercase form regardless of the case
@@ -3901,7 +4001,7 @@ unittest
 
     // setBoxtype(to, from) copies the whole row, metrics and flags
     // included: gtkThinUpBox's row (1,1,2,2, bg=false -- see
-    // FLTK_ISSUES.md's "inconsistent bg/frame flags" candidate for why
+    // FLTK_ISSUES_n.md's "inconsistent bg/frame flags" candidate for why
     // bg is false there) shows through plain thinUpBox once "gtk+"
     // copies it, not thinUpBox's own (1,1,2,2, bg=true).
     scheme("gtk+");
@@ -3925,7 +4025,7 @@ unittest
     }
 
     // Restore the default for other tests -- "base" (not null/empty)
-    // deliberately, so this doesn't depend on whether FLTK_SCHEME
+    // deliberately, so this doesn't depend on whether FLDTK_SCHEME
     // happens to be set in whatever environment `dub test` runs in
     // (scheme(null)/scheme("") would re-read it, matching FLTK, but
     // that's exactly the environment-dependence this restore needs to
@@ -5415,14 +5515,31 @@ int screenCount()
     else return 1;
 }
 
-/// Ported from `Fl::use_high_res_GL(int)` (`FL/Fl.H`) -- whether GL
-/// windows use the display's native high-res (Retina-style) backing
-/// store. A documented no-op: this port has no GL/`Fl_Gl_Window` support
-/// at all yet, so the flag has nothing to affect. Added for call-site
-/// compatibility (`test/fullscreen.cxx` sets it unconditionally in
-/// `main()`, unrelated to the feature that test actually demonstrates),
-/// not because it does anything real yet.
-void useHighResGL(bool val) { }
+private bool useHighResGL_ = true;
+private bool drawGlTextWithTextures_ = true;
+
+/// Sets whether GL windows are drawn at high resolution on a Retina
+/// display. Ported from `Fl::use_high_res_GL(int)`; as in FLTK it only
+/// has an effect on macOS. On X11, Wayland and Windows a GL window
+/// always has one GL pixel per device pixel. Default `true`.
+void useHighResGL(bool val) { useHighResGL_ = val; }
+
+/// Ditto: returns the setting. Ported from `Fl::use_high_res_GL()`.
+bool useHighResGL() { return useHighResGL_; }
+
+/// Sets whether `fl.gl.gl_draw()` draws text with textures. Ported from
+/// `Fl::draw_GL_text_with_textures(int)`. By default text is drawn with
+/// textures when the GL driver supports them; call this with `false` to
+/// draw it through the platform's bitmap fonts instead (`glXUseXFont()`
+/// on X11, `wglUseFontBitmaps()` on Windows). It can be changed at any
+/// time: the next `gl_font()` or `gl_draw()` follows it. On Wayland GL
+/// text always uses textures.
+void drawGlTextWithTextures(bool val) { drawGlTextWithTextures_ = val; }
+
+/// Ditto: returns the setting. Ported from
+/// `Fl::draw_GL_text_with_textures()`. After a `gl_font()` or
+/// `gl_draw()` it says whether textures are really used.
+bool drawGlTextWithTextures() { return drawGlTextWithTextures_; }
 
 /// GUI scale factor storage backing `screenScale(int)`/`screenScale(int,
 /// float)` below -- a genuine per-screen array, matching FLTK's
@@ -5538,7 +5655,7 @@ package(fl) void currentScale(float factor)
 /// Where fldtk remembers the zoom last chosen with Ctrl +/-/0, shared by
 /// every fldtk program -- a fldtk addition: FLTK's scale handler doesn't
 /// remember it. The value is the zoom relative to the base scale (the
-/// desktop's scale times `FLTK_SCALING_FACTOR`, see `baseScale()`), not
+/// desktop's scale, see `baseScale()`), not
 /// the absolute drawing scale, so it means the same on X11, whose base
 /// includes the desktop scale, and on Wayland, whose compositor applies
 /// its scale separately. Vendor `"fldtk"`, application `"core"`:
@@ -5547,9 +5664,8 @@ private enum scaleFactorPrefsGroup_ = "scaling";
 private enum zoomPrefsKey_ = "Zoom"; // PascalCase, like optionKeys_ above
 
 /// The zoom `persistZoom()` last stored, or `float.nan` when none was.
-/// Called once at startup by the platform's `useStartupScaleFactor()`.
-/// Always `float.nan` in a unittest build, so the tests never depend on
-/// the user's preferences file.
+/// Read by `startupZoom()`. Always `float.nan` in a unittest build, so
+/// the tests never depend on the user's preferences file.
 package(fl) float loadPersistedZoom()
 {
     version (unittest) return float.nan;
@@ -5563,6 +5679,36 @@ package(fl) float loadPersistedZoom()
         if (scalePrefs.get(zoomPrefsKey_, value, -1.0f) && value > 0)
             return value;
         return float.nan;
+    }
+}
+
+/// The zoom a program starts with, relative to the base scale (the
+/// desktop's scale, see `baseScale()`): the `FLDTK_SCALING_FACTOR`
+/// environment variable when it is a positive number, otherwise the zoom
+/// last chosen with Ctrl +/- (`loadPersistedZoom()`), otherwise 1. It is
+/// the same number Ctrl +/- then changes, so `FLDTK_SCALING_FACTOR=2`
+/// starts at 200% and Ctrl-- goes to 170%. Called once at startup by the
+/// platform's `useStartupScaleFactor()`. Always 1 in a unittest build.
+package(fl) float startupZoom()
+{
+    version (unittest) return 1.0f;
+    else
+    {
+        import std.process : environment;
+        import std.conv : parse, ConvException;
+        import std.math : isNaN;
+
+        if (auto str = environment.get("FLDTK_SCALING_FACTOR"))
+        {
+            try
+            {
+                float factor = parse!float(str);
+                if (factor > 0) return factor;
+            }
+            catch (ConvException) {}
+        }
+        float zoom = loadPersistedZoom();
+        return isNaN(zoom) ? 1.0f : zoom;
     }
 }
 
@@ -5651,8 +5797,8 @@ void normalizedScreenScale(int n, float factor)
 /// Explicitly seeds screen `n`'s `baseScale()` reference value -- called
 /// once per screen at startup (`fl.platform_x11.useStartupScaleFactor()`/
 /// `fl.platform_win32.seedScaleFromPrimaryMonitor()`), right after
-/// desktop-scale detection is established but *before* the remembered
-/// zoom (`loadPersistedZoom()`) is applied on top.
+/// desktop-scale detection is established but *before* the starting
+/// zoom (`startupZoom()`) is applied on top.
 /// Without this, `baseScale()`'s plain lazy-capture fallback would seed
 /// itself from whatever `screenScale()` already is the first time any
 /// Ctrl-+/Ctrl--/Ctrl-0 press needs it -- which, with a
@@ -5871,8 +6017,10 @@ package(fl) void rescaleAllWindowsFromScreen(int screen, float f, float oldF)
 /**
  * Responds to Ctrl-'+'/Ctrl-'-'/Ctrl-'0' (Ctrl-'=' is the same key as
  * Ctrl-'+' on most layouts) by rescaling every window on the focused
- * widget's screen -- ported verbatim from `Fl_Screen_Driver::scale_
- * handler()`. Installed as an event handler when the display opens
+ * widget's screen -- ported from `Fl_Screen_Driver::scale_handler()`.
+ * Ctrl-Shift with the plus key ('=', '+' or keypad '+') or the minus key
+ * ('-' or keypad '-') zooms in or out by 1% instead, between 50% and
+ * 300%, the table's range. Installed as an event handler when the display opens
  * (`fl.platform_x11`/`fl.platform_wayland`'s `openDisplay()`); not
  * exported, since
  * FLTK's own equivalent isn't public API either -- `Fl::add_
@@ -5881,7 +6029,7 @@ package(fl) void rescaleAllWindowsFromScreen(int screen, float f, float oldF)
  * (`keyboardScreenScaling(false)`).
  *
  * The step table and its epsilon-tolerant "which step are we
- * currently on" search are copied byte-for-byte from FLTK (not a
+ * currently on" search are copied from FLTK (not a
  * geometric formula -- these are deliberately chosen "nice" numbers,
  * several of them repeating thirds/quarters that wouldn't round-trip
  * exactly through float arithmetic without the `1e-4` tolerance).
@@ -5894,12 +6042,24 @@ private int scaleHandler(Event event)
     if (!keyboardScreenScaling_) return 0;
     if (event != Event.shortcut || !eventCommand()) return 0;
 
-    enum Zoom { none, zoomIn, zoomOut, zoomReset }
+    enum Zoom { none, zoomIn, zoomOut, zoomReset, fineIn, fineOut }
 
     Zoom zoom = Zoom.none;
-    if (testShortcut(stateCommand | '+')) zoom = Zoom.zoomIn;
-    else if (testShortcut(stateCommand | '-')) zoom = Zoom.zoomOut;
-    else if (testShortcut(stateCommand | '0')) zoom = Zoom.zoomReset;
+    // Ctrl-Shift with the plus or minus key: a 1% step. Recognised by
+    // the key, not the character it types (Shift-'=' types '+'), and
+    // checked first, so it isn't taken for Ctrl-'+'.
+    if ((eState_ & (stateMeta | stateAlt | stateCtrl | stateShift)) == (stateCommand | stateShift))
+    {
+        Keysym k = eventKey();
+        if (k == '=' || k == '+' || k == kp + '+') zoom = Zoom.fineIn;
+        else if (k == '-' || k == kp + '-') zoom = Zoom.fineOut;
+    }
+    if (zoom == Zoom.none)
+    {
+        if (testShortcut(stateCommand | '+')) zoom = Zoom.zoomIn;
+        else if (testShortcut(stateCommand | '-')) zoom = Zoom.zoomOut;
+        else if (testShortcut(stateCommand | '0')) zoom = Zoom.zoomReset;
+    }
 
     // Kludge to recognize shortcut Ctrl+'+' without pressing Shift --
     // see Option.simpleZoomShortcut's own doc comment for the caveats
@@ -5907,7 +6067,7 @@ private int scaleHandler(Event event)
     // port deliberately defaults it *on* instead (optionDefaults_'s
     // own doc comment) so Ctrl-'=' zooms in as a Shift-free alternative
     // to Ctrl-'+' on every layout, not just as an opt-in.
-    if (option(Option.simpleZoomShortcut))
+    if (option(Option.simpleZoomShortcut) && zoom == Zoom.none)
     {
         if ((eState_ & (stateMeta | stateAlt | stateCtrl | stateShift)) == stateCommand)
         {
@@ -5939,6 +6099,18 @@ private int scaleHandler(Event event)
     float oldF = screenScale(screen) / initialScale;
     float f;
     if (zoom == Zoom.zoomReset) f = 1;
+    else if (zoom == Zoom.fineIn || zoom == Zoom.fineOut)
+    {
+        // to the next whole percent, not past the table's range (a
+        // zoom started outside it with FLDTK_SCALING_FACTOR only moves
+        // back towards it)
+        import std.math : round;
+        int pct = cast(int) round(oldF * 100);
+        if (zoom == Zoom.fineIn && pct < 300) pct++;
+        else if (zoom == Zoom.fineOut && pct > 50) pct--;
+        else return 1;
+        f = pct / 100.0f;
+    }
     else
     {
         int count = cast(int) scalingValues.length;
@@ -6037,14 +6209,12 @@ void screenXYWH(out int x, out int y, out int w, out int h)
  * Bounding box of monitor `n`'s (or, no-arg/`(mx,my)` overloads, the
  * mouse-containing/point-containing monitor's) *work area*. Ported from
  * `Fl::screen_work_area(X,Y,W,H,n)`/`(X,Y,W,H,mx,my)`/`(X,Y,W,H)`
- * (`src/screen_xywh.cxx`), backed by the real
- * `_NET_WORKAREA` EWMH query
- * (`fl.platform_x11.screenWorkArea()`, ported from
- * `Fl_X11_Screen_Driver::screen_work_area()`/`init_workarea()`), so
- * these correctly exclude a desktop panel/taskbar/dock reserved
- * along an edge, for the primary screen at least (matching FLTK's
- * own single-monitor-only limitation -- see that function's own doc
- * comment for why `_NET_WORKAREA` can't be trusted per-monitor).
+ * (`src/screen_xywh.cxx`). The work area leaves out the desktop's
+ * panels, taskbar or dock, for the primary screen at least: on X11
+ * through `_NET_WORKAREA` (`fl.platform_x11.screenWorkArea()`, which
+ * says why it can't be trusted per monitor), on Wayland through a
+ * maximized window that is never shown, with one screen only
+ * (`fl.platform_wayland.screenWorkArea()`), and on Windows per monitor.
  */
 void screenWorkArea(out int x, out int y, out int w, out int h, int n)
 {

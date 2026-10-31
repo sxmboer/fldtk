@@ -334,6 +334,8 @@ class SvgGraphicsDriver : GraphicsDriver
     /// wantsUnscaledVertices()`'s own doc comment for the full story.
     override bool wantsUnscaledVertices() const { return true; }
 
+    override bool resolutionIndependent() const { return true; }
+
     private string pathData(const(Point)[] pts)
     {
         auto app = appender!string;
@@ -472,7 +474,7 @@ class SvgGraphicsDriver : GraphicsDriver
             y = -h;
         }
 
-        emitPngImage(buf, x, y, w, h, ad, al);
+        emitPngImage(buf, x, y, w, h, ad, al, w, h);
 
         if (d < 0) file_.writef("</g>\n");
         if (l < 0) file_.writef("</g>\n");
@@ -529,7 +531,15 @@ class SvgGraphicsDriver : GraphicsDriver
             }
         }
 
-        emitPngImage(rgba.ptr, x - cx, y - cy, dataW, dataH, 4, dataW * 4);
+        emitPngImage(rgba.ptr, x - cx, y - cy, dataW, dataH, 4, dataW * 4, dataW, dataH);
+    }
+
+    /// `dataW` x `dataH` pixels in an `<image>` element sized to the
+    /// `w` x `h` unit box.
+    override void drawImageScaled(const(ubyte)* buf, int dataW, int dataH, int d, int l, int x, int y, int w, int h)
+    {
+        if (dataW <= 0 || dataH <= 0 || w <= 0 || h <= 0 || buf is null) return;
+        emitPngImage(buf, x, y, dataW, dataH, d, l == 0 ? dataW * d : l, w, h);
     }
 
     /// Shared by `drawImage()`/`drawBitmap()` above: PNG-encodes
@@ -543,7 +553,7 @@ class SvgGraphicsDriver : GraphicsDriver
     /// `<image>` element, matching FLTK's own 80-column line
     /// wrapping (`to_base64()`'s `lline >= 80` check) purely for the
     /// output file's own readability -- not semantically required.
-    private void emitPngImage(const(ubyte)* buf, int x, int y, int w, int h, int d, int l)
+    private void emitPngImage(const(ubyte)* buf, int x, int y, int w, int h, int d, int l, int boxW, int boxH)
     {
         import fl.png_image : encodePngBytes;
         import std.base64 : Base64;
@@ -552,8 +562,8 @@ class SvgGraphicsDriver : GraphicsDriver
         auto pngBytes = encodePngBytes(buf[0 .. needed], w, h, d, l);
         string b64 = Base64.encode(pngBytes);
 
-        file_.writef("<image x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" href=\"data:image/png;base64,\n",
-            x, y, w, h);
+        file_.writef("<image x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" preserveAspectRatio=\"none\" href=\"data:image/png;base64,\n",
+            x, y, boxW, boxH);
         for (size_t i = 0; i < b64.length; i += 80)
             file_.writef("%s\n", b64[i .. (i + 80 < b64.length ? i + 80 : b64.length)]);
         file_.writef("\"/>\n");
@@ -831,4 +841,41 @@ unittest
     assert(decoded.array[3 .. 6] == [0, 255, 0]); // green
     assert(decoded.array[6 .. 9] == [0, 0, 255]); // blue
     assert(decoded.array[9 .. 12] == [255, 255, 0]); // yellow
+}
+
+unittest
+{
+    // An image drawn smaller than its pixel size keeps its own pixels:
+    // an 8x8 PNG in a 4x4 <image> box.
+    import fl.image : RGBImage;
+    import fl.image_surface : SurfaceDevice;
+    import std.file : tempDir, exists, remove, readText;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import std.algorithm : canFind;
+    import std.base64 : Base64;
+    import std.string : indexOf;
+    import std.array : replace;
+
+    auto path = buildPath(tempDir(), "fldtk-svg-native-test-" ~ randomUUID().toString() ~ ".svg");
+    scope (exit) if (exists(path)) remove(path);
+
+    {
+        auto f = File(path, "w");
+        auto surf = new SvgFileSurface(100, 100, f);
+        SurfaceDevice.pushCurrent(surf);
+        auto img = new RGBImage(new ubyte[8 * 8 * 3], 8, 8, 3);
+        img.scale(4, 4, false, false);
+        img.draw(10, 10);
+        SurfaceDevice.popCurrent();
+        surf.close();
+    }
+
+    auto text = readText(path);
+    assert(text.canFind(`<image x="10" y="10" width="4" height="4" preserveAspectRatio="none"`));
+    // The PNG's IHDR holds its pixel size: 8 x 8.
+    auto start = text.indexOf("base64,") + 7;
+    auto b64 = text[start .. text.indexOf('"', start)].replace("\n", "");
+    auto png = Base64.decode(b64);
+    assert(png[16 .. 24] == [0, 0, 0, 8, 0, 0, 0, 8]);
 }

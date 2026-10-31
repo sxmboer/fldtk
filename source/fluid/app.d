@@ -37,7 +37,8 @@
  *
  * `--dub-header` (a deliberate fldtk-only convenience, no FLTK
  * equivalent): prepends a dub single-file-package comment
- * (`/+ dub.sdl: dependency "fldtk" path="..." +/`) to the generated
+ * (`/+ dub.sdl:` with `dependency "fldtk" path="..."` and
+ * `subConfiguration "fldtk" "program"`) to the generated
  * `.d` file, so it builds directly via `dub build --single`/`dub run
  * --single` with no manually-typed linker flags -- the headless-CLI
  * counterpart of `Settings -> Project`'s own checkbox in the

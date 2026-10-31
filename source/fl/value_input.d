@@ -1,8 +1,7 @@
 /*
  * Ported from FL/Fl_Value_Input.H + src/Fl_Value_Input.cxx (FLTK 1.5.0). A numeric field: a real, editable text entry
- * (click to type a value directly) that also supports drag-to-adjust
- * like fl.value_output (left/middle/right mouse button = 1x/10x/100x
- * step() per pixel).
+ * (click to type a value directly) whose value also changes with the
+ * mouse wheel (see handle()).
  *
  * FLTK's own source comment calls this "a kludge": Fl_Value_Input
  * extends Fl_Valuator (not Fl_Group), yet embeds a real Fl_Input child
@@ -37,11 +36,7 @@
  * improvement for `fl.input`/`fl.text_display`'s `handleRmb()` and was
  * kept for that reason -- see those modules' own comments.)
  *
- * Otherwise a faithful, complete port: handle()'s push/drag/release
- * drag-math and step()==0 fallback (matching fl.value_output/
- * fl.adjuster's established idiom of calling into fl.valuator's
- * protected increment()/clamp()/softclamp()/handlePush()/handleDrag()/
- * handleRelease()), draw() (forwards to the embedded Input's own real
+ * Otherwise a complete port: draw() (forwards to the embedded Input's own real
  * draw()), resize(), valueDamage()'s override (keeps the embedded
  * Input's displayed text in sync whenever value() changes
  * programmatically), and inputCallback() (parses the embedded Input's
@@ -54,7 +49,6 @@ import fl.enumerations;
 import fl.valuator : Valuator;
 import fl.input : Input;
 import fl.group : FlGroup;
-import fl.widget_tracker : WidgetTracker;
 import fl.draw;
 import fl.core;
 
@@ -88,10 +82,9 @@ class ValueInput : Valuator
         shortcutLabel(true);
     }
 
-    /// If "soft" is turned on, the user is allowed to drag the value
-    /// outside the range. If they drag the value to one of the ends,
-    /// let go, then grab again and continue to drag, they can get to
-    /// any value. Default is off (FLTK's own default is on, but
+    /// If "soft" is turned on, the mouse wheel can take the value
+    /// outside the range: a turn stops at the end of the range, and the
+    /// next turn from there goes past it. Default is off (FLTK's own default is on, but
     /// only because it never initializes soft_ in its constructor --
     /// see the "Bug fix" note in fl.value_output's history for the
     /// same FLTK quirk elsewhere; here it's simply given an
@@ -192,72 +185,26 @@ class ValueInput : Valuator
     }
 
     /**
-     * Ported from Fl_Value_Input::handle(). step()==0 falls straight
-     * through to defaultHandle() (the embedded input_ handles the
-     * event on its own, drag-to-adjust disabled) for FL_PUSH/FL_DRAG/
-     * FL_RELEASE, matching FLTK's `goto DEFAULT` (rewritten as an
-     * explicit call here -- D's `goto` can't jump into the middle of
-     * this switch as cleanly as FLTK's C `goto DEFAULT;` label).
-     *
-     * TODO (kept faithful to FLTK for now): the FL_PUSH/FL_DRAG left/middle/
-     * right-mouse-button horizontal-pixel-drag scheme below (1x/10x/
-     * 100x step() per pixel of horizontal mouse movement) predates the
-     * scroll wheel and reads as dated today -- a future
-     * pass should add `Event.mouseWheel` handling as (at least an
-     * additional, possibly the preferred) way to adjust the value here,
-     * the same direction `fl.valuator`-family widgets with a natural
-     * "up/down" axis (sliders, rollers, counters) could eventually take
-     * too. Deliberately not done as part of this note -- this is a
-     * flagged future request, not a description of current behavior.
+     * Ported from Fl_Value_Input::handle(). The mouse wheel changes the
+     * value: a notch up, or a sideways wheel to the right, adds
+     * `wheelStepFactor()` steps (10; 1 with Shift held, 100 with Ctrl),
+     * a notch down or to the left subtracts them. Clicking and dragging
+     * edit the text, as in any input field.
      */
     override int handle(Event event)
     {
-        double v;
-        int delta;
-        int mx = fl.core.eventXRoot();
-        static int ix, drag;
         input_.when(when());
 
         switch (event)
         {
-        case Event.push:
-            if (step() == 0) return defaultHandle(event);
-            ix = mx;
-            drag = fl.core.eventButton();
-            handlePush();
+        case Event.mouseWheel:
+        {
+            int n = wheelNotches();
+            if (n == 0) return 0;
+            double v = round(increment(value(), n * wheelStepFactor()));
+            changeByWheel(soft_ ? softclamp(v) : clamp(v));
             return 1;
-
-        case Event.drag:
-            if (step() == 0) return defaultHandle(event);
-            delta = mx - ix;
-            if (delta > 5) delta -= 5;
-            else if (delta < -5) delta += 5;
-            else delta = 0;
-            switch (drag)
-            {
-            case 3: v = increment(previousValue(), delta * 100); break;
-            case 2: v = increment(previousValue(), delta * 10); break;
-            default: v = increment(previousValue(), delta); break;
-            }
-            v = round(v);
-            handleDrag(soft_ ? softclamp(v) : clamp(v));
-            return 1;
-
-        case Event.release:
-            if (step() == 0) return defaultHandle(event);
-            if (value() != previousValue() || !fl.core.eventIsClick())
-                handleRelease();
-            else
-            {
-                // A genuine click, not a drag: retroactively let the
-                // embedded input_ see the push+release itself, so
-                // clicking (as opposed to dragging) still positions
-                // the cursor/takes focus -- matching FLTK exactly.
-                auto wp = WidgetTracker(input_);
-                input_.handle(Event.push);
-                if (wp.exists()) input_.handle(Event.release);
-            }
-            return 1;
+        }
 
         case Event.focus:
             return input_.takeFocus() ? 1 : 0;
@@ -328,30 +275,9 @@ unittest
 
 unittest
 {
-    // With step() == 0 (the Valuator default), handle() always
-    // defers to the embedded input_'s own handle() (drag-to-adjust
-    // disabled), matching fl.value_output's identical gate.
-    import fl.group : FlGroup;
-    FlGroup.current(null);
-
-    auto v = new ValueInput(0, 0, 100, 25);
-    assert(v.step() == 0);
-    // A push with step() == 0 falls through to defaultHandle(), which
-    // sets input_'s type and forwards -- headless-safe, no display
-    // needed for this path to run without crashing.
-    fl.core.eKeysym_ = button + leftMouse;
-    assert(v.handle(Event.push) == 0 || v.handle(Event.push) == 1);
-
-    fl.core.eKeysym_ = 0;
-    fl.core.resetForTest();
-}
-
-unittest
-{
-    // Dragging more than 5px moves the value by (delta - 5) * step(),
-    // scaled by 1x/10x/100x depending on which mouse button is held --
-    // same math as fl.value_output, exercised through ValueInput's own
-    // handle() instead.
+    // The wheel: a notch up adds 10 steps, with Shift 1, with Ctrl 100;
+    // down subtracts, a sideways wheel to the right adds. Dragging no
+    // longer changes the value.
     import fl.group : FlGroup;
     FlGroup.current(null);
 
@@ -360,16 +286,38 @@ unittest
     v.step(1);
     v.value(0);
 
+    fl.core.eDy_ = -1;
+    v.handle(Event.mouseWheel);
+    assert(v.value() == 10);
+    fl.core.eState_ = stateShift;
+    v.handle(Event.mouseWheel);
+    assert(v.value() == 11);
+    fl.core.eState_ = stateCtrl;
+    fl.core.eDy_ = 1;
+    v.handle(Event.mouseWheel);
+    assert(v.value() == -89);
+    fl.core.eState_ = 0;
+    fl.core.eDy_ = 0;
+    fl.core.eDx_ = 1;
+    v.handle(Event.mouseWheel);
+    assert(v.value() == -79);
+
+    // Shift + wheel up, which the platform reports as a scroll to the
+    // left, still adds.
+    fl.core.eState_ = stateShift;
+    fl.core.eDx_ = -1;
+    fl.core.eWheelSwapped_ = true;
+    v.handle(Event.mouseWheel);
+    assert(v.value() == -78);
+
+    fl.core.eState_ = 0;
+    fl.core.eDx_ = 0;
     fl.core.eXRoot_ = 50;
-    fl.core.eKeysym_ = button + leftMouse; // eventButton() == 1
+    fl.core.eKeysym_ = button + leftMouse;
     v.handle(Event.push);
-
-    fl.core.eXRoot_ = 61; // 11px right: delta = 11 - 5 = 6
+    fl.core.eXRoot_ = 80;
     v.handle(Event.drag);
-    assert(v.value() == 6);
-
-    v.handle(Event.release);
-    assert(v.value() == 6);
+    assert(v.value() == -78);
 
     fl.core.eKeysym_ = 0;
     fl.core.resetForTest();

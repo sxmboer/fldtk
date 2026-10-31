@@ -1,14 +1,10 @@
 /*
  * Ported from FL/Fl_Adjuster.H + src/Fl_Adjuster.cxx (FLTK 1.5.0).
  *
- * Faithful, complete port of the numeric/event logic: a 3-button
- * "slider" (small/medium/large step buttons side by side), where
- * dragging any button adjusts by 1x/10x/100x step() per pixel, and
- * clicking (no drag) adjusts by 10x that button's step (Shift+click for
- * -10x). handle()'s FL_PUSH/FL_DRAG/FL_RELEASE/FL_KEYBOARD/FL_FOCUS/
- * FL_UNFOCUS/FL_ENTER/FL_LEAVE cases and value_damage() (a no-op here,
- * matching FLTK -- changing the value doesn't itself change the
- * drawn appearance) are all ported 1:1.
+ * A 3-button "slider" (fast/medium/slow buttons side by side, 100x/10x/
+ * 1x step()), changed by clicking a button or by the mouse wheel over
+ * one (see handle()). value_damage() is a no-op, as in FLTK: changing
+ * the value doesn't change the drawn appearance.
  *
  * draw() is structurally ported (same box-splitting/layout math as
  * FLTK), including the three little directional-arrow icons, one per
@@ -21,9 +17,8 @@
  * `drawFocus()`, same as every other widget in this project.
  *
  * `Fl_Widget_Tracker` guards in handle() (fl.widget_tracker.WidgetTracker)
- * match FLTK exactly: FL_PUSH's handle_push() call and FL_RELEASE's
- * click-triggered handle_drag() call are guarded; FL_DRAG's own
- * handle_drag() isn't (FLTK doesn't guard it either).
+ * match FLTK: FL_PUSH's handle_push() call and FL_RELEASE's
+ * click-triggered handle_drag() call are guarded.
  */
 module fl.adjuster;
 
@@ -64,7 +59,6 @@ class Adjuster : Valuator
     private
     {
         int drag_;
-        int ix_;
         bool soft_ = true;
     }
 
@@ -79,10 +73,9 @@ class Adjuster : Valuator
         soft_ = true;
     }
 
-    /// If "soft" is turned on (the default), the user is allowed to
-    /// drag the value outside the range. If they drag the value to one
-    /// of the ends, let go, then grab again and continue to drag, they
-    /// can get to any value.
+    /// If "soft" is turned on (the default), clicks and the mouse wheel
+    /// can take the value outside the range: a change stops at the end
+    /// of the range, and the next one from there goes past it.
     void soft(bool s) { soft_ = s; }
     bool soft() const { return soft_; }
 
@@ -122,21 +115,33 @@ class Adjuster : Valuator
         if (fl.core.focus() is this) drawFocus();
     }
 
+    /// Which of the three buttons (x, y) is over: 1 for the fast (100x)
+    /// one, 2 for the medium (10x), 3 for the slow (1x).
+    private int buttonAt(int mx, int my)
+    {
+        int b = w() >= h() ? 3 * (mx - x()) / w() + 1 : 3 - 3 * (my - y() - 1) / h();
+        return b < 1 ? 1 : b > 3 ? 3 : b;
+    }
+
+    /**
+     * Ported from Fl_Adjuster::handle(). Clicking a button changes the
+     * value by 10 times that button's speed (100x, 10x or 1x step()),
+     * with Shift held in the other direction. The mouse wheel over a
+     * button changes it by the button's speed per notch (up, or a
+     * sideways wheel to the right, adds); with Shift held each notch is
+     * one step, with Ctrl 100 steps. The arrow keys change it by one
+     * step.
+     */
     override int handle(Event event)
     {
         double v;
         int delta;
-        int mx = fl.core.eventX();
         switch (event)
         {
         case Event.push:
         {
             if (fl.core.visibleFocus()) fl.core.focus(this);
-            ix_ = mx;
-            if (w() >= h())
-                drag_ = 3 * (mx - x()) / w() + 1;
-            else
-                drag_ = 3 - 3 * (fl.core.eventY() - y() - 1) / h();
+            drag_ = buttonAt(fl.core.eventX(), fl.core.eventY());
             auto wp = WidgetTracker(this);
             handlePush();
             if (wp.deleted()) return 1;
@@ -145,33 +150,20 @@ class Adjuster : Valuator
         }
 
         case Event.drag:
-            if (w() >= h())
-            {
-                delta = x() + (drag_ - 1) * w() / 3; // left edge of button
-                if (mx < delta)
-                    delta = mx - delta;
-                else if (mx > (delta + w() / 3)) // right edge of button
-                    delta = mx - delta - w() / 3;
-                else
-                    delta = 0;
-            }
-            else
-            {
-                if (mx < x())
-                    delta = mx - x();
-                else if (mx > (x() + w()))
-                    delta = mx - x() - w();
-                else
-                    delta = 0;
-            }
-            switch (drag_)
-            {
-            case 3: v = increment(previousValue(), delta); break;
-            case 2: v = increment(previousValue(), delta * 10); break;
-            default: v = increment(previousValue(), delta * 100); break;
-            }
-            handleDrag(soft_ ? softclamp(v) : clamp(v));
             return 1;
+
+        case Event.mouseWheel:
+        {
+            int n = wheelNotches();
+            if (n == 0) return 0;
+            int f = [100, 10, 1][buttonAt(fl.core.eventX(), fl.core.eventY()) - 1];
+            auto state = fl.core.eventState();
+            if (state & stateShift) f = 1;
+            else if (state & stateCtrl) f = 100;
+            v = increment(value(), n * f);
+            changeByWheel(soft_ ? softclamp(v) : clamp(v));
+            return 1;
+        }
 
         case Event.release:
             if (fl.core.eventIsClick()) // detect click but no drag
@@ -257,35 +249,46 @@ unittest
 
 unittest
 {
-    // FL_PUSH picks which of the 3 buttons was hit (based on x position,
-    // for a horizontal layout); the leftmost is the "fast" (100x step)
-    // button (drag_ == 1), the rightmost the "slow" (1x step) one
-    // (drag_ == 3) -- see draw()'s fastarrow/mediumarrow/slowarrow
-    // ordering FLTK. FL_DRAG only registers movement once the
-    // pointer leaves the held button's own span (delta measures how far
-    // past the edge it went), matching the "3-button slider" FLTK
-    // doc comment describes.
+    // The wheel changes the value by the speed of the button under the
+    // mouse per notch (the leftmost button is the fast, 100x one); Shift
+    // makes a notch one step, Ctrl 100 steps. Dragging changes nothing.
     import fl.group : FlGroup;
     FlGroup.current(null);
 
     auto a = new Adjuster(0, 0, 300, 30);
     a.bounds(-1_000_000, 1_000_000);
-    a.step(1); // simplifies the expected numbers below
+    a.step(1);
     a.value(0);
 
-    // Push in the leftmost third: the fast (100x) button, drag_ == 1.
-    fl.core.eX_ = 10;
+    fl.core.eX_ = 10;   // fast button
     fl.core.eY_ = 15;
-    assert(a.handle(Event.push) == 1);
+    fl.core.eDy_ = -1;  // one notch up
+    assert(a.handle(Event.mouseWheel) == 1);
+    assert(a.value() == 100);
 
-    // Drag 10px past that button's own right edge (x in [0,100)) -> a
-    // delta of 10, times the fast button's 100x multiplier.
-    fl.core.eX_ = 110;
+    fl.core.eX_ = 250;  // slow button
+    fl.core.eDy_ = 2;   // two notches down
+    a.handle(Event.mouseWheel);
+    assert(a.value() == 98);
+
+    fl.core.eX_ = 150;  // medium button
+    fl.core.eDy_ = -1;
+    fl.core.eState_ = stateShift;
+    a.handle(Event.mouseWheel);
+    assert(a.value() == 99);
+    fl.core.eState_ = stateCtrl;
+    a.handle(Event.mouseWheel);
+    assert(a.value() == 199);
+    fl.core.eState_ = 0;
+    fl.core.eDy_ = 0;
+
+    fl.core.eX_ = 10;
+    a.handle(Event.push);
+    fl.core.eX_ = 200;
     a.handle(Event.drag);
-    assert(a.value() == 1000);
-
+    assert(a.value() == 199);
     a.handle(Event.release);
-    assert(a.value() == 1000); // release with no further movement: unchanged
+    assert(a.value() == 199);
 
     fl.core.resetForTest();
 }

@@ -3,7 +3,10 @@
  * floating point value" (FLTK's own doc comment): dragging traces
  * an angle from the widget's center, mapped onto [minimum(),
  * maximum()] between angle1()/angle2() (default 45/315 degrees, 0
- * degrees pointing straight down, increasing clockwise).
+ * degrees pointing straight down, increasing clockwise). The mouse
+ * wheel changes the value by Valuator.wheelStepFactor() steps per notch
+ * (one hundredth of the range per step while step() is 0); up, or a
+ * sideways wheel to the right, adds.
  *
  * Faithful, complete port of the numeric/event logic, including the
  * protected draw(int,int,int,int)/handle(int,int,int,int,int)
@@ -170,6 +173,14 @@ class Dial : Valuator
             handleRelease();
             return 1;
 
+        case Event.mouseWheel:
+        {
+            int n = wheelNotches();
+            if (n == 0) return 0;
+            changeByWheel(clamp(round(increment(value(), n * wheelStepFactor()))));
+            return 1;
+        }
+
         case Event.enter:
         case Event.leave:
             return 1;
@@ -290,6 +301,32 @@ unittest
     fl.core.eY_ = 50;
     d.handle(Event.push);
     assert(d.value() == 17); // round(100 * (270-315) / (45-315)) == round(16.67)
+
+    fl.core.resetForTest();
+}
+
+unittest
+{
+    // A wheel notch up adds 10 steps, with Shift one, with Ctrl 100.
+    import fl.group : FlGroup;
+    FlGroup.current(null);
+
+    auto d = new Dial(0, 0, 100, 100);
+    d.bounds(0, 1000);
+    d.step(1);
+    d.value(500);
+
+    fl.core.eDy_ = -1;
+    assert(d.handle(Event.mouseWheel) == 1);
+    assert(d.value() == 510);
+    fl.core.eState_ = stateShift;
+    fl.core.eDy_ = 1;
+    d.handle(Event.mouseWheel);
+    assert(d.value() == 509);
+    fl.core.eState_ = stateCtrl;
+    fl.core.eDy_ = -1;
+    d.handle(Event.mouseWheel);
+    assert(d.value() == 609);
 
     fl.core.resetForTest();
 }

@@ -29,12 +29,9 @@
  * body is purely overlay-related bookkeeping, so it isn't ported here
  * at all; `fl.gl_window.GlWindow.invalidate()` implements the rest of
  * `Fl_Gl_Window::invalidate()` directly instead of calling into this
- * module.) Deliberately not ported: the legacy `glXUseXFont`-based
- * bitmap-font text path (`drawStringLegacy*`, `glBitmapFont`, `getList`,
- * `genlistsize`, `fontnumToFontdescriptor`) -- `fl.gl` targets the
- * texture-rectangle path only, see that module's own doc comment for the
- * scope decision (`alphaMaskForString()`/`drawStringWithTexture()`, that
- * same path's own implementation, live there, not here).
+ * module.) GL text, both the texture path and the bitmap-font
+ * display-list path (FLTK's `draw_string_legacy()`, `gl_bitmap_font()`,
+ * `get_list()`), lives in `fl.gl`.
  * `switchToGl1()`/`switchBack()` are real, below -- called from
  * `GlWindow.drawBegin()`/`drawEnd()` whenever `mode() & modeOpengl3`. The
  * overlay methods
@@ -167,8 +164,13 @@ void delContext(GLContext ctx)
             break;
         }
     }
-    // FLTK also calls gl_remove_displaylist_fonts() here once the
-    // list empties -- a Phase 3 (text/font) concern, not applicable yet.
+    // The last context took its display lists with it (FLTK calls
+    // gl_remove_displaylist_fonts() here).
+    if (contextList_.length == 0)
+    {
+        import fl.gl : forgetDisplaylistFonts;
+        forgetDisplaylistFonts();
+    }
 }
 
 /// Ported from `Fl_Gl_Window_Driver::find_begin()` -- searches already-
@@ -1015,25 +1017,19 @@ void switchBack()
 /**
  * Ported from `Fl_Gl_Window_Driver::capture_gl_rectangle()` (the
  * platform-independent version -- no driver override exists for X11).
- * Takes primitive geometry plus a `forceFlush` callback (rather than a
- * `GlWindow` reference directly) to avoid a circular import between
+ * Takes primitive geometry plus a `flushAndRead` callback (rather than
+ * a `GlWindow` reference directly) to avoid a circular import between
  * this module and `fl.gl_window` -- `fl.gl_window.GlWindow.capture()`
- * is the real public entry point, and passes its own `flush()` as
- * `forceFlush`, matching FLTK's own `glw->flush()` call at the top
- * of this function exactly ("forces a GL redraw, necessary for the
- * glpuzzle demo").
+ * is the real public entry point. FLTK calls `glw->flush()` ("forces a
+ * GL redraw, necessary for the glpuzzle demo") and reads afterwards,
+ * by which time the frame has been swapped out of the back buffer and
+ * the first capture comes back black or stale; `flushAndRead` redraws
+ * the window and calls the read back before the swap instead (see
+ * `fl.gl_window.flushGlWindow()`).
  */
-RGBImage captureGlRectangle(void delegate() forceFlush, float pixelsPerUnit,
+RGBImage captureGlRectangle(void delegate(void delegate()) flushAndRead, float pixelsPerUnit,
     int pixelH, int x, int y, int w, int h)
 {
-    forceFlush();
-
-    glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
-    glPixelStorei(GL_PACK_ALIGNMENT, 4);
-    glPixelStorei(GL_PACK_ROW_LENGTH, 0);
-    glPixelStorei(GL_PACK_SKIP_ROWS, 0);
-    glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
-
     if (pixelsPerUnit != 1)
     {
         x = cast(int)(x * pixelsPerUnit);
@@ -1045,8 +1041,17 @@ RGBImage captureGlRectangle(void delegate() forceFlush, float pixelsPerUnit,
     int byteWidth = w * 3;
     byteWidth = (byteWidth + 3) & ~3;
     auto baseAddress = new ubyte[byteWidth * h];
-    glReadPixels(x, pixelH - (y + h), w, h, GL_RGB, GL_UNSIGNED_BYTE, baseAddress.ptr);
-    glPopClientAttrib();
+    void readPixels()
+    {
+        glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+        glPixelStorei(GL_PACK_SKIP_ROWS, 0);
+        glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
+        glReadPixels(x, pixelH - (y + h), w, h, GL_RGB, GL_UNSIGNED_BYTE, baseAddress.ptr);
+        glPopClientAttrib();
+    }
+    flushAndRead(&readPixels);
 
     // GL gives a bottom-to-top image; flip it top-to-bottom to match
     // Fl_RGB_Image's own row order.

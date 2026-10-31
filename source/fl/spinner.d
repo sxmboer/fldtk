@@ -5,6 +5,11 @@
  * The up/down buttons are fl.repeat_button.RepeatButton instances:
  * holding a spinner button down repeats continuously, matching FLTK.
  *
+ * The mouse wheel changes the value by Valuator.wheelStepFactor()
+ * steps per notch; up, or a sideways wheel to the right, adds. A turn
+ * past either end stops there; with wrap() set, the next turn from that
+ * end continues from the other one.
+ *
  * Fl_Spinner::sb_cb() (FLTK's `Fl_Callback*` + `Fl_Spinner*`
  * user-data two-arg callback, needed in C++ because a plain function
  * pointer can't close over `this`) becomes a private method bound as a
@@ -18,6 +23,7 @@ import fl.enumerations;
 import fl.group : FlGroup;
 import fl.widget : Widget;
 import fl.input : Input;
+import fl.valuator : Valuator;
 import fl.repeat_button : RepeatButton;
 import fl.rect : Rect;
 import fl.core;
@@ -187,6 +193,22 @@ class Spinner : FlGroup
         case Event.focus:
             return input_.takeFocus() ? 1 : 0;
 
+        case Event.mouseWheel:
+        {
+            int dx, dy;
+            fl.core.wheelUnswapped(dx, dy);
+            int n = dx - dy;
+            if (n == 0) return 0;
+            double v = value_ + n * Valuator.wheelStepFactor() * step_;
+            if (v > maximum_) v = wrap_ && value_ >= maximum_ ? minimum_ : maximum_;
+            else if (v < minimum_) v = wrap_ && value_ <= minimum_ ? maximum_ : minimum_;
+            value_ = v;
+            update();
+            setChanged();
+            doCallback(CallbackReason.changed);
+            return 1;
+        }
+
         default:
             break;
         }
@@ -323,6 +345,38 @@ unittest
 
     sp.upButton_.doCallback();
     assert(sp.value() == 5); // clamped at maximum(), no wrap
+
+    FlGroup.current(null);
+    fl.core.resetForTest();
+}
+
+unittest
+{
+    // The wheel: 10 steps a notch, one with Shift; past an end it stops
+    // there, and with wrap() the next notch goes to the other end.
+    import fl.group : FlGroup;
+
+    FlGroup.current(null);
+    fl.core.resetForTest();
+
+    auto sp = new Spinner(0, 0, 100, 20);
+    sp.range(0, 30);
+    sp.step(1);
+    sp.wrap(true);
+    sp.value(5);
+
+    fl.core.eDy_ = -1;
+    assert(sp.handle(Event.mouseWheel) == 1);
+    assert(sp.value() == 15);
+    fl.core.eState_ = stateShift;
+    sp.handle(Event.mouseWheel);
+    assert(sp.value() == 16);
+    fl.core.eState_ = 0;
+    sp.handle(Event.mouseWheel);
+    sp.handle(Event.mouseWheel);
+    assert(sp.value() == 30);
+    sp.handle(Event.mouseWheel);
+    assert(sp.value() == 0);
 
     FlGroup.current(null);
     fl.core.resetForTest();

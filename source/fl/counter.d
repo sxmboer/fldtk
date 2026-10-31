@@ -9,6 +9,8 @@
  * calcMouseobj()/incrementCb(), handle()'s FL_PUSH/FL_DRAG/FL_RELEASE/
  * FL_MOUSEWHEEL/FL_KEYBOARD/FL_FOCUS/FL_UNFOCUS/FL_ENTER/FL_LEAVE
  * cases), and `step(double,double)`/`step(double)`/`step() const`.
+ * The mouse wheel changes the value by Valuator.wheelStepFactor()
+ * steps per notch; up, or a sideways wheel to the right, adds.
  *
  * One D-vs-C++ language difference needed real care, not just a
  * cosmetic workaround: FLTK declares its three `step` overloads
@@ -59,7 +61,7 @@
  * on Fl_Valuator's own change detection. This port instead clamps to 0
  * (`mouseobj_ = cast(ubyte)(i < 0 ? 0 : i)`), so incrementCb() cleanly
  * no-ops via its existing early return in that case. Not filed as an
- * FLTK_ISSUES.md candidate -- it's very likely intentional-if-terse
+ * FLTK_ISSUES_n.md candidate -- it's very likely intentional-if-terse
  * FLTK behavior (an unsigned wraparound used as a sentinel), not a
  * bug, and this port's version is arguably the cleaner one anyway.
  *
@@ -227,8 +229,12 @@ class Counter : Valuator
             return 1;
 
         case Event.mouseWheel:
-            handleDrag(clamp(increment(value(), (fl.core.eventDy() - fl.core.eventDx()) / 2)));
+        {
+            int n = wheelNotches();
+            if (n == 0) return 0;
+            changeByWheel(clamp(increment(value(), n * wheelStepFactor())));
             return 1;
+        }
 
         case Event.keyDown:
             switch (fl.core.eventKey())
@@ -455,8 +461,8 @@ unittest
 
 unittest
 {
-    // FL_KEYBOARD Left/Right nudge value() by one step(); FL_MOUSEWHEEL
-    // scales by (dy - dx) / 2.
+    // FL_KEYBOARD Left/Right nudge value() by one step(); a wheel notch
+    // up changes it by 10 steps, with Shift by one.
     import fl.group : FlGroup;
     FlGroup.current(null);
 
@@ -472,10 +478,14 @@ unittest
     assert(c.handle(Event.keyDown) == 1);
     assert(c.value() == 10);
 
-    fl.core.eDy_ = 4;
-    fl.core.eDx_ = 0;
+    fl.core.eDy_ = -1;
     c.handle(Event.mouseWheel);
-    assert(c.value() == 12); // +(4-0)/2
+    assert(c.value() == 20);
+
+    fl.core.eDy_ = 2;
+    fl.core.eState_ = stateShift;
+    c.handle(Event.mouseWheel);
+    assert(c.value() == 18);
 
     fl.core.resetForTest();
 }

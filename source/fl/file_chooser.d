@@ -1015,6 +1015,13 @@ class FileChooser
         }
 
         bool dirIsRelative = directory_.length != 0 && filename[0] != '/';
+        // "C:..." (or a lone drive letter being typed) is absolute too
+        version (Windows)
+            if (dirIsRelative)
+            {
+                import std.ascii : isAlpha;
+                dirIsRelative = !(isAlpha(filename[0]) && (filename.length == 1 || filename[1] == ':'));
+            }
         if (dirIsRelative)
         {
             filename = filenameAbsolute(filename);

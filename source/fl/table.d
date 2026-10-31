@@ -29,7 +29,7 @@
  *    "faithful replication would be actively harmful in a memory-safe
  *    language" case `CONVENTIONS.md`'s `Fl_Text_Buffer::copy()` note
  *    documents. Fixed here (`row+1`, matching `col_width()`'s own
- *    correct pattern exactly) and logged as an `FLTK_ISSUES.md`
+ *    correct pattern exactly) and logged as an `FLTK_ISSUES_n.md`
  *    candidate rather than silently worked around.
  *  - `TableContext` is `alias int` + manifest constants, not a closed
  *    `enum` -- FLTK declares it as a plain C `enum` but real call
@@ -63,7 +63,7 @@
  *    a real, low-stakes dead-code bug (not called anywhere internally,
  *    `protected`, likely a holdover from an earlier architecture where
  *    widgets were added directly to `Fl_Table`'s own array) -- logged
- *    as a second `FLTK_ISSUES.md` candidate, ported faithfully
+ *    as a second `FLTK_ISSUES_n.md` candidate, ported faithfully
  *    rather than "fixed" with a guess at the original intent.
  *  - `_auto_drag_cb()`'s `Fl::flush()` call (forces an immediate
  *    synchronous repaint mid-drag, so autoscroll feels responsive even
@@ -1512,7 +1512,7 @@ unittest
 {
     // Regression test for the row_height() off-by-one this port fixes
     // relative to FLTK (see this module's own top comment and the
-    // FLTK_ISSUES.md entry) -- appending a row one past the
+    // FLTK_ISSUES_n.md entry) -- appending a row one past the
     // current count must not crash (RangeError) and must actually
     // store the height.
     import fl.group : FlGroup;

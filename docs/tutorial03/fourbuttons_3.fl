@@ -1,0 +1,67 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+code_name source/app.d
+Function {}
+  {
+  }
+  {
+    Window {}
+      {
+        label {Four Buttons}
+        xywh {186 66 325 163}
+      }
+      {
+        Group {}
+          {
+            xywh {15 15 64 88}
+          }
+          {
+            Button b1
+              {
+                label {Button &1}
+                xywh {15 15 64 22}
+                value {1}
+                compact {1}
+                shortcut {0x31}
+                type Radio
+              }
+            Button b2
+              {
+                label {Button &2}
+                xywh {15 37 64 22}
+                compact {1}
+                shortcut {0x32}
+                type Radio
+              }
+            Button b3
+              {
+                label {Button &3}
+                xywh {15 59 64 22}
+                compact {1}
+                shortcut {0x33}
+                type Radio
+              }
+            Button b4
+              {
+                label {Button &4}
+                xywh {15 81 64 22}
+                compact {1}
+                shortcut {0x34}
+                type Radio
+              }
+          }
+        ReturnButton {}
+          {
+            label {Check}
+            callback {long selected;
+foreach (i, b; [b1, b2, b3, b4])
+  if (b.value())
+    selected = i + 1;
+
+message(format("Button %s is selected", selected));
+}
+            xywh {117 69 86 22}
+            selected
+          }
+      }
+  }

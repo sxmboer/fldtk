@@ -1,0 +1,21 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+dub_header 1
+Function {}
+  {
+  }
+  {
+    Window {}
+      {
+        xywh {720 380 480 320}
+      }
+      {
+        Button {}
+          {
+            label {Button}
+            callback {writeln("Hello, World!");}
+            xywh {25 25 64 22}
+            selected
+          }
+      }
+  }

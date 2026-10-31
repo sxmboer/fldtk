@@ -633,17 +633,24 @@ public:
         return super.handle(event);
     }
 
-    /// Captures a rectangle of this window's current GL content as an
-    /// `RGBImage`. Forces a redraw first (matching FLTK's own
-    /// `glw->flush()` call -- "necessary for the glpuzzle demo").
+    /// Captures a rectangle of this window's GL content as an
+    /// `RGBImage`. Redraws the window and reads the new frame before
+    /// it is swapped to the screen (see `flushGlWindow()`'s
+    /// `beforeSwap`).
     RGBImage capture(int x, int y, int w, int h)
     {
-        return glDriver.captureGlRectangle(&forceFlush, pixelsPerUnit(), pixelH(), x, y, w, h);
+        // The window's real pixel height, truncated as the platform
+        // sizes it (and as captureGlRectangle() scales its rectangle),
+        // not pixelH(), which rounds: at a fractional scale that is a
+        // row taller, and the read would start a row too high, with a
+        // black line along the top from outside the window.
+        int bufH = cast(int)(pixelsPerUnit() * this.h());
+        return glDriver.captureGlRectangle(&flushAndRead, pixelsPerUnit(), bufH, x, y, w, h);
     }
 
-    private void forceFlush()
+    private void flushAndRead(void delegate() readPixels)
     {
-        flushGlWindow(this);
+        flushGlWindow(this, readPixels);
     }
 }
 
@@ -676,12 +683,16 @@ public:
  * expensive `win.draw()` call when the only reason this flush is
  * running is an overlay-only redraw, and draw fresh overlay content
  * directly into the front buffer afterward. `package(fl)` (not
- * `private`) since `GlWindow.capture()` also calls this directly to
- * force a fresh frame before reading pixels back, matching FLTK's
- * own `glw->flush()` call at the top of `Fl_Gl_Window_Driver::
- * capture_gl_rectangle()`.
+ * `private`) since `GlWindow.capture()` also calls this to draw a
+ * fresh frame to read back, as FLTK's `capture_gl_rectangle()` calls
+ * `glw->flush()`. `beforeSwap`, when given, runs once the frame is
+ * drawn and before it is swapped to the screen, while it is still in
+ * the back buffer: after the swap the back buffer holds an older frame
+ * or nothing, so FLTK's read after `flush()` returns a black or stale
+ * image the first time. A single-buffered window runs it after
+ * drawing.
  */
-package(fl) void flushGlWindow(GlWindow win)
+package(fl) void flushGlWindow(GlWindow win, void delegate() beforeSwap = null)
 {
     if (!win.shown()) return;
     // Read before makeCurrent(), which may itself clear valid() when
@@ -714,6 +725,11 @@ package(fl) void flushGlWindow(GlWindow win)
         {
             glDrawBuffer(GL_BACK);
             win.drawOverlay();
+        }
+        if (beforeSwap !is null)
+        {
+            glReadBuffer(GL_BACK);
+            beforeSwap();
         }
         win.swapBuffers();
 
@@ -752,6 +768,7 @@ package(fl) void flushGlWindow(GlWindow win)
         if (win.overlayActive())
             win.drawOverlay();
         glFlush();
+        if (beforeSwap !is null) beforeSwap();
     }
 
     win.clearDamage(0);

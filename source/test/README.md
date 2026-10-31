@@ -1,6 +1,7 @@
 # Test programs
 
-D transliterations of FLTK's `test/` directory — a much larger, more
+D versions of FLTK's `test/` programs, plus fldtk's own (see "Programs
+not in FLTK" below) — a much larger, more
 exhaustive set of programs than `source/examples/`, whose job is
 closer to stress-testing widget behavior and edge cases than
 demonstrating clean API usage. Many of these were written to reproduce
@@ -22,7 +23,7 @@ rdmd buildsamples.d test cube     # a single one, by name
 Binaries land in `build/` under their own name (`build/cube`, ...). A
 program is simply a `.d` file here that defines `main()` — there is no
 manifest and nothing to register; add a file and it is picked up on
-the next run. See `BUILDING.md` at the repo root for the full build
+the next run. See `docs/BUILDING.md` at the repo root for the full build
 model, including how a helper module shared between several programs
 (`CubeView.d`, `checkers_pieces.d`, `fracviewer.d`, `resize_arrows.d`)
 gets pulled in automatically.
@@ -37,6 +38,19 @@ Windows, `list_visuals` (it lists X11 visuals) is skipped too.
   the SVG text for what should be on screen and shows it as a new
   `SvgImage`, so the pictures (a wind gauge following a slider, and a
   sea at sunset whose waves grow with the wind) stay sharp at any scale.
+- `gl_capture`: captures a single-buffered and a double-buffered window,
+  each holding GL subwindows, three ways (`captureWindow()`,
+  `ImageSurface.draw()`, printing), to show which paths include the GL
+  pixels.
+- `svg_gradients`: SVG gradients in bounding-box units, rotated, scaled
+  and moved with `gradientTransform`, each labelled with how it should
+  look.
+- `gl_text`: text in a GL window, through textures or through the
+  platform's bitmap fonts (switched while it runs), and rotated text
+  drawn both in a plain window and over a GL scene.
+- `value_wheel`: every value widget, changed with the mouse wheel (10
+  steps a notch, 1 with Shift, 100 with Ctrl), with a readout of the
+  last change.
 
 ## The `unittests` program
 

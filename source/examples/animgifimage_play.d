@@ -245,6 +245,7 @@ void main(string[] args)
                 speedFactor = args[i].to!double;
             catch (ConvException)
                 speedFactor = 0.0;
+            args[i] = null; // nextArg() skips it
         }
         else if (args[i][0] != '-')
         {

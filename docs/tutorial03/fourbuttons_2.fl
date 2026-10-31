@@ -1,0 +1,72 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+code_name source/app.d
+Function {}
+  {
+  }
+  {
+    Window {}
+      {
+        label {Four Buttons}
+        xywh {186 66 325 163}
+        setup {//the scope has to be higher than the buttons
+int selected;}
+        selected
+      }
+      {
+        Group {}
+          {
+            xywh {15 15 64 88}
+          }
+          {
+            Button {}
+              {
+                label {Button &1}
+                callback {selected = 1;
+writeln("Button 1 pushed");}
+                xywh {15 15 64 22}
+                value {1}
+                compact {1}
+                shortcut {0x31}
+                type Radio
+              }
+            Button {}
+              {
+                label {Button &2}
+                callback {writeln("Button 2 pushed");
+selected = 2;}
+                xywh {15 37 64 22}
+                compact {1}
+                shortcut {0x32}
+                type Radio
+              }
+            Button {}
+              {
+                label {Button &3}
+                callback {writeln("Button 3 pushed");
+selected = 3;
+}
+                xywh {15 59 64 22}
+                compact {1}
+                shortcut {0x33}
+                type Radio
+              }
+            Button {}
+              {
+                label {Button &4}
+                callback {writeln("Button 4 pushed");
+selected = 4;}
+                xywh {15 81 64 22}
+                compact {1}
+                shortcut {0x34}
+                type Radio
+              }
+          }
+        ReturnButton {}
+          {
+            label {Check}
+            callback {message(format("Button %s is selected", selected));}
+            xywh {117 69 86 22}
+          }
+      }
+  }

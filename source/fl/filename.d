@@ -51,9 +51,7 @@
  * current user's `~`) is POSIX-only (`getpwnam()`), guarded by
  * `version (Posix)`; matches this project's Linux-primary/Windows-
  * secondary scope (`~` alone still works everywhere via the `HOME`
- * environment variable). `filenameRelative()`'s case-insensitive mode
- * (FLTK's Windows/macOS path-comparison variant) isn't ported --
- * only the case-sensitive behavior Linux/Wayland need.
+ * environment variable).
  */
 module fl.filename;
 
@@ -280,29 +278,64 @@ string filenameAbsolute(string from, string base = null)
  * Makes dest relative to base (which defaults to the current working
  * directory), similar to C++17 `std::filesystem::path::lexically_relative`.
  * Purely lexical: both paths must already be absolute and contain no
- * `.`/`..` segments or double separators, or dest is returned unchanged
- * (matching FLTK's "no change" fallback). Ported from
- * Fl_System_Driver::filename_relative_() (src/filename_absolute.cxx),
- * case-sensitive branch only -- see the module note.
+ * `.`/`..` segments or double separators, or dest is returned unchanged.
+ * On Windows and macOS the comparison ignores case (Unicode-aware), and on
+ * Windows a path may start with a drive letter: paths on different drives
+ * are returned unchanged. Ported from Fl_System_Driver::filename_relative_()
+ * (src/filename_absolute.cxx) and Fl_WinAPI_System_Driver::
+ * filename_relative().
  */
 string filenameRelative(string dest, string base = null)
 {
     if (base is null) base = getcwd();
+    version (Windows)
+    {
+        import std.ascii : isAlpha, toLower;
+        if (base.length >= 2 && isAlpha(base[0]) && base[1] == ':'
+            && dest.length >= 2 && isAlpha(dest[0]) && dest[1] == ':')
+        {
+            if (toLower(base[0]) != toLower(dest[0])) return dest;
+            string rel = relativePath(dest[2 .. $], base[2 .. $], false);
+            // An unchanged result is still the drive-less tail; give back
+            // the original path instead.
+            return rel is dest[2 .. $] ? dest : rel;
+        }
+        return relativePath(dest, base, false);
+    }
+    else version (OSX)
+        return relativePath(dest, base, false);
+    else
+        return relativePath(dest, base, true);
+}
+
+private string relativePath(string dest, string base, bool caseSensitive)
+{
     if (dest.length == 0 || base.length == 0 || !isDirSep(base[0]) || !isDirSep(dest[0]))
         return dest;
+
+    // Steps past the character at i and returns the next one (0 at the
+    // end), lower-cased when the comparison ignores case.
+    static dchar next(string s, ref size_t i, bool caseSensitive)
+    {
+        import std.uni : toLower;
+        import std.utf : decode, stride;
+        if (i < s.length) i += caseSensitive ? 1 : stride(s, i);
+        if (i >= s.length) return 0;
+        if (caseSensitive) return s[i];
+        size_t j = i;
+        return toLower(decode(s, j));
+    }
 
     size_t bi = 0, di = 0;
     size_t baseSep = 0, destSep = 0;
     for (;;)
     {
-        bi++;
-        di++;
-        char b = bi < base.length ? base[bi] : '\0';
-        char d = di < dest.length ? dest[di] : '\0';
-        bool bEnd = b == '\0' || isDirSep(b);
-        bool dEnd = d == '\0' || isDirSep(d);
+        dchar b = next(base, bi, caseSensitive);
+        dchar d = next(dest, di, caseSensitive);
+        bool bEnd = b == 0 || (b < 0x80 && isDirSep(cast(char) b));
+        bool dEnd = d == 0 || (d < 0x80 && isDirSep(cast(char) d));
         if (bEnd && dEnd) { baseSep = bi; destSep = di; }
-        if (b == '\0' || d == '\0') break;
+        if (b == 0 || d == 0) break;
         if (b != d) break;
     }
 
@@ -537,6 +570,10 @@ unittest
     assert(filenameRelative("/var/tmp/foo.txt", "/var/tmp/somedir") == "../foo.txt");
     assert(filenameRelative("/var/tmp/somedir", "/var/tmp/somedir") == ".");
     assert(filenameRelative("foo.txt", "/var/tmp") == "foo.txt"); // not absolute -> unchanged
+    // The case-insensitive comparison Windows and macOS use.
+    assert(relativePath("/Var/TMP/foo.txt", "/var/tmp", false) == "foo.txt");
+    assert(relativePath("/var/Ärger/x", "/var/ärger/y", false) == "../x");
+    assert(relativePath("/Var/tmp/foo.txt", "/var/tmp", true) == "../../Var/tmp/foo.txt");
 }
 
 unittest

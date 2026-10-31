@@ -66,8 +66,8 @@
  *   and their EGL side is `fl.wayland_gl_window_driver`, which also
  *   gives a window `gl_start()` draws into a GL surface over it.
  *
- * Not ported: the work area (screen 0's whole area is reported; FLTK
- * measures it with maximized test windows).
+ * The work area is measured with a maximized window that is never
+ * shown, as in FLTK (`measureWorkArea()`).
  * A Wayland program can't place its windows, so their positions are
  * the compositor's.
  */
@@ -351,6 +351,7 @@ extern (C) private void registryGlobalRemove(void* data, wl_registry* registry, 
         wl_output_destroy(o.output);
         outputs_ = outputs_[0 .. i] ~ outputs_[i + 1 .. $];
         foreach (w; windows_) w.outputs = removeOutput(w.outputs, o);
+        workAreaKnown_ = false;
         return;
     }
     });
@@ -397,6 +398,7 @@ extern (C) private void outputDone(void* data, wl_output* output) nothrow
 {
     guarded({
     auto o = cast(Output) data;
+    workAreaKnown_ = false;
     if (o.done) // a change after startup
     {
         foreach (w; windows_)
@@ -478,29 +480,18 @@ void openDisplay()
 }
 
 /**
- * The startup GUI scale: `FLTK_SCALING_FACTOR` (default 1), times the
- * zoom last chosen with Ctrl +/- (`fl.core.loadPersistedZoom()`, a fldtk
- * addition) -- FLTK's `Fl_Screen_Driver::use_startup_scale_factor()`.
- * The compositor's own scale for each screen comes on top as the buffer
- * scale.
+ * The startup GUI scale: the starting zoom (`fl.core.startupZoom()`:
+ * `FLDTK_SCALING_FACTOR` if set, otherwise the zoom last chosen with
+ * Ctrl +/-) on a base of 1 -- FLTK's `Fl_Screen_Driver::use_startup_
+ * scale_factor()`. The compositor's own scale for each screen comes on
+ * top as the buffer scale.
  */
 private void useStartupScaleFactor()
 {
-    import std.process : environment;
-    import std.conv : parse, ConvException;
-    float factor = 1.0f;
-    if (auto str = environment.get("FLTK_SCALING_FACTOR"))
-    {
-        try factor = parse!float(str);
-        catch (ConvException) factor = 1.0f;
-    }
-    if (factor <= 0) factor = 1.0f;
-    import std.math : isNaN;
-    float zoom = loadPersistedZoom();
-    float effective = factor * (isNaN(zoom) ? 1.0f : zoom);
+    float effective = startupZoom();
     foreach (i; 0 .. screenCount())
     {
-        seedBaseScale(i, factor);
+        seedBaseScale(i, 1.0f);
         screenScale(i, effective);
     }
     currentScale(effective);
@@ -1392,6 +1383,16 @@ void createWindow(FlWindow win)
             zxdg_toplevel_decoration_v1_add_listener(w.decoration, &decorationListener, cast(void*) w);
             zxdg_toplevel_decoration_v1_set_mode(w.decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
         }
+        // A window shown fullscreen asks for it before its first commit,
+        // on its own screen when it was placed there, as in FLTK's
+        // handle_configure().
+        if (win.fullscreenActive())
+        {
+            wl_output* output;
+            if (win.forcePosition() && win.screenNum() < outputs_.length)
+                output = outputs_[win.screenNum()].output;
+            xdg_toplevel_set_fullscreen(w.xdgToplevel, output);
+        }
         wl_surface_commit(w.surface);
     }
 
@@ -1419,6 +1420,7 @@ void createWindow(FlWindow win)
     }
     win.handle(Event.show);
     win.redraw();
+    if (w.xdgToplevel !is null && win.fullscreenActive()) dispatch(Event.fullscreen, win);
     wl_display_flush(display_);
 }
 
@@ -1909,8 +1911,9 @@ package(fl) void fullscreenOn(FlWindow win)
 
 /// Ported from `fullscreen_off()`. The compositor gives the window back
 /// its size from before (or leaves it to the program, which then takes
-/// the size it last had while floating, `applyToplevelConfigure()`).
-package(fl) void fullscreenOff(FlWindow win)
+/// the size it last had while floating, `applyToplevelConfigure()`), so
+/// `(x, y, width, height)` are not used.
+package(fl) void fullscreenOff(FlWindow win, int x, int y, int width, int height)
 {
     auto w = find(win);
     if (w is null || w.xdgToplevel is null) return;
@@ -3244,9 +3247,10 @@ extern (C) private void pointerAxis(void* data, wl_pointer* pointer, uint time, 
     eventTime_ = time;
     float delta = cast(float) wl_fixed_to_double(value) / 10.0f;
     bool horizontal = axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL;
-    if ((eState_ & stateShift) != 0) horizontal = !horizontal;
-    if (horizontal) setWheelDelta(delta, 0);
-    else setWheelDelta(0, delta);
+    bool swapped = (eState_ & stateShift) != 0;
+    if (swapped) horizontal = !horizontal;
+    if (horizontal) setWheelDelta(delta, 0, swapped);
+    else setWheelDelta(0, delta, swapped);
     dispatch(Event.mouseWheel, w.widget.topWindow());
     });
 }
@@ -4598,11 +4602,102 @@ package(fl) void screenXYWH(out int x, out int y, out int w, out int h, int n)
     h = cast(int)(o.pixelH / s);
 }
 
-/// The whole screen: FLTK finds the work area by maximizing test
-/// windows, which isn't ported.
+/// The work area of screen `n`: on a system with one screen, the screen
+/// less its panels; otherwise, and on other screens, the whole screen.
+/// Ported from `Fl_Wayland_Screen_Driver::screen_work_area()`. Wayland
+/// tells a program the size of a maximized window but not where it
+/// is, so the work area starts at the screen's origin.
 package(fl) void screenWorkArea(out int x, out int y, out int w, out int h, int n)
 {
     screenXYWH(x, y, w, h, n);
+    if (n < 0 || n >= outputs_.length) n = 0;
+    if (n != 0) return;
+    if (!workAreaKnown_) measureWorkArea();
+    if (workAreaW_ <= 0) return;
+    float g = screenScale(0);
+    w = cast(int)(workAreaW_ / g);
+    h = cast(int)(workAreaH_ / g);
+}
+
+// The size of a maximized window on the only screen, in logical pixels;
+// 0 when there are several screens or no panels were found.
+private bool workAreaKnown_;
+private int workAreaW_, workAreaH_;
+
+/// What the compositor said to the test window `measureWorkArea()` makes.
+private struct WorkAreaProbe
+{
+    int w, h;
+    bool maximized;
+}
+
+extern (C) private void probeConfigure(void* data, xdg_toplevel* toplevel,
+    int width, int height, wl_array* states) nothrow
+{
+    auto probe = cast(WorkAreaProbe*) data;
+    probe.w = width;
+    probe.h = height;
+    probe.maximized = false;
+    auto p = cast(const(uint)*) states.data;
+    foreach (i; 0 .. states.size / uint.sizeof)
+        if (p[i] == XDG_TOPLEVEL_STATE_MAXIMIZED) probe.maximized = true;
+}
+
+extern (C) private void probeClose(void* data, xdg_toplevel* toplevel) nothrow { }
+extern (C) private void probeConfigureBounds(void* data, xdg_toplevel* toplevel, int width, int height) nothrow { }
+extern (C) private void probeWmCapabilities(void* data, xdg_toplevel* toplevel, wl_array* caps) nothrow { }
+
+private __gshared xdg_toplevel_listener probeListener = {
+    configure: &probeConfigure,
+    close: &probeClose,
+    configure_bounds: &probeConfigureBounds,
+    wm_capabilities: &probeWmCapabilities,
+};
+
+/**
+ * Finds the work area by asking for a maximized window that is never
+ * shown and reading the size the compositor gives it -- ported from
+ * `compute_full_and_maximized_areas()`/`init_workarea()`. As in FLTK,
+ * this is done only when there is one screen, since a program can't say
+ * on which screen a maximized window goes, and a size more than 50
+ * pixels smaller than the screen is not taken as a work area. The
+ * compositor gets a few round trips to answer; without an answer the
+ * work area is the whole screen.
+ */
+private void measureWorkArea()
+{
+    workAreaKnown_ = true;
+    workAreaW_ = workAreaH_ = 0;
+    if (outputs_.length != 1 || wmBase_ is null) return;
+    int fullW, fullH;
+    {
+        auto o = outputs_[0];
+        if (o.logicalW > 0) { fullW = o.logicalW; fullH = o.logicalH; }
+        else { fullW = o.pixelW / o.wldScale; fullH = o.pixelH / o.wldScale; }
+    }
+
+    WorkAreaProbe probe;
+    auto surface = wl_compositor_create_surface(compositor_);
+    auto xdgSurface = xdg_wm_base_get_xdg_surface(wmBase_, surface);
+    auto toplevel = xdg_surface_get_toplevel(xdgSurface);
+    xdg_toplevel_add_listener(toplevel, &probeListener, &probe);
+    xdg_toplevel_set_maximized(toplevel);
+    wl_surface_commit(surface);
+    foreach (i; 0 .. 4)
+    {
+        if (wl_display_roundtrip(display_) < 0 || probe.maximized) break;
+    }
+    xdg_toplevel_destroy(toplevel);
+    xdg_surface_destroy(xdgSurface);
+    wl_surface_destroy(surface);
+    rethrowPending();
+
+    if (!probe.maximized || probe.w <= 0 || probe.h <= 0) return;
+    bool found = (probe.h < fullH && probe.h > fullH - 50)
+        || (probe.w < fullW && probe.w > fullW - 50);
+    if (!found) return;
+    workAreaW_ = probe.w;
+    workAreaH_ = probe.h;
 }
 
 /// 96 dpi, as FLTK reports on Wayland.

@@ -239,24 +239,10 @@ abstract class GraphicsDriver
      * Ported from `Fl_Graphics_Driver::draw(int, const char*, int, int,
      * int)` (`src/Fl_Graphics_Driver.cxx`): FLTK's own base
      * implementation is a real, non-abstract default that just ignores
-     * `angle` and forwards to the plain `draw()` above -- not a
-     * placeholder; most FLTK drivers, including the plain (non-Xft)
-     * X11 one, never override it at all (it prints a one-time "rotated
-     * text not implemented" warning and draws unrotated instead -- see
-     * `Fl_Xlib_Graphics_Driver_font_x.cxx`'s own `draw_unscaled(int
-     * angle, ...)`). This D port matches that shape: a real, non-
-     * `abstract` default here (so `PostscriptGraphicsDriver`/
-     * `SvgGraphicsDriver` don't need to implement it just to compile),
-     * overridable by any concrete driver that wants real rotated
-     * output (SVG's own `transform="rotate(...)"`, PostScript's own
-     * `rotate` operator, ...) -- matching FLTK's own small set of
-     * overriders (OpenGL, Quartz, and FLTK's SVG-file-export
-     * driver, none of which are ported here yet either). See
-     * `fl.draw.fl_draw(int, ...)`'s own doc comment for why this port's
-     * *screen/offscreen* Xft-backed text path -- unlike FLTK's own
-     * real, default (Xft-enabled) X11 build -- doesn't yet do real
-     * rotation either, a genuine, currently-open gap, not FLTK's
-     * own angle-ignoring behavior faithfully reproduced.
+     * `angle` and forwards to the plain `draw()` above. The SVG,
+     * PostScript, GDI and GL drivers override it to draw real rotated
+     * text; the native Xft and Cairo paths rotate too, without a driver
+     * (see `fl.draw.fl_draw(int, ...)`).
      */
     void draw(int angle, const(char)[] str, int nChars, int x, int y)
     {
@@ -394,6 +380,22 @@ abstract class GraphicsDriver
      * `Fl_Scalable_Graphics_Driver`-equivalent backend.
      */
     bool wantsUnscaledVertices() const { return false; }
+
+    /// Whether this driver writes a resolution-independent document
+    /// (PostScript, SVG, PDF) rather than pixels. Images then prepare
+    /// their pixels at one per FLTK unit instead of at the screen scale
+    /// (see `fl.draw.imageScale()`).
+    bool resolutionIndependent() const { return false; }
+
+    /**
+     * Draws `dataW` x `dataH` pixels from `buf` stretched over the
+     * FLTK-unit box `(x, y, w, h)`. `d` is the bytes per pixel (1-4,
+     * positive), `l` the bytes per row (0 for `dataW * d`). Images call
+     * it on a resolution-independent driver (`resolutionIndependent()`),
+     * so a page or SVG file gets their own pixels whatever size they are
+     * drawn at; every such driver implements it.
+     */
+    void drawImageScaled(const(ubyte)* buf, int dataW, int dataH, int d, int l, int x, int y, int w, int h) { }
 }
 
 /**

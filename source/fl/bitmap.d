@@ -56,7 +56,7 @@ class Bitmap : Image
      * -- see fl.image.RGBImage's own constructor doc comment for why
      * `fail()`, not just `array.length`, doesn't reliably catch this
      * (the same FLTK `Fl_Image::fail()` quirk applies here too,
-     * logged in `FLTK_ISSUES.md`).
+     * logged in `FLTK_ISSUES_n.md`).
      */
     this(const(ubyte)[] bits, int W, int H)
     {
@@ -135,7 +135,7 @@ class Bitmap : Image
         // precedent: recomputed on every `draw()`, not gated behind a
         // dirty flag, since it's a cheap integer comparison against the
         // already-cached size.
-        float s = fl.core.currentScale();
+        float s = fldraw.imageScale();
         int wantW = cast(int)(dataW() * s);
         int wantH = cast(int)(dataH() * s);
         if (wantW < 1) wantW = 1;

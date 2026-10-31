@@ -27,10 +27,7 @@ class App : WindowType
         ex = fl.eventX();
         ey = fl.eventY();
         int scrNum = screenNum();
-        // fldtk has no per-monitor DPI scaling yet (Fl::screen_scale()
-        // isn't ported -- see PORTING.md), so this always reports 100%
-        // rather than calling a nonexistent fl.screenScale().
-        int scale = 100;
+        int scale = cast(int)(screenScale(scrNum) * 100.0 + 0.5);
         eventname = eventNames[ev];
         stderr.writef("[%3d, win(%d,%d,%d,%d), screen %d, scale %3d%%] %-18.18s at (%4d, %4d)",
                 eventnum, x(), y(), w(), h(), scrNum, scale, eventname, ex, ey);

@@ -152,6 +152,7 @@ public import fl.svg_file_surface;
 public import fl.paged_device;
 public import fl.postscript;
 public import fl.printer;
+public import fl.pdf_file_surface;
 public import fl.symbols;
 public import fl.names;
 public import fl.pen;

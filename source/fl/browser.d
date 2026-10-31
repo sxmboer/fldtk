@@ -56,7 +56,7 @@
  *    instead treats a trailing unescaped `'@'` as "stop scanning,
  *    consume just the `'@'`" -- the same practical outcome FLTK's `switch(0)`
  *    hitting no case would have produced anyway, just reached without
- *    an out-of-bounds read. Not filed as an FLTK_ISSUES.md
+ *    an out-of-bounds read. Not filed as an FLTK_ISSUES_n.md
  *    candidate: it's a one-byte, harmless-in-practice C string overread
  *    on a corner case (a label ending in a bare `'@'`), not a
  *    consequential behavioral bug worth flagging for FLTK review.

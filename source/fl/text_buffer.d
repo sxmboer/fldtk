@@ -71,7 +71,7 @@
  *   this", i.e. a self-copy with potentially *overlapping* source/dest
  *   ranges is a documented, intended use -- for which `memcpy()` is
  *   undefined behavior in C. This looks like a genuine latent FLTK
- *   bug; see `FLTK_ISSUES.md`. `memmove()` is a strict, harmless
+ *   bug; see `FLTK_ISSUES_n.md`. `memmove()` is a strict, harmless
  *   superset (identical result for the non-overlapping case) so this
  *   isn't a behavior change for any call that wasn't already relying on
  *   UB.
@@ -679,7 +679,7 @@ class TextBuffer
 
     /// Returns a copy of the text between byte offsets start and end
     /// (end exclusive). Clamped/swapped the same way FLTK is; see
-    /// FLTK_ISSUES.md for one input shape (end < 0) this inherits
+    /// FLTK_ISSUES_n.md for one input shape (end < 0) this inherits
     /// from FLTK without also inheriting its C out-of-bounds-read
     /// consequence -- D's bounds-checked slicing turns that into a
     /// well-defined RangeError instead.

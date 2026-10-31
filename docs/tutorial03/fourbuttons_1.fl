@@ -1,0 +1,44 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+code_name source/app.d
+Function {}
+  {
+  }
+  {
+    Window {}
+      {
+        label {Four Buttons}
+        xywh {186 66 325 163}
+        selected
+      }
+      {
+        Button {}
+          {
+            label {Button &1}
+            callback {writeln("Button 1 pushed");}
+            xywh {15 15 64 22}
+            shortcut {0x31}
+          }
+        Button {}
+          {
+            label {Button &2}
+            callback {writeln("Button 2 pushed");}
+            xywh {15 37 64 22}
+            shortcut {0x32}
+          }
+        Button {}
+          {
+            label {Button &3}
+            callback {writeln("Button 3 pushed");}
+            xywh {15 59 64 22}
+            shortcut {0x33}
+          }
+        Button {}
+          {
+            label {Button &4}
+            callback {writeln("Button 4 pushed");}
+            xywh {15 81 64 22}
+            shortcut {0x34}
+          }
+      }
+  }

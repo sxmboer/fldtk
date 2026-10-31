@@ -1275,6 +1275,23 @@ XFontSet XCreateFontSet(Display* display, const(char)* baseFontNameList,
 
 void XFreeFontSet(Display* display, XFontSet fontSet);
 
+/// The leading fields of Xlib's `XFontStruct`, all `fl.gl`'s legacy GL
+/// text path reads; only ever used through a pointer Xlib returns.
+struct XFontStruct
+{
+    void* extData;
+    XID fid;
+    uint direction;
+    uint minCharOrByte2;
+    uint maxCharOrByte2;
+}
+
+/// Loads a core X font by XLFD name, or returns null.
+XFontStruct* XLoadQueryFont(Display* display, const(char)* name);
+
+/// Frees a font `XLoadQueryFont()` loaded.
+int XFreeFont(Display* display, XFontStruct* fontStruct);
+
 /// Frees the missing-charset list `XCreateFontSet()` may allocate.
 void XFreeStringList(char** list);
 

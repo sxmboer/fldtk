@@ -210,7 +210,17 @@ class Pixmap : Image
             return;
         }
 
-        float s = fl.core.currentScale();
+        if (fldraw.drawsResolutionIndependent())
+        {
+            auto pixels = new ubyte[dataW() * dataH() * 4];
+            if (!convertPixmap(xpmData, pixels, fl.enumerations.black))
+                drawEmpty(X, Y);
+            else
+                drawNative(pixels.ptr, dataW(), dataH(), 4, dataW() * 4, X, Y, W, H, cx, cy);
+            return;
+        }
+
+        float s = fldraw.imageScale();
         auto src = scaledForDraw(s);
         const(string)[] drawXpm = src.xpmData;
         int bufW = src.dataW(), bufH = src.dataH();

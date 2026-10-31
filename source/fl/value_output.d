@@ -2,14 +2,8 @@
  * Ported from FL/Fl_Value_Output.H + src/Fl_Value_Output.cxx (FLTK
  * 1.5.0). A lightweight, read-only-looking numeric
  * display: unlike `Fl_Value_Input`, it has no hidden text-entry widget
- * or character buffer at all -- the only way to change its value is
- * dragging (left/middle/right mouse button = 1x/10x/100x step() per
- * pixel, once the drag has moved more than 5px).
- *
- * Faithful, complete port of the numeric/event logic (handle()'s drag
- * math, matching fl.adjuster/fl.value_slider's established idiom of
- * calling into fl.valuator's protected increment()/clamp()/softclamp()/
- * handlePush()/handleDrag()/handleRelease()).
+ * or character buffer at all -- the user changes its value only with
+ * the mouse wheel, and only when step() is nonzero (see handle()).
  *
  * draw() is structurally ported (same box-metrics/text-rect math as
  * FLTK) and calls fl.draw's now-real fl_font()/fl_draw() text
@@ -45,10 +39,9 @@ class ValueOutput : Valuator
         soft_ = false;
     }
 
-    /// If "soft" is turned on, the user is allowed to drag the value
-    /// outside the range. If they drag the value to one of the ends,
-    /// let go, then grab again and continue to drag, they can get to
-    /// any value. Default is off.
+    /// If "soft" is turned on, the mouse wheel can take the value
+    /// outside the range: a turn stops at the end of the range, and the
+    /// next turn from there goes past it. Default is off.
     void soft(bool s) { soft_ = s; }
     bool soft() const { return soft_; }
 
@@ -61,39 +54,24 @@ class ValueOutput : Valuator
     Color textcolor() const { return textcolor_; }
     void textcolor(Color c) { textcolor_ = c; }
 
+    /// Ported from Fl_Value_Output::handle(). With a nonzero step() the
+    /// mouse wheel changes the value: a notch up, or a sideways wheel to
+    /// the right, adds `wheelStepFactor()` steps (10; 1 with Shift held,
+    /// 100 with Ctrl), down or to the left subtracts them. With step() 0
+    /// the widget only displays its value.
     override int handle(Event event)
     {
         if (step() == 0) return 0;
-        double v;
-        int delta;
-        int mx = fl.core.eventX();
-        static int ix, drag;
         switch (event)
         {
-        case Event.push:
-            ix = mx;
-            drag = fl.core.eventButton();
-            handlePush();
+        case Event.mouseWheel:
+        {
+            int n = wheelNotches();
+            if (n == 0) return 0;
+            double v = round(increment(value(), n * wheelStepFactor()));
+            changeByWheel(soft_ ? softclamp(v) : clamp(v));
             return 1;
-
-        case Event.drag:
-            delta = fl.core.eventX() - ix;
-            if (delta > 5) delta -= 5;
-            else if (delta < -5) delta += 5;
-            else delta = 0;
-            switch (drag)
-            {
-            case 3: v = increment(previousValue(), delta * 100); break;
-            case 2: v = increment(previousValue(), delta * 10); break;
-            default: v = increment(previousValue(), delta); break;
-            }
-            v = round(v);
-            handleDrag(soft_ ? softclamp(v) : clamp(v));
-            return 1;
-
-        case Event.release:
-            handleRelease();
-            return 1;
+        }
 
         case Event.enter:
         case Event.leave:
@@ -163,9 +141,8 @@ unittest
 
 unittest
 {
-    // Dragging more than 5px moves the value by (delta - 5) * step(),
-    // scaled by 1x/10x/100x depending on which mouse button is held
-    // (left/middle/right).
+    // The wheel: a notch up adds 10 steps, with Ctrl 100; dragging does
+    // nothing.
     import fl.group : FlGroup;
     FlGroup.current(null);
 
@@ -174,38 +151,19 @@ unittest
     v.step(1);
     v.value(0);
 
+    fl.core.eDy_ = -1;
+    assert(v.handle(Event.mouseWheel) == 1);
+    assert(v.value() == 10);
+    fl.core.eState_ = stateCtrl;
+    fl.core.eDy_ = 1;
+    v.handle(Event.mouseWheel);
+    assert(v.value() == -90);
+
+    fl.core.eState_ = 0;
+    fl.core.eDy_ = 0;
     fl.core.eX_ = 50;
-    fl.core.eKeysym_ = button + leftMouse; // eventButton() == 1
-    v.handle(Event.push);
-
-    fl.core.eX_ = 61; // 11px right: delta = 11 - 5 = 6
-    v.handle(Event.drag);
-    assert(v.value() == 6);
-
-    v.handle(Event.release);
-    assert(v.value() == 6);
-
-    fl.core.resetForTest();
-}
-
-unittest
-{
-    // The right mouse button scales the drag delta by 100x.
-    import fl.group : FlGroup;
-    FlGroup.current(null);
-
-    auto v = new ValueOutput(0, 0, 100, 25);
-    v.bounds(-1_000_000, 1_000_000);
-    v.step(1);
-    v.value(0);
-
-    fl.core.eX_ = 50;
-    fl.core.eKeysym_ = button + rightMouse; // eventButton() == 3
-    v.handle(Event.push);
-
-    fl.core.eX_ = 61; // delta = 11 - 5 = 6
-    v.handle(Event.drag);
-    assert(v.value() == 600);
+    fl.core.eKeysym_ = button + leftMouse;
+    assert(v.handle(Event.push) == 0);
 
     fl.core.resetForTest();
 }

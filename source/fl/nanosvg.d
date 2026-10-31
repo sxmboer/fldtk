@@ -83,14 +83,13 @@
  *    so there's no caller in this port either. Easy to add later if a real
  *    caller needs them.
  *
- * Fixed here, unlike the C original:
- *  - With `gradientUnits="objectBoundingBox"` (the default), a gradient
- *    coordinate written as a plain number (`x2="1"`) is a fraction of the
- *    shape's bounding box, as the SVG specification says, the same as
- *    `x2="100%"`. nanosvg.h's `nsvg__convertToPixels()` takes it as an
- *    absolute position instead, so such a gradient collapses into the
- *    shape's first pixel and the shape shows only one colour.
- *    `createGradient()` maps unitless coordinates onto the bounding box.
+ * Gradients in `gradientUnits="objectBoundingBox"` (the default) follow
+ * the SVG specification (`createGradient()`): the gradient is laid out
+ * in the shape's bounding-box units, where a plain number (`x2="1"`) or
+ * a percentage is a fraction of the box; `gradientTransform` applies in
+ * those units; then the box is mapped onto the shape, so a rotated
+ * gradient turns about the box's corner in box units and a radial
+ * gradient on a non-square shape is an ellipse.
  *
  * Faithfully ported, not "fixed", despite looking odd on a close read:
  *  - `nsvg__atof()`/`nsvg__parseNumber()` deliberately do NOT use
@@ -570,13 +569,17 @@ private NsvgGradient createGradient(NsvgParser p, string id, float[4] localBound
 
     auto grad = new NsvgGradient();
 
-    float ox, oy, sw, sh;
-    if (data.units == NsvgGradientUnits.objectSpace)
+    // In object space the gradient is laid out in bounding-box units
+    // (0 to 1 across the shape), gradientTransform applies there, and only
+    // then is the box mapped onto the shape. A plain number or a
+    // percentage is a fraction of the box; another length is taken in
+    // box units too (see this module's top comment).
+    bool objectSpace = data.units == NsvgGradientUnits.objectSpace;
+    float ox, oy, sw, sh, sl;
+    if (objectSpace)
     {
-        ox = localBounds[0];
-        oy = localBounds[1];
-        sw = localBounds[2] - localBounds[0];
-        sh = localBounds[3] - localBounds[1];
+        ox = oy = 0;
+        sw = sh = sl = 1;
     }
     else
     {
@@ -584,24 +587,15 @@ private NsvgGradient createGradient(NsvgParser p, string id, float[4] localBound
         oy = actualOrigY(p);
         sw = actualWidth(p);
         sh = actualHeight(p);
-    }
-    float sl = sqrt(sw * sw + sh * sh) / sqrt(2.0f);
-
-    // In object space a unitless coordinate is a fraction of the bounding
-    // box (see this module's top comment).
-    float toPixels(NsvgCoordinate c, float orig, float length)
-    {
-        if (data.units == NsvgGradientUnits.objectSpace && c.units == NsvgUnits.user)
-            return orig + c.value * length;
-        return convertToPixels(p, c, orig, length);
+        sl = sqrt(sw * sw + sh * sh) / sqrt(2.0f);
     }
 
     if (data.type == NsvgPaintType.linearGradient)
     {
-        float x1 = toPixels(data.linear.x1, ox, sw);
-        float y1 = toPixels(data.linear.y1, oy, sh);
-        float x2 = toPixels(data.linear.x2, ox, sw);
-        float y2 = toPixels(data.linear.y2, oy, sh);
+        float x1 = convertToPixels(p, data.linear.x1, ox, sw);
+        float y1 = convertToPixels(p, data.linear.y1, oy, sh);
+        float x2 = convertToPixels(p, data.linear.x2, ox, sw);
+        float y2 = convertToPixels(p, data.linear.y2, oy, sh);
         float dx = x2 - x1, dy = y2 - y1;
         grad.xform[0] = dy; grad.xform[1] = -dx;
         grad.xform[2] = dx; grad.xform[3] = dy;
@@ -609,11 +603,11 @@ private NsvgGradient createGradient(NsvgParser p, string id, float[4] localBound
     }
     else
     {
-        float cx = toPixels(data.radial.cx, ox, sw);
-        float cy = toPixels(data.radial.cy, oy, sh);
-        float fx = toPixels(data.radial.fx, ox, sw);
-        float fy = toPixels(data.radial.fy, oy, sh);
-        float r = toPixels(data.radial.r, 0, sl);
+        float cx = convertToPixels(p, data.radial.cx, ox, sw);
+        float cy = convertToPixels(p, data.radial.cy, oy, sh);
+        float fx = convertToPixels(p, data.radial.fx, ox, sw);
+        float fy = convertToPixels(p, data.radial.fy, oy, sh);
+        float r = convertToPixels(p, data.radial.r, 0, sl);
         grad.xform[0] = r; grad.xform[1] = 0;
         grad.xform[2] = 0; grad.xform[3] = r;
         grad.xform[4] = cx; grad.xform[5] = cy;
@@ -622,6 +616,14 @@ private NsvgGradient createGradient(NsvgParser p, string id, float[4] localBound
     }
 
     xformMultiply(grad.xform, data.xform);
+    if (objectSpace)
+    {
+        float[6] box = [
+            localBounds[2] - localBounds[0], 0,
+            0, localBounds[3] - localBounds[1],
+            localBounds[0], localBounds[1]];
+        xformMultiply(grad.xform, box);
+    }
     xformMultiply(grad.xform, xform);
 
     grad.spread = data.spread;
@@ -2590,6 +2592,49 @@ unittest
     assert(img.shapes.fill.type == NsvgPaintType.color);
     assert((img.shapes.fill.color & 0xffffff) == 0x0000ff); // r=255,g=0,b=0 packed low-to-high
     assert((img.shapes.fill.color >> 24) == 255); // fully opaque
+}
+
+unittest
+{
+    // objectBoundingBox gradients: gradientTransform applies in box units,
+    // before the box is mapped onto the shape. The stored xform maps image
+    // space back into gradient space, where a linear gradient runs along y
+    // from 0 to 1 and a radial one has radius 1.
+    string svg = `<svg width="200" height="100"><defs>`
+        ~ `<linearGradient id="l" x1="0" y1="0" x2="1" y2="0" gradientTransform="rotate(90)">`
+        ~ `<stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient>`
+        ~ `<radialGradient id="r" cx="0.5" cy="0.5" r="0.5">`
+        ~ `<stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/></radialGradient>`
+        ~ `</defs>`
+        ~ `<rect x="10" y="20" width="100" height="40" fill="url(#l)"/>`
+        ~ `<rect x="10" y="20" width="100" height="40" fill="url(#r)"/>`
+        ~ `</svg>`;
+    auto buf = svg.dup;
+    auto img = nsvgParse(buf, "px", 96);
+    bool near(float a, float b) { return a > b - 1e-3f && a < b + 1e-3f; }
+
+    auto linear = img.shapes;
+    assert(linear.fill.type == NsvgPaintType.linearGradient);
+    float gx, gy;
+    xformPoint(gx, gy, 60, 20, linear.fill.gradient.xform); // top centre
+    assert(near(gy, 0));
+    xformPoint(gx, gy, 60, 60, linear.fill.gradient.xform); // bottom centre
+    assert(near(gy, 1));
+    xformPoint(gx, gy, 10, 40, linear.fill.gradient.xform); // left middle
+    assert(near(gy, 0.5f));
+    xformPoint(gx, gy, 110, 40, linear.fill.gradient.xform); // right middle
+    assert(near(gy, 0.5f));
+
+    // On a 100x40 box the radial gradient is an ellipse touching all four
+    // sides.
+    auto radial = linear.next;
+    assert(radial.fill.type == NsvgPaintType.radialGradient);
+    xformPoint(gx, gy, 60, 40, radial.fill.gradient.xform);
+    assert(near(gx, 0) && near(gy, 0));
+    xformPoint(gx, gy, 110, 40, radial.fill.gradient.xform);
+    assert(near(gx * gx + gy * gy, 1));
+    xformPoint(gx, gy, 60, 60, radial.fill.gradient.xform);
+    assert(near(gx * gx + gy * gy, 1));
 }
 
 unittest

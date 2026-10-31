@@ -43,7 +43,7 @@ version (FLDTK_HAVE_CAIRO) // Builds example code only if cairo enabled
         window.color(black);                                          // cairo window's default bg color
         // FLTK's example passes -1, -1 as the maximum; only 0 means "no
         // maximum", and on Windows -1 caps the window at its border size
-        // (see FLTK_ISSUES.md).
+        // (see FLTK_ISSUES_n.md).
         window.sizeRange(50, 50);                                     // allow resize 50,50 and up
         window.resizable(window);                                     // allow window to be resized
         window.setDrawCb(toDelegate(&myCairoDrawCb));                 // draw callback for cairo drawing

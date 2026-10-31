@@ -16,11 +16,19 @@
  * (`fl_xyline()`/`fl_yxline()`, both real on Linux, see
  * fl.draw's module comment), and `drawLabel()` (see fl.widget's
  * drawLabel()) all work.
+ *
+ * The y axis has its maximum at the top and the x axis its maximum on
+ * the right, so moving the crosshair up or right moves it toward the
+ * maximum. The mouse wheel over the positioner moves the crosshair the
+ * way the wheel turns: turned up or down it changes yvalue(), turned
+ * sideways xvalue(), by Valuator.wheelStepFactor() steps per notch (a
+ * step is xstep()/ystep(), or a hundredth of the range when that is 0).
  */
 module fl.positioner;
 
 import fl.enumerations;
 import fl.widget : Widget;
+import fl.valuator : Valuator;
 import fl.draw;
 import fl.core;
 
@@ -127,7 +135,7 @@ class Positioner : Widget
         int w1 = W - 2 * 4;
         int h1 = H - 2 * 4;
         int xx = cast(int)(flinear(xvalue(), xmin_, xmax_, x1, x1 + w1 - 1) + .5);
-        int yy = cast(int)(flinear(yvalue(), ymin_, ymax_, y1, y1 + h1 - 1) + .5);
+        int yy = cast(int)(flinear(yvalue(), ymin_, ymax_, y1 + h1 - 1, y1) + .5);
         drawBox(box(), X, Y, W, H, color());
         fl_color(selectionColor());
         fl_xyline(x1, yy, x1 + w1);
@@ -150,52 +158,89 @@ class Positioner : Widget
             double h1 = H - 2 * 4;
             double xx = flinear(fl.core.eventX(), x1, x1 + w1 - 1.0, xmin_, xmax_);
             if (xstep_) xx = cast(int)(xx / xstep_ + 0.5) * xstep_;
-            if (xmin_ < xmax_)
-            {
-                if (xx < xmin_) xx = xmin_;
-                if (xx > xmax_) xx = xmax_;
-            }
-            else
-            {
-                if (xx > xmin_) xx = xmin_;
-                if (xx < xmax_) xx = xmax_;
-            }
-            double yy = flinear(fl.core.eventY(), y1, y1 + h1 - 1.0, ymin_, ymax_);
+            double yy = flinear(fl.core.eventY(), y1 + h1 - 1.0, y1, ymin_, ymax_);
             if (ystep_) yy = cast(int)(yy / ystep_ + 0.5) * ystep_;
-            if (ymin_ < ymax_)
-            {
-                if (yy < ymin_) yy = ymin_;
-                if (yy > ymax_) yy = ymax_;
-            }
-            else
-            {
-                if (yy > ymin_) yy = ymin_;
-                if (yy < ymax_) yy = ymax_;
-            }
-            if (xx != xvalue_ || yy != yvalue_)
-            {
-                xvalue_ = xx;
-                yvalue_ = yy;
-                setChanged();
-                redraw();
-            }
-            if (!(when() & whenChanged || (when() & whenRelease && event == Event.release)))
-                return 1;
-            if (changed() || when() & whenNotChanged)
-            {
-                CallbackReason reason = changed() ? CallbackReason.changed : CallbackReason.selected;
-                if (event == Event.release)
-                {
-                    clearChanged();
-                    reason = CallbackReason.released;
-                }
-                doCallback(reason);
-            }
+            moveTo(xx, yy, event);
             return 1;
         }
+
+        case Event.mouseWheel:
+        {
+            if (!fl.core.eventInside(X, Y, W, H)) return 0;
+            int dx, dy;
+            fl.core.wheelUnswapped(dx, dy);
+            if (dx == 0 && dy == 0) return 0;
+            int f = Valuator.wheelStepFactor();
+            double xx = stepped(xvalue_, dx * f, xmin_, xmax_, xstep_);
+            double yy = stepped(yvalue_, -dy * f, ymin_, ymax_, ystep_);
+            // One complete change, as a click: a release when only
+            // release callbacks are wanted.
+            moveTo(xx, yy, (when() & whenChanged) ? Event.drag : Event.release);
+            clearChanged();
+            return 1;
+        }
+
+        case Event.enter:
+        case Event.leave:
+            return 1;
+
         default:
             return 0;
         }
+    }
+
+    private:
+
+    /// v moved n steps toward max: a step is `step`, or a hundredth of
+    /// the range when that is 0.
+    static double stepped(double v, int n, double min, double max, double step)
+    {
+        if (n == 0) return v;
+        if (step == 0) return v + n * (max - min) / 100;
+        if (min > max) n = -n;
+        return (cast(long)(v / step + (v < 0 ? -0.5 : 0.5)) + n) * step;
+    }
+
+    /// Clamps (xx, yy) to the bounds, moves the crosshair there and does
+    /// the callback as `when()` asks for a push, drag or release.
+    void moveTo(double xx, double yy, Event event)
+    {
+        xx = clampTo(xx, xmin_, xmax_);
+        yy = clampTo(yy, ymin_, ymax_);
+        if (xx != xvalue_ || yy != yvalue_)
+        {
+            xvalue_ = xx;
+            yvalue_ = yy;
+            setChanged();
+            redraw();
+        }
+        if (!(when() & whenChanged || (when() & whenRelease && event == Event.release)))
+            return;
+        if (changed() || when() & whenNotChanged)
+        {
+            CallbackReason reason = changed() ? CallbackReason.changed : CallbackReason.selected;
+            if (event == Event.release)
+            {
+                clearChanged();
+                reason = CallbackReason.released;
+            }
+            doCallback(reason);
+        }
+    }
+
+    static double clampTo(double v, double a, double b)
+    {
+        if (a < b)
+        {
+            if (v < a) v = a;
+            if (v > b) v = b;
+        }
+        else
+        {
+            if (v > a) v = a;
+            if (v < b) v = b;
+        }
+        return v;
     }
 }
 
@@ -248,9 +293,13 @@ unittest
     p.ybounds(0, 100);
 
     fl.core.eX_ = 4; // left edge of the interior -> xvalue -> xmin
-    fl.core.eY_ = 103; // bottom edge -> ymax
+    fl.core.eY_ = 103; // bottom edge -> ymin (ymax is at the top)
     p.handle(Event.push);
     assert(p.xvalue() == 0);
+    assert(p.yvalue() == 0);
+
+    fl.core.eY_ = 4; // top edge -> ymax
+    p.handle(Event.drag);
     assert(p.yvalue() == 100);
 
     fl.core.eX_ = -1000; // far outside -> clamped to xmin
@@ -303,6 +352,47 @@ unittest
     p.handle(Event.release);
     assert(calls == 2);
     assert(gotReason == CallbackReason.released);
+
+    fl.core.resetForTest();
+}
+
+unittest
+{
+    // The wheel moves the crosshair the way it turns: up adds to
+    // yvalue(), right to xvalue(), 10 steps a notch (1 with Shift); only
+    // over the positioner.
+    import fl.group : FlGroup;
+    FlGroup.current(null);
+
+    auto p = new Positioner(0, 0, 108, 108);
+    p.xbounds(0, 100);
+    p.ybounds(0, 100);
+    p.xstep(1);
+    p.ystep(1);
+    p.value(50, 50);
+    int calls;
+    p.callback((w) { calls++; });
+
+    fl.core.eX_ = fl.core.eY_ = 50;
+    fl.core.eDy_ = -1; // up
+    assert(p.handle(Event.mouseWheel) == 1);
+    assert(p.yvalue() == 60 && p.xvalue() == 50);
+    assert(calls == 1);
+
+    fl.core.eDy_ = 0;
+    fl.core.eDx_ = 1; // right
+    fl.core.eState_ = stateShift;
+    p.handle(Event.mouseWheel);
+    assert(p.xvalue() == 51 && p.yvalue() == 60);
+    fl.core.eState_ = 0;
+
+    fl.core.eDx_ = 0;
+    fl.core.eDy_ = 20; // far down: clamped
+    p.handle(Event.mouseWheel);
+    assert(p.yvalue() == 0);
+
+    fl.core.eX_ = 500; // outside: not taken
+    assert(p.handle(Event.mouseWheel) == 0);
 
     fl.core.resetForTest();
 }

@@ -20,7 +20,7 @@ rdmd buildsamples.d examples table_sort   # a single one, by name
 Binaries land in `build/` under their own name (`build/table_sort`,
 ...). A program is simply a `.d` file here that defines `main()` —
 there is no manifest and nothing to register; add a file and it is
-picked up on the next run. See `BUILDING.md` at the repo root for the
+picked up on the next run. See `docs/BUILDING.md` at the repo root for the
 full build model, including how a helper module shared between several
 examples (there are currently none in this directory, unlike
 `source/test/`) gets pulled in automatically.
@@ -55,7 +55,7 @@ Keep it short and idiomatic: clear enough to read top to bottom, using
 the fldtk API the way a real application would, not exercising every
 edge case (that's what `source/test/` is for). If you're transliterating
 a new program from FLTK's own `examples/`, see
-`TRANSLITERATION_GUIDE.md` at the repo root for the conventions this
+`docs/TRANSLITERATION_GUIDE.md` at the repo root for the conventions this
 project already follows for that.
 
 ## Bugs

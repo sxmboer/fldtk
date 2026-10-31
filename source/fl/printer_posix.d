@@ -631,7 +631,7 @@ private class PrintPanel
         // Ported from `print_output_mode[val]->setonly();` -- FLTK
         // indexes with an unchecked value straight from
         // `Fl_Preferences` (a real out-of-bounds read on a corrupted
-        // prefs file, filed as an FLTK_ISSUES.md candidate); D's
+        // prefs file, filed as an FLTK_ISSUES_n.md candidate); D's
         // array bounds checking would turn that into a crash here, so
         // this port clamps instead.
         if (val < 0 || val >= printOutputMode_.length) val = 0;
@@ -661,7 +661,7 @@ private class PrintPanel
     /// Collate permanently `deactivate()`d -- the code that would
     /// reactivate it (`cb_print_copies()`'s `else` branch) is dead,
     /// commented-out C++ even in real FLTK (see this module's top
-    /// comment and the matching `FLTK_ISSUES.md` entry). Collate
+    /// comment and the matching `FLTK_ISSUES_n.md` entry). Collate
     /// only means anything when there's more than one page *and* more
     /// than one copy -- a single-page job has nothing to collate
     /// regardless of copy count, and a single copy has nothing to

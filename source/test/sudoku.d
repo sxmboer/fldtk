@@ -36,12 +36,9 @@ enum int MENU_OFFSET = 25; // non-macOS: Linux is this project's primary target
 // Sound class for Sudoku -- see the file header note: ALSA branch only.
 class SudokuSound
 {
-    // No ALSA bindings exist in fldtk yet;
-    // the real snd_pcm_* code below is kept verbatim, gated behind
-    // version(none) so it still compiles once those bindings land --
-    // flip this to version(all) at that point to bring it back and
-    // verify it against real hardware. Not a permanent removal: the end
-    // target is a complete port, sound included.
+    // fldtk has no sound API and no ALSA bindings, so this program is
+    // silent. The snd_pcm_* code below is kept behind version(none) for
+    // reference only.
     version (none)
     {
         private snd_pcm_t* handle_;

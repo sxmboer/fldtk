@@ -712,15 +712,14 @@ private void desktopScaleFactor()
 }
 
 /**
- * Applies the desktop's detected scale (`desktopScaleFactor()`), folds
- * in the `FLTK_SCALING_FACTOR` environment variable if set, then
- * multiplies in the zoom the user last chose with Ctrl +/- if one was
- * saved (`fl.core.loadPersistedZoom()`, a fldtk addition, see its doc
- * comment) -- ported from `Fl_Screen_Driver::use_startup_scale_
+ * Applies the desktop's detected scale (`desktopScaleFactor()`), then
+ * multiplies in the starting zoom (`fl.core.startupZoom()`:
+ * `FLDTK_SCALING_FACTOR` if set, otherwise the zoom last chosen with
+ * Ctrl +/-) -- ported from `Fl_Screen_Driver::use_startup_scale_
  * factor()`. FLTK's own version branches on `rescalable() ==
- * SYSTEMWIDE_APP_SCALING` to decide whether the env var multiplies
- * screen 0's factor and broadcasts the result to every screen, or
- * multiplies each screen's own factor independently -- on X11 this
+ * SYSTEMWIDE_APP_SCALING` to decide whether the factor multiplies
+ * screen 0's scale and broadcasts the result to every screen, or
+ * multiplies each screen's own scale independently -- on X11 this
  * always takes the systemwide branch, matching real FLTK exactly:
  * X11 has no per-monitor startup DPI source at all (`Xft.dpi` is one
  * systemwide X resource, see `desktopScaleFactor()`'s own doc comment),
@@ -735,8 +734,8 @@ private void desktopScaleFactor()
  * `foreach` below only runs on the *persisted*-override path, and only
  * applies on Linux.)
  *
- * **`fl.core.seedBaseScale()` is called with the *native* (desktop +
- * env var) value, deliberately before the persisted override below is
+ * **`fl.core.seedBaseScale()` is called with the *native* (desktop)
+ * value, deliberately before the starting zoom below is
  * applied**: without this ordering,
  * `fl.core.baseScale()`'s own lazy-capture-on-first-press
  * fallback would seed itself from whatever `screenScale()` already is
@@ -757,25 +756,10 @@ private void useStartupScaleFactor()
 
     float nativeScale = fl.core.screenScale(0);
 
-    import std.process : environment;
-    import std.conv : parse, ConvException;
-    import std.math : isNaN;
-
-    float envFactor = 1.0f;
-    auto str = environment.get("FLTK_SCALING_FACTOR");
-    if (str !is null)
-    {
-        try
-            envFactor = parse!float(str);
-        catch (ConvException)
-            envFactor = 1.0f;
-    }
-
     foreach (i; 0 .. screenCount())
-        fl.core.seedBaseScale(i, nativeScale * envFactor);
+        fl.core.seedBaseScale(i, nativeScale);
 
-    float zoom = fl.core.loadPersistedZoom();
-    float effective = nativeScale * envFactor * (isNaN(zoom) ? 1.0f : zoom);
+    float effective = nativeScale * fl.core.startupZoom();
 
     foreach (i; 0 .. screenCount())
         fl.core.screenScale(i, effective);
@@ -1800,7 +1784,7 @@ package(fl) int dnd(bool localOnly)
             // nonstop; GNOME's XWayland-to-Wayland drag bridge (the
             // target whenever the pointer is over a Wayland surface,
             // such as the desktop) cannot keep up with that and stalls
-            // the desktop for seconds. See FLTK_ISSUES_2.md.
+            // the desktop for seconds. See FLTK_ISSUES_n.md.
             int exRoot = fl.core.eXRoot_, eyRoot = fl.core.eYRoot_;
             if (targetWindow != positionTarget || exRoot != positionX || eyRoot != positionY)
             {
@@ -2557,6 +2541,31 @@ void createWindow(FlWindow win, XVisualInfo* visual = null, Colormap colormap = 
             win.resizeBoundsOnly(winX, winY, win.w, win.h);
     }
 
+    // The screens a fullscreen window covers: the ones fullscreenScreens()
+    // named, or the one it is on. Ported from make_xid().
+    int fsTop = win.fullscreenScreenTop(), fsBottom = win.fullscreenScreenBottom();
+    int fsLeft = win.fullscreenScreenLeft(), fsRight = win.fullscreenScreenRight();
+    if (fsTop < 0 || fsBottom < 0 || fsLeft < 0 || fsRight < 0)
+        fsTop = fsBottom = fsLeft = fsRight = fl.core.screenNum(winX, winY, win.w, win.h);
+    // Without EWMH a window shown fullscreen covers those screens itself,
+    // as an override-redirect window the window manager leaves alone.
+    bool fullscreenNoWm = !isSubwindow && win.fullscreenActive() && !ewmhSupported();
+    if (fullscreenNoWm)
+    {
+        int sx, sy, sw, sh, fx, fy, fw, fh;
+        fl.core.screenXYWH(sx, sy, sw, sh, fsLeft);
+        fx = sx;
+        fl.core.screenXYWH(sx, sy, sw, sh, fsRight);
+        fw = sx + sw - fx;
+        fl.core.screenXYWH(sx, sy, sw, sh, fsTop);
+        fy = sy;
+        fl.core.screenXYWH(sx, sy, sw, sh, fsBottom);
+        fh = sy + sh - fy;
+        win.resize(fx, fy, fw, fh);
+        winX = fx;
+        winY = fy;
+    }
+
     float scale = screenScale(win.rawScreenNum());
     int x = scaledPos(winX, scale);
     int y = scaledPos(winY, scale);
@@ -2627,6 +2636,11 @@ void createWindow(FlWindow win, XVisualInfo* visual = null, Colormap colormap = 
         attr.override_redirect = True;
         attr.save_under = True;
         mask |= CWOverrideRedirect | CWSaveUnder;
+    }
+    if (fullscreenNoWm)
+    {
+        attr.override_redirect = True;
+        mask |= CWOverrideRedirect;
     }
 
     Window root = isSubwindow ? parentWin.xid() : XRootWindow(display_, screen_);
@@ -2826,6 +2840,17 @@ void createWindow(FlWindow win, XVisualInfo* visual = null, Colormap colormap = 
         }
     }
 
+    // A window shown fullscreen asks for it before it is mapped, as in
+    // make_xid().
+    if (!isSubwindow && win.fullscreenActive() && ewmhSupported())
+    {
+        c_long[4] monitors = [fsTop, fsBottom, fsLeft, fsRight];
+        XChangeProperty(display_, xid, netWmFullscreenMonitors_, XA_ATOM, 32, PropModeReplace,
+            cast(const(ubyte)*) monitors.ptr, 4);
+        XChangeProperty(display_, xid, netWmState_, XA_ATOM, 32, PropModeAppend,
+            cast(const(ubyte)*) &netWmStateFullscreen_, 1);
+    }
+
     XMapWindow(display_, xid);
     if (!isSubwindow)
     {
@@ -2851,6 +2876,11 @@ void createWindow(FlWindow win, XVisualInfo* visual = null, Colormap colormap = 
 
     win.markShown(xid);
 
+    // No window manager gives a fullscreen override-redirect window the
+    // keyboard: it grabs it, until the window is destroyed.
+    if (fullscreenNoWm)
+        XGrabKeyboard(display_, xid, True, GrabModeAsync, GrabModeAsync, lastEventTime_);
+
     // Give every top-level window a real cursor of its own. FLTK's
     // make_xid() leaves the window's cursor at None, so it inherits the
     // root window's, which a rootless Xwayland server (labwc, and other
@@ -2874,6 +2904,7 @@ void createWindow(FlWindow win, XVisualInfo* visual = null, Colormap colormap = 
 
     win.handle(Event.show);
     win.redraw();
+    if (!isSubwindow && win.fullscreenActive()) fl.core.dispatch(Event.fullscreen, win);
 }
 
 /**
@@ -4437,35 +4468,24 @@ private bool getNetWmState(Window xid, out Atom[] states)
 }
 
 /**
- * Turns fullscreen mode on for win -- the EWMH half of FLTK's
- * `Fl_X11_Window_Driver::fullscreen_on()` (Fl_x.cxx); called from
- * `fl.window.Window.fullscreen()`. Scoped to EWMH-supporting window
- * managers only: skips FLTK's `ewmh_supported()` capability check
- * (a `_NET_SUPPORTING_WM_CHECK` property round-trip) and its non-EWMH
- * fallback entirely (hide()+show()+`XGrabKeyboard()`, a substantially
- * hackier path for window managers old enough to predate EWMH, which
- * is effectively every window manager in real-world use today) --
- * sending the ClientMessage unconditionally is harmless even on a WM
- * that ignores it, just a no-op. `fullscreen_screens()`'s
- * `_NET_WM_FULLSCREEN_MONITORS` multi-monitor targeting is ported too,
- * backed by `fl.core.screenNum()`/`screenXYWH()`:
- * `win.fullscreenScreenTop()`/etc. (`fl.window`)
- * supply the four monitor indices, defaulting to the window's own
- * current screen (`fl.core.screenNum(win.x, win.y, win.w, win.h)`) when
- * unset, matching FLTK's own `Fl_X11_Window_Driver::fullscreen_on()`
- * fallback exactly.
- *
- * `win.setFullscreenFlag()` -- matching FLTK's own
- * `pWindow->_set_fullscreen();` inside `fullscreen_on()` -- is what
- * makes `fullscreenActive()` actually report true afterward; without
- * this call the EWMH request still works, so the window visibly goes
- * fullscreen, but `fullscreenActive()` never flips, so a second toggle
- * call keeps re-requesting fullscreen instead of calling
- * fullscreenOff().
+ * Turns fullscreen mode on for win -- ported from
+ * `Fl_X11_Window_Driver::fullscreen_on()`; called from
+ * `fl.window.Window.fullscreen()`. With an EWMH window manager it asks
+ * for `_NET_WM_STATE_FULLSCREEN`, on the screens
+ * `Window.fullscreenScreens()` named (`_NET_WM_FULLSCREEN_MONITORS`) or
+ * else the one the window is on. Without one the window is shown again
+ * as an override-redirect window covering those screens, which grabs
+ * the keyboard (`createWindow()`).
  */
 package(fl) void fullscreenOn(FlWindow win)
 {
     win.setFullscreenFlag();
+    if (!ewmhSupported())
+    {
+        win.hide();
+        win.show(); // createWindow() sends Event.fullscreen
+        return;
+    }
 
     int top = win.fullscreenScreenTop();
     int bottom = win.fullscreenScreenBottom();
@@ -4482,49 +4502,52 @@ package(fl) void fullscreenOn(FlWindow win)
     fl.core.dispatch(Event.fullscreen, win);
 }
 
-/// ditto, in reverse -- the EWMH half of FLTK's
-/// `Fl_X11_Window_Driver::fullscreen_off()`. The EWMH branch there
-/// doesn't resize the window itself either (unlike the non-EWMH
-/// fallback, which does): toggling `_NET_WM_STATE_FULLSCREEN` off is
-/// enough to make a cooperating window manager restore the window's
-/// own pre-fullscreen geometry on its own. `win.clearFullscreenFlag()`
-/// matches FLTK's `pWindow->_clear_fullscreen();` -- see
-/// fullscreenOn()'s own doc comment for why this call matters.
-package(fl) void fullscreenOff(FlWindow win)
+/// ditto, in reverse -- `Fl_X11_Window_Driver::fullscreen_off()`. An
+/// EWMH window manager restores the window's size from before on its
+/// own, so `(x, y, w, h)` are used only without one: the window is then
+/// shown again as an ordinary window with that geometry, which also
+/// ends its keyboard grab.
+package(fl) void fullscreenOff(FlWindow win, int x, int y, int w, int h)
 {
     win.clearFullscreenFlag();
-    sendWmStateEvent(win.xid(), false, netWmStateFullscreen_);
+    if (ewmhSupported())
+        sendWmStateEvent(win.xid(), false, netWmStateFullscreen_);
+    else
+    {
+        win.hide();
+        win.resize(x, y, w, h);
+        win.show();
+    }
     fl.core.dispatch(Event.fullscreen, win);
 }
 
 /**
- * Turns maximize mode on for win -- the EWMH half of FLTK's
- * `Fl_X11_Window_Driver::maximize()` (Fl_x.cxx). Sends both
- * `_NET_WM_STATE_MAXIMIZED_VERT` and `_HORZ` in a single ClientMessage
- * (per the EWMH spec, `data.l[1]`/`l[2]`), matching FLTK's own
- * `send_wm_event()` call there. Scoped like `fullscreenOn()`: skips
- * FLTK's `ewmh_supported()` capability check and its non-EWMH
- * fallback (`Fl_Window_Driver::maximize()`'s manual resize-to-work-area,
- * used by window managers old enough to predate EWMH) -- sending the
- * ClientMessage unconditionally is harmless even on a WM that ignores
- * it.
+ * Maximizes win's real X window -- ported from
+ * `Fl_X11_Window_Driver::maximize()`. With an EWMH window manager this
+ * asks it through `_NET_WM_STATE_MAXIMIZED_VERT`/`_HORZ`; otherwise the
+ * window resizes itself to the work area (`Window.maximizeByResize()`,
+ * FLTK's `Fl_Window_Driver::maximize()`).
  *
- * Unlike `fullscreenOn()`, this doesn't call `win.setMaximizedFlag()`
- * or `fl.core.handle()` itself -- FLTK's `Fl_Window::maximize()`
- * (not the driver) is what calls `set_flag(MAXIMIZED)`, and the X11
- * driver's `maximize()`/`un_maximize()` fire no `Fl::handle()` event at
- * all (only the `PropertyNotify` handler does -- see that case below --
- * when the WM's actual state change round-trips back).
+ * Doesn't call `win.setMaximizedFlag()` or `fl.core.handle()` itself:
+ * FLTK's `Fl_Window::maximize()` (not the driver) sets the flag, and
+ * the X11 driver fires no event; the `PropertyNotify` handler below
+ * picks up the window manager's change when it comes back.
  */
 package(fl) void maximizeOn(FlWindow win)
 {
-    sendWmStateEvent(win.xid(), true, netWmStateMaximizedVert_, netWmStateMaximizedHorz_);
+    if (ewmhSupported())
+        sendWmStateEvent(win.xid(), true, netWmStateMaximizedVert_, netWmStateMaximizedHorz_);
+    else
+        win.maximizeByResize(false);
 }
 
-/// ditto, in reverse -- the EWMH half of `Fl_X11_Window_Driver::un_maximize()`.
+/// ditto, in reverse -- `Fl_X11_Window_Driver::un_maximize()`.
 package(fl) void maximizeOff(FlWindow win)
 {
-    sendWmStateEvent(win.xid(), false, netWmStateMaximizedVert_, netWmStateMaximizedHorz_);
+    if (ewmhSupported())
+        sendWmStateEvent(win.xid(), false, netWmStateMaximizedVert_, netWmStateMaximizedHorz_);
+    else
+        win.unMaximizeByResize();
 }
 
 /// Iconifies win's real X window -- the direct equivalent of
@@ -6157,6 +6180,7 @@ private void processNextEvent()
             int mb = ev.xbutton.button;
             bool shiftDown = (fl.core.eState_ & stateShift) != 0;
             fl.core.eDxF_ = 0; fl.core.eDyF_ = 0;
+            fl.core.eWheelSwapped_ = shiftDown && (mb == 4 || mb == 5);
             if (mb == 4 && !shiftDown) { fl.core.eDy_ = -1; fl.core.eDyF_ = -1; fl.core.dispatch(Event.mouseWheel, rec.widget); }
             else if (mb == 5 && !shiftDown) { fl.core.eDy_ = 1; fl.core.eDyF_ = 1; fl.core.dispatch(Event.mouseWheel, rec.widget); }
             else if (mb == 6 || (mb == 4 && shiftDown)) { fl.core.eDx_ = -1; fl.core.eDxF_ = -1; fl.core.dispatch(Event.mouseWheel, rec.widget); }
@@ -6476,28 +6500,10 @@ private void processNextEvent()
 
             if (ev.type == KeyPress)
             {
-                // Real input-method text composition: the plain
-                // XLookupString() path below never composes dead
-                // keys/CJK input and -- for any character above plain
-                // ASCII -- returns locale-dependent 8-bit bytes that
-                // this port's own `eText_ = buf[0 .. len].idup` would then
-                // wrongly treat as already-UTF-8. FLTK avoids this in
-                // its *own* non-XIM fallback by
-                // re-encoding via `fl_utf8encode(XKeysymToUcs(keysym))`,
-                // a ~300-line keysym-to-
-                // Unicode table this port doesn't carry -- see this
-                // case's own note below on why that fallback is
-                // deliberately not ported here. When an input context
-                // exists (the common case -- XIM opens successfully on
-                // essentially any real X11 system, even with no fancy
-                // IME server running, via its own always-available
-                // built-in fallback), `Xutf8LookupString()` is used
-                // instead of `XLookupString()` for the *text* only --
-                // the keysym computed above (for shortcut-matching) is
-                // untouched either way, matching FLTK's own
-                // `keysym = fl_KeycodeToKeysym(...)` re-fetch after the
-                // lookup call, which discards whatever keysym the
-                // lookup itself produced.
+                // Text: through the input method when one is open
+                // (dead keys and composed input), otherwise through
+                // XLookupString(), as in FLTK. The keysym used for
+                // shortcuts, computed above, is the same either way.
                 int len;
                 if (ximIc_ !is null)
                 {
@@ -6516,23 +6522,28 @@ private void processNextEvent()
                 }
                 else
                 {
-                    // No input context at all (XOpenIM()/XCreateIC()
-                    // failed in initXim() -- rare). Falls back to the
-                    // plain XLookupString() path this port always had;
-                    // deliberately does NOT also port FLTK's own
-                    // `fl_utf8encode(XKeysymToUcs(keysym))` correction
-                    // for non-ASCII Latin-1/2/3/4 characters in this
-                    // fallback (a large, mechanically-transcribed
-                    // keysym-to-Unicode table with no other use in this
-                    // port) -- with XIM available on essentially every
-                    // real deployment, this fallback is a rare degraded
-                    // path FLTK itself only reaches under the same
-                    // circumstance, not a corner this port cuts that
-                    // FLTK doesn't also effectively cut in practice.
+                    // No input method: XLookupString() gives a
+                    // non-ASCII character in an 8-bit encoding, or
+                    // nothing when that encoding lacks it, so such a
+                    // character is re-encoded from its keysym as UTF-8
+                    // (FLTK's `fl_utf8encode(XKeysymToUcs())`). ASCII,
+                    // control characters included, is kept as
+                    // XLookupString() gives it.
+                    import fl.keysym_ucs : keysymToUcs;
+                    import std.algorithm.searching : any;
+                    import std.utf : encode;
                     char[32] buf;
-                    KeySym unused;
-                    len = XLookupString(&ev.xkey, buf.ptr, cast(int) buf.length, &unused, null);
-                    fl.core.eText_ = buf[0 .. len].idup;
+                    KeySym typed;
+                    len = XLookupString(&ev.xkey, buf.ptr, cast(int) buf.length, &typed, null);
+                    uint ucs = keysymToUcs(typed);
+                    if (ucs >= 0x80 && (len == 0 || buf[0 .. len].any!(c => c >= 0x80)))
+                    {
+                        char[4] utf8;
+                        size_t n = encode(utf8, cast(dchar) ucs);
+                        fl.core.eText_ = utf8[0 .. n].idup;
+                    }
+                    else
+                        fl.core.eText_ = buf[0 .. len].idup;
                 }
                 fl.core.dispatch(Event.keyDown, rec.widget);
             }

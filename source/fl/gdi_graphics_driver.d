@@ -131,6 +131,11 @@ class GdiGraphicsDriver : GraphicsDriver
     /// See `scaleOverride_`'s own doc comment.
     void useFixedScale(float s) { scaleOverride_ = s; }
 
+    /// A driver with a fixed scale draws on a page (`fl.printer_win32`),
+    /// in points rather than screen pixels, so images hand it their own
+    /// pixels (see `GraphicsDriver.resolutionIndependent()`).
+    override bool resolutionIndependent() const { return scaleOverride_ >= 0; }
+
     /// Every coordinate-scaling call site below reads this instead of
     /// `fl.core.currentScale()` directly, so `scaleOverride_` can
     /// override it for a non-screen instance (see that field's own doc
@@ -235,9 +240,9 @@ class GdiGraphicsDriver : GraphicsDriver
     /// port's `fl.draw.pushTranslate()`/`popTranslate()` (which only
     /// affects the *native*, `currentDriver is null` drawing path -- see
     /// that function's own doc comment). Ported from `Fl_GDI_Graphics_
-    /// Driver::translate_all(int, int)`. The one real caller: `fl.widget_
-    /// surface.CopySurface`'s Windows `translate()`/`untranslate()`
-    /// override, needed for the same reason the Linux side needs
+    /// Driver::translate_all(int, int)`. Callers: the Windows
+    /// `translate()`/`untranslate()` overrides of `fl.widget_surface.
+    /// CopySurface` and `fl.image_surface.ImageSurface`, needed for the same reason the Linux side needs
     /// `pushTranslate()`/`popTranslate()` -- `WidgetSurface.draw(Widget)`'s
     /// own group-child traversal shifts the origin for each nested
     /// window/child it captures.
@@ -445,6 +450,14 @@ class GdiGraphicsDriver : GraphicsDriver
 
         fontCache_[key] = f;
         return f;
+    }
+
+    /// The `HFONT` for `(face, size)` at the current scale, the font
+    /// `fl_font(face, size)` draws with. Used by `fl.gl`'s bitmap-font text
+    /// (`wglUseFontBitmapsW()`).
+    package(fl) HFONT fontHandle(Font face, Fontsize size)
+    {
+        return fontFor(face, scaledFontSize(size)).fid;
     }
 
     /// Ported from `Fl_GDI_Graphics_Driver::font_unscaled()`/the file-
@@ -1237,6 +1250,14 @@ class GdiGraphicsDriver : GraphicsDriver
             // region during layout.
             int sx = floorScaled(x), sy = floorScaled(y);
             int sw = floorScaled(x + w) - sx, sh = floorScaled(y + h) - sy;
+            // The region is in device pixels, which `translateAll()`'s
+            // window origin doesn't move: shift it as drawing is shifted.
+            // The origin is 0 except while an image or copy surface draws
+            // a subwindow.
+            POINT org;
+            GetWindowOrgEx(hdc_, &org);
+            sx -= org.x;
+            sy -= org.y;
             clip = CreateRectRgn(sx, sy, sx + sw, sy + sh);
         }
         SelectClipRgn(hdc_, clip);
@@ -1299,7 +1320,7 @@ class GdiGraphicsDriver : GraphicsDriver
     /// above assume the latter. Subtracting this from the right/bottom
     /// keeps printed arcs meeting the straight edges drawn beside them
     /// (e.g. a round box's bottom line). A deviation from FLTK; see
-    /// `FLTK_ISSUES.md`.
+    /// `FLTK_ISSUES_n.md`.
     private int advancedModeEdge()
     {
         return GetGraphicsMode(hdc_) == GM_ADVANCED ? 1 : 0;
@@ -1563,7 +1584,29 @@ class GdiGraphicsDriver : GraphicsDriver
      */
     override void drawImage(const(ubyte)* buf, int x, int y, int w, int h, int d, int l)
     {
-        drawImageImpl(buf, x, y, w, h, d, l, true);
+        drawImageImpl(buf, w, h, d, l, scaledBox(x, y, w, h));
+    }
+
+    /// `dataW` x `dataH` pixels stretched over the FLTK-unit box
+    /// `(x, y, w, h)`; images use it on a page (see
+    /// `resolutionIndependent()`).
+    override void drawImageScaled(const(ubyte)* buf, int dataW, int dataH, int d, int l, int x, int y, int w, int h)
+    {
+        if (w <= 0 || h <= 0) return;
+        drawImageImpl(buf, dataW, dataH, d, l, scaledBox(x, y, w, h));
+    }
+
+    /// A destination rectangle in device units.
+    private static struct DeviceBox
+    {
+        int x, y, w, h;
+    }
+
+    /// The FLTK-unit box `(x, y, w, h)` in device units.
+    private DeviceBox scaledBox(int x, int y, int w, int h)
+    {
+        int dx = floorScaled(x), dy = floorScaled(y);
+        return DeviceBox(dx, dy, floorScaled(x + w) - dx, floorScaled(y + h) - dy);
     }
 
     /// See `GraphicsDriver.drawImageFixed()`'s own doc comment for the
@@ -1571,24 +1614,19 @@ class GdiGraphicsDriver : GraphicsDriver
     /// exact target device-pixel
     /// size (`drawW`x`drawH`), so only the *position* (`x`,`y`) still
     /// needs converting from FLTK units to device pixels -- `drawImageImpl()`'s
-    /// `scaleDest = false` branch is exactly that: `floorScaled()` on
-    /// `x`/`y` alone, `w`/`h` used exactly as given.
+    /// destination below is exactly that: `floorScaled()` on `x`/`y`
+    /// alone, `drawW`/`drawH` used exactly as given.
     override void drawImageFixed(const(ubyte)* buf, int drawW, int drawH, int drawL, int d, int x, int y)
     {
-        drawImageImpl(buf, x, y, drawW, drawH, d, drawL, false);
+        drawImageImpl(buf, drawW, drawH, d, drawL, DeviceBox(floorScaled(x), floorScaled(y), drawW, drawH));
     }
 
-    /// Shared body for `drawImage()`/`drawImageFixed()` above --
-    /// `scaleDest` selects which of the two contracts applies to `w`/`h`:
-    /// `true` (`drawImage()`) means "FLTK-unit box, scale `floorScaled()`
-    /// up/down to fit, same as every other primitive in this class";
-    /// `false` (`drawImageFixed()`) means "already the final device-pixel
-    /// size, use as given." Either way `(x,y)` (the destination position)
-    /// is always converted via `floorScaled()` -- only the *size*
-    /// half of the destination rect differs between the two contracts.
-    private void drawImageImpl(const(ubyte)* buf, int x, int y, int w, int h, int d, int l, bool scaleDest)
+    /// Shared body for `drawImage()`/`drawImageFixed()`/
+    /// `drawImageScaled()` above: `w` x `h` pixels from `buf` stretched
+    /// over the device-unit rectangle `dst`.
+    private void drawImageImpl(const(ubyte)* buf, int w, int h, int d, int l, DeviceBox dst)
     {
-        if (buf is null || w <= 0 || h <= 0 || hdc_ is null) return;
+        if (buf is null || w <= 0 || h <= 0 || dst.w <= 0 || dst.h <= 0 || hdc_ is null) return;
         // A negative `d` is the documented horizontal-flip form (see
         // `fl.draw`'s `version (linux)` `drawImage()` doc comment, and
         // FLTK's own `fl_draw_image()`): the pixel pointer steps
@@ -1607,8 +1645,8 @@ class GdiGraphicsDriver : GraphicsDriver
             // real, per-call check against *this* hdc_ (see its own doc
             // comment for why both matter -- a printer's own hdc_ can
             // fail even when the screen-based gate says yes).
-            if (!canDoAlphaBlending() || !drawImageAlphaBlended(buf, x, y, w, h, d, l, scaleDest))
-                drawImageDitheredMask(buf, x, y, w, h, d, l, scaleDest);
+            if (!canDoAlphaBlending() || !drawImageAlphaBlended(buf, w, h, d, l, dst))
+                drawImageDitheredMask(buf, w, h, d, l, dst);
             return;
         }
 
@@ -1656,24 +1694,7 @@ class GdiGraphicsDriver : GraphicsDriver
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB;
 
-        // Scale the *destination* rect only when `scaleDest` says to --
-        // `pixels[]` (the source, still at its native `w`x`h`) is
-        // unaffected either way, `StretchDIBits()` already stretches
-        // src->dst. Missing entirely before this whole function grew a
-        // `scaleDest` parameter (same pattern as `drawBitmap()`'s own
-        // fix): every other primitive in this class scales via
-        // `floorScaled()`, but this one took `x,y,w,h` straight from its
-        // caller, so any `Fl_RGB_Image`/`Fl_Pixmap`-drawn content stayed
-        // pinned to its native pixel size at any scale != 1 instead of
-        // growing with the display. The position half of that fix
-        // (`floorScaled(x)`/`floorScaled(y)`) is unconditional -- only
-        // the size half is skippable, for `drawImageFixed()`'s already-
-        // device-pixel-sized `w`/`h` (see `drawImageFixed()`'s own doc
-        // comment for why re-scaling *that* case double-scales instead).
-        int dx = floorScaled(x), dy = floorScaled(y);
-        int dw = scaleDest ? floorScaled(x + w) - dx : w;
-        int dh = scaleDest ? floorScaled(y + h) - dy : h;
-        StretchDIBits(hdc_, dx, dy, dw, dh, 0, 0, w, h, pixels.ptr, &bmi, DIB_RGB_COLORS, SRCCOPY);
+        StretchDIBits(hdc_, dst.x, dst.y, dst.w, dst.h, 0, 0, w, h, pixels.ptr, &bmi, DIB_RGB_COLORS, SRCCOPY);
     }
 
     /// Real per-pixel alpha compositing via `AlphaBlend()` -- see
@@ -1706,7 +1727,7 @@ class GdiGraphicsDriver : GraphicsDriver
     /// the coarse `canDoAlphaBlending()` check stays too, as a cheap
     /// first gate to skip this function's own DIB-building work entirely
     /// on a machine that can't do this at all.
-    private bool drawImageAlphaBlended(const(ubyte)* buf, int x, int y, int w, int h, int d, int l, bool scaleDest)
+    private bool drawImageAlphaBlended(const(ubyte)* buf, int w, int h, int d, int l, DeviceBox dst)
     {
         auto pixels = new uint[w * h];
         foreach (row; 0 .. h)
@@ -1750,14 +1771,9 @@ class GdiGraphicsDriver : GraphicsDriver
         bf.BlendOp = AC_SRC_OVER;
         bf.SourceConstantAlpha = 255;
         bf.AlphaFormat = AC_SRC_ALPHA;
-        // Same destination-only scaling as drawImageImpl()'s own fix --
-        // the source DIB (srcDc) stays at its native w x h, AlphaBlend()
-        // stretches it into the destination rect (or not, per `scaleDest`
-        // -- see drawImageImpl()'s own doc comment).
-        int dx = floorScaled(x), dy = floorScaled(y);
-        int dw = scaleDest ? floorScaled(x + w) - dx : w;
-        int dh = scaleDest ? floorScaled(y + h) - dy : h;
-        bool ok = AlphaBlend(hdc_, dx, dy, dw, dh, srcDc, 0, 0, w, h, bf) != 0;
+        // The source DIB (srcDc) stays at its native w x h; AlphaBlend()
+        // stretches it into the destination rectangle.
+        bool ok = AlphaBlend(hdc_, dst.x, dst.y, dst.w, dst.h, srcDc, 0, 0, w, h, bf) != 0;
 
         SelectObject(srcDc, oldBitmap);
         DeleteDC(srcDc);
@@ -1834,7 +1850,7 @@ class GdiGraphicsDriver : GraphicsDriver
      * single flat `SetBkColor()` fill, since an RGB(A) image has a
      * different color at every pixel, not one uniform foreground color.
      */
-    private void drawImageDitheredMask(const(ubyte)* buf, int x, int y, int w, int h, int d, int l, bool scaleDest)
+    private void drawImageDitheredMask(const(ubyte)* buf, int w, int h, int d, int l, DeviceBox dst)
     {
         immutable int ad = d < 0 ? -d : d;
 
@@ -1894,11 +1910,7 @@ class GdiGraphicsDriver : GraphicsDriver
         if (maskDc is null) return;
         scope (exit) DeleteDC(maskDc);
 
-        // Destination-only scaling, per `scaleDest` -- see
-        // drawImageImpl()'s own doc comment.
-        int dx = floorScaled(x), dy = floorScaled(y);
-        int dw = scaleDest ? floorScaled(x + w) - dx : w;
-        int dh = scaleDest ? floorScaled(y + h) - dy : h;
+        int dx = dst.x, dy = dst.y, dw = dst.w, dh = dst.h;
 
         int oldMode = SetStretchBltMode(hdc_, COLORONCOLOR);
         COLORREF oldText = GetTextColor(hdc_);

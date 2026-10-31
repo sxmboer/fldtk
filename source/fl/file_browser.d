@@ -82,7 +82,7 @@
  *    isn't overridden here at all; `incr_height()`'s `item_height(0)`
  *    call is ported with an explicit `item is null` guard in
  *    `itemHeight()` instead of relying on the same accidental C
- *    pointer-arithmetic safety. See FLTK_ISSUES.md's
+ *    pointer-arithmetic safety. See FLTK_ISSUES_n.md's
  *    `Fl_File_Browser::full_height()` entry.
  */
 module fl.file_browser;

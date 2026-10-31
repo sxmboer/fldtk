@@ -83,7 +83,7 @@
  *   `scrollAmount_`/`scrollX_`/`scrollY_` are per-instance fields here,
  *   not FLTK's shared file-scope statics of the same name.
  *   FLTK's sharing has a confirmed bug (reproduced with a headless
- *   unittest, see FLTK_ISSUES.md): destroying any *other*
+ *   unittest, see FLTK_ISSUES_n.md): destroying any *other*
  *   `Fl_Text_Display` while a *different* one is mid-drag-scroll zeroes
  *   the shared `scroll_direction` regardless of which instance it
  *   actually belongs to, corrupting the in-progress scroll's
@@ -131,7 +131,7 @@
  *   needs.
  *
  * A faithfully-reproduced apparent **FLTK bug** (not fixed here;
- * logged as a candidate in FLTK_ISSUES.md): `wrapped_line_counter()`
+ * logged as a candidate in FLTK_ISSUES_n.md): `wrapped_line_counter()`
  * ends with `*retLines = buf->next_char(*retLines);` when the buffer
  * ends mid-line -- `next_char()` expects a *buffer byte position*, but
  * `*retLines` at that point holds a *line count*, an apparent type
@@ -442,7 +442,7 @@ class TextDisplay : FlGroup
         // Drag-auto-scroll state -- see the module comment for why
         // these are per-instance fields rather than FLTK's shared
         // file-scope statics (a confirmed cross-instance corruption
-        // bug in FLTK; see FLTK_ISSUES.md).
+        // bug in FLTK; see FLTK_ISSUES_n.md).
         int scrollDirection_;
         int scrollAmount_;
         int scrollX_;
@@ -3222,7 +3222,7 @@ class TextDisplay : FlGroup
             // verbatim (src/Fl_Text_Display.cxx's wrapped_line_counter(),
             // near `*retLines = buf->next_char(*retLines);`): next_char()
             // expects a *buffer byte position*, but retLines here holds a
-            // *line count*. See FLTK_ISSUES.md -- not "fixed" to
+            // *line count*. See FLTK_ISSUES_n.md -- not "fixed" to
             // `retLines + 1` here on purpose; faithfully reproducing
             // FLTK behavior (bugs included) is this port's point.
             retLines = buf.nextChar(retLines);
@@ -3600,7 +3600,7 @@ unittest
 unittest
 {
     // REGRESSION TEST for a confirmed FLTK bug (see
-    // FLTK_ISSUES.md's entry on Fl_Text_Display's scroll_direction/
+    // FLTK_ISSUES_n.md's entry on Fl_Text_Display's scroll_direction/
     // etc file-scope statics): with per-instance drag-scroll state,
     // destroying a *different* TextDisplay while another one is
     // mid-drag-scroll must NOT disturb the one still scrolling.

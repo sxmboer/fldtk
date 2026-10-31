@@ -263,7 +263,7 @@ private enum alignInsideBit = 0x10; // fl.enumerations.alignInside
 /// path.
 private string fldtkRootRelativeTo(string dir)
 {
-    string absDir = absolutePath(buildNormalizedPath(dir));
+    string absDir = buildNormalizedPath(absolutePath(dir));
     string cur = absDir;
     while (true)
     {
@@ -303,8 +303,9 @@ class Writer
     private I18nSettings i18n_;
 
     /// Whether to emit a leading dub single-file-package header comment
-    /// (a deliberate fldtk-only convenience): `/+ dub.sdl: dependency
-    /// "fldtk" path="..." +/`, letting the generated `.d` file be built
+    /// (a deliberate fldtk-only convenience): `/+ dub.sdl:` naming
+    /// `dependency "fldtk" path="..."` and `subConfiguration "fldtk"
+    /// "program"`, then `+/`, letting the generated `.d` file be built
     /// directly via `dub build --single <file>.d`/`dub run --single
     /// <file>.d` with zero manually-typed linker flags -- dub resolves
     /// fldtk's own `libs`/`importPaths`/platform configuration as a
@@ -493,6 +494,16 @@ class Writer
                 plainFns ~= fn;
         }
 
+        // The dub header goes first of all: dub only reads it as the
+        // first thing in the file. `program` is fldtk's configuration
+        // for programs (see fldtk's dub.sdl): the program links the
+        // library in the fldtk folder and finds it there when it runs.
+        if (dubHeader_)
+        {
+            buf.put(format("/+ dub.sdl:\ndependency \"fldtk\" path=\"%s\"\nsubConfiguration \"fldtk\" \"program\"\n+/\n",
+                fldtkRootRelativeTo(projectDir_)));
+        }
+
         // Every root comment node goes at the very top, before `import
         // fl;` -- matches FLTK's own file-header-comment placement
         // (before any `#include`). Doesn't preserve the original
@@ -514,11 +525,6 @@ class Writer
                 if (!comn.inSource_) continue;
             writeCommentText(cn.instanceName);
             blank();
-        }
-        if (dubHeader_)
-        {
-            buf.put(format("/+ dub.sdl: dependency \"fldtk\" path=\"%s\" +/\n",
-                fldtkRootRelativeTo(projectDir_)));
         }
         buf.put("import fl;\n");
         foreach (m; collectClassOverrideImports(roots, classNodes, widgetClassNodes, declNodes))
@@ -2704,7 +2710,7 @@ package(fluid) string stripFlPrefix(string typeName)
 /// names are the portable spelling). FLTK's own block instead
 /// writes the `FL_CTRL` bit as `FL_CONTROL` and the `FL_META` bit as
 /// `FL_COMMAND`, which only preserves the meaning when Fluid itself
-/// runs on macOS (see `FLTK_ISSUES.md`).
+/// runs on macOS (see `FLTK_ISSUES_n.md`).
 package(fluid) string shortcutExpression(uint s, bool useFlCommand)
 {
     string r;
@@ -3643,6 +3649,50 @@ unittest
 
     string textHidden = new Writer().generate([cast(Node) hidden, cast(Node) mainFn]);
     assert(!textHidden.canFind("This comment should stay .fl-only."));
+}
+
+unittest
+{
+    // fldtkRootRelativeTo(): the path from a folder to the nearest one
+    // holding a dub.sdl, also when the folder is the current one (".").
+    import std.file : chdir, getcwd, mkdirRecurse, rmdirRecurse, tempDir, write;
+
+    string root = buildPath(tempDir(), "fluid_dub_root_unittest");
+    if (exists(root)) rmdirRecurse(root);
+    mkdirRecurse(buildPath(root, "a", "b"));
+    scope (exit) rmdirRecurse(root);
+    write(buildPath(root, "dub.sdl"), "name \"x\"\n");
+
+    assert(fldtkRootRelativeTo(buildPath(root, "a", "b")) == "../..");
+    assert(fldtkRootRelativeTo(root) == ".");
+
+    string cwd = getcwd();
+    chdir(buildPath(root, "a", "b"));
+    scope (exit) chdir(cwd);
+    assert(fldtkRootRelativeTo(".") == "../..");
+}
+
+unittest
+{
+    // The dub single-file-package header is the first thing in the
+    // file, ahead of the project's comments, and selects fldtk's
+    // `program` configuration.
+    import std.algorithm : canFind, startsWith;
+
+    auto mainFn = new FunctionNode();
+    mainFn.typeName = "Function";
+    auto note = new CommentNode();
+    note.typeName = "comment";
+    note.instanceName = "A file comment.";
+    note.inSource_ = true;
+
+    string text = new Writer().generate([cast(Node) note, cast(Node) mainFn], ".",
+        I18nSettings.init, true);
+    assert(text.startsWith("/+ dub.sdl:\n"));
+    assert(text.canFind("\nsubConfiguration \"fldtk\" \"program\"\n+/\n"));
+    assert(text.canFind("A file comment."));
+
+    assert(!new Writer().generate([cast(Node) mainFn]).canFind("dub.sdl"));
 }
 
 unittest

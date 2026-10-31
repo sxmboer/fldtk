@@ -34,13 +34,9 @@
  * `Fl_Widget_Surface` port, backing `test/device.cxx`'s
  * "Fl_Image_Surface" demo button.
  *
- * `test/device.cxx`'s "Fl_Image_Surface" radio button is only one of
- * five surface types it exercises (`Fl_Copy_Surface`, `Fl_PDF_File_Surface`,
- * `Fl_SVG_File_Surface`, and `ImageSurface.mask()`'s shaped-window-in-
- * miniature demo are the other four) -- none of those are ported here,
- * so `test/device.cxx` still doesn't build. See `PORTING.md`'s
- * `FL/Fl_Copy_Surface.H`/`FL/Fl_PDF_File_Surface.H`/
- * `FL/Fl_SVG_File_Surface.H` rows for the current status of each.
+ * `test/device.d` exercises this surface next to the other surface
+ * types (`CopySurface`, `PdfFileSurface`, `SvgFileSurface`, the
+ * printers, and `ImageSurface.mask()`'s shaped window).
  *
  * `mask()` is ported from
  * `Fl_Xlib_Image_Surface_Driver::mask()`'s non-Cairo branch (the `#else`
@@ -96,6 +92,7 @@ import graphicsDriver = fl.graphics_driver;
 import fl.graphics_driver : GraphicsDriver;
 version (linux) import platform = fl.platform;
 version (Windows) import platformWin32 = fl.platform_win32;
+version (Windows) import core.sys.windows.windows : HDC, POINT, GetWindowOrgEx, SetWindowOrgEx;
 
 /**
  * Ported from `Fl_Surface_Device` (`FL/Fl_Device.H` + `src/Fl_Device.cxx`).
@@ -318,6 +315,28 @@ class ImageSurface : WidgetSurface
         protected override void untranslate() { fldraw.popTranslate(); }
     }
 
+    /// On Windows, the GDI driver's window origin, as `fl.widget_surface.
+    /// CopySurface` does.
+    version (Windows)
+    {
+        protected override void translate(int x, int y)
+        {
+            platformWin32.plainGraphicsDriver().translateAll(x, y);
+        }
+
+        protected override void untranslate()
+        {
+            platformWin32.plainGraphicsDriver().untranslateAll();
+        }
+
+        /// The window origin of the device context drawing into the
+        /// offscreen buffer, kept by `doEndCurrent()` for the next
+        /// `doSetCurrent()`, whose device context is a new one. Drawing a
+        /// `GlWindow` steps out of the surface and back in while
+        /// translated (see `WidgetSurface.draw()`).
+        private POINT origin_;
+    }
+
     // mask() state -- see this module's own top comment for the full
     // mechanism. Both null/0 when no mask is currently pending (the
     // common case); set by mask(), consumed and cleared by image().
@@ -474,10 +493,20 @@ class ImageSurface : WidgetSurface
     protected override void doSetCurrent()
     {
         fldraw.beginOffscreen(offscreen_);
+        version (Windows)
+        {
+            HDC dc = platformWin32.plainGraphicsDriver().hdc();
+            if (dc !is null) SetWindowOrgEx(dc, origin_.x, origin_.y, null);
+        }
     }
 
     protected override void doEndCurrent()
     {
+        version (Windows)
+        {
+            HDC dc = platformWin32.plainGraphicsDriver().hdc();
+            if (dc !is null) GetWindowOrgEx(dc, &origin_);
+        }
         fldraw.endOffscreen();
     }
 

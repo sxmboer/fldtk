@@ -20,7 +20,7 @@ module fluid.compile;
 
 import std.stdio : writefln, stderr;
 import std.file : exists, read, readText, write;
-import std.path : stripExtension, dirName, baseName, buildPath, isAbsolute, extension, absolutePath;
+import std.path : stripExtension, dirName, baseName, buildNormalizedPath, isAbsolute, extension, absolutePath;
 
 import fl.filename : filenameSetExt;
 
@@ -193,11 +193,13 @@ bool parseCommandLine(ref string[] args, out CommandLine cl, string usageLine, b
 /// does), else the input file's own basename with a `.d` extension.
 private string defaultCodePath(string inPath, string codeFileName)
 {
+    // buildNormalizedPath() gives the path one kind of separator (`\` on
+    // Windows), however the input path and "Code File:" were written.
     if (codeFileName.length == 0)
-        return inPath.stripExtension() ~ ".d";
+        return buildNormalizedPath(inPath.stripExtension() ~ ".d");
     string name = codeFileName;
     if (name.extension().length == 0) name ~= ".d";
-    return name.isAbsolute() ? name : buildPath(dirName(inPath), name);
+    return name.isAbsolute() ? buildNormalizedPath(name) : buildNormalizedPath(dirName(inPath), name);
 }
 
 /// The text of `.fl` file `reader` just parsed into `roots`, written
@@ -409,7 +411,7 @@ private void writeStringsFor(string inPath, Node[] roots, I18nSettings i18n, str
     if (stringsName.length && stringsName[0] != '.')
         stringsPath = stringsName;
     else
-        stringsPath = buildPath(dirName(inPath),
+        stringsPath = buildNormalizedPath(dirName(inPath),
             filenameSetExt(baseName(inPath), stringsName.length ? stringsName : ext));
     if (writeStrings(roots, i18n, stringsPath) == 0)
         writefln("fluid: %s -> %s", inPath, stringsPath);

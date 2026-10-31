@@ -27,20 +27,19 @@
  * `glDrawPixels()` forward rather than FLTK's persistent
  * `GL_TEXTURE_RECTANGLE_ARB` cache. `drawBitmap()` (the 1-bit
  * `Fl_Bitmap` stencil path, see that method's own doc comment) applies
- * the same "no texture cache" simplification to the 1-bit case. Still
- * not overridden here, matching `GraphicsDriver`'s own non-abstract
- * no-op default: `draw(int angle,...)` (no rotated-text consumer in
- * this port's GL path either).
+ * the same "no texture cache" simplification to the 1-bit case.
+ * `draw(int angle,...)` draws rotated text by turning the string's
+ * texture (see `fl.gl.glDrawRotated()`).
  *
  * **Text**: `draw()` below is a thin wrapper around `fl.gl.gl_draw()`
  * (a real,
  * near-verbatim port of `Fl_OpenGL_Graphics_Driver_font.cxx`'s live
  * branch -- `gl_font()`/`gl_draw()`'s own texture-rectangle-based text
- * cache, see that module's own doc comment for the full mechanism and
- * its one deliberate scope cut: no legacy glut/`glXUseXFont` fallback).
+ * cache, and its bitmap-font fallback; see that module's own doc
+ * comment for the full mechanism).
  * `font()` needed no override at all -- `GraphicsDriver` has no
  * `font()` dispatch hook (metrics stay native/undispatched by design),
- * and `fl.gl.gl_font()` is itself just a thin `fl_font()` passthrough,
+ * and `fl.gl.gl_draw()` reads the current `fl_font()` itself,
  * so the ambient font state a widget's `drawLabel()` already
  * established via its own `fl_font()` call is exactly what `fl.gl`
  * reads -- nothing extra to wire up here. GL-composited widget labels
@@ -177,7 +176,7 @@ final class GlGraphicsDriver : GraphicsDriver
     /// solid under GL compositing, unlike the native Xlib path's real
     /// dashed `XDrawRectangle()`. This is a faithfully-ported FLTK
     /// limitation (same `glRectf()`-bars body, no stipple check), not a
-    /// fldtk-introduced regression. See `FLTK_ISSUES.md`'s
+    /// fldtk-introduced regression. See `FLTK_ISSUES_n.md`'s
     /// `Fl_OpenGL_Graphics_Driver::rect() ignores line stipple` entry.
     override void rect(int x, int y, int w, int h)
     {
@@ -509,6 +508,16 @@ final class GlGraphicsDriver : GraphicsDriver
 
         glRasterPos2i(x, y);
         gl_draw(str, nChars);
+    }
+
+    /// Rotated text: the string's texture drawn turned `angle` degrees
+    /// counter-clockwise about `(x, y)`, the start of its baseline.
+    override void draw(int angle, const(char)[] str, int nChars, int x, int y)
+    {
+        import fl.gl : glDrawRotated;
+
+        glRasterPos2i(x, y);
+        glDrawRotated(angle, str[0 .. nChars]);
     }
 
     // ---- Fl_OpenGL_Graphics_Driver_image.cxx ----

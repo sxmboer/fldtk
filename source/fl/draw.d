@@ -273,6 +273,32 @@ private int scaledFloor(int x)
     return x >= 0 ? retval : -retval;
 }
 
+/// The number of pixels per FLTK unit an image prepares for drawing:
+/// the drawing scale, or 1 when the current driver writes a
+/// resolution-independent document (a page or an SVG file), whose
+/// units aren't screen pixels.
+package(fl) float imageScale()
+{
+    if (drawsResolutionIndependent()) return 1;
+    return currentScale();
+}
+
+/// Whether the current driver writes a resolution-independent document
+/// (see `GraphicsDriver.resolutionIndependent()`).
+package(fl) bool drawsResolutionIndependent()
+{
+    return currentDriver !is null && currentDriver.resolutionIndependent();
+}
+
+/// Draws `dataW` x `dataH` pixels stretched over the box `(x, y, w, h)`
+/// on a resolution-independent driver (see
+/// `GraphicsDriver.drawImageScaled()`); does nothing elsewhere.
+package(fl) void drawImageScaled(const(ubyte)* buf, int dataW, int dataH, int d, int l, int x, int y, int w, int h)
+{
+    if (drawsResolutionIndependent())
+        currentDriver.drawImageScaled(buf, dataW, dataH, d, l, x, y, w, h);
+}
+
 version (Windows)
 {
     import fl.gdi_graphics_driver : GdiGraphicsDriver;
@@ -729,6 +755,13 @@ version (linux)
         private void cairoFont(CairoGraphicsDriver cd, Font face, Fontsize size)
         {
             cd.font(pangoFontName(face, getFont(face), (face in fontNameOverride_) !is null), size);
+        }
+
+        /// The Pango name of the current `fl_font()` face.
+        package(fl) string currentPangoFontName()
+        {
+            return pangoFontName(currentFontFace_, getFont(currentFontFace_),
+                (currentFontFace_ in fontNameOverride_) !is null);
         }
     }
 
@@ -1289,10 +1322,10 @@ version (linux)
         }
         else
         {
-            int sx = scaledFloor(c.x + offsetX_);
-            int sy = scaledFloor(c.y + offsetY_);
-            int sw = scaledFloor(c.x + (c.w > 0 ? c.w : 0) + offsetX_) - sx;
-            int sh = scaledFloor(c.y + (c.h > 0 ? c.h : 0) + offsetY_) - sy;
+            int sx = scaledFloor(c.x) + offsetX_;
+            int sy = scaledFloor(c.y) + offsetY_;
+            int sw = scaledFloor(c.x + (c.w > 0 ? c.w : 0)) + offsetX_ - sx;
+            int sh = scaledFloor(c.y + (c.h > 0 ? c.h : 0)) + offsetY_ - sy;
             XRectangle r;
             r.x = cast(short) sx;
             r.y = cast(short) sy;
@@ -1716,10 +1749,14 @@ private ClipEntry currentClip()
 
 /**
  * The current cumulative coordinate offset every native drawing
- * primitive adds to the raw device coordinates it actually hands to
- * Xlib -- ported from `Fl_Xlib_Graphics_Driver::offset_x_`/`offset_y_`
- * (`Fl_Xlib_Graphics_Driver.H`/`.cxx`), plain reversible-offset state
- * there too. Zero by default, so every existing on-screen window draw
+ * primitive adds to the device coordinates it hands to Xlib (or to the
+ * Cairo driver, `syncCairoOffset()`), in device pixels: the
+ * `scaledFloor()` of `offsetUnitsX_`/`offsetUnitsY_`, the offset in
+ * FLTK units that `pushTranslate()` accumulates. Ported from
+ * `Fl_Xlib_Graphics_Driver::offset_x_`/`offset_y_`, which hold FLTK
+ * units and are scaled with `floor()` where a primitive adds them, as
+ * every primitive here adds `offsetX_` to its own scaled coordinates.
+ * Zero by default, so every existing on-screen window draw
  * call (which never pushes a translate) is a complete no-op through
  * this mechanism -- only `fl.widget_surface.WidgetSurface.translate()`/
  * `untranslate()` (via `CopySurface`/`ImageSurface`, both of which draw
@@ -1733,6 +1770,10 @@ private ClipEntry currentClip()
  * split exactly (see that function's doc comment).
  */
 private int offsetX_, offsetY_;
+
+/// The offset in FLTK units that `pushTranslate()` accumulates;
+/// `offsetX_`/`offsetY_` are its scaled form.
+private int offsetUnitsX_, offsetUnitsY_;
 
 /// Fixed-size save stack for `pushTranslate()`/`popTranslate()` --
 /// FLTK caps this at `FL_XLIB_GRAPHICS_TRANSLATION_STACK_SIZE`
@@ -1761,10 +1802,19 @@ private int[] translateStackX_, translateStackY_;
 /// same pattern.
 package(fl) void pushTranslate(int dx, int dy)
 {
-    translateStackX_ ~= offsetX_;
-    translateStackY_ ~= offsetY_;
-    offsetX_ += dx;
-    offsetY_ += dy;
+    translateStackX_ ~= offsetUnitsX_;
+    translateStackY_ ~= offsetUnitsY_;
+    offsetUnitsX_ += dx;
+    offsetUnitsY_ += dy;
+    applyOffset();
+}
+
+/// Sets the device-pixel `offsetX_`/`offsetY_` from the FLTK-unit
+/// offset at the current scale, and hands it on.
+private void applyOffset()
+{
+    offsetX_ = scaledFloor(offsetUnitsX_);
+    offsetY_ = scaledFloor(offsetUnitsY_);
     syncCairoOffset();
     restoreClip();
 }
@@ -1777,12 +1827,11 @@ package(fl) void pushTranslate(int dx, int dy)
 package(fl) void popTranslate()
 {
     if (translateStackX_.length == 0) return;
-    offsetX_ = translateStackX_[$ - 1];
-    offsetY_ = translateStackY_[$ - 1];
+    offsetUnitsX_ = translateStackX_[$ - 1];
+    offsetUnitsY_ = translateStackY_[$ - 1];
     translateStackX_ = translateStackX_[0 .. $ - 1];
     translateStackY_ = translateStackY_[0 .. $ - 1];
-    syncCairoOffset();
-    restoreClip();
+    applyOffset();
 }
 
 /// Hands the current offset to a Cairo driver, which applies it
@@ -1800,12 +1849,12 @@ unittest
     // Pure bookkeeping -- no display needed. Reset first/after in case
     // an earlier test left the stack non-empty (same "shared static
     // state needs hermetic tests" reasoning as clipStack_'s own tests).
-    offsetX_ = offsetY_ = 0;
+    offsetX_ = offsetY_ = offsetUnitsX_ = offsetUnitsY_ = 0;
     translateStackX_ = [];
     translateStackY_ = [];
     scope(exit)
     {
-        offsetX_ = offsetY_ = 0;
+        offsetX_ = offsetY_ = offsetUnitsX_ = offsetUnitsY_ = 0;
         translateStackX_ = [];
         translateStackY_ = [];
     }
@@ -2947,7 +2996,7 @@ private void drawLineStrip(VPoint[] pts)
 /// one is active; otherwise real on Linux (XDrawPoints), ported from
 /// Fl_Xlib_Graphics_Driver::end_points(): `if (n>1)` is FLTK's own
 /// condition, not this port's -- a single-point path draws nothing
-/// through this call on *any* backend (see FLTK_ISSUES.md's
+/// through this call on *any* backend (see FLTK_ISSUES_n.md's
 /// candidate entry for the full reasoning), ported faithfully rather
 /// than silently fixed.
 void endPoints()
@@ -3677,7 +3726,7 @@ private bool drawArrowChoice(Rect bb, Color col)
  * saved color at all (`src/fl_draw_arrow.cxx:242-289` -- the oxy
  * special case sits *before* the trailing `fl_color(saved_color)`, and
  * is the only path that `return`s early enough to skip it). Flagged as
- * an `FLTK_ISSUES.md` candidate rather than silently corrected.
+ * an `FLTK_ISSUES_n.md` candidate rather than silently corrected.
  */
 void drawArrow(Rect bb, ArrowType t, Orientation o, Color color)
 {
@@ -6269,7 +6318,7 @@ void fl_measure(const(char)[] str, ref int w, out int h, bool drawSymbols = true
     // fl_draw() does (last '@' via strrchr(), extra `p > str+1`/
     // `p[-1]!='@'` guards) -- a real FLTK discrepancy (the two
     // could disagree on a label containing more than one '@'), found
-    // while porting and logged in FLTK_ISSUES.md rather than
+    // while porting and logged in FLTK_ISSUES_n.md rather than
     // silently unified; ported faithfully as two distinct functions,
     // matching each one's own real behavior.
     auto detected = drawSymbols ? detectSymbolsForMeasure(str) : SymbolSplit(str);
@@ -7646,7 +7695,7 @@ private void flRshadowBox(int x, int y, int w, int h, Color c)
 // module note above flOvalFlatBox() for the full reasoning, which
 // applies here unchanged).
 //
-// FLTK_ISSUES.md entry: the
+// FLTK_ISSUES_n.md entry: the
 // "round" gleam boxtypes (gleamRoundUpBox/gleamRoundDownBox) are wired
 // in FLTK's own fl_box_table to the exact same fl_gleam_up_box/
 // fl_gleam_down_box functions as the plain (non-round) gleam boxtypes
@@ -8564,7 +8613,7 @@ private void oxyArrow(Rect bb, ArrowType t, Orientation o, Color col)
 /// module-static state + `set_color_average()`: a user-settable
 /// "how gray" knob for every plastic-scheme color, clamped to [10,100]
 /// percent, defaulting to 75 (the FLTK 1.4-compatible look) unless
-/// overridden by `FLTK_PLASTIC_AVERAGE` or a direct call to
+/// overridden by `FLDTK_PLASTIC_AVERAGE` or a direct call to
 /// `plasticColorAverage()` below. `-1.0f` is the "not yet resolved"
 /// sentinel, matching FLTK's own `-1.00f` init.
 private float plasticAverage_ = -1.0f;
@@ -8598,7 +8647,7 @@ void plasticColorAverage(int av)
 
 /// Ported from `fl_plastic.cxx`'s own module-static
 /// `plastic_color_average()` getter: lazily resolves from
-/// `FLTK_PLASTIC_AVERAGE` (once) unless `plasticColorAverage()` was
+/// `FLDTK_PLASTIC_AVERAGE` (once) unless `plasticColorAverage()` was
 /// already called directly, which always takes precedence, matching
 /// FLTK. FLTK's `atoi()` returns 0 (then gets clamped to the
 /// minimum) on a non-numeric environment value rather than erroring;
@@ -8609,7 +8658,7 @@ private float currentPlasticAverage()
     if (plasticAverage_ < 0.0f)
     {
         import std.process : environment;
-        auto envVar = environment.get("FLTK_PLASTIC_AVERAGE");
+        auto envVar = environment.get("FLDTK_PLASTIC_AVERAGE");
         if (envVar.length != 0)
         {
             import std.conv : parse;
@@ -10330,12 +10379,18 @@ version (linux)
      * `packImageBuffer()`'s own byte layout above, for round-trip
      * consistency) rather than deriving shifts from `image.red_mask`
      * like FLTK does for portability across visual types. Returns
-     * `null` if the display isn't open, the rectangle is degenerate,
-     * or the underlying `XGetImage()` fails (e.g. the rectangle
-     * extends outside the drawable) -- matching FLTK's own
-     * NULL-on-failure contract, made real by the temporary error-
-     * handler swap around the `XGetImage()` call itself (see
-     * `ignoreXGetImageError()`'s own doc comment).
+     * `null` if the display isn't open, the rectangle is degenerate or
+     * entirely outside the drawable, or the underlying `XGetImage()`
+     * fails -- matching FLTK's own NULL-on-failure contract, made real
+     * by the temporary error-handler swap around the `XGetImage()` call
+     * itself (see `ignoreXGetImageError()`'s own doc comment). A
+     * rectangle reaching partly outside the drawable is read where it
+     * overlaps it, the rest left black, as FLTK's `read_win_rectangle()`
+     * clamps its request to the window: `XGetImage()` itself would fail
+     * for the whole rectangle. A subwindow's device-pixel size computed
+     * from its FLTK-unit edges can come out a pixel larger than its X
+     * window at a fractional scale, so `fl.core.captureWindow()` relies
+     * on this.
      */
 
     package(fl) ubyte[] readPixelsFromDrawable(Drawable d, int x, int y, int w, int h, int alpha = 0)
@@ -10343,6 +10398,30 @@ version (linux)
         version (FLDTK_HAVE_CAIRO)
             if (cairoWithoutX()) return readCairoPixels(cairoImageSurfaceOf(d), x, y, w, h, alpha);
         if (display_ is null || d == 0 || w <= 0 || h <= 0) return null;
+
+        uint dw, dh;
+        if (drawableSize(d, dw, dh))
+        {
+            int x0 = x > 0 ? x : 0, y0 = y > 0 ? y : 0;
+            int x1 = x + w < cast(int) dw ? x + w : cast(int) dw;
+            int y1 = y + h < cast(int) dh ? y + h : cast(int) dh;
+            if (x0 >= x1 || y0 >= y1) return null;
+            if (x0 != x || y0 != y || x1 != x + w || y1 != y + h)
+            {
+                auto part = readPixelsFromDrawable(d, x0, y0, x1 - x0, y1 - y0, alpha);
+                if (part is null) return null;
+                int depth = alpha ? 4 : 3;
+                auto full = new ubyte[w * h * depth];
+                if (alpha) foreach (i; 0 .. w * h) full[i * 4 + 3] = cast(ubyte) alpha;
+                int pw = (x1 - x0) * depth;
+                foreach (row; 0 .. y1 - y0)
+                {
+                    auto dst = ((y0 - y + row) * w + (x0 - x)) * depth;
+                    full[dst .. dst + pw] = part[row * pw .. (row + 1) * pw];
+                }
+                return full;
+            }
+        }
         version (FLDTK_HAVE_CAIRO) cairoFlush(d);
 
         // XGetImage() raises an asynchronous BadMatch protocol error
@@ -10832,7 +10911,16 @@ else
             srcDc = driver.hdc();
         }
         scope(exit) if (ownDc !is null) DeleteDC(ownDc);
+        return readPixelsFromDc(srcDc, x, y, w, h, alpha);
+    }
 
+    /// Reads `(x, y, w, h)` (device pixels) from `srcDc` into the same
+    /// buffer shape as `readPixelsFromDrawable()`. Shared by it and
+    /// `fl.platform_win32.captureWindowPixels()`, which reads from a
+    /// window's own DC.
+    package(fl) ubyte[] readPixelsFromDc(HDC srcDc, int x, int y, int w, int h, int alpha = 0)
+    {
+        if (srcDc is null || w <= 0 || h <= 0) return null;
         HDC memDc = CreateCompatibleDC(srcDc);
         if (memDc is null) return null;
         scope(exit) DeleteDC(memDc);

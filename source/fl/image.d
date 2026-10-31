@@ -231,6 +231,29 @@ class Image
         }
     }
 
+    /**
+     * Draws the image's own pixels (`buf`, `bufW` x `bufH`, `d` bytes per
+     * pixel, `l` bytes per row) stretched over its `w()` x `h()` box at
+     * `(X - cx, Y - cy)`, showing only the part inside `(X, Y, W, H)`,
+     * on a resolution-independent driver (`fl.draw.
+     * drawsResolutionIndependent()`): a page or SVG file gets the image
+     * at its own resolution whatever size it is drawn at.
+     */
+    protected final void drawNative(const(ubyte)* buf, int bufW, int bufH, int d, int l,
+        int X, int Y, int W, int H, int cx, int cy)
+    {
+        int px = cx < 0 ? 0 : cx;
+        int py = cy < 0 ? 0 : cy;
+        int pw = W;
+        int ph = H;
+        if (px + pw > w()) pw = w() - px;
+        if (py + ph > h()) ph = h() - py;
+        if (pw <= 0 || ph <= 0) return;
+        fldraw.pushClip(X - cx + px, Y - cy + py, pw, ph);
+        fldraw.drawImageScaled(buf, bufW, bufH, d, l, X - cx, Y - cy, w(), h());
+        fldraw.popClip();
+    }
+
     /// Draws the image to the current drawing surface with a bounding
     /// box (X,Y,W,H), with the image's own origin offset by (cx,cy).
     /// The base class has no real image data, so this always draws the
@@ -366,7 +389,7 @@ class RGBImage : Image
      * this** -- `fail()` doesn't actually catch this specific case, a
      * real, faithfully-reproduced FLTK quirk (`ld()` is set to
      * `errMemoryAccess`, but `fail()`'s own condition never consults
-     * `ld()` for a normal positive `D`; see `FLTK_ISSUES.md`).
+     * `ld()` for a normal positive `D`; see `FLTK_ISSUES_n.md`).
      */
     this(const(ubyte)[] bits, int W, int H, int D = 3, int LD = 0)
     {
@@ -484,7 +507,13 @@ class RGBImage : Image
             return;
         }
 
-        float s = fl.core.currentScale();
+        if (fldraw.drawsResolutionIndependent())
+        {
+            drawNative(array.ptr, dataW(), dataH(), d(), ld(), X, Y, W, H, cx, cy);
+            return;
+        }
+
+        float s = fldraw.imageScale();
         int wantW = cast(int)(w() * s + 0.5f);
         int wantH = cast(int)(h() * s + 0.5f);
         if (wantW < 1) wantW = 1;
@@ -921,7 +950,7 @@ unittest
     // fail() itself doesn't actually catch this case -- a real,
     // faithfully-reproduced FLTK quirk (Fl_Image::fail()'s own
     // condition never consults ld_ when d_ is a normal positive depth,
-    // see FLTK_ISSUES.md). array.length == 0 is the real signal.
+    // see FLTK_ISSUES_n.md). array.length == 0 is the real signal.
     auto tooShort = new RGBImage(bits[0 .. 4], 4, 4, 3);
     assert(tooShort.fail() == 0);
     assert(tooShort.array.length == 0);

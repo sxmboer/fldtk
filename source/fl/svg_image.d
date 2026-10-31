@@ -241,9 +241,15 @@ final class SvgImage : RGBImage
     bool proportional() const { return proportional_; }
     void proportional(bool p) { proportional_ = p; } /// ditto
 
+    /// Pixels per unit an `SvgImage` is rasterized at on a
+    /// resolution-independent surface (a page or SVG file): 4, which
+    /// is 288 dpi on a page.
+    enum documentPixelsPerUnit = 4;
+
     /**
      * Ported from `Fl_SVG_Image::draw()`: re-rasterizes at the drawing
-     * surface's device-pixel size (`w()*fl.core.currentScale()`), then restores
+     * surface's device-pixel size (`w()*fl.draw.imageScale()`, or
+     * `documentPixelsPerUnit` per unit on a page or SVG file), then restores
      * the logical `w()`/`h()` via `scale()`, so `RGBImage.draw()` finds
      * the data already at its target size and blits it without
      * resampling -- a crisp render at any scale, same as FLTK.
@@ -261,7 +267,7 @@ final class SvgImage : RGBImage
      */
     override void draw(int X, int Y, int W, int H, int cx = 0, int cy = 0)
     {
-        import fl.core : currentScale;
+        import fl.draw : imageScale, drawsResolutionIndependent;
 
         if (fail())
         {
@@ -269,7 +275,7 @@ final class SvgImage : RGBImage
             return;
         }
         int w1 = w(), h1 = h();
-        float f = currentScale();
+        float f = drawsResolutionIndependent() ? documentPixelsPerUnit : imageScale();
         int w2 = cast(int)(w1 * f + 0.5f);
         int h2 = cast(int)(h1 * f + 0.5f);
         if (w2 < 1) w2 = 1;

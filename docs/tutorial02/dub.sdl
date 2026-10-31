@@ -1,0 +1,13 @@
+// The dub.sdl of docs/TUTORIAL02.md's project. Copy it into the project
+// folder as dub.sdl. The fldtk dependency's path is relative to the
+// project folder: ../fldtk is a fldtk folder next to it. Change it if
+// your fldtk folder is somewhere else.
+name "hello"
+description "A minimal D application."
+authors "you"
+license "proprietary"
+targetType "executable"
+dependency "fldtk" path="../fldtk"
+preGenerateCommands "\"$FLDTK_PACKAGE_DIR/fluid\" -c \"$PACKAGE_DIR/hello.fl\"" platform="linux"
+preGenerateCommands "\"$FLDTK_PACKAGE_DIR\\fluid.exe\" -c \"$PACKAGE_DIR\\hello.fl\"" platform="windows"
+subConfiguration "fldtk" "program"

@@ -62,6 +62,10 @@ class Scrollbar : Slider
         step(1);
     }
 
+    /// The top of a vertical scrollbar is the start of what it scrolls,
+    /// so its minimum is there.
+    protected override bool maximumAtTop() const { return false; }
+
     ~this()
     {
         // Safe unconditionally, even during GC-driven finalization --

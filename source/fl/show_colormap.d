@@ -137,7 +137,7 @@ private final class ColorMenu : Window
     // vertical half of the initial position uses the *window's own*
     // still-default `y()` (0, pre-`show()`) rather than `h()/2` the
     // way the horizontal half uses `w()/2` -- see
-    // `FLTK_ISSUES.md`'s `fl_show_colormap.cxx` entry. Not
+    // `FLTK_ISSUES_n.md`'s `fl_show_colormap.cxx` entry. Not
     // exercised by any sample so far (every caller passes a plain
     // palette index), so left exactly as FLTK has it rather than
     // silently "fixed".

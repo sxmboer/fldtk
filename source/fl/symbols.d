@@ -48,7 +48,7 @@
  *    advancing `p` by 4 -- silently discarding the first of the four
  *    documented digits rather than using or validating it. Ported
  *    exactly as FLTK behaves (not as documented); see
- *    FLTK_ISSUES.md.
+ *    FLTK_ISSUES_n.md.
  */
 module fl.symbols;
 

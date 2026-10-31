@@ -1154,7 +1154,7 @@ class Terminal : FlGroup
         else
         {
             // FLTK hardcodes `100` here instead of using `hist` --
-            // a real bug (see FLTK_ISSUES.md): the explicit-size
+            // a real bug (see FLTK_ISSUES_n.md): the explicit-size
             // constructor's own doc comment says it lets the caller
             // "force the rows, columns and history to specific
             // sizes", but `hist` is silently discarded whenever
