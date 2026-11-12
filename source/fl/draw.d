@@ -156,11 +156,10 @@
  * `smoke-tests/dial_clock.d`: a normalDial's dot and a
  * lineDial's pointer both appear at the correct rotation for their 70%
  * value, and both a square and a round ClockOutput show three hands
- * plus 12 tick marks at the correct angles). circle() approximates
- * with a 32-sided polygon rather than FLTK's XDrawArc/XFillArc
- * shortcut, traced through the actual current transform (including
- * rotation) rather than that shortcut's axis-aligned bounding ellipse --
- * see circle()'s own doc comment. The vertex-path
+ * plus 12 tick marks at the correct angles). circle() adds points
+ * along the ellipse FLTK hands to XDrawArc/XFillArc, as many as keep
+ * every chord within 1/8 device pixel of the curve -- see circle()'s
+ * own doc comment. The vertex-path
  * fl_arc(double,double,double,double,double) is real too, added for
  * fl.chart's pie wedges.
  *
@@ -168,8 +167,7 @@
  * ROUND/OVAL/DIAMOND paragraph below, also covering the "rounded" family. fl_scale(double)'s uniform single-arg form; beginPoints()/
  * endPoints() and beginLine()/endLine() (the latter added
  * alongside the former as a hard dependency of endComplexPolygon()'s
- * own fallback, not originally on this item's list -- see
- * core-roadmap item 10's own note); fl_curve() (FLTK's own "incremental
+ * own fallback); fl_curve() (FLTK's own "incremental
  * math" forward-difference stepping, kept verbatim); and
  * beginComplexPolygon()/fl_gap()/endComplexPolygon() for
  * concave/multi-loop shapes are all real, built on the same
@@ -254,7 +252,7 @@ import fl.rect : Rect;
 import fl.core;
 import fl.symbols : drawSymbol;
 import fl.graphics_driver : currentDriver, GraphicsDriver, Point;
-import std.math : sin, cos, PI, abs, sqrt;
+import std.math : sin, cos, acos, ceil, PI, abs, sqrt;
 
 /// Computes `int(x * currentScale())`, ported verbatim from
 /// `Fl_Scalable_Graphics_Driver::floor(int x, float s)`
@@ -368,10 +366,14 @@ version (linux)
     private bool penNeedsXDrawLine_ = false;
 
     /// True after a `lineStyle()` call that set anything but the default
-    /// hairline (a style, a width, or explicit dashes). Vertex paths
-    /// then draw with the pen exactly as set, instead of widening the
-    /// default hairline at whole-number scales.
+    /// line (a style, a width, or explicit dashes).
     private bool penCustom_ = false;
+
+    /// The arguments of the last `lineStyle()` call: `fl_pie()` puts the
+    /// pen back with them after drawing its edge with the default line,
+    /// and `penScaleChanged()` applies them again at a new scale.
+    private int penStyleArg_, penWidthArg_;
+    private const(ubyte)[] penDashesArg_;
     private Colormap colormap_;
 
     /**
@@ -471,10 +473,13 @@ version (linux)
         screen_ = screen;
         visual_ = visual;
         colormap_ = colormap;
+        applyPen(penStyleArg_, penWidthArg_, penDashesArg_); // the default line at the current scale
         version (FLDTK_HAVE_CAIRO)
         {
-            import std.process : environment;
-            if (cairoDisplay_ is null && environment.get("FLDTK_GRAPHICS") == "cairo")
+            import std.uni : toLower;
+            import fl.core : startupSetting;
+            if (cairoDisplay_ is null
+                && startupSetting("FLDTK_GRAPHICS", "Graphics").toLower == "cairo")
             {
                 cairoDisplay_ = new CairoGraphicsDriver();
                 currentDriver = cairoDisplay_;
@@ -780,6 +785,13 @@ version (linux)
     package(fl) void flushDrawable()
     {
         version (FLDTK_HAVE_CAIRO) cairoFlush(drawable_);
+    }
+
+    /// Tells the Cairo driver that code outside `fl.draw` changed the
+    /// current drawable's pixels. A no-op without Cairo.
+    package(fl) void markDrawableDirty()
+    {
+        version (FLDTK_HAVE_CAIRO) cairoMarkDirty(drawable_);
     }
 
     /**
@@ -2117,34 +2129,19 @@ Color fl_color()
 // Fl_Xlib_Graphics_Driver_arci.cxx)
 // ---------------------------------------------------------------------
 //
-// Real on Linux now (XDrawArc/XFillArc). FLTK reaches these through
-// a scale-transform wrapper (Fl_Scalable_Graphics_Driver::arc()/pie(),
-// which adjusts x/y/w/h for the current display scale factor before
-// calling arc_unscaled()/pie_unscaled()) that this port doesn't need
-// (no scaling support exists, see fl.draw's other "assumes scale=1"
-// simplifications) -- at scale=1 that wrapper's arithmetic reduces
-// exactly to a direct XDrawArc/XFillArc call with (w-1,h-1) as the
-// bounding box (matching XDrawRectangle's own "size is an offset to
-// the far corner" convention, same as fl_rect()), so that's what's
-// implemented directly here rather than replicating the wrapper's
-// scale-derived math (which would produce the same w-1/h-1 result at
-// scale=1 anyway, just through a lot more indirection). Angles are in
-// degrees, counterclockwise from 3 o'clock, matching X11's own
-// convention exactly (FLTK's doc comment says the same thing) --
-// so no conversion beyond the degrees-to-64ths-of-a-degree scaling
-// XDrawArc/XFillArc want.
+// On X11 these are XDrawArc/XFillArc, drawn with the line width and
+// style `lineStyle()` set on the GC; the other drivers stroke with
+// their own current line width. Angles are in degrees,
+// counterclockwise from 3 o'clock, X11's own convention, so the only
+// conversion is to the 64ths of a degree XDrawArc/XFillArc want.
 
 /// Draws the outline of an elliptical arc inscribed in (x,y,w,h), from
 /// angle a1 to a2. Dispatches to `fl.graphics_driver.currentDriver`
 /// first when one is active; otherwise real on Linux (XDrawArc), scaled
 /// the same `scaledFloor(x+w)-scaledFloor(x)-s`/half-line-width-inset
-/// way `fl_rect()` is -- FLTK's real
-/// `Fl_Scalable_Graphics_Driver::arc(int,...)` additionally factors in
-/// the active line width (`line_width_`), which this port's arc/pie
-/// functions don't track at all (no consumer needs it);
-/// skipped here as a documented simplification, same class as
-/// `fl_rect()`'s own. At `currentScale() == 1` this reduces exactly to
-/// the pre-scaling `w-1`/`h-1` formula.
+/// way `fl_rect()` is, so a wide line is centered on the same edge as
+/// `fl_rect()`'s. At `currentScale() == 1` the ellipse's bounding box
+/// is `w-1` by `h-1`.
 void fl_arc(int x, int y, int w, int h, double a1, double a2)
 {
     if (currentDriver !is null)
@@ -2169,9 +2166,10 @@ void fl_arc(int x, int y, int w, int h, double a1, double a2)
 /// Draws a filled pie slice/ellipse inscribed in (x,y,w,h), from angle
 /// a1 to a2. Dispatches to `fl.graphics_driver.currentDriver` first
 /// when one is active; otherwise real on Linux -- an outline (XDrawArc)
-/// plus the fill (XFillArc), matching FLTK's own pie_unscaled(),
-/// which draws both so the slice's edge looks the same as a plain
-/// fl_arc(). Scaled via the same `scaledFloor(x+w)-scaledFloor(x)-1`
+/// plus the fill (XFillArc), as FLTK's pie_unscaled() does, so the
+/// slice's edge looks the same as a plain fl_arc(). A pie is a fill:
+/// the outline is always drawn with the default line, so the pie's
+/// size doesn't depend on the line width or style `lineStyle()` set. Scaled via the same `scaledFloor(x+w)-scaledFloor(x)-1`
 /// edge-alignment fl_rect()'s formula reduces to at `currentScale() ==
 /// 1` (derived from FLTK's real scaled `pie(int,...)` +
 /// `pie_unscaled()` pair, which nets out to exactly this once their
@@ -2193,7 +2191,15 @@ void fl_pie(int x, int y, int w, int h, double a1, double a2)
         if (sw <= 0 || sh <= 0) return;
         int a1i = cast(int)(a1 * 64);
         int a2i = cast(int)((a2 - a1) * 64);
+        bool restorePen = penCustom_;
+        if (restorePen)
+        {
+            float s = currentScale();
+            XSetLineAttributes(display_, gc_, s < 2 ? 0 : cast(uint) s,
+                LineSolid, CapButt, JoinMiter);
+        }
         XDrawArc(display_, drawable_, gc_, sx + offsetX_, sy + offsetY_, cast(uint) sw, cast(uint) sh, a1i, a2i);
+        if (restorePen) lineStyle(penStyleArg_, penWidthArg_, penDashesArg_);
         XFillArc(display_, drawable_, gc_, sx + offsetX_, sy + offsetY_, cast(uint) sw, cast(uint) sh, a1i, a2i);
     }
 }
@@ -2615,20 +2621,76 @@ void transformedVertex(double xf, double yf)
     appendVertexPoint(xf, yf);
 }
 
+/// The largest distance, in device pixels, a chord of `circle()` or
+/// `fl_arc(double,...)` may stray from the true curve.
+private enum double arcTolerance = 0.125;
+
+/// The number of chords for an arc spanning `span` radians on a curve
+/// whose largest radius, in drawing units, is `rMax`. Ported from
+/// `Fl_Graphics_Driver::arc()` (src/fl_arc.cxx): the angle a chord may
+/// span is `2*acos(1 - tolerance/R)`, with R in device pixels and at least
+/// 2 (about 9 chords for a full circle). The points are spaced evenly by
+/// angle, so on an ellipse the error is largest at the flat sides, where
+/// the radius is the larger semi-axis: R is that one.
+private int arcSegments(double rMax, double span)
+{
+    double R = rMax * currentScale();
+    if (R < 2) R = 2;
+    double epsilon = 2 * acos(1 - arcTolerance / R);
+    int n = cast(int) ceil((span < 0 ? -span : span) / epsilon);
+    return n < 1 ? 1 : n;
+}
+
+unittest
+{
+    // A radius-10 circle at scale 1: 2*acos(1 - 0.0125) per chord.
+    float saved = currentScale();
+    currentScale(1.0f);
+    scope (exit) currentScale(saved);
+    assert(arcSegments(10, 2 * PI) == 20);
+    // Tiny radii are treated as 2, larger ones get more chords.
+    assert(arcSegments(0.5, 2 * PI) == 9);
+    assert(arcSegments(100, 2 * PI) == 63);
+    // At 200% the same circle is 20 device pixels across.
+    currentScale(2.0f);
+    assert(arcSegments(10, 2 * PI) == 29);
+    currentScale(1.0f);
+    // A quarter turn needs about a quarter of the chords.
+    assert(arcSegments(10, PI / 2) == 5);
+    assert(arcSegments(10, 0) == 1);
+}
+
+/// The largest factor by which the current matrix stretches a length:
+/// its largest singular value. A circle of radius r becomes an ellipse
+/// whose larger semi-axis is r times this.
+private double matrixStretch()
+{
+    alias m = currentMatrix_;
+    double p = (m.a + m.d) * (m.a + m.d) + (m.c - m.b) * (m.c - m.b);
+    double q = (m.a - m.d) * (m.a - m.d) + (m.b + m.c) * (m.b + m.c);
+    return (sqrt(p) + sqrt(q)) / 2;
+}
+
+unittest
+{
+    pushMatrix();
+    scope (exit) popMatrix();
+    assert(abs(matrixStretch() - 1) < 1e-9);
+    fl_rotate(30);
+    assert(abs(matrixStretch() - 1) < 1e-9);
+    fl_scale(3, 0.5);
+    assert(abs(matrixStretch() - 3) < 1e-9);
+}
+
 /// Adds a circle of radius r centered at (x, y) to the current path.
-/// Ported from Fl_Scalable_Graphics_Driver::circle() collapsed to this
-/// port's fixed scale of 1: transforms the center through the current
-/// matrix, derives the transformed x/y radii from the matrix's column
-/// magnitudes (so a preceding fl_scale()/fl_rotate() -- exactly how
-/// fl.dial/fl.clock use it -- produces an ellipse of the right size),
-/// then approximates with a 32-gon rather than FLTK's XDrawArc/
-/// XFillArc "ellipse_unscaled()" shortcut: that shortcut only exists to
-/// special-case circles drawn outside a begin/end pair with no rotation
-/// in effect (fl.dial's fillDial mode already gets a real XDrawArc/
-/// XFillArc via fl_pie()/fl_arc() directly, see that module), and would
-/// draw the *unrotated* bounding ellipse instead of tracing an actual
-/// path through the current (possibly rotated) transform, which is
-/// exactly what beginPolygon()/beginLoop() need here.
+/// Ported from Fl_Scalable_Graphics_Driver::circle(): transforms the
+/// center through the current matrix and derives the transformed x/y
+/// radii from the matrix's column magnitudes (so a preceding
+/// fl_scale()/fl_rotate() -- exactly how fl.dial/fl.clock use it --
+/// produces an ellipse of the right size). FLTK hands that ellipse to
+/// XDrawArc/XFillArc; here it becomes points like every other vertex
+/// path, so it reaches every graphics driver, with as many chords as
+/// `arcSegments()` needs to keep within `arcTolerance` of the curve.
 void circle(double x, double y, double r)
 {
     if (vertexKind_ == VertexKind.none) return;
@@ -2641,7 +2703,7 @@ void circle(double x, double y, double r)
         : (currentMatrix_.d < 0 ? -currentMatrix_.d : currentMatrix_.d));
     double cx = x * currentMatrix_.a + y * currentMatrix_.c + currentMatrix_.x;
     double cy = x * currentMatrix_.b + y * currentMatrix_.d + currentMatrix_.y;
-    enum segments = 32;
+    int segments = arcSegments(rx > ry ? rx : ry, 2 * PI);
     for (int i = 0; i <= segments; i++)
     {
         double t = 2 * PI * i / segments;
@@ -2653,27 +2715,16 @@ void circle(double x, double y, double r)
 /// from 3 o'clock -- same convention as the int-based fl_arc()/
 /// fl_pie() overloads above) to the current path, without beginning or
 /// ending it itself -- meant to be called inside a
-/// beginPolygon()/beginLoop() block, added for
-/// fl.chart's pie/special-pie wedges (draw_piechart(), which brackets
-/// each call with an explicit vertex(cx, cy) to complete the wedge
-/// shape, exactly like FLTK). Ported from
-/// Fl_Graphics_Driver::arc(double,double,double,double,double)
-/// (src/fl_arc.cxx), but stepped in a fixed number of segments (scaled
-/// to the arc's angular span) rather than FLTK's adaptive
-/// chord-length-epsilon algorithm -- same simplification, same
-/// rationale as circle() just above (this port doesn't need
-/// adaptive resolution at the sizes it's actually drawn at). Unlike
-/// circle(), this computes each point in local (untransformed)
-/// space and calls vertex() to apply the current matrix -- exactly
-/// what FLTK's own fl_arc.cxx does (`fl_vertex(x+X, y+Y)` inside
-/// its stepping loop) and, unlike circle()'s manual
-/// radius-from-column-magnitude shortcut, handles a skewed transform
-/// correctly too (though nothing in this port produces a skew yet).
+/// beginPolygon()/beginLoop() block, as fl.chart's pie wedges do.
+/// Ported from Fl_Graphics_Driver::arc(double,double,double,double,double)
+/// (src/fl_arc.cxx): the number of chords comes from `arcSegments()`,
+/// with the radius stretched by the current matrix. Each point is
+/// computed from its own angle, so the end point is exact, and passed
+/// through vertex(), so any transform, skewed ones too, applies.
 void fl_arc(double x, double y, double r, double start, double end)
 {
     double span = end - start;
-    int segments = cast(int)(32 * (span < 0 ? -span : span) / 360.0 + 0.5);
-    if (segments < 1) segments = 1;
+    int segments = arcSegments(r * matrixStretch(), span * PI / 180.0);
 
     for (int i = 0; i <= segments; i++)
     {
@@ -2857,7 +2908,7 @@ private Point[] toDriverPoints(const(VPoint)[] pts)
 /// which closes it implicitly), then fills via XFillPolygon() with the
 /// `Convex` shape hint FLTK uses for this call (every shape
 /// fl.dial/fl.clock draw this way -- triangular hands, rectangular
-/// ticks, the circle-approximating 32-gon above -- genuinely is
+/// ticks, the circle-approximating polygon above -- genuinely is
 /// convex). Fewer than 3 points draws nothing on *any* backend (matches
 /// FLTK: a filled "polygon" can't exist below a triangle -- this
 /// port doesn't port the end_line()/end_points() fallback FLTK's
@@ -2919,50 +2970,11 @@ void endLoop()
 
 version (linux)
 {
-    /**
-     * Draws a polyline (`XDrawLines()`) with its line *thickness* scaled
-     * proportionally, not just its vertex positions -- shared by
-     * `endLoop()` and `drawLineStrip()`. A plain `XDrawLines()` always
-     * draws exactly 1 device pixel thick regardless of `scale()`, same
-     * underlying issue `fl_xyline()`/`fl_yxline()`'s own doc comment
-     * describes for axis-aligned lines, just for arbitrary (including
-     * diagonal) polygon outlines here: without this, a "gtk+"-scheme box's corner-cut
-     * octagonal outline (`beginLoop()`/`vertex()`/`endLoop()`, not
-     * `fl_xyline()`/`fl_yxline()`) would
-     * leave a 1-device-pixel gap between itself and the adjacent
-     * gradient line drawn 1 logical unit further in, at any scale other
-     * than 1.
-     *
-     * Unlike the axis-aligned case, an arbitrary polyline segment can't
-     * simply be redrawn as a filled rectangle -- a diagonal segment has
-     * no single "thickness" axis to widen along. Matches FLTK's own
-     * real fix for the equivalent case
-     * (`Fl_Scalable_Graphics_Driver::xyline()`'s pen-width-widening
-     * dance) far more literally here than `fl_xyline()`/`fl_yxline()`
-     * could: temporarily widen the GC's own line width to
-     * `int(currentScale())` via `XSetLineAttributes()`, draw, then reset
-     * it back to 0 (this port's own established "no persistent line-
-     * width state, callers restore it themselves" contract -- see this
-     * module's "General line style" section comment -- makes 0 a safe
-     * assumption for the width already in effect on entry). Only
-     * widens the default hairline pen: after a `lineStyle()` call that set a
-     * style, width or dashes (`penCustom_`) the path is drawn with that pen
-     * as set, already scaled by `lineStyle()`. Only
-     * widens for a whole-number scale (`s == s_int`); a fractional scale
-     * would need FLTK's own further `lwidth`-based centering
-     * dance this port's line-style state deliberately doesn't carry,
-     * so a fractional-scale outline stays a 1-device-pixel line, same
-     * residual gap as before -- a smaller, still-open gap, not
-     * regressed by this fix.
-     */
+    /// Draws a polyline with the pen as it is: its width already follows
+    /// the scale (`lineStyle()`, `penScaleChanged()`).
     private void drawLinesScaled(XPoint[] xpts)
     {
-        float s = currentScale();
-        int sInt = cast(int) s;
-        bool widen = !penCustom_ && sInt >= 2 && s == sInt;
-        if (widen) XSetLineAttributes(display_, gc_, cast(uint) sInt, LineSolid, CapButt, JoinMiter);
         XDrawLines(display_, drawable_, gc_, xpts.ptr, cast(int) xpts.length, coordModeOrigin);
-        if (widen) XSetLineAttributes(display_, gc_, 0, LineSolid, CapButt, JoinMiter);
     }
 }
 
@@ -2975,6 +2987,7 @@ version (linux)
 /// gets the same effect by having both callers share this one function.
 private void drawLineStrip(VPoint[] pts)
 {
+    if (pts.length == 1) drawPointsAt(pts);
     if (pts.length <= 1) return;
     if (currentDriver !is null)
     {
@@ -2993,41 +3006,35 @@ private void drawLineStrip(VPoint[] pts)
 
 /// Ends the path started by beginPoints(), drawing disconnected
 /// pixels. Dispatches to `fl.graphics_driver.currentDriver` first when
-/// one is active; otherwise real on Linux (XDrawPoints), ported from
-/// Fl_Xlib_Graphics_Driver::end_points(): `if (n>1)` is FLTK's own
-/// condition, not this port's -- a single-point path draws nothing
-/// through this call on *any* backend (see FLTK_ISSUES_n.md's
-/// candidate entry for the full reasoning), ported faithfully rather
-/// than silently fixed.
+/// one is active; otherwise real on Linux (XDrawPoints).
 void endPoints()
 {
     if (vertexKind_ != VertexKind.points) return;
     vertexKind_ = VertexKind.none;
-    if (vertexPoints_.length <= 1) return;
+    drawPointsAt(vertexPoints_);
+}
+
+private void drawPointsAt(VPoint[] pts)
+{
+    if (pts.length == 0) return;
     if (currentDriver !is null)
     {
-        currentDriver.endPoints(toDriverPoints(vertexPoints_));
+        currentDriver.endPoints(toDriverPoints(pts));
         return;
     }
     version (linux)
     {
         if (gc_ !is null && drawable_ != 0)
         {
-            XPoint[] xpts = toXPoints(vertexPoints_);
+            XPoint[] xpts = toXPoints(pts);
             XDrawPoints(display_, drawable_, gc_, xpts.ptr, cast(int) xpts.length,
                 coordModeOrigin);
         }
     }
 }
 
-/// Ends the path started by beginLine(), drawing an open polyline.
-/// Ported from Fl_Xlib_Graphics_Driver::end_line(): FLTK's own `if
-/// (n<2) { end_points(); return; }` fallback is skipped here as dead
-/// code, not an omission -- at n<2, end_points() itself also requires
-/// n>1 to draw anything (see endPoints()'s own doc comment), so
-/// that fallback can never actually produce a visible point either;
-/// drawLineStrip()'s own `pts.length > 1` guard already covers every
-/// case this path can reach, on every backend.
+/// Ends the path started by beginLine(), drawing an open polyline (a
+/// single point when the path has one).
 void endLine()
 {
     if (vertexKind_ != VertexKind.line) return;
@@ -3712,21 +3719,9 @@ private bool drawArrowChoice(Rect bb, Color col)
  * Draws an "arrow-like" GUI element (t: arrowSingle/arrowDouble/
  * arrowChoice) pointing o, filling bb, in color color. Ported from
  * src/fl_draw_arrow.cxx's fl_draw_arrow() -- the shared entry point
- * behind Fl_Scrollbar's end-button arrows, Fl_Counter's increment/
- * decrement arrows, and (once ported) Fl_Choice/Fl_Menu_Button/
- * Fl_Spinner/Fl_Tabs's overflow indicators. The early
- * `Fl::is_scheme("oxy")` special case is real too (oxy_arrow()/
- * oxySingleArrow() defined in the "oxy"
- * scheme section below) -- it delegates entirely to a wholly separate
- * arrow-drawing implementation, matching FLTK's own structure
- * exactly, including FLTK's own asymmetry that this port
- * faithfully reproduces rather than "fixes": every other branch here
- * restores `fl_color(old)` on the way out, but FLTK's oxy branch
- * returns immediately after calling `oxy_arrow()` without restoring the
- * saved color at all (`src/fl_draw_arrow.cxx:242-289` -- the oxy
- * special case sits *before* the trailing `fl_color(saved_color)`, and
- * is the only path that `return`s early enough to skip it). Flagged as
- * an `FLTK_ISSUES_n.md` candidate rather than silently corrected.
+ * behind the arrows of Scrollbar, Counter, Choice, MenuButton, Spinner
+ * and Tabs. Under the "oxy" scheme the arrow is drawn by `oxyArrow()`
+ * instead. The current color is restored afterwards.
  */
 void drawArrow(Rect bb, ArrowType t, Orientation o, Color color)
 {
@@ -3735,6 +3730,7 @@ void drawArrow(Rect bb, ArrowType t, Orientation o, Color color)
     if (fl.core.isScheme("oxy"))
     {
         oxyArrow(bb, t, o, color);
+        fl_color(old);
         return;
     }
 
@@ -3969,7 +3965,7 @@ void fl_yxline(int x, int y, int y1)
             // tab's second sub-test does -- would only get a fraction
             // of the requested width, at any scale).
             sw = explicitWideLineWidthPx_;
-            sx = scaledFloor(x) - sw / 2;
+            sx = scaledFloor(x) + cast(int) currentScale() / 2 - sw / 2; // centered on the unit's pixels
         }
         else
         {
@@ -4037,10 +4033,7 @@ void fl_yxline(int x, int y, int y1, int x2, int y3)
 /// integer one (200%). Matches FLTK's own real fix for this
 /// (`Fl_Scalable_Graphics_Driver::xyline()`'s pen-width-widening
 /// dance) in spirit, not the letter -- a filled rectangle achieves the
-/// same "proportional thickness" result without needing this port's
-/// deliberately-not-tracked persistent GC line-width state (see this
-/// module's own "General line style" section comment for why that
-/// state was mostly dropped).
+/// same "proportional thickness" result without changing the pen.
 ///
 /// That "1 logical unit, scale-aware" formula is only
 /// the *default*-pen case -- it must not
@@ -4051,8 +4044,9 @@ void fl_yxline(int x, int y, int y1, int x2, int y3)
 /// 3 units thick, hiding a red rectangle laid out to match) would get a
 /// 1-unit-wide one instead, covering only a third of the red rectangle
 /// underneath it, at every scale.
-/// `explicitWideLineWidthPx_` (see its own doc comment) handles this --
-/// still no *general* line-width state, just this one narrow value.
+/// `explicitWideLineWidthPx_` (see its own doc comment) handles this;
+/// such a line is centered on the device pixels of its logical row, as
+/// in FLTK's `xyline()`.
 void fl_xyline(int x, int y, int x1)
 {
     if (currentDriver !is null)
@@ -4077,7 +4071,7 @@ void fl_xyline(int x, int y, int x1)
             // -- `test/unittest_fast_shapes`' "4" tab's second sub-test
             // is this function's own repro).
             sh = explicitWideLineWidthPx_;
-            sy = scaledFloor(y) - sh / 2;
+            sy = scaledFloor(y) + cast(int) currentScale() / 2 - sh / 2; // centered on the unit's pixels
         }
         else
         {
@@ -4445,8 +4439,7 @@ private struct SymbolSplit
 
 /**
  * Detects and strips a leading and/or trailing `@`-symbol reference
- * from `str`, matching FLTK's own detection rules (fl_draw()/
- * fl_measure(), `src/fl_draw.cxx`): a leading symbol is `@word`
+ * from `str`, for both drawing and measuring: a leading symbol is `@word`
  * (word = up to the first whitespace or end of string) at the very
  * start, not `@@`; a trailing symbol is the *last* `@` found in
  * whatever remains after the leading symbol is stripped, provided it's
@@ -4481,50 +4474,6 @@ private SymbolSplit detectSymbols(const(char)[] str)
     {
         result.trailSymbol = rest[lastAt .. $];
         rest = rest[0 .. lastAt];
-    }
-
-    result.text = rest;
-    return result;
-}
-
-/**
- * Same leading-symbol detection as detectSymbols(), but a genuinely
- * *different* trailing-symbol rule -- matching FLTK's own
- * `fl_measure()` (not `fl_draw()`'s), which uses the *first* `@` found
- * (via `strchr()`) rather than the last, with a weaker guard (only
- * "not immediately followed by another `@`", no minimum-index check).
- * See fl_measure()'s own call site for why this isn't unified with
- * detectSymbols() despite the near-identical shape.
- */
-private SymbolSplit detectSymbolsForMeasure(const(char)[] str)
-{
-    SymbolSplit result;
-    result.text = str;
-    if (str.length == 0) return result;
-
-    const(char)[] rest = str;
-    const(char)[] sym2 = (rest.length >= 2 && rest[0] == '@' && rest[1] == '@')
-        ? rest[2 .. $] : rest;
-
-    if (rest.length >= 2 && rest[0] == '@' && rest[1] != '@')
-    {
-        size_t i = 0;
-        while (i < rest.length && rest[i] != ' ' && rest[i] != '\t' && rest[i] != '\n') i++;
-        result.leadSymbol = rest[0 .. i];
-        if (i < rest.length && (rest[i] == ' ' || rest[i] == '\t' || rest[i] == '\n')) i++;
-        rest = rest[i .. $];
-        sym2 = rest;
-    }
-
-    foreach (i, c; sym2)
-    {
-        if (c == '@' && (i + 1 >= sym2.length || sym2[i + 1] != '@'))
-        {
-            size_t off = (sym2.ptr - rest.ptr) + i;
-            result.trailSymbol = rest[off .. $];
-            rest = rest[0 .. off];
-            break;
-        }
     }
 
     result.text = rest;
@@ -4795,6 +4744,12 @@ version (linux)
      * Ported from `Fl_Xlib_Graphics_Driver::set_fonts()` -- a real
      * Fontconfig enumeration (`fl.fontconfig`'s bindings), not a stub.
      *
+     * When Pango draws the text (on Wayland, and on X11 with the Cairo
+     * graphics setting), the list is every face in Pango's font map
+     * instead, each under its own name
+     * (`fl.cairo_graphics_driver.pangoFontNames()`), as in
+     * `Fl_Cairo_Graphics_Driver::set_fonts()`.
+     *
      * `pattern` is accepted for API fidelity but, matching FLTK's
      * own doc comment on this exact function ("for now I'm ignoring
      * the pattern_name and just getting everything... Blimey! What a
@@ -4823,6 +4778,24 @@ version (linux)
         import core.stdc.stdlib : free;
 
         if (nextFreeFont_ > freeFont) return nextFreeFont_; // already been here, matches FLTK's guard
+
+        version (FLDTK_HAVE_CAIRO)
+        {
+            // Text is drawn by Pango: list the faces Pango knows.
+            import fl.cairo_graphics_driver : pangoFontNames;
+            import fl.platform : backend, Backend;
+            import std.uni : toLower, sicmp;
+            if (cairoDisplay_ !is null || backend() == Backend.wayland
+                || startupSetting("FLDTK_GRAPHICS", "Graphics").toLower == "cairo")
+            {
+                auto pangoNames = pangoFontNames();
+                pangoNames.sort!((a, b) => sicmp(a[1 .. $], b[1 .. $]) < 0
+                    || (sicmp(a[1 .. $], b[1 .. $]) == 0 && a[0] < b[0]));
+                foreach (name; pangoNames)
+                    setFont(nextFreeFont_++, name);
+                return nextFreeFont_;
+            }
+        }
 
         if (!FcInit()) return freeFont;
 
@@ -6053,13 +6026,37 @@ else
             return fontSizesCollected_.length < 128 ? 1 : 0;
         }
 
+        /// The face and size of the last `fl_font()` call, read back by
+        /// the `fl_font()`/`fl_size()` getters.
+        private Font currentFontFace_ = 0;
+        private Fontsize currentFontSize_ = 14;
+
+        /// The GDI driver that selects fonts and measures text: the
+        /// current driver when it is one, else the display's. A driver
+        /// that writes a file (`fl.svg_file_surface`, `fl.postscript`)
+        /// has no fonts of its own, so text drawn into it is measured
+        /// with the screen's fonts, as on Linux.
+        private GdiGraphicsDriver fontDriver()
+        {
+            import fl.platform_win32 : plainGraphicsDriver;
+
+            if (auto gdi = cast(GdiGraphicsDriver) currentDriver) return gdi;
+            // The first plainGraphicsDriver() call makes the display
+            // driver current; a file surface already in use stays current.
+            auto surface = currentDriver;
+            auto gdi = plainGraphicsDriver();
+            if (surface !is null) currentDriver = surface;
+            return gdi;
+        }
+
         /// Ported from `Fl_GDI_Graphics_Driver::font_unscaled()`, via
         /// `fl.gdi_graphics_driver.GdiGraphicsDriver.selectFont()` (see
         /// that method's own doc comment).
         void fl_font(Font face, Fontsize size)
         {
-            if (auto gdi = cast(GdiGraphicsDriver) currentDriver)
-                gdi.selectFont(face, size);
+            currentFontFace_ = face;
+            currentFontSize_ = size;
+            fontDriver().selectFont(face, size);
         }
 
         /// Height (in pixels) of a line of text in (face, size) --
@@ -6067,23 +6064,20 @@ else
         /// `fl_font()`, via `GdiGraphicsDriver.heightFor()`.
         int height(Font face, Fontsize size)
         {
-            auto gdi = cast(GdiGraphicsDriver) currentDriver;
-            return gdi !is null ? gdi.heightFor(face, size) : size + 4;
+            return fontDriver().heightFor(face, size);
         }
 
         /// ditto, for the current fl_font().
         int height()
         {
-            auto gdi = cast(GdiGraphicsDriver) currentDriver;
-            return gdi !is null ? gdi.fontHeight() : height(0, 14);
+            return fontDriver().fontHeight();
         }
 
         /// Descent (in pixels, below the baseline) of the current
         /// fl_font().
         int descent()
         {
-            auto gdi = cast(GdiGraphicsDriver) currentDriver;
-            return gdi !is null ? gdi.fontDescent() : 4;
+            return fontDriver().fontDescent();
         }
 
         /// Width (in pixels) of nChars characters of str in the current
@@ -6092,8 +6086,7 @@ else
         /// codepoint width cache -- see that method's own doc comment).
         double width(const(char)[] str, int nChars)
         {
-            auto gdi = cast(GdiGraphicsDriver) currentDriver;
-            return gdi !is null ? gdi.textWidth(str, nChars) : nChars * 6.0;
+            return fontDriver().textWidth(str, nChars);
         }
 
         /// Returns the tight, glyph-ink bounding box (dx, dy, w, h) of
@@ -6105,17 +6098,7 @@ else
         /// own doc comment).
         void textExtents(const(char)[] str, int nChars, out int dx, out int dy, out int w, out int h)
         {
-            auto gdi = cast(GdiGraphicsDriver) currentDriver;
-            if (gdi !is null)
-            {
-                gdi.textExtents(str, nChars, dx, dy, w, h);
-                return;
-            }
-            int lineHeight = height();
-            w = cast(int) width(str, nChars);
-            h = lineHeight;
-            dx = 0;
-            dy = descent() - lineHeight;
+            fontDriver().textExtents(str, nChars, dx, dy, w, h);
         }
 
         /**
@@ -6275,6 +6258,7 @@ void fl_draw(const(char)[] str, int nChars, int x, int y)
 Font fl_font()
 {
     version (linux) return currentFontFace_;
+    else version (Windows) return currentFontFace_;
     else return 0;
 }
 
@@ -6283,6 +6267,7 @@ Font fl_font()
 Fontsize fl_size()
 {
     version (linux) return currentFontSize_;
+    else version (Windows) return currentFontSize_;
     else return 14;
 }
 
@@ -6311,17 +6296,8 @@ void fl_measure(const(char)[] str, ref int w, out int h, bool drawSymbols = true
 
     int lineHeight = height();
 
-    // Leading/trailing '@'-symbol detection -- **not** detectSymbols()
-    // (fl_draw()'s version): FLTK's own fl_measure() (src/
-    // fl_draw.cxx) uses a genuinely different, inconsistent rule for
-    // the trailing symbol (first '@' via strchr(), weaker guard) than
-    // fl_draw() does (last '@' via strrchr(), extra `p > str+1`/
-    // `p[-1]!='@'` guards) -- a real FLTK discrepancy (the two
-    // could disagree on a label containing more than one '@'), found
-    // while porting and logged in FLTK_ISSUES_n.md rather than
-    // silently unified; ported faithfully as two distinct functions,
-    // matching each one's own real behavior.
-    auto detected = drawSymbols ? detectSymbolsForMeasure(str) : SymbolSplit(str);
+    // The same symbol rules as drawing, so a label is measured as drawn.
+    auto detected = drawSymbols ? detectSymbols(str) : SymbolSplit(str);
     const(char)[] textOnly = drawSymbols ? unescapeAtSymbols(detected.text) : detected.text;
 
     int symwidth0 = detected.leadSymbol.length ? lineHeight : 0;
@@ -6581,30 +6557,16 @@ void fl_rect(int x, int y, int w, int h, Color c)
 // General line style (src/drivers/Xlib/Fl_Xlib_Graphics_Driver_line_style.cxx)
 // ---------------------------------------------------------------------
 //
-// Real -- arbitrary dash pattern/width/
-// line-cap/line-join for lineSolid/lineDash/lineDot/lineDashDot/
-// lineDashDotDot, replacing focusRect()'s former hand-inlined
-// XSetLineAttributes()/XSetDashes() calls (see that function's own doc
-// comment below for the rewire). DELIBERATE SIMPLIFICATION: no *general*
-// persistent `line_width_` driver
-// state is tracked, unlike FLTK's Fl_Graphics_Driver -- nothing
-// else in this port needs to query "what's the current line width"
-// (focusRect() is the one caller that would care about *restoring*
-// it; see that function's own doc comment for how it works around not
-// having this state). One narrow, single-purpose
-// exception exists -- `explicitWideLineWidthPx_`, set here,
-// consulted only by `fl_xyline()`/`fl_yxline()`'s 3-arg forms (see
-// their own doc comments) so a genuinely wide explicit pen
-// (`lineStyle(lineSolid, N)`, `|N| > 1`) draws at its real requested
-// thickness instead of those two functions' own hardcoded "always
-// exactly 1 logical unit" default-hairline formula (see
-// `test/unittest_fast_shapes`' "4"/"5" tabs' second
-// sub-tests), without adding the general
-// `line_width_` state this comment otherwise still correctly says
-// isn't tracked. Callers are responsible for restoring lineSolid/width
-// 0 themselves when done, exactly as FLTK's own fl_line_style()
-// doc comment already requires ("it is your responsibility to set it
-// back to the default").
+// `lineStyle()` sets the X GC's dash pattern, width, cap and join
+// (`applyPen()`). The width is in FLTK units times the current scale;
+// the default width is a 1-pixel line below 200% and `int(scale)` pixels
+// from 200% up, and the last style is applied again whenever the scale
+// changes (`penScaleChanged()`), so every line primitive grows with the
+// scale. `fl_xyline()`/`fl_yxline()` draw solid lines as filled
+// rectangles instead, one logical unit thick or as thick as an explicit
+// wide pen (`explicitWideLineWidthPx_`). Callers set the style back to
+// lineSolid/width 0 when done, as FLTK's fl_line_style() documentation
+// asks.
 
 /// Dash patterns for the PostScript driver, from `Fl_Graphics_Driver::
 /// dashes_flat`/`dashes_cap`, indexed by the style's low byte (lineSolid,
@@ -6729,7 +6691,18 @@ void lineStyle(int style, int width = 0, const(ubyte)[] dashes = null)
         currentDriver.lineStyle(style, width, dashes);
         return;
     }
-    version (linux)
+    version (linux) applyPen(style, width, dashes);
+}
+
+version (linux)
+{
+    /// Applies a line style to the X GC, the Xlib half of `lineStyle()`.
+    /// The width is in FLTK units and is multiplied by the current
+    /// scale; the default width (0) is a 1-pixel line below 200% and
+    /// `int(scale)` pixels from 200% up, as in FLTK, so every line
+    /// primitive (`fl_line()`, `fl_rect()`, `loop()`, polygon outlines,
+    /// `fl_arc()`) grows with the scale.
+    private void applyPen(int style, int width, const(ubyte)[] dashes)
     {
         if (gc_ is null) return;
         float s = currentScale();
@@ -6752,6 +6725,9 @@ void lineStyle(int style, int width = 0, const(ubyte)[] dashes = null)
             d = dashPatternFor(style, lineWidth);
         penNeedsXDrawLine_ = d.length != 0 || ((style >> 8) & 3) >= 2;
         penCustom_ = style != 0 || width != 0 || dashes.length != 0;
+        penStyleArg_ = style;
+        penWidthArg_ = width;
+        penDashesArg_ = dashes.idup;
 
         static immutable int[4] capTable = [CapButt, CapButt, CapRound, CapProjecting];
         static immutable int[4] joinTable = [JoinMiter, JoinMiter, JoinRound, JoinBevel];
@@ -6760,6 +6736,18 @@ void lineStyle(int style, int width = 0, const(ubyte)[] dashes = null)
             capTable[(style >> 8) & 3], joinTable[(style >> 12) & 3]);
         if (d.length) XSetDashes(display_, gc_, 0, d.ptr, cast(int) d.length);
     }
+
+    /// Called by `fl.core.currentScale()` when the scale changes: the
+    /// pen's width follows the scale, so the last line style is applied
+    /// again (FLTK's `Fl_Xlib_Graphics_Driver::scale()` resets it).
+    package(fl) void penScaleChanged()
+    {
+        applyPen(penStyleArg_, penWidthArg_, penDashesArg_);
+    }
+}
+else
+{
+    package(fl) void penScaleChanged() {}
 }
 
 /**
@@ -7678,10 +7666,7 @@ private void flRshadowBox(int x, int y, int w, int h, Color c)
 }
 
 // ---------------------------------------------------------------------
-// "Gleam" scheme boxtype family (src/fl_gleam.cxx) -- core-roadmap
-// item 11, Phase B, first scheme ported (smallest of the four, no
-// fl.image/Fl_Tiled_Image dependency, per that item's own recommended
-// order). A 2-pixel-bordered, top/bottom-gradient-shaded look ("Clear
+// "Gleam" scheme boxtype family (src/fl_gleam.cxx). A 2-pixel-bordered, top/bottom-gradient-shaded look ("Clear
 // looks Glossy"); every boxtype here shares the same dx/dy/dw/dh (2,2,
 // 4,4) -- no "thin" distinction, matching FLTK's own doc comment
 // in fl_gleam.cxx and the boxtype table's rows for these.
@@ -7695,15 +7680,9 @@ private void flRshadowBox(int x, int y, int w, int h, Color c)
 // module note above flOvalFlatBox() for the full reasoning, which
 // applies here unchanged).
 //
-// FLTK_ISSUES_n.md entry: the
-// "round" gleam boxtypes (gleamRoundUpBox/gleamRoundDownBox) are wired
-// in FLTK's own fl_box_table to the exact same fl_gleam_up_box/
-// fl_gleam_down_box functions as the plain (non-round) gleam boxtypes
-// -- there is no fl_gleam_round_up_box/fl_gleam_round_down_box at all
-// in fl_gleam.cxx. So a RoundButton/RadioButton drawn with an active
-// "gleam" scheme gets a square gleam box for its background, not a
-// round one -- ported faithfully as-is (this is what real FLTK does
-// too), not treated as something to fix here.
+// gleamRoundUpBox/gleamRoundDownBox (flGleamRoundUpBox()/
+// flGleamRoundDownBox(), below) draw the same border and shading on a
+// circle, or a pill shape when w != h.
 
 private void gleamColor(Color c)
 {
@@ -7835,9 +7814,84 @@ private void flGleamThinDownBox(int x, int y, int w, int h, Color c)
     gleamFrameRectDown(x, y, w, h, c, colorAverage(c, black, .45f), .35f, .85f);
 }
 
+/**
+ * Fills the pill shape (a circle when w == h) inside (x,y,w,h), inset
+ * by `inset` pixels on every side, one row at a time; `rowColor(i, n)`
+ * gives the color of row i of n.
+ */
+private void gleamRoundRows(int x, int y, int w, int h, int inset,
+    scope Color delegate(int i, int n) rowColor)
+{
+    import std.math : ceil, floor, sqrt;
+
+    x += inset;
+    y += inset;
+    w -= 2 * inset;
+    h -= 2 * inset;
+    if (w <= 0 || h <= 0) return;
+
+    double r = (w < h ? w : h) / 2.0;
+    double cx0 = x + r, cx1 = x + w - r; // centers of the end caps
+    double cy0 = y + r, cy1 = y + h - r;
+    foreach (i; 0 .. h)
+    {
+        double yc = y + i + 0.5;
+        double dy = yc < cy0 ? cy0 - yc : yc > cy1 ? yc - cy1 : 0;
+        if (dy >= r) continue;
+        double half = sqrt(r * r - dy * dy);
+        int xl = cast(int) ceil(cx0 - half - 0.5);
+        int xr = cast(int) floor(cx1 + half - 0.5);
+        if (xr < xl) continue;
+        gleamColor(rowColor(i, h));
+        fl_xyline(xl, y + i, xr);
+    }
+}
+
+/**
+ * The round counterpart of gleamShadeRectTopBottom() plus
+ * gleamFrameRect(): an outer line in fg1, an inner line in lc, and the
+ * top/bottom gradient between fg1 and fg2 inside.
+ */
+private void gleamRoundBox(int x, int y, int w, int h, Color bc, Color fg2, float th,
+    Color fg1, Color lc)
+{
+    gleamRoundRows(x, y, w, h, 0, (i, n) => fg1);
+    gleamRoundRows(x, y, w, h, 1, (i, n) => lc);
+    gleamRoundRows(x, y, w, h, 2, (i, n) {
+        int hTop = (n / 2) < 20 ? (n / 2) : 20;
+        int hBottom = (n / 6) < 15 ? (n / 6) : 15;
+        Color shade = colorAverage(bc, fg2, th);
+        if (i < hTop)
+        {
+            float k = 1 - i * (hTop > 1 ? 0.999f / hTop : 1);
+            return colorAverage(shade, bc, k);
+        }
+        if (i >= n - hBottom)
+        {
+            int j = i - (n - hBottom);
+            float k = 1 - j * (hBottom > 1 ? 0.999f / hBottom : 1);
+            return colorAverage(bc, shade, k);
+        }
+        return bc;
+    });
+}
+
+/// Round gleam up box, with flGleamUpBox()'s colors.
+private void flGleamRoundUpBox(int x, int y, int w, int h, Color c)
+{
+    gleamRoundBox(x, y, w, h, c, white, .15f,
+        colorAverage(darker(c), black, .15f), colorAverage(c, white, .05f));
+}
+
+/// Round gleam down box, with flGleamDownBox()'s colors.
+private void flGleamRoundDownBox(int x, int y, int w, int h, Color c)
+{
+    gleamRoundBox(x, y, w, h, c, black, .65f,
+        colorAverage(c, white, .05f), colorAverage(c, black, .05f));
+}
+
 // ---------------------------------------------------------------------
-// "GTK+" scheme boxtype family (src/fl_gtk.cxx) -- core-roadmap item
-// 11, Phase B, second scheme family ported ("a GTK+ look, based on Red
+// "GTK+" scheme boxtype family (src/fl_gtk.cxx) ("a GTK+ look, based on Red
 // Hat's Bluecurve theme", FLTK's own header comment). An octagonal
 // (corner-clipped-rectangle) outline drawn via the transform-stack
 // `beginLoop()`/`vertex()`/`endLoop()` path, plus a solid
@@ -9108,8 +9162,8 @@ private immutable BoxDefault[] boxDefaults = [
     BoxDefault(&flGleamDownFrame,    2,  2,  4,  4,  3),               // gleamDownFrame
     BoxDefault(&flGleamThinUpBox,    2,  2,  4,  4,  1),               // gleamThinUpBox
     BoxDefault(&flGleamThinDownBox,  2,  2,  4,  4,  1),               // gleamThinDownBox
-    BoxDefault(&flGleamUpBox,        2,  2,  4,  4,  1),               // gleamRoundUpBox (no round variant in FLTK)
-    BoxDefault(&flGleamDownBox,      2,  2,  4,  4,  1),               // gleamRoundDownBox
+    BoxDefault(&flGleamRoundUpBox,   2,  2,  4,  4,  1, &flRoundFocus),   // gleamRoundUpBox
+    BoxDefault(&flGleamRoundDownBox, 2,  2,  4,  4,  1, &flRoundFocus),   // gleamRoundDownBox
     BoxDefault(&flOxyUpBox,          2,  2,  4,  4,  1),               // oxyUpBox
     BoxDefault(&flOxyDownBox,        2,  2,  4,  4,  1),               // oxyDownBox
     BoxDefault(&flOxyUpFrame,        2,  2,  4,  4,  3),               // oxyUpFrame
@@ -9875,7 +9929,7 @@ version (linux)
      * does -- at `currentScale() == 1`
      * this is a no-op (`sw == w && sh == h`), so the resample path never
      * runs. Otherwise `buf` is resampled to the scaled size first (see
-     * `resampleImageNearest()`), and the *scaled* buffer/geometry is
+     * `resampleImage()`), and the *scaled* buffer/geometry is
      * what `alphaBlendImage()`/`putPackedImage()` below actually see --
      * neither of those two needed any scale-awareness of their own as a
      * result.
@@ -9900,7 +9954,7 @@ version (linux)
         ubyte[] resampled;
         if (sw != w || sh != h)
         {
-            resampled = resampleImageNearest(buf, w, h, d, l, sw, sh);
+            resampled = resampleImage(buf, w, h, d, l, sw, sh);
             drawBuf = resampled.ptr;
             drawW = sw;
             drawH = sh;
@@ -10146,7 +10200,7 @@ version (linux)
      * treated as a luminance sample (`src[0]`, ignoring the rest of a
      * wider-than-1-byte pixel) regardless of `d`, matching FLTK's
      * own distinct `draw_image_mono()` driver entry point. Scaled via
-     * `resampleImageNearest()`/`scaledFloor()`, same as `drawImage()`
+     * `resampleImage()`/`scaledFloor()`, same as `drawImage()`
      * above -- a no-op at `currentScale() == 1`.
      */
     void drawImageMono(const(ubyte)* buf, int x, int y, int w, int h, int d = 1, int l = 0)
@@ -10167,7 +10221,7 @@ version (linux)
         immutable int ad = d < 0 ? -d : d; // see drawImage()'s doc comment
         if (sw != w || sh != h)
         {
-            auto resampled = resampleImageNearest(buf, w, h, d, l, sw, sh);
+            auto resampled = resampleImage(buf, w, h, d, l, sw, sh);
             putPackedImage(packImageBuffer(resampled.ptr, sw, sh, ad, sw * ad, true), sx, sy, sw, sh);
             return;
         }
@@ -10197,7 +10251,7 @@ version (linux)
     /// an optimization this port skips, matching its own established
     /// "simplicity over micro-optimization" precedent elsewhere in this
     /// module (e.g. no offscreen-Pixmap image cache either). Scaled the
-    /// same `scaledFloor()`/`resampleImageNearest()` way `drawImage()`/
+    /// same `scaledFloor()`/`resampleImage()` way `drawImage()`/
     /// `drawImageMono()` (raw-buffer forms) are -- a no-op at
     /// `currentScale() == 1`.
     private void drawImageViaCallback(DrawImageCb cb, int x, int y, int w, int h, int d, bool mono)
@@ -10225,7 +10279,7 @@ version (linux)
 
         if (sw != w || sh != h)
         {
-            auto resampled = resampleImageNearest(raw.ptr, w, h, d, w * d, sw, sh);
+            auto resampled = resampleImage(raw.ptr, w, h, d, w * d, sw, sh);
             putPackedImage(packImageBuffer(resampled.ptr, sw, sh, d, sw * d, mono), sx, sy, sw, sh);
             return;
         }
@@ -11190,28 +11244,49 @@ else
 }
 
 /**
- * Nearest-neighbor-resamples `w`x`h` pixels of `d`-byte-stride `l` (0
- * means `w*|d|`) into a freshly-allocated, tightly-packed (stride
- * `sw*|d|`)
- * `sw`x`sh` buffer. A *negative* `d` means the horizontally-flipped
- * source layout `fl_draw_image()` documents (`buf` points at the first
- * byte of the *last* pixel of its first row, and the pixel pointer
- * steps left; the `|d|` bytes of each pixel are still read forward) --
- * the flip is baked into the returned buffer, which is always in
- * normal left-to-right order with a positive `|d|` stride, so callers
- * must use `|d|`, not `d`, for everything downstream of this call.
- * A negative `l` (the vertical-flip form) needs no equivalent handling
- * -- row arithmetic is already signed. This port's deliberate
- * nearest-neighbor approximation for image scaling -- FLTK's `Fl_Scalable_
- * Graphics_Driver::draw_image_rescale()` does the same job but isn't ported
- * verbatim (its own resampling kernel is tied up with FLTK's
- * `Fl_Draw_Image_Cb` row-at-a-time iteration, which this port's
- * raw-buffer entry points don't need). Only ever called when
- * `(sw,sh) != (w,h)`; callers guard `sw > 0 && sh > 0`. Pulled to
- * module scope (not nested in the `version(linux)` block its callers
- * live in) purely so it gets real headless `unittest` coverage despite
- * being used only from X-drawing code -- same reasoning `blendOverRgb()`
- * right below is split out for.
+ * Resamples a `w` x `h` image buffer (`d` bytes per pixel, `l` bytes per
+ * row, the `fl_draw_image()` conventions: a negative `d` flips it
+ * horizontally, a negative `l` vertically, 0 means `w * |d|`) to
+ * `sw` x `sh` pixels, with the algorithm `Image.scalingAlgorithm()` names:
+ * bilinear by default, through `RGBImage.copy()`, as FLTK's
+ * `Fl_Scalable_Graphics_Driver::draw_image_rescale()` does, or nearest
+ * neighbor (`resampleImageNearest()`). The result is in normal order,
+ * `|d|` bytes per pixel, `sw * |d|` bytes per row.
+ */
+ubyte[] resampleImage(const(ubyte)* buf, int w, int h, int d, int l, int sw, int sh)
+{
+    import fl.image : RGBImage;
+
+    if (Image.scalingAlgorithm() != Image.RGBScaling.bilinear)
+        return resampleImageNearest(buf, w, h, d, l, sw, sh);
+    immutable int ad = d < 0 ? -d : d;
+    auto copied = resampleImageNearest(buf, w, h, d, l, w, h); // normal order, tightly packed
+    auto keep = Image.rgbScaling();
+    Image.rgbScaling(Image.RGBScaling.bilinear);
+    scope (exit) Image.rgbScaling(keep);
+    auto scaled = new RGBImage(copied, w, h, ad).copy(sw, sh);
+    return scaled !is null ? cast(ubyte[]) scaled.array : resampleImageNearest(buf, w, h, d, l, sw, sh);
+}
+
+unittest
+{
+    // Bilinear (the default) blends: a black and a white pixel stretched
+    // to four come out as a ramp; nearest keeps two solid pairs.
+    ubyte[] src = [0, 255];
+    auto smooth = resampleImage(src.ptr, 2, 1, 1, 0, 4, 1);
+    assert(smooth.length == 4 && smooth[0] == 0 && smooth[3] == 255);
+    assert(smooth[1] > 0 && smooth[1] < 255 && smooth[2] > smooth[1]);
+
+    auto keep = Image.scalingAlgorithm();
+    Image.scalingAlgorithm(Image.RGBScaling.nearest);
+    scope (exit) Image.scalingAlgorithm(keep);
+    assert(resampleImage(src.ptr, 2, 1, 1, 0, 4, 1) == [0, 0, 255, 255]);
+}
+
+/**
+ * Nearest-neighbor resampling of an `fl_draw_image()`-style buffer (see
+ * `resampleImage()` for the conventions); the result is in normal
+ * order, `|d|` bytes per pixel.
  */
 ubyte[] resampleImageNearest(const(ubyte)* buf, int w, int h, int d, int l, int sw, int sh)
 {

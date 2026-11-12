@@ -22,6 +22,8 @@
  */
 module fluid.code_highlight;
 
+import std.array : appender;
+
 import fl;
 
 /// Style letters, in `styleTable()` order.
@@ -411,6 +413,55 @@ void styleParse(const(char)[] text, char[] style)
             style[i++] = stylePlain;
         }
     }
+}
+
+/// `code` with every use of the identifier `from` as code renamed to `to`.
+/// A `from` inside a string, a character literal or a comment stays as it
+/// is (found with `styleParse()`), and so does a member access (`x.from`),
+/// which names something else. Used for the widget's own name in `setup`
+/// and `finalize` code, which the `.fl` file writes as `o`.
+string renameIdentifier(string code, string from, string to)
+{
+    auto style = new char[code.length];
+    styleParse(code, style);
+    auto result = appender!string();
+    size_t i = 0, copied = 0;
+    immutable n = code.length;
+    while (i < n)
+    {
+        if (!isIdentStart(code[i]) || (i > 0 && isIdentChar(code[i - 1])))
+        {
+            i++;
+            continue;
+        }
+        size_t e = i + 1;
+        while (e < n && isIdentChar(code[e])) e++;
+        char s = style[i];
+        bool inText = s == styleComment || s == styleDocSection || s == styleString
+            || s == styleEscape;
+        bool member = i > 0 && code[i - 1] == '.' && !(i > 1 && code[i - 2] == '.');
+        if (code[i .. e] == from && !inText && !member)
+        {
+            result ~= code[copied .. i];
+            result ~= to;
+            copied = e;
+        }
+        i = e;
+    }
+    result ~= code[copied .. $];
+    return result[];
+}
+
+unittest
+{
+    assert(renameIdentifier("o.label(\"o\"); // o\nfoo(o, x.o);", "o", "btn")
+        == "btn.label(\"o\"); // o\nfoo(btn, x.o);");
+    assert(renameIdentifier("o.tooltip(`press o`); auto c = 'o'; /* o */ /+ o +/", "o", "b")
+        == "b.tooltip(`press o`); auto c = 'o'; /* o */ /+ o +/");
+    assert(renameIdentifier("a[0..o] ~ oo ~ o2 ~ _o", "o", "b") == "a[0..b] ~ oo ~ o2 ~ _o");
+    assert(renameIdentifier("btn.label(\"btn\"); btnX = btn;", "btn", "o")
+        == "o.label(\"btn\"); btnX = o;");
+    assert(renameIdentifier("this.redraw(); foo(this);", "this", "o") == "o.redraw(); foo(o);");
 }
 
 /// Inside a documentation comment `text[from .. to]`, restyles the section

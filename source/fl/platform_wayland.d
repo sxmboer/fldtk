@@ -1507,14 +1507,25 @@ private bool isPopupWindow(FlWindow win)
 
 /**
  * The shown window a new popup is placed against: for a menu level, the
- * menu level shown last (a cascade); otherwise the program window under
- * the pointer, or the most recently used one.
+ * menu level shown last (a cascade); otherwise the program window the
+ * pointer is in (as the compositor reports it, so this holds for a
+ * window that keeps `belowmouse()` unset, such as Fluid's design
+ * canvas), then the one holding `belowmouse()`, then the most recently
+ * used one.
  */
 private WldWindow popupParentFor(FlWindow win)
 {
     if (win.menuWindow())
         foreach (w; windows_)
             if (w.kind == Kind.popup && w.widget.menuWindow() && w.xdgSurface !is null) return w;
+    if (pointerFocus_ !is null)
+    {
+        auto pw = frameOwner(pointerFocus_);
+        if (pw is null) pw = windowOfSurface(pointerFocus_);
+        if (pw !is null)
+            if (auto w = find(pw.widget.topWindow()))
+                if (isToplevel(w)) return w;
+    }
     if (auto b = belowmouse())
         if (auto top = b.topWindow())
             if (auto w = find(top))
@@ -1877,6 +1888,12 @@ package(fl) void sizeRangeChanged(FlWindow win)
         w.frameState.resizable = resizable;
         redrawFrame(w);
     }
+}
+
+/// The compositor places windows itself, so `Window.hotspot()` has no
+/// frame to keep on screen.
+package(fl) void decorationSizes(FlWindow win, out int top, out int left, out int right, out int bottom)
+{
 }
 
 /// Window decorations belong to the compositor or are drawn by fldtk on
@@ -2528,6 +2545,7 @@ private void flushWindow(WldWindow w)
         // only; makeCurrent(), after it, multiplies in the compositor's.
         FlWindow.setCurrentForDraw(win);
         makeCurrent(win);
+        version (FLDTK_HAVE_CAIRO) { import fl.cairo : cairoAutolinkWindow; cairoAutolinkWindow(win); }
         if (subClipped) fldraw.pushClip(w.subClipX, w.subClipY, w.subClipW, w.subClipH);
         // gl_start() drawing is redone whole at each repaint
         bool clipped = w.hasDamageRegion && w.glStart is null;
@@ -3955,11 +3973,13 @@ private enum plainTextMime = "text/plain;charset=utf-8";
 private enum localDragMime = "application/x-fldtk-local-drag";
 
 /// The best MIME type an offer has for text and for an image, by FLTK's
-/// priorities (`clipboard_mimetypes_map`).
+/// priorities (`clipboard_mimetypes_map`), and whether it has a
+/// `text/uri-list` (a file list, which a drop prefers over other text).
 private struct OfferTypes
 {
     string text, image;
     int textPrio, imagePrio;
+    bool uriList;
 }
 private OfferTypes[void*] offerTypes_;
 
@@ -3972,6 +3992,7 @@ private void noteOfferType(void* offer, string mime)
     if (t is null) { offerTypes_[offer] = OfferTypes.init; t = offer in offerTypes_; }
     if (textPrio > t.textPrio) { t.textPrio = textPrio; t.text = mime; }
     if (imagePrio > t.imagePrio) { t.imagePrio = imagePrio; t.image = mime; }
+    if (mime == "text/uri-list") t.uriList = true;
 }
 
 /// Creates the data devices once the seat and the managers are known.
@@ -4023,21 +4044,7 @@ private string readOfferText(wl_data_offer* offer, string mime)
     auto data = readOffer((int fd) { wl_data_offer_receive(offer, mime.toStringz, fd); });
     string text = cast(string) data.idup;
     if (mime == "text/uri-list")
-    {
-        import std.uri : decodeComponent;
-        import std.string : lineSplitter, startsWith;
-        import std.array : join;
-        string[] lines;
-        foreach (line; text.lineSplitter)
-        {
-            string l = line.idup;
-            if (l.startsWith("file://")) l = l[7 .. $];
-            try l = decodeComponent(l);
-            catch (Exception) { }
-            if (l.length) lines ~= l;
-        }
-        text = lines.join("\n");
-    }
+        text = uriListToPaths(text);
     return text;
 }
 
@@ -4062,25 +4069,26 @@ package(fl) void requestSelection(int clipboard)
 /// clipboard.
 package(fl) void requestSelectionImage(int clipboard)
 {
-    import fl.bmp_image : BMPImage;
-    import fl.png_image : PngImage;
     auto t = clipboard == 1 && selectionOffer_ !is null ? cast(void*) selectionOffer_ in offerTypes_ : null;
     if (t is null || t.image is null) { deliverPasteImage(null); return; }
-    string mime = t.image;
-    auto offer = selectionOffer_;
+    deliverPasteImage(readOfferImage(selectionOffer_, t.image));
+}
+
+/// The picture `offer` has as `mime` (`image/png` or `image/bmp`),
+/// decoded; `null` if it doesn't decode. Used for the clipboard and for
+/// drops.
+private Object readOfferImage(wl_data_offer* offer, string mime)
+{
+    import fl.bmp_image : BMPImage;
+    import fl.png_image : PngImage;
     auto data = readOffer((int fd) { wl_data_offer_receive(offer, mime.toStringz, fd); }).idup;
-    Object img;
     if (mime == "image/png")
     {
         auto png = new PngImage("clipboard", data);
-        if (!png.fail()) img = png;
+        return png.fail() ? null : png;
     }
-    else
-    {
-        auto bmp = new BMPImage("clipboard", data);
-        if (!bmp.fail()) img = bmp;
-    }
-    deliverPasteImage(img);
+    auto bmp = new BMPImage("clipboard", data);
+    return bmp.fail() ? null : bmp;
 }
 
 /// Ported from `Fl_Wayland_Screen_Driver::clipboard_contains()`.
@@ -4371,9 +4379,22 @@ extern (C) private void dataDeviceMotion(void* data, wl_data_device* device, uin
         ? WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY : WL_DATA_DEVICE_MANAGER_DND_ACTION_NONE;
     wl_data_offer_set_actions(dragOffer_, actions, actions);
     // A type the offer has: our own local-only drag has only localDragMime.
-    auto mime = doingDnd_ && dndLocalOnly_ ? localDragMime.ptr : "text/plain".ptr;
-    wl_data_offer_accept(dragOffer_, dndSerial_, ret ? mime : null);
+    auto mime = doingDnd_ && dndLocalOnly_ ? localDragMime : dropMime(dragOffer_);
+    wl_data_offer_accept(dragOffer_, dndSerial_, ret ? mime.toStringz : null);
     });
+}
+
+/// The type a drop takes from `offer`: a picture if it has one, ahead of
+/// any text it also has (a browser offers the image's address as text
+/// too), else a file list as paths (see `fl.core.uriListToPaths()`), else
+/// its text.
+private string dropMime(wl_data_offer* offer)
+{
+    auto t = cast(void*) offer in offerTypes_;
+    if (t is null) return "text/plain";
+    if (t.image !is null) return t.image;
+    if (t.uriList) return "text/uri-list";
+    return t.text !is null ? t.text : "text/plain";
 }
 
 extern (C) private void dataDeviceLeave(void* data, wl_data_device* device) nothrow
@@ -4386,7 +4407,8 @@ extern (C) private void dataDeviceLeave(void* data, wl_data_device* device) noth
 }
 
 /// Ported from `data_device_handle_drop()`: the widget under the drop
-/// gets the text as an `Event.paste`.
+/// gets an `Event.paste` -- an image paste for a picture (see
+/// `dropMime()`), else the text.
 extern (C) private void dataDeviceDrop(void* data, wl_data_device* device) nothrow
 {
     guarded({
@@ -4401,22 +4423,33 @@ extern (C) private void dataDeviceDrop(void* data, wl_data_device* device) nothr
         destroyOffer(offer);
         return;
     }
-    string text;
-    if (doingDnd_)
-        text = clipboardContents(0);
+    auto t = cast(void*) offer in offerTypes_;
+    if (!doingDnd_ && t !is null && t.image !is null)
+    {
+        setPendingPasteReceiver(belowmouse());
+        auto savedEvent = eNumber_;
+        eNumber_ = Event.paste;
+        deliverPasteImage(readOfferImage(offer, t.image));
+        eNumber_ = savedEvent;
+    }
     else
     {
-        auto t = cast(void*) offer in offerTypes_;
-        if (t !is null && t.text !is null) text = readOfferText(offer, t.text);
-    }
-    if (auto b = belowmouse())
-    {
-        auto savedText = eText_, savedEvent = eNumber_;
-        eText_ = text;
-        eNumber_ = Event.paste;
-        b.handle(Event.paste);
-        eText_ = savedText;
-        eNumber_ = savedEvent;
+        string text;
+        if (doingDnd_)
+            text = clipboardContents(0);
+        else if (t !is null && t.text !is null)
+            text = readOfferText(offer, dropMime(offer));
+        if (auto b = belowmouse())
+        {
+            auto savedText = eText_, savedEvent = eNumber_, savedType = eClipboardType_;
+            eText_ = text;
+            eNumber_ = Event.paste;
+            eClipboardType_ = clipboardPlainText;
+            b.handle(Event.paste);
+            eText_ = savedText;
+            eNumber_ = savedEvent;
+            eClipboardType_ = savedType;
+        }
     }
     wl_data_offer_finish(offer);
     destroyOffer(offer);

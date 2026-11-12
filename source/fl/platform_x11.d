@@ -190,6 +190,9 @@ private
     Atom netWmIcon_;
     Atom imageBmpAtom_;
     Atom imagePngAtom_;
+    /// The ICCCM's "INCR": a selection owner sending its data in parts
+    /// (see `readSelectionData()`).
+    Atom incrAtom_;
     Atom timestampAtom_;
     Atom primaryTimestampAtom_;
     Atom clipboardTimestampAtom_;
@@ -345,7 +348,7 @@ private
     /// setEventXY()) since translateState() alone can't recover it.
     EventState xbuttonState_;
 
-    /// Real input-method state (core-roadmap item 9) -- the direct
+    /// Real input-method state -- the direct
     /// equivalents of FLTK's file-scope `Fl_X11_Screen_Driver::
     /// xim_im`/`xim_ic`/`xim_win` (`Fl_x.cxx`). `ximIc_` is recreated
     /// (not just refocused) whenever the focused *window* changes, per
@@ -483,7 +486,7 @@ void openDisplay()
 {
     if (display_ !is null) return;
 
-    // Real input-method support (core-roadmap item 9) needs the
+    // Real input-method support needs the
     // process's locale set from the environment *before* opening the
     // display/input method -- matching FLTK's own
     // `Fl_X11_Screen_Driver::open_display_platform()` doing exactly
@@ -550,6 +553,7 @@ void openDisplay()
     netSupportingWmCheck_ = XInternAtom(display_, "_NET_SUPPORTING_WM_CHECK", False);
     imageBmpAtom_ = XInternAtom(display_, "image/bmp", False);
     imagePngAtom_ = XInternAtom(display_, "image/png", False);
+    incrAtom_ = XInternAtom(display_, "INCR", False);
     timestampAtom_ = XInternAtom(display_, "TIMESTAMP", False);
     primaryTimestampAtom_ = XInternAtom(display_, "PRIMARY_TIMESTAMP", False);
     clipboardTimestampAtom_ = XInternAtom(display_, "CLIPBOARD_TIMESTAMP", False);
@@ -625,6 +629,9 @@ void openDisplay()
     // later become.
     messageWindow_ = XCreateWindow(display_, XRootWindow(display_, screen_),
         0, 0, 1, 1, 0, depth_, InputOutput, visual_, 0, null);
+    // Pastes arrive on this window; a large one comes in parts, each
+    // announced by a PropertyNotify (see readSelectionData()).
+    XSelectInput(display_, messageWindow_, PropertyChangeMask);
 
     // One shared GC for every window, matching FLTK
     // (Fl_X11_Screen_Driver::open_display_platform() creates it once
@@ -1515,14 +1522,12 @@ package(fl) bool clipboardContains(string type)
 //    apart from a normal clipboard one and reply with XdndFinished
 //    afterward instead of just delivering FL_PASTE.
 //
-// Deliberately simplified vs. FLTK, matching this port's existing
-// text-only-negotiation precedent (requestSelection()'s/
-// clipboardContains()'s own doc comments): only UTF8_STRING/XA_STRING/
-// text/uri-list are ever offered or accepted -- no COMPOUND_TEXT/
-// text/plain;charset=* variants, and no image-drop support (matching
-// fl.draw's own "no colormap/palette, plain TrueColor" simplifications
-// having nothing to do with this, it's simply not a feature any sample
-// or widget in this port needs yet).
+// What is accepted: a picture (image/png, else image/bmp), delivered as
+// an image paste, ahead of any text the source also offers; otherwise a
+// file list (text/uri-list), delivered as one path per line; otherwise
+// UTF8_STRING/XA_STRING text (findTargetDrop()). Dragging
+// out offers text only. No COMPOUND_TEXT/text/plain;charset=* variants
+// (requestSelection()'s/clipboardContains()'s own doc comments).
 
 /// Returns the max XDND protocol version `window` advertises support
 /// for via its own `XdndAware` property, or `0` if it doesn't have one
@@ -1568,20 +1573,102 @@ private void sendClientMessage(Window window, Atom message,
 /// Picks the best text target from `avail` (a drag source's own
 /// offered-types list, `XdndEnter`'s data or its `XdndTypeList`
 /// property) -- ported from `find_target()`/`find_target_text()`
-/// (`Fl_x.cxx`), simplified to this port's own narrower 3-atom
-/// preference list (see this section's own header comment) rather than
-/// FLTK's fully generic, 8-entry, reusable-for-images-too matcher.
-/// Preference order: `UTF8_STRING`, then `XA_STRING`, then
-/// `text/uri-list` (so a file manager offering only a URI list is still
-/// accepted, delivered as raw `file:///...` text via `Event.paste`).
-/// Returns `0` (`None`) if `avail` offers none of the three.
+/// (`Fl_x.cxx`), simplified to a 2-atom preference list (see this
+/// section's own header comment) rather than FLTK's fully generic,
+/// 8-entry, reusable-for-images-too matcher. Preference order:
+/// `UTF8_STRING`, then `XA_STRING`. Returns `0` (`None`) if `avail`
+/// offers neither.
 private Atom findTargetText(Atom[] avail)
 {
-    Atom[3] prefs = [utf8StringAtom_, XA_STRING, xdndUriList_];
+    Atom[2] prefs = [utf8StringAtom_, XA_STRING];
     foreach (want; prefs)
         foreach (a; avail)
             if (a == want) return want;
     return 0;
+}
+
+/// The type to ask a drag source for: a picture (`image/png`, else
+/// `image/bmp`) if it offers one, ahead of any text it also offers (a
+/// browser offers the image's address as text too), else a file list
+/// (`text/uri-list`, delivered as paths, see `fl.core.uriListToPaths()`),
+/// else `findTargetText()`'s choice. `0` if it offers none of these.
+private Atom findTargetDrop(Atom[] avail)
+{
+    foreach (want; [imagePngAtom_, imageBmpAtom_, xdndUriList_])
+        foreach (a; avail)
+            if (a == want) return want;
+    return findTargetText(avail);
+}
+
+/**
+ * Reads and deletes the data a selection owner put in `property` on
+ * `requestor`, in reply to `XConvertSelection()`. Data too large for one
+ * request comes in parts (the ICCCM's `INCR` protocol): the owner first
+ * sets the property to type `INCR`, then, each time it is deleted, sets
+ * the next part, ending with an empty one. Ported from the reading loop
+ * in FLTK's `case SelectionNotify:` and `getIncrData()` (`Fl_x.cxx`).
+ * While the parts arrive, other events are kept and put back in the
+ * queue afterwards, in their order. Gives up when no part arrives for
+ * 10 seconds. Returns false if there was nothing to read; `type` is the
+ * data's type (for parts, the type of the parts).
+ */
+private bool readSelectionData(Window requestor, Atom property, out ubyte[] bytes, out Atom type)
+{
+    import core.thread : Thread;
+    import core.time : MonoTime, msecs, seconds;
+
+    /// Reads the property whole and deletes it; false if it is unset.
+    bool readOnce(out ubyte[] part, out Atom partType)
+    {
+        Atom actualType;
+        int actualFormat;
+        c_ulong nitems, bytesAfter;
+        void* data;
+        int status = XGetWindowProperty(display_, requestor, property, 0, c_long.max, True,
+            AnyPropertyType, &actualType, &actualFormat, &nitems, &bytesAfter, &data);
+        if (status != Success || actualType == None) return false;
+        scope (exit) if (data !is null) XFree(data);
+        // Xlib returns format-32 items as C longs.
+        size_t itemSize = actualFormat == 32 ? c_long.sizeof : actualFormat / 8;
+        if (data !is null) part = (cast(ubyte*) data)[0 .. nitems * itemSize].dup;
+        partType = actualType;
+        return true;
+    }
+
+    if (!readOnce(bytes, type)) return false;
+    if (type != incrAtom_) return true;
+
+    // The read above deleted the INCR property, which asks for the first part.
+    bytes = null;
+    type = None;
+    XEvent[] others;
+    scope (exit) foreach_reverse (ref e; others) XPutBackEvent(display_, &e);
+    auto deadline = MonoTime.currTime + 10.seconds;
+    for (;;)
+    {
+        if (!XPending(display_))
+        {
+            if (MonoTime.currTime > deadline) break;
+            Thread.sleep(1.msecs);
+            continue;
+        }
+        XEvent ev;
+        XNextEvent(display_, &ev);
+        if (ev.type != PropertyNotify || ev.xproperty.window != requestor
+            || ev.xproperty.atom != property || ev.xproperty.state != PropertyNewValue)
+        {
+            others ~= ev;
+            continue;
+        }
+        ubyte[] part;
+        Atom partType;
+        if (!readOnce(part, partType)) continue;
+        if (part.length == 0) break; // the empty part ends the transfer
+        bytes ~= part;
+        type = partType;
+        deadline = MonoTime.currTime + 10.seconds;
+    }
+    return type != None;
 }
 
 /// Installed as `fl.core.localGrab_` for the duration of a drag-and-drop
@@ -2918,6 +3005,18 @@ void createWindow(FlWindow win, XVisualInfo* visual = null, Colormap colormap = 
 package(fl) void sizeRangeChanged(FlWindow win)
 {
     if (win.shown()) sendSizeHints(win, win.xid());
+}
+
+/// Estimated window-manager frame sizes around a window's contents, for
+/// keeping a newly placed window's frame on screen (`Window.hotspot()`).
+/// Generic values that fit most window managers (KDE's defaults), from
+/// `Fl_X11_Window_Driver::decoration_sizes()`.
+package(fl) void decorationSizes(FlWindow win, out int top, out int left, out int right, out int bottom)
+{
+    top = 20;
+    left = 4;
+    right = 4;
+    bottom = 8;
 }
 
 /**
@@ -4841,7 +4940,7 @@ bool check()
  * *alongside* it, rather than unifying the two, since nothing here
  * needs poll()'s larger-fd-count scalability advantage over select()
  * and unifying would be a bigger, riskier restructuring for no present
- * benefit -- see core-roadmap item 6 for the full reasoning).
+ * benefit).
  *
  * Real `fl.core.addFd()`/`removeFd()` multiplexing: every entry from
  * `fl.core.fdEntries()` gets
@@ -5274,6 +5373,7 @@ package(fl) void flushDamage()
             FlWindow.setCurrentForDraw(rec.widget);
             if (hasContentDamage)
             {
+                version (FLDTK_HAVE_CAIRO) { import fl.cairo : cairoAutolinkWindow; cairoAutolinkWindow(rec.widget); }
                 if (clipped)
                     fldraw.pushClip(clipX, clipY, clipW, clipH);
                 rec.widget.draw();
@@ -5713,7 +5813,7 @@ private void processNextEvent()
                     if (t != None) sourceTypes ~= t;
             }
             dndSourceTypes_ = sourceTypes;
-            dndType_ = findTargetText(sourceTypes);
+            dndType_ = findTargetDrop(sourceTypes);
             if (dndType_ == None && sourceTypes.length) dndType_ = sourceTypes[0];
 
             if (auto rec = find(ev.xclient.window))
@@ -6026,25 +6126,30 @@ private void processNextEvent()
             Window srcWindow = dndSourceWindow_;
             Window toWindow = ev.xselection.requestor;
             Atom property = ev.xselection.property;
-            string text;
-            bool ok;
-            if (property != None)
+            ubyte[] bytes;
+            Atom type;
+            bool ok = property != None && readSelectionData(toWindow, property, bytes, type);
+            if (ev.xselection.target == imagePngAtom_ || ev.xselection.target == imageBmpAtom_)
             {
-                Atom actualType;
-                int actualFormat;
-                c_ulong nitems, bytesAfter;
-                void* data;
-                int status = XGetWindowProperty(display_, ev.xselection.requestor, property,
-                    0, c_long.max, True, AnyPropertyType, &actualType, &actualFormat,
-                    &nitems, &bytesAfter, &data);
-                if (status == Success && data !is null)
+                // A dropped picture arrives as an image paste.
+                Object img;
+                if (ok && type == imagePngAtom_)
                 {
-                    scope(exit) XFree(data);
-                    text = (cast(char*) data)[0 .. nitems].idup;
-                    ok = true;
+                    auto png = new PngImage(null, bytes);
+                    if (!png.fail()) img = png;
                 }
+                else if (ok && type == imageBmpAtom_)
+                {
+                    auto bmp = new BMPImage(null, bytes);
+                    if (!bmp.fail()) img = bmp;
+                }
+                ok = img !is null;
+                fl.core.deliverPasteImage(img);
             }
-            fl.core.deliverPaste(ok ? text : null);
+            else if (ok && ev.xselection.target == xdndUriList_)
+                fl.core.deliverPaste(fl.core.uriListToPaths(cast(string) bytes.idup));
+            else
+                fl.core.deliverPaste(ok ? cast(string) bytes.idup : null);
             sendClientMessage(srcWindow, xdndFinished_, toWindow,
                 ok ? 1 : 0, ok ? dndAction_ : None);
             dndSourceWindow_ = 0;
@@ -6094,23 +6199,16 @@ private void processNextEvent()
                 fl.core.deliverPasteImage(null);
                 break;
             }
+            ubyte[] bytes;
             Atom actualType;
-            int actualFormat;
-            c_ulong nitems, bytesAfter;
-            void* data;
-            int status = XGetWindowProperty(display_, ev.xselection.requestor, property,
-                0, c_long.max, True, AnyPropertyType, &actualType, &actualFormat,
-                &nitems, &bytesAfter, &data);
-            if (status != Success || data is null)
+            if (!readSelectionData(ev.xselection.requestor, property, bytes, actualType))
             {
                 fl.core.deliverPasteImage(null);
                 break;
             }
-            scope(exit) XFree(data);
 
             if (actualType == imageBmpAtom_)
             {
-                auto bytes = (cast(ubyte*) data)[0 .. nitems].idup;
                 auto img = new BMPImage("clipboard", bytes);
                 fl.core.deliverPasteImage(img.fail() ? null : img);
             }
@@ -6119,7 +6217,6 @@ private void processNextEvent()
                 // image/png: a native decoder exists (fl.png_image,
                 // see PORTING.md's FL/Fl_PNG_Image.H row) -- same shape
                 // as the BMP branch just above.
-                auto bytes = (cast(ubyte*) data)[0 .. nitems].idup;
                 auto img = new PngImage("clipboard", bytes);
                 fl.core.deliverPasteImage(img.fail() ? null : img);
             }
@@ -6145,27 +6242,16 @@ private void processNextEvent()
                 break;
             }
 
+            ubyte[] bytes;
             Atom actualType;
-            int actualFormat;
-            c_ulong nitems, bytesAfter;
-            void* data;
-            int status = XGetWindowProperty(display_, ev.xselection.requestor, property,
-                0, c_long.max, True, AnyPropertyType, &actualType, &actualFormat,
-                &nitems, &bytesAfter, &data);
-            if (status != Success || data is null)
-            {
-                fl.core.deliverPaste(null);
-                break;
-            }
-            scope(exit) XFree(data);
-
-            if (actualType != utf8StringAtom_ && actualType != XA_STRING)
+            if (!readSelectionData(ev.xselection.requestor, property, bytes, actualType)
+                || (actualType != utf8StringAtom_ && actualType != XA_STRING))
             {
                 fl.core.deliverPaste(null);
                 break;
             }
 
-            fl.core.deliverPaste((cast(char*) data)[0 .. nitems].idup);
+            fl.core.deliverPaste(cast(string) bytes.idup);
         }
         break;
 

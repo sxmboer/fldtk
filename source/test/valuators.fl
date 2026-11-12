@@ -278,7 +278,6 @@ o.scale(Slider.ScaleType.logScale);}
                 labelsize 8
                 maximum {100}
                 step {0.1}
-                setup {o.callback(valCb("ValueOutput"));}
                 tooltip {Value Output}
               }
           }

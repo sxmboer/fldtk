@@ -255,6 +255,7 @@ bool compileFile(string inPath, string outPath, bool alsoWriteStrings, bool forc
         outPath = defaultCodePath(inPath, reader.codeFileName);
 
     auto writer = new Writer();
+    writer.outputDir = dirName(outPath);
     string code;
     try
         code = writer.generate(roots, dirName(inPath), reader.i18n, forceDubHeader || reader.dubHeader,
@@ -274,7 +275,21 @@ bool compileFile(string inPath, string outPath, bool alsoWriteStrings, bool forc
     foreach (err; writer.dataErrors)
         stderr.writef("FLUID ERROR: %s", err);
 
-    write(outPath, code);
+    // The code file's folder (a dub project's `source/`) is made when
+    // missing.
+    try
+    {
+        import std.file : mkdirRecurse;
+        import std.path : dirName;
+
+        mkdirRecurse(dirName(outPath));
+        write(outPath, code);
+    }
+    catch (Exception e)
+    {
+        stderr.writefln("fluid: can't write %s: %s", outPath, e.msg);
+        return false;
+    }
     writefln("fluid: %s -> %s", inPath, outPath);
     // Lets the interactive editor's MergeBack find this file even when
     // it was written away from the project (e.g. by a build step).

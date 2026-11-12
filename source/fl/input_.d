@@ -31,28 +31,17 @@
  *    imported from fl.text_buffer rather than re-ported from
  *    src/fl_utf8.cxx a second time -- same subset of fl_utf8.cxx, same
  *    behavior, package(fl)-visible for exactly this kind of reuse.
- *  - fl_utf8_next_composed_char()/fl_utf8_previous_composed_char()
- *    (src/fl_utf8.cxx) additionally understand multi-codepoint emoji
- *    sequences (regional-indicator flag pairs, ZWJ joins, Fitzpatrick
- *    modifiers, variation selectors, "tag" subdivision-flag sequences).
- *    Not ported: nextChar()/prevCharStart() below advance/retreat by a
- *    single UTF-8 codepoint only. This affects cursor movement/deletion
- *    granularity for those specific multi-codepoint emoji sequences
- *    only -- ordinary text (any single script, combining marks aside)
- *    is unaffected.
- *  - Fl::compose()/Fl::screen_driver()->has_marked_text()/
- *    Fl::compose_state (IME composition/marked-text underlining): real
- *    dead-key/CJK composition is ported (fl.platform_x11's XOpenIM()/
- *    XCreateIC()/Xutf8LookupString()), so composed text lands correctly
- *    in this widget. What's correctly always-off is just the *visual*
- *    marked-text underline: drawtext()'s marked-text-underline branch
- *    and handletext()'s FL_UNFOCUS mark-reset stay simplified to their
- *    always-off path because `Fl::compose_state` genuinely never
- *    becomes non-zero on X11 even in real FLTK (confirmed
- *    against `Fl_X11_Screen_Driver.cxx`) -- that's not a port gap to
- *    close, it's FLTK's own X11 behavior, ported faithfully.
- *    fl.core.compose()/composeReset() exist and are called from
- *    fl.input's handle_key() for parity with this.
+ *  - The cursor, Delete and Backspace step over one user-perceived
+ *    character, a Unicode grapheme cluster (nextCharLen()/
+ *    prevCharStart(), through fl.text_buffer's graphemeLen()/
+ *    prevGrapheme()): a whole emoji sequence, or a letter with its
+ *    combining accents, as TextBuffer does for TextEditor.
+ *  - Input-method text: fl.core.compose() hands over the typed or
+ *    composed text. Where the input method's provisional text arrives as
+ *    marked text (fl.core.hasMarkedText(), Wayland), fl.input leaves it
+ *    selected, drawtext() underlines it instead of highlighting it, and
+ *    the next keystroke replaces it. On X11 and Windows the input method
+ *    shows the text being composed in a window of its own.
  *  - **`resetSpot()` is real**: `handletext()`'s `FL_UNFOCUS`/`FL_HIDE`
  *    case calls it unconditionally, matching `Fl_Input_::handle()`
  *    exactly. `setSpot()` itself (the "over the spot" preedit-
@@ -67,30 +56,18 @@
  *    XSetSelectionOwner(), and paste() delivers synchronously when
  *    already owned or asynchronously via XConvertSelection() otherwise.
  *    copy()/copyCuts()/handletext()'s FL_PASTE case use it.
- *  - isword(char) truncates a full Unicode codepoint down to its low 8
- *    bits before testing, exactly like FLTK's implicit
- *    `unsigned int` -> `char` narrowing in `isword(index(i))` -- a
- *    faithfully-preserved FLTK quirk (word-boundary detection can
- *    behave oddly on non-Latin1 codepoints), not something this port
- *    introduced.
- *  - up_down_pos/was_up_down (FLTK: `static double`/`static int`
- *    class members, genuinely shared across *every* Fl_Input_ instance
- *    process-wide) map to module-level D globals (upDownPos_/
- *    wasUpDown_) here, matching the fl.slider `offcenter`/fl.roller
- *    `ipos` precedent CONVENTIONS.md documents. `l_secret` (FLTK: a
- *    `static int` at file scope in Fl_Input_.cxx, likewise genuinely
- *    shared) becomes module-level `lSecret_` for the same reason.
  */
 module fl.input_;
 
 import std.ascii : isDigit, isHexDigit, isWhite, isAlphaNum;
 import std.math : ceil;
+import std.utf : codeLength;
 
 import fl.enumerations;
 import fl.widget : Widget;
 import fl.core;
 import fldraw = fl.draw;
-import fl.text_buffer : utf8Len, utf8Len1, utf8DecodeAt, utf8Encode;
+import fl.text_buffer : utf8Len, utf8Len1, utf8DecodeAt, utf8Encode, graphemeLen, prevGrapheme;
 
 private enum MAXBUF = 1024;
 
@@ -98,25 +75,21 @@ private enum MAXBUF = 1024;
 /// "•") -- the glyph FL_SECRET_INPUT masks every character with.
 private enum uint secretInputCharacter = 0x2022;
 
-/// Horizontal cursor position in pixels while moving up/down -- see the
-/// module comment on why this is a module-level global, not a field.
-private double upDownPos_ = 0;
-/// Flag to remember the last cursor move was up/down -- ditto.
-private bool wasUpDown_ = false;
-/// Byte length of secretInputCharacter's UTF-8 encoding, cached by the
-/// last expand() call that needed it -- ditto (mirrors FLTK's
-/// file-scope `static int l_secret`).
-private int lSecret_ = 0;
+/// Byte length of secretInputCharacter's UTF-8 encoding.
+private enum int lSecret = cast(int) codeLength!char(cast(dchar) secretInputCharacter);
 
-/// Ported from static int isword(char) (src/Fl_Input_.cxx). See the
-/// module comment on the deliberate truncate-to-8-bits quirk.
+/// True if codepoint belongs to a word for word-wise cursor movement
+/// and selection: a letter, digit or combining mark in any script, or
+/// one of `#%-@_~`.
 private bool isword(uint codepoint)
 {
-    ubyte c = cast(ubyte) codepoint;
-    if (c & 128) return true;
-    if (isAlphaNum(cast(char) c)) return true;
+    import std.uni : isUniAlphaNum = isAlphaNum, isMark;
+
+    if (codepoint >= 128)
+        return codepoint <= dchar.max && (isUniAlphaNum(cast(dchar) codepoint) || isMark(cast(dchar) codepoint));
+    if (isAlphaNum(cast(char) codepoint)) return true;
     foreach (ch; "#%-@_~")
-        if (cast(char) c == ch) return true;
+        if (cast(char) codepoint == ch) return true;
     return false;
 }
 
@@ -168,6 +141,10 @@ class Input_ : Widget
         int maximumSize_ = 32767;
         int shortcut_;
         bool eraseCursorOnly_;
+        // Horizontal cursor position in pixels while moving up/down,
+        // and whether the last cursor move was up/down.
+        double upDownPos_ = 0;
+        bool wasUpDown_ = false;
         Font textfont_;
         Fontsize textsize_;
         Color textcolor_;
@@ -228,8 +205,7 @@ class Input_ : Widget
             {
                 if (utf8Len(value_[p]) >= 1)
                 {
-                    lSecret_ = utf8Encode(secretInputCharacter, buf[o .. $]);
-                    o += lSecret_;
+                    o += utf8Encode(secretInputCharacter, buf[o .. $]);
                 }
                 p++;
             }
@@ -309,7 +285,7 @@ class Input_ : Widget
             while (p < e)
             {
                 int l = utf8Len1(byteAt(p));
-                n += lSecret_;
+                n += lSecret;
                 p += l;
             }
         }
@@ -385,23 +361,22 @@ class Input_ : Widget
         return utf8DecodeAt(value_, i, len);
     }
 
-    /// Simplified stand-in for fl_utf8_next_composed_char() -- see the
-    /// module comment. protected: fl.input's kf_delete_char_right()/
+    /// The byte length of the character (a grapheme cluster, see the
+    /// module comment) starting at p; 1 past the end or on a byte that
+    /// can't start one. protected: fl.input's kf_delete_char_right()/
     /// kf_move_char_right() need it too.
     protected int nextCharLen(int p) const
     {
-        return utf8Len1(byteAt(p));
+        if (p < 0 || p >= size() || utf8Len(byteAt(p)) == -1) return 1;
+        return cast(int) graphemeLen(value_[p .. $]);
     }
 
-    /// Simplified stand-in for fl_utf8_previous_composed_char() -- see
-    /// the module comment. Returns the byte offset where the character
-    /// immediately before p starts. protected for the same reason as
-    /// nextCharLen().
+    /// The byte offset where the character immediately before p starts.
+    /// protected for the same reason as nextCharLen().
     protected int prevCharStart(int p) const
     {
-        int i = p - 1;
-        while (i > 0 && (cast(ubyte) byteAt(i) & 0xc0) == 0x80) i--;
-        return i;
+        if (p > size()) p = size();
+        return prevGrapheme((int i) => byteAt(i), p);
     }
 
     // -------------------------------------------------------------
@@ -411,16 +386,16 @@ class Input_ : Widget
     protected int wordEnd(int i) const
     {
         if (inputType() == inputSecret) return size();
-        while (i < size() && !isword(index(i))) i++;
-        while (i < size() && isword(index(i))) i++;
-        return i;
+        while (i < size() && !isword(index(i))) i += nextCharLen(i);
+        while (i < size() && isword(index(i))) i += nextCharLen(i);
+        return i > size() ? size() : i;
     }
 
     protected int wordStart(int i) const
     {
         if (inputType() == inputSecret) return 0;
-        while (i > 0 && !isword(index(i - 1))) i--;
-        while (i > 0 && isword(index(i - 1))) i--;
+        while (i > 0 && !isword(index(prevCharStart(i)))) i = prevCharStart(i);
+        while (i > 0 && isword(index(prevCharStart(i)))) i = prevCharStart(i);
         return i;
     }
 
@@ -490,8 +465,9 @@ class Input_ : Widget
     /// CONTINUE2) rather than restructuring it -- the early-exit jumps
     /// are load-bearing (they skip a push_clip()/pop_clip() pair), and
     /// preserving the original shape is the safest way to keep that
-    /// correct. Simplified vs FLTK: no IME marked-text
-    /// underline/setSpot() (see the module comment).
+    /// correct. Marked text from an input method (`fl.core.
+    /// hasMarkedText()`) is the selection, drawn underlined instead of
+    /// highlighted, with the cursor shown after it.
     protected void drawtext(int X, int Y, int W, int H, bool drawActive)
     {
         bool doMu = !(damage() & damageAll);
@@ -661,10 +637,22 @@ class Input_ : Widget
                 }
                 else offset2 = elen;
 
-                fldraw.fl_color(selectionColor());
-                fldraw.fl_rectf(cast(int)(x1 + 0.5), Y + ypos, cast(int)(x2 - x1 + 0.5), height);
-                fldraw.fl_color(fldraw.contrast(textcolor(), selectionColor()));
+                bool marked = fl.core.markedTextActive();
+                if (marked)
+                    fldraw.fl_color(textcolor());
+                else
+                {
+                    fldraw.fl_color(selectionColor());
+                    fldraw.fl_rectf(cast(int)(x1 + 0.5), Y + ypos, cast(int)(x2 - x1 + 0.5), height);
+                    fldraw.fl_color(fldraw.contrast(textcolor(), selectionColor()));
+                }
                 fldraw.fl_draw(buf[offset1 .. elen], offset2 - offset1, x1, Y + ypos + desc);
+                if (marked)
+                {
+                    fldraw.fl_color(fldraw.colorAverage(textcolor(), color(), 0.6f));
+                    int width = cast(int) fldraw.width(buf[offset1 .. offset2]);
+                    fldraw.fl_line(x1, Y + ypos + height - 1, x1 + width, Y + ypos + height - 1);
+                }
 
                 if (pp < e)
                 {
@@ -681,7 +669,7 @@ class Input_ : Widget
             if (doMu) fldraw.popClip();
 
         CONTINUE2:
-            if (drawActive && selstart == selend
+            if (drawActive && (fl.core.markedTextActive() || selstart == selend)
                 && insertPosition() >= p && insertPosition() <= e)
             {
                 fldraw.fl_color(cursorColor());
@@ -1176,9 +1164,7 @@ class Input_ : Widget
      * Ported from Fl_Input_::handletext(int,int,int,int,int) -- the
      * event handling shared by every concrete subclass (called by
      * fl.input's handle() for whatever it doesn't handle itself).
-     * Simplified vs FLTK: no drag-and-drop (FL_DND_* -- not ported
-     * anywhere in this port, see fl.platform_x11's skip-list) and no
-     * IME marked-text/setSpot() (see the module comment).
+     * Drag and drop is handled by fl.input's handle().
      */
     protected int handletext(Event event, int X, int Y, int W, int H)
     {
@@ -1536,6 +1522,49 @@ unittest
 
     FlGroup.current(null);
     fl.core.resetForTest();
+}
+
+unittest
+{
+    // Word movement steps over whole characters in any script and stops
+    // at punctuation such as an em dash.
+    import fl.group : FlGroup;
+
+    FlGroup.current(null);
+    fl.core.resetForTest();
+
+    auto inp = new TestInput(0, 0, 100, 20);
+    inp.value("caf\u00e9 \u4e2d\u6587\u2014x");
+    int cafe = cast(int) "caf\u00e9".length;
+    int cjk = cast(int) "caf\u00e9 \u4e2d\u6587".length;
+    assert(inp.wordEnd(0) == cafe);
+    assert(inp.wordEnd(cafe) == cjk);
+    assert(inp.wordStart(cjk) == cafe + 1);
+    assert(inp.wordStart(cafe) == 0);
+    assert(inp.wordEnd(cjk) == inp.size());
+
+    FlGroup.current(null);
+    fl.core.resetForTest();
+}
+
+unittest
+{
+    // The cursor steps over whole characters: an emoji sequence or a
+    // letter with a combining accent is one step.
+    import fl.group : FlGroup;
+
+    FlGroup.current(null);
+    fl.core.resetForTest();
+
+    auto inp = new TestInput(0, 0, 100, 20);
+    string pilot = "\U0001F469\u200D\u2708\uFE0F";
+    inp.value("a" ~ pilot ~ "e\u0301b");
+    int afterPilot = 1 + cast(int) pilot.length;
+    assert(inp.nextCharLen(1) == pilot.length);
+    assert(inp.prevCharStart(afterPilot) == 1);
+    assert(inp.nextCharLen(afterPilot) == 3);
+    assert(inp.prevCharStart(afterPilot + 3) == afterPilot);
+    assert(inp.nextCharLen(0) == 1 && inp.prevCharStart(1) == 0);
 }
 
 unittest

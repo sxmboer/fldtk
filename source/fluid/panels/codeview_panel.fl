@@ -69,9 +69,8 @@ translation:
    `Fl_Text_Display`, since neither generated view is meant to be
    edited in place. `cvSource`/`cvProject` use
    `fluid.code_viewer.CodeViewer` (FLTK's `Code_Viewer`), which
-   swaps the global selection color for a light gray around each
-   `draw()` so the node highlight stays readable against the syntax
-   colors.
+   draws its text on a light gray and the node highlight in the
+   display's own color (white by default), so the highlight stands out.
  - Current-project state (`cvRoots_`) is a private module-level `Node[]`
    updated by whichever of `codeviewRefresh()`/`codeviewToggleVisibility()`
    the caller (`gui_main.d`) invokes with a fresh copy -- matching

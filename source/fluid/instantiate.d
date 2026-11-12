@@ -2089,7 +2089,9 @@ package(fluid) string defaultLabelFor(string typeName)
 /// `printf("Hello, World!\n");` becomes `writeln("Hello, World!");`, and
 /// a declaration block's `#if 1` ... `#endif` becomes `version (all)`
 /// with no end code (`code_writer.d`'s `writeDeclBlockNode()` supplies
-/// the braces). Empty for every other type.
+/// the braces). Empty for every other type. A Function placed at the top
+/// of a project that has no `main()` yet loses this name and becomes
+/// `main()` (`gui_main.d`'s `nameNewFunction()`).
 package(fluid) string defaultNameFor(string typeName)
 {
     switch (typeName)

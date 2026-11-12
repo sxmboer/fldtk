@@ -410,7 +410,7 @@ int popupAppMenu()
 void main(string[] args)
 {
     // Create our main app window
-    auto window = new Window(100, 100, 640, 245, "FLTK Pen/Stylus/Tablet test, Ctrl-Tap for menu");
+    auto window = new Window(100, 100, 640, 245, "fldtk Pen/Stylus/Tablet test, Ctrl-Tap for menu");
 
     auto menuBar = new MenuBar(0, 0, 640, 25);
     menuBar.add("PenPal/With Modal Window", 0, (w) { modalWindowCb(w); });

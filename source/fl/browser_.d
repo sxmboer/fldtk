@@ -29,14 +29,6 @@
  *    unsafety at every call site. Concrete subclasses (fl.browser's
  *    `BLine`, fl.check_browser's `CbItem`) are ordinary D classes.
  *
- *  - FLTK's C++ static-local variables inside handle()
- *    (`static void* initsel; static char change; static char
- *    whichway; static int py;`) are genuinely process-wide state
- *    shared across *every* Fl_Browser_ instance, not per-object state
- *    -- the same kind of quirk already documented in fl.slider's
- *    `static int offcenter` and fl.roller's `static int ipos`. Ported
- *    the same way: private module-level variables, not fields.
- *
  *  - Icon support (`Fl_Image* icon` fields/`icon()` accessors) is
  *    deferred to fl.browser -- Browser_ itself has no icon concept
  *    FLTK either (that's Fl_Browser::item_height/width/draw's own
@@ -85,15 +77,14 @@ enum ubyte browserHorizontalAlways  = 5;
 enum ubyte browserVerticalAlways    = 6;
 enum ubyte browserBothAlways        = 7;
 
-// Genuinely process-wide state shared by every Browser_ instance's
-// handle() -- see the module comment.
-private Object handleInitsel_;
-private bool handleChange_;
-private bool handleWhichway_;
-private int handlePy_;
-
 abstract class Browser_ : FlGroup
 {
+    // State of the current mouse selection, from push to release.
+    private Object handleInitsel_;
+    private bool handleChange_;
+    private bool handleWhichway_;
+    private int handlePy_;
+
     private
     {
         int position_;

@@ -63,10 +63,10 @@
  */
 module fluid.code_writer;
 
-import std.array : appender, Appender;
+import std.array : appender, Appender, join;
 import std.format : format;
 import std.string : split, strip, lineSplitter, indexOf, lastIndexOf, toLower, startsWith, replace;
-import std.regex : regex, replaceAll, Captures;
+import std.regex : regex;
 import std.path : buildPath, extension, baseName, absolutePath, relativePath, dirName, buildNormalizedPath;
 import std.file : read, exists;
 
@@ -98,6 +98,7 @@ import fluid.code_block_node;
 import fluid.grid_node;
 import fluid.flex_node;
 import fluid.menu_item_node;
+import fluid.code_highlight : renameIdentifier;
 import fluid.comment_node : CommentNode;
 import fluid.i18n : I18nSettings, I18nType;
 import fluid.project_settings : ProjectSettings;
@@ -199,13 +200,20 @@ private immutable string[int] fontMap = [
     12: "symbol", 13: "screen", 14: "screenBold", 15: "zapfDingbats",
 ];
 
-// Only colors FLTK's own Fluid writer itself resolves to a
-// symbolic name get one here (confirmed via real generated output,
-// `test/fast_slow.cxx`: `selection_color(FL_DARK1)` for raw index 47)
-// -- everything else stays a raw `cast(Color) N`, matching FLTK's
-// own codegen for "unnamed" indices.
+// The colors `fl.enumerations` names, as FLTK's
+// `Widget_Node::write_color()` (`fluid/nodes/Widget_Node.cxx`) names them;
+// any other index is written as `cast(Color) N`. `selectionColor` is
+// written qualified, because inside a widget class it would name the
+// widget's own `selectionColor()` method.
 private immutable string[int] colorNameMap = [
-    47: "dark1",
+    0: "foregroundColor", 7: "background2Color", 8: "inactiveColor",
+    15: "fl.enumerations.selectionColor",
+    32: "gray0", 39: "dark3", 45: "dark2", 47: "dark1",
+    49: "backgroundColor", 50: "light1", 52: "light2", 54: "light3",
+    56: "black", 88: "red", 63: "green", 95: "yellow", 216: "blue",
+    248: "magenta", 223: "cyan", 72: "darkRed", 60: "darkGreen",
+    76: "darkYellow", 136: "darkBlue", 152: "darkMagenta", 140: "darkCyan",
+    255: "white",
 ];
 
 // `type` keyword -> D `.type(...)` argument. Grounded in
@@ -252,27 +260,18 @@ private immutable string[string] labeltypeMap = [
 
 private enum alignInsideBit = 0x10; // fl.enumerations.alignInside
 
-/// Computes the relative path from `dir` (a `.fl` project's own
-/// directory, usually `projectDir_`) back to the nearest ancestor
-/// directory containing a `dub.sdl` -- the fldtk checkout's own repo
-/// root -- for `generate()`'s dub single-file-package header. Falls
-/// back to `"."` (a reasonable default) if no `dub.sdl` is found in any ancestor, e.g. when
-/// generating code outside any fldtk checkout entirely -- a reasonable
-/// starting guess a user can hand-edit, not a hard failure, matching
-/// this being an opt-in convenience rather than a correctness-critical
-/// path.
-private string fldtkRootRelativeTo(string dir)
+/// The fldtk folder (`fluid.dub_project.fldtkFolder()`) as
+/// `generate()`'s dub single-file-package header names it for a file in
+/// `dir` (the generated file's folder, `Writer.outputDir`), through
+/// `fluid.dub_project.fldtkDubPath()`. `"."` when no fldtk folder is
+/// found: a starting point to edit by hand, since the header is an
+/// option and not needed for the code itself.
+private string fldtkPathFrom(string dir)
 {
-    string absDir = buildNormalizedPath(absolutePath(dir));
-    string cur = absDir;
-    while (true)
-    {
-        if (exists(buildPath(cur, "dub.sdl")))
-            return relativePath(cur, absDir).replace('\\', '/');
-        string parent = dirName(cur);
-        if (parent == cur) return "."; // reached the filesystem root
-        cur = parent;
-    }
+    import fluid.dub_project : fldtkDubPath, fldtkFolder;
+
+    string root = fldtkFolder(dir);
+    return root is null ? "." : fldtkDubPath(dir, root);
 }
 
 class Writer
@@ -292,6 +291,13 @@ class Writer
     /// similar "context flag needed deep in the call tree" need,
     /// reset once per `generate()` call alongside the others below.
     private string projectDir_;
+
+    /// The folder the generated file goes to, for the dub header's
+    /// fldtk path, which dub reads relative to the `.d` file. Empty
+    /// means the project's folder (`projectDir_`). Set by the callers
+    /// that write a file (`fluid.compile`, `gui_main.d`'s
+    /// `generateCodeFile()`); kept across `generate()` calls.
+    string outputDir;
 
     /// Project-wide i18n settings (`fluid/proj/i18n` port)
     /// -- consulted by `i18nWrap()` to wrap every emitted label/tooltip
@@ -501,7 +507,7 @@ class Writer
         if (dubHeader_)
         {
             buf.put(format("/+ dub.sdl:\ndependency \"fldtk\" path=\"%s\"\nsubConfiguration \"fldtk\" \"program\"\n+/\n",
-                fldtkRootRelativeTo(projectDir_)));
+                fldtkPathFrom(outputDir.length ? outputDir : projectDir_)));
         }
 
         // Every root comment node goes at the very top, before `import
@@ -523,7 +529,9 @@ class Writer
         {
             if (auto comn = cast(CommentNode) cn)
                 if (!comn.inSource_) continue;
+            immutable start = pos();
             writeCommentText(cn.instanceName);
+            spanLeaf(cn, start);
             blank();
         }
         buf.put("import fl;\n");
@@ -586,11 +594,16 @@ class Writer
             blank();
         }
         foreach (dan; dataNodes)
+        {
             writeDataNode(dan);
+            blank();
+        }
         foreach (dn; declNodes)
         {
+            immutable start = pos();
             writeNodeComment(dn);
             emitSnippetLines(dn.instanceName);
+            spanLeaf(dn, start);
             blank();
         }
         foreach (dbn; declBlockNodes)
@@ -638,6 +651,27 @@ class Writer
     /// (`(int)code_buffer.tellp()`) -- `Appender!string.data.length` is
     /// the direct D equivalent of an `ostringstream`'s own write cursor.
     private int pos() { return cast(int) buf.data.length; }
+
+    /// Records a node without children whose code runs from `start` to
+    /// here: all of it is setup code, and its finalize span is empty.
+    private void spanLeaf(Node n, int start)
+    {
+        n.setupSpan = TextSpan(start, pos());
+        n.finalizeSpan = TextSpan(pos(), pos());
+    }
+
+    /// Records the end of a container node's opening code (the node's
+    /// comment, its header and opening brace), which began at `start`.
+    private void spanOpen(Node n, int start)
+    {
+        n.setupSpan = TextSpan(start, pos());
+    }
+
+    /// Records a container node's closing code, from `start` to here.
+    private void spanClose(Node n, int start)
+    {
+        n.finalizeSpan = TextSpan(start, pos());
+    }
 
     /// Only widget-tree nodes get a "TypeName varname;" module-level
     /// decl -- a named callback-shaped Function (e.g. button_cb) also
@@ -758,6 +792,8 @@ class Writer
     /// just resolved a moment later than a plain literal would be.
     private void writeDataNode(DataNode dan)
     {
+        immutable start = pos();
+        scope (exit) spanLeaf(dan, start);
         writeNodeComment(dan);
         string varName = snakeToCamel(dan.instanceName);
         // As in FLTK: no filename embeds no data, and a file that can't
@@ -804,7 +840,6 @@ class Writer
         {
             writeByteArrayLiteral(varName, bytes);
         }
-        blank();
     }
 
     /// Emits `immutable ubyte[] name = [ ...bytes... ];` -- shared by
@@ -846,15 +881,44 @@ class Writer
     private void writeDeclChild(Node c)
     {
         if (auto dan = cast(DataNode) c)
+        {
             writeDataNode(dan);
+            blank();
+        }
         else if (auto dn = cast(DeclNode) c)
         {
+            immutable start = pos();
             writeNodeComment(dn);
             emitSnippetLines(dn.instanceName);
+            spanLeaf(dn, start);
             blank();
         }
         else if (auto dbn = cast(DeclBlockNode) c)
             writeDeclBlockNode(dbn);
+        else if (auto fn = cast(FunctionNode) c)
+        {
+            // A method when the block sits in a class, else a function.
+            if (classDepth_ > 0)
+                writeClassMethod(fn);
+            else
+                writePlainFunction(fn);
+        }
+        else if (auto wcn = cast(WidgetClassNode) c)
+            writeWidgetClassNode(wcn);
+        else if (auto cn = cast(ClassNode) c)
+            writeClassNode(cn);
+    }
+
+    /// How many class bodies (Class or Widget Class) are being written
+    /// around the current node: a function in a declaration block there
+    /// is a method, and a class there is a nested class.
+    private int classDepth_;
+
+    /// `static ` for a class nested in another class: like a nested class
+    /// in C++, it needs no instance of the outer class to be created.
+    private string nestedClassPrefix()
+    {
+        return classDepth_ > 0 ? "static " : "";
     }
 
     /// A `declblock { ... }` node -- see `decl_block_node.d`'s own doc
@@ -872,13 +936,17 @@ class Writer
     /// `writeBodyChild()`).
     private void writeDeclBlockNode(DeclBlockNode dbn)
     {
+        immutable start = pos();
         writeNodeComment(dbn);
         line(dbn.instanceName ~ " {");
+        spanOpen(dbn, start);
         indent_++;
         foreach (c; dbn.children)
             writeDeclChild(c);
         indent_--;
+        immutable closeStart = pos();
         line(dbn.afterText.length ? ("} " ~ dbn.afterText) : "}");
+        spanClose(dbn, closeStart);
         blank();
     }
 
@@ -899,12 +967,16 @@ class Writer
     /// themselves) -- either way, exactly once, never here.
     private void writeCodeBlockNode(CodeBlockNode cb)
     {
+        immutable start = pos();
         line(cb.instanceName ~ " {");
+        spanOpen(cb, start);
         indent_++;
         foreach (c; cb.children)
             writeBodyChild(c);
         indent_--;
+        immutable closeStart = pos();
         line(cb.afterText.length ? ("} " ~ cb.afterText) : "}");
+        spanClose(cb, closeStart);
     }
 
     /// Writes one function/method-body child: a raw `code {}` fragment
@@ -918,9 +990,17 @@ class Writer
     private void writeBodyChild(Node c)
     {
         if (auto code = cast(CodeNode) c)
-            writeTaggedBlock(Tag.code, code.uid, code.instanceName);
+            writeCodeNode(code);
         else
             writeWidgetTree(c);
+    }
+
+    /// A `code {}` node's text, tagged for merge-back.
+    private void writeCodeNode(CodeNode code)
+    {
+        immutable start = pos();
+        writeTaggedBlock(Tag.code, code.uid, code.instanceName);
+        spanLeaf(code, start);
     }
 
     /// FLTK: `Code_Writer::write_i18n_prologue()`. Emits the
@@ -1299,9 +1379,11 @@ class Writer
 
     private void writeFunctionBody(FunctionNode fn, FunctionNode[] callbackFns)
     {
+        immutable start = pos();
         writeNodeComment(fn);
         line("void main(string[] args)");
         line("{");
+        spanOpen(fn, start);
         indent_++;
         foreach (nf; callbackFns)
             writeNamedFunctionAssignment(nf);
@@ -1315,10 +1397,12 @@ class Writer
         foreach (c; fn.children)
             writeBodyChild(c);
         inMainFunction_ = false;
+        immutable closeStart = pos();
         blank();
         line("fl.run();");
         indent_--;
         line("}");
+        spanClose(fn, closeStart);
     }
 
     /// A file without an anonymous root Function (a module of
@@ -1360,24 +1444,20 @@ class Writer
     /// module's own doc comment on the "o" convention.
     private void writeNamedFunctionAssignment(FunctionNode fn)
     {
+        immutable start = pos();
         writeNodeComment(fn);
         auto sig = parseFunctionSignature(fn.instanceName);
         string castType = sig.firstParamType.length ? stripFlPrefix(sig.firstParamType) : "Widget";
         line(format("%s = (raw) {", sig.name));
         indent_++;
         line(format("auto %s = cast(%s) raw;", sig.firstParamName, castType));
+        spanOpen(fn, start);
         foreach (c; fn.children)
-        {
-            if (auto code = cast(CodeNode) c)
-                writeTaggedBlock(Tag.code, code.uid, code.instanceName);
-            else if (auto cb = cast(CodeBlockNode) c)
-            {
-                writeNodeComment(cb);
-                writeCodeBlockNode(cb);
-            }
-        }
+            writeBodyChild(c);
         indent_--;
+        immutable closeStart = pos();
         line("};");
+        spanClose(fn, closeStart);
         blank();
     }
 
@@ -1393,9 +1473,9 @@ class Writer
     /// (child) : "void")` at the top, `return w;` at the bottom when
     /// that inference fired. This is FLTK's classic "make_window()"
     /// shape: `Function_Node::make()` deliberately leaves `return_type`
-    /// empty (see `gui_main.d`'s own `addNode()`, which sets a fresh
-    /// Function's default name to `"makeWindow()"` for exactly this
-    /// reason) so that dropping a `Window` inside turns it into a real
+    /// empty (a Function that isn't `main()` starts as
+    /// `"makeWindow()"`, `fluid.instantiate.defaultNameFor()`) so that
+    /// dropping a `Window` inside turns it into a real
     /// `Window makeWindow() { ...; return w; }` with no further typing
     /// needed. D has no C++ pointer-vs-value distinction to resolve via
     /// a `"*"` suffix the way `subclassname(child) + star` does --
@@ -1406,6 +1486,7 @@ class Writer
     /// so subsequent widget children can't override it either).
     private void writePlainFunction(FunctionNode fn)
     {
+        immutable start = pos();
         writeNodeComment(fn);
 
         // A named `Function` literally called "main" is *not* what makes
@@ -1467,13 +1548,16 @@ class Writer
                 if (cast(WindowNode) c && c.instanceName.length == 0)
                     returnVarNodes_[c] = true;
         }
+        spanOpen(fn, start);
         foreach (c; fn.children)
             writeBodyChild(c);
         returnVarNodes_ = null;
+        immutable closeStart = pos();
         if (autoReturn)
             line(format("return %s;", selfRef(firstWidgetChild)));
         indent_--;
         line("}");
+        spanClose(fn, closeStart);
         blank();
     }
 
@@ -1484,14 +1568,17 @@ class Writer
     /// this code path).
     private void writeClassNode(ClassNode cn)
     {
+        immutable start = pos();
         writeNodeComment(cn);
-        string attribute = cn.prefix.length ? cn.prefix ~ " " : "";
+        string attribute = nestedClassPrefix() ~ (cn.prefix.length ? cn.prefix ~ " " : "");
         string header = cn.baseClass.length
             ? format("%sclass %s : %s", attribute, cn.instanceName, stripFlPrefix(cn.baseClass))
             : format("%sclass %s", attribute, cn.instanceName);
         line(header);
         line("{");
+        spanOpen(cn, start);
         indent_++;
+        classDepth_++;
         // A `decl { ... }` child is this class's own equivalent of the
         // module-level DeclNode handling above -- raw D text (usually a
         // field declaration, e.g. `Window ringDebugWin;`) emitted
@@ -1521,9 +1608,25 @@ class Writer
         foreach (c; cn.children)
             if (auto fn = cast(FunctionNode) c)
                 writeClassMethod(fn);
+        writeNestedClasses(cn.children);
+        classDepth_--;
         indent_--;
+        immutable closeStart = pos();
         line("}");
+        spanClose(cn, closeStart);
         blank();
+    }
+
+    /// The classes and widget classes among a class's own children.
+    private void writeNestedClasses(Node[] children)
+    {
+        foreach (c; children)
+        {
+            if (auto wcn = cast(WidgetClassNode) c)
+                writeWidgetClassNode(wcn);
+            else if (auto cn = cast(ClassNode) c)
+                writeClassNode(cn);
+        }
     }
 
     /// Every named widget found anywhere inside a class's own subtree
@@ -1539,6 +1642,9 @@ class Writer
         bool any;
         foreach (n; nodes)
         {
+            // A nested class has fields of its own.
+            if (cast(ClassNode) n || cast(WidgetClassNode) n)
+                continue;
             if (auto wn = cast(WidgetNode) n)
                 if (wn.instanceName.length)
                 {
@@ -1587,6 +1693,7 @@ class Writer
 
     private void writeClassMethod(FunctionNode fn)
     {
+        immutable start = pos();
         writeNodeComment(fn);
         bool isCtor = fn.instanceName.length >= 5 && fn.instanceName[0 .. 5] == "this(";
         bool isDtor = fn.instanceName.length >= 1 && fn.instanceName[0] == '~';
@@ -1595,11 +1702,14 @@ class Writer
             : format("%s %s", fn.returnType.length ? fn.returnType : "void", fn.instanceName);
         line(functionAttributes(fn, true) ~ sigLine);
         line("{");
+        spanOpen(fn, start);
         indent_++;
         foreach (c; fn.children)
             writeBodyChild(c);
         indent_--;
+        immutable closeStart = pos();
         line("}");
+        spanClose(fn, closeStart);
         blank();
     }
 
@@ -1657,6 +1767,7 @@ class Writer
     /// this function only emits those calls for the Window-shaped case.
     private void writeWidgetClassNode(WidgetClassNode wcn)
     {
+        immutable start = pos();
         writeNodeComment(wcn);
         string baseClass = (wcn.hasClassOverride && wcn.classOverride.length)
             ? stripFlPrefix(wcn.classOverride) : "FlGroup";
@@ -1664,9 +1775,11 @@ class Writer
         string name = wcn.instanceName;
         string labelLit = wcn.hasLabel ? i18nWrap(wcn.label) : "null";
 
-        line(format("class %s : %s", name, baseClass));
+        line(format("%sclass %s : %s", nestedClassPrefix(), name, baseClass));
         line("{");
+        spanOpen(wcn, start);
         indent_++;
+        classDepth_++;
 
         // `decl {}`/`declblock {}` and `Function {}` children -- needed
         // by `widget_panel_grid_tab.fl`/`widget_panel_grid_
@@ -1739,9 +1852,13 @@ class Writer
         foreach (c; wcn.children)
             if (auto fn = cast(FunctionNode) c)
                 writeClassMethod(fn);
+        writeNestedClasses(wcn.children);
 
+        classDepth_--;
         indent_--;
+        immutable closeStart = pos();
         line("}");
+        spanClose(wcn, closeStart);
         blank();
     }
 
@@ -1777,7 +1894,8 @@ class Writer
             // skip them here so they aren't also fed to
             // `writeWidgetTree()`, which has no case for any of the
             // three and would otherwise silently drop them.
-            if (cast(DeclNode) c || cast(DeclBlockNode) c || cast(FunctionNode) c)
+            if (cast(DeclNode) c || cast(DeclBlockNode) c || cast(FunctionNode) c
+                || cast(ClassNode) c || cast(WidgetClassNode) c)
                 continue;
             writeWidgetTree(c);
         }
@@ -1790,6 +1908,25 @@ class Writer
 
     private void writeWidgetTree(Node n)
     {
+        // A `code {}` among a window's or group's children runs in its
+        // place between the widgets around it, as in a function body.
+        if (auto code = cast(CodeNode) n)
+        {
+            writeCodeNode(code);
+            return;
+        }
+        // A Comment node in a function body, code block or widget class:
+        // its text, in place, unless it is switched off for the source.
+        if (auto comn = cast(CommentNode) n)
+        {
+            if (comn.inSource_)
+            {
+                immutable start = pos();
+                writeCommentText(comn.instanceName);
+                spanLeaf(comn, start);
+            }
+            return;
+        }
         // The node's comment belongs to its own setup code, as in FLTK,
         // where `write_code1()` writes it inside the `setup_node` span:
         // the Code View then highlights the comment with the widget.
@@ -2070,8 +2207,8 @@ class Writer
         {
             auto info = c in gn.cellOf;
             if (info is null) continue;
-            line(format("%s.widget(%s.child(%d), %d, %d, %d, %d, cast(GridAlign) %d);",
-                v, v, cast(int) i, info.row, info.col, info.rowspan, info.colspan, info.alignRaw));
+            line(format("%s.widget(%s.child(%d), %d, %d, %d, %d, %s);",
+                v, v, cast(int) i, info.row, info.col, info.rowspan, info.colspan, translateGridAlign(info.alignRaw)));
             if (info.minW != 20 || info.minH != 20)
                 line(format("%s.cell(%s.child(%d)).minimumSize(%d, %d);",
                     v, v, cast(int) i, info.minW, info.minH));
@@ -2381,7 +2518,7 @@ class Writer
         // to `.fl` text, and emitted here too, matching `panels/widget_panel.fl`'s
         // own When editor.
         if (n.whenRaw >= 0)
-            line(format("%s.when(cast(When) %d);", v, n.whenRaw));
+            line(format("%s.when(%s);", v, translateWhen(n.whenRaw)));
         if (n.tooltip.length)
             line(format(`%s.tooltip(%s);`, v, i18nWrap(n.tooltip)));
         writeWidgetImage(n, v);
@@ -2528,7 +2665,7 @@ class Writer
     private void writeCommentText(string text)
     {
         if (!text.length) return;
-        line("/**");
+        line("/*");
         foreach (ln; text.lineSplitter())
             line(" * " ~ ln);
         line(" */");
@@ -2638,7 +2775,7 @@ class Writer
             ~ `boxtype names (see code_writer.d's boxtypeMap)`, kw));
     }
 
-    private string translateColor(int c)
+    private static string translateColor(int c)
     {
         if (auto p = c in colorNameMap)
             return *p;
@@ -2674,11 +2811,107 @@ class Writer
             ~ `own labeltype names (see code_writer.d's labeltypeMap)`, kw));
     }
 
-    private string translateAlign(int raw)
+    /// The D expression for an `align` value: the `fl.enumerations`
+    /// names joined with `|` (`alignLeft`, `alignTopLeft | alignInside`),
+    /// `alignCenter` for 0. Bits without a name are kept as a hex number.
+    private static string translateAlign(int raw)
     {
-        if (raw & alignInsideBit)
-            return format("cast(Align)(%d | alignInside)", raw & ~alignInsideBit);
-        return format("cast(Align) %d", raw);
+        static immutable string[int] posNames = [
+            0x1: "alignTop", 0x2: "alignBottom", 0x4: "alignLeft", 0x8: "alignRight",
+            0x5: "alignTopLeft", 0x9: "alignTopRight",
+            0x6: "alignBottomLeft", 0xa: "alignBottomRight",
+            0x7: "alignLeftTop", 0xb: "alignRightTop",
+            0xd: "alignLeftBottom", 0xe: "alignRightBottom",
+        ];
+        static immutable string[int] imageNames = [
+            0x020: "alignTextOverImage", 0x100: "alignImageNextToText",
+            0x120: "alignTextNextToImage", 0x200: "alignImageBackdrop",
+        ];
+        string[] parts;
+        int rest = raw;
+        if (auto p = (raw & 0xf) in posNames) { parts ~= *p; rest &= ~0xf; }
+        if (auto p = (raw & 0x320) in imageNames) { parts ~= *p; rest &= ~0x320; }
+        if (raw & alignInsideBit) { parts ~= "alignInside"; rest &= ~alignInsideBit; }
+        if (raw & 0x40) { parts ~= "alignClip"; rest &= ~0x40; }
+        if (raw & 0x80) { parts ~= "alignWrap"; rest &= ~0x80; }
+        if (rest) parts ~= format("0x%x", rest);
+        return parts.length ? parts.join(" | ") : "alignCenter";
+    }
+
+    /// `raw` as `fl.enumerations`-style names joined with `|`: `names`
+    /// lists each named value, combined ones before the bits they hold,
+    /// and every name whose bits are all in what is left is taken. `zero`
+    /// is the name for 0; bits without a name are kept as a hex number.
+    private struct NamedBits { int value; string name; }
+
+    private static string bitNames(int raw, const NamedBits[] names, string zero)
+    {
+        string[] parts;
+        int rest = raw;
+        foreach (nb; names)
+            if ((rest & nb.value) == nb.value)
+            {
+                parts ~= nb.name;
+                rest &= ~nb.value;
+            }
+        if (rest) parts ~= format("0x%x", rest);
+        return parts.length ? parts.join(" | ") : zero;
+    }
+
+    /// The D expression for a `when` value (`whenChanged | whenRelease`).
+    private static string translateWhen(int raw)
+    {
+        static immutable NamedBits[] names = [
+            NamedBits(16, "whenClosed"), NamedBits(11, "whenEnterKeyChanged"), NamedBits(10, "whenEnterKeyAlways"),
+            NamedBits(8, "whenEnterKey"), NamedBits(6, "whenReleaseAlways"), NamedBits(4, "whenRelease"),
+            NamedBits(2, "whenNotChanged"), NamedBits(1, "whenChanged"),
+        ];
+        return bitNames(raw, names, "whenNever");
+    }
+
+    /// The D expression for a grid cell's alignment (`gridTopLeft`, `gridFill`).
+    private static string translateGridAlign(int raw)
+    {
+        static immutable NamedBits[] names = [
+            NamedBits(0x30, "gridFill"), NamedBits(0x10, "gridHorizontal"), NamedBits(0x20, "gridVertical"),
+            NamedBits(0x40, "gridProportional"),
+            NamedBits(0x5, "gridTopLeft"), NamedBits(0x9, "gridTopRight"), NamedBits(0x6, "gridBottomLeft"),
+            NamedBits(0xa, "gridBottomRight"), NamedBits(0x1, "gridTop"), NamedBits(0x2, "gridBottom"),
+            NamedBits(0x4, "gridLeft"), NamedBits(0x8, "gridRight"),
+        ];
+        return bitNames(raw, names, "gridCenter");
+    }
+
+    unittest
+    {
+        assert(translateColor(88) == "red");
+        assert(translateColor(49) == "backgroundColor");
+        assert(translateColor(15) == "fl.enumerations.selectionColor");
+        assert(translateColor(100) == "cast(Color) 100");
+    }
+
+    unittest
+    {
+        assert(translateWhen(0) == "whenNever");
+        assert(translateWhen(5) == "whenRelease | whenChanged");
+        assert(translateWhen(6) == "whenReleaseAlways");
+        assert(translateWhen(11) == "whenEnterKeyChanged");
+        assert(translateWhen(16 | 1) == "whenClosed | whenChanged");
+        assert(translateWhen(0x20) == "0x20");
+        assert(translateGridAlign(0) == "gridCenter");
+        assert(translateGridAlign(0x30) == "gridFill");
+        assert(translateGridAlign(0x5) == "gridTopLeft");
+        assert(translateGridAlign(0x10 | 0x8) == "gridHorizontal | gridRight");
+    }
+
+    unittest
+    {
+        assert(translateAlign(0) == "alignCenter");
+        assert(translateAlign(4) == "alignLeft");
+        assert(translateAlign(0x5 | 0x10) == "alignTopLeft | alignInside");
+        assert(translateAlign(0x4 | 0x10 | 0x80) == "alignLeft | alignInside | alignWrap");
+        assert(translateAlign(0x120 | 0x8) == "alignRight | alignTextNextToImage");
+        assert(translateAlign(0x3) == "0x3");
     }
 }
 
@@ -3074,14 +3307,15 @@ private string[] collectClassOverrideImports(Node[] nodes, ClassNode[] localClas
 }
 
 /// Substitutes a bare `o` token (construction-time convention: "this
-/// widget's own variable") with its real name -- used only for
-/// `setup` bodies, which run inline in a widget's own property
+/// widget's own variable") with its real name, leaving strings, comments
+/// and member accesses alone (`fluid.code_highlight.renameIdentifier()`)
+/// -- used only for `setup` bodies, which run inline in a widget's own property
 /// list, not inside a freshly-introduced closure (contrast
 /// `writeCallback()`'s body, which needs no substitution at all -- see
 /// this module's own doc comment on the "o" convention).
 private string translateOwnSlot(string code, string v)
 {
-    return replaceAll!((Captures!string m) => v)(code, regex(`\bo\b`));
+    return renameIdentifier(code, "o", v);
 }
 
 /// Whether `s` is, in its entirety, a single valid D identifier --
@@ -3241,6 +3475,42 @@ unittest
     assert(textPosix.canFind(`catgets(_catalog, 1, 1, "Hello")`));
     assert(textPosix.canFind(`catgets(_catalog, 1, 2, "World")`));
     assert(textPosix.canFind(`box.tooltip(catgets(_catalog, 1, 3, "A tip"));`));
+}
+
+unittest
+{
+    // A code node among a window's children is written in its place,
+    // after the widgets before it and before the ones after it.
+    import std.string : indexOf;
+
+    auto mainFn = new FunctionNode();
+    mainFn.typeName = "Function";
+    auto win = new WindowNode();
+    win.typeName = "Window";
+    win.w = 100; win.h = 100;
+    win.hasXywh = true;
+    mainFn.addChild(win);
+    auto first = new WidgetNode();
+    first.typeName = "Box";
+    first.instanceName = "first";
+    first.w = 10; first.h = 10;
+    first.hasXywh = true;
+    win.addChild(first);
+    auto code = new CodeNode();
+    code.instanceName = `writeln("in the window");`;
+    win.addChild(code);
+    auto second = new WidgetNode();
+    second.typeName = "Box";
+    second.instanceName = "second";
+    second.w = 10; second.h = 10;
+    second.hasXywh = true;
+    win.addChild(second);
+
+    string text = new Writer().generate([mainFn]);
+    auto at = text.indexOf(`writeln("in the window");`);
+    assert(at >= 0);
+    assert(text.indexOf("first = new Box(") < at);
+    assert(at < text.indexOf("second = new Box("));
 }
 
 unittest
@@ -3649,27 +3919,6 @@ unittest
 
     string textHidden = new Writer().generate([cast(Node) hidden, cast(Node) mainFn]);
     assert(!textHidden.canFind("This comment should stay .fl-only."));
-}
-
-unittest
-{
-    // fldtkRootRelativeTo(): the path from a folder to the nearest one
-    // holding a dub.sdl, also when the folder is the current one (".").
-    import std.file : chdir, getcwd, mkdirRecurse, rmdirRecurse, tempDir, write;
-
-    string root = buildPath(tempDir(), "fluid_dub_root_unittest");
-    if (exists(root)) rmdirRecurse(root);
-    mkdirRecurse(buildPath(root, "a", "b"));
-    scope (exit) rmdirRecurse(root);
-    write(buildPath(root, "dub.sdl"), "name \"x\"\n");
-
-    assert(fldtkRootRelativeTo(buildPath(root, "a", "b")) == "../..");
-    assert(fldtkRootRelativeTo(root) == ".");
-
-    string cwd = getcwd();
-    chdir(buildPath(root, "a", "b"));
-    scope (exit) chdir(cwd);
-    assert(fldtkRootRelativeTo(".") == "../..");
 }
 
 unittest
@@ -4270,4 +4519,219 @@ unittest
         ~ "Function {} {open\n} {\n" ~ win ~ "}\n").readProject());
     assert(!m.canFind("static this()"));
     assert(m.indexOf("quitBody();") > m.indexOf("void main("));
+}
+
+unittest
+{
+    // Every kind of node, in every container Fluid lets it be placed in
+    // (`acceptsNewNode()` in `gui_main.d`), must reach the generated
+    // code: a combination the writer has no branch for would otherwise
+    // be dropped without a word. When `acceptsNewNode()` allows a new
+    // combination, add it to `allowed` below.
+    import std.algorithm : canFind, startsWith;
+    import fluid.group_node : GroupNode;
+
+    static T mk(T)(string typeName, string name)
+    {
+        auto n = new T();
+        n.typeName = typeName;
+        n.instanceName = name;
+        return n;
+    }
+    static WidgetNode box(string name)
+    {
+        auto b = mk!WidgetNode("Box", name);
+        b.w = 10; b.h = 10; b.hasXywh = true;
+        return b;
+    }
+    static WindowNode win(string name)
+    {
+        auto w = mk!WindowNode("Window", name);
+        w.w = 50; w.h = 50; w.hasXywh = true;
+        return w;
+    }
+
+    // The node of `kind` to place, carrying `marker` somewhere in what
+    // it generates; and the text that proves it was written.
+    static Node child(string kind, string marker)
+    {
+        switch (kind)
+        {
+        case "code": return mk!CodeNode("code", "int " ~ marker ~ ";");
+        case "codeblock":
+            auto cb = mk!CodeBlockNode("codeblock", "if (true)");
+            cb.addChild(mk!CodeNode("code", "int " ~ marker ~ ";"));
+            return cb;
+        case "decl": return mk!DeclNode("decl", "int " ~ marker ~ ";");
+        case "declblock":
+            auto db = mk!DeclBlockNode("declblock", "version (all)");
+            db.addChild(mk!DeclNode("decl", "int " ~ marker ~ ";"));
+            return db;
+        case "comment": return mk!CommentNode("comment", marker);
+        case "Function": return mk!FunctionNode("Function", marker ~ "()");
+        case "class": return mk!ClassNode("class", marker);
+        case "widget_class":
+            auto wc = mk!WidgetClassNode("widget_class", marker);
+            wc.w = 50; wc.h = 50; wc.hasXywh = true;
+            return wc;
+        case "Window": return win(marker);
+        case "widget": return box(marker);
+        default: assert(0, kind);
+        }
+    }
+    static string proof(string kind, string marker)
+    {
+        switch (kind)
+        {
+        case "Window": case "widget": return marker ~ " = new ";
+        case "class": case "widget_class": return "class " ~ marker;
+        case "Function": return marker ~ "()\n";
+        default: return marker;
+        }
+    }
+
+    // Each container, built around the node under test.
+    alias Container = Node[] delegate(Node);
+    Container[string] containers = [
+        "main()": (Node c) {
+            auto f = mk!FunctionNode("Function", "");
+            f.addChild(c);
+            return [cast(Node) f];
+        },
+        "function": (Node c) {
+            auto f = mk!FunctionNode("Function", "helper()");
+            f.addChild(c);
+            return [cast(Node) f];
+        },
+        "callback function": (Node c) {
+            auto f = mk!FunctionNode("Function", "cbf(Widget b)");
+            f.addChild(c);
+            auto m = mk!FunctionNode("Function", "");
+            auto w = win("");
+            auto b = box("button");
+            b.callback = "cbf";
+            w.addChild(b);
+            m.addChild(w);
+            return [cast(Node) f, m];
+        },
+        "code block": (Node c) {
+            auto f = mk!FunctionNode("Function", "");
+            auto cb = mk!CodeBlockNode("codeblock", "if (true)");
+            cb.addChild(c);
+            f.addChild(cb);
+            return [cast(Node) f];
+        },
+        "method": (Node c) {
+            auto k = mk!ClassNode("class", "Outer");
+            auto f = mk!FunctionNode("Function", "method()");
+            f.addChild(c);
+            k.addChild(f);
+            return [cast(Node) k];
+        },
+        "window": (Node c) {
+            auto f = mk!FunctionNode("Function", "");
+            auto w = win("");
+            w.addChild(c);
+            f.addChild(w);
+            return [cast(Node) f];
+        },
+        "group": (Node c) {
+            auto f = mk!FunctionNode("Function", "");
+            auto w = win("");
+            auto g = mk!GroupNode("Group", "");
+            g.w = 20; g.h = 20; g.hasXywh = true;
+            g.addChild(c);
+            w.addChild(g);
+            f.addChild(w);
+            return [cast(Node) f];
+        },
+        "declaration block": (Node c) {
+            auto db = mk!DeclBlockNode("declblock", "version (all)");
+            db.addChild(c);
+            return [cast(Node) db];
+        },
+        "class": (Node c) {
+            auto k = mk!ClassNode("class", "Outer");
+            k.addChild(c);
+            return [cast(Node) k];
+        },
+        "widget class": (Node c) {
+            auto k = mk!WidgetClassNode("widget_class", "OuterWidget");
+            k.w = 50; k.h = 50; k.hasXywh = true;
+            k.addChild(c);
+            return [cast(Node) k];
+        },
+        "top level": (Node c) => [c],
+    ];
+
+    enum codeBody = ["code", "codeblock", "comment", "Window"];
+    enum declBody = ["Function", "decl", "declblock", "class", "widget_class"];
+    string[][string] allowed = [
+        "main()": codeBody,
+        "function": codeBody,
+        "callback function": codeBody,
+        "code block": codeBody,
+        "method": codeBody,
+        "window": ["code", "widget", "Window"],
+        "group": ["code", "widget"],
+        "declaration block": declBody,
+        "class": declBody,
+        "widget class": ["Function", "decl", "declblock", "class",
+            "code", "codeblock", "comment", "widget"],
+        "top level": declBody ~ "comment",
+    ];
+
+    string[] missing;
+    int i;
+    foreach (where, kinds; allowed)
+        foreach (kind; kinds)
+        {
+            import std.conv : to;
+            string marker = "marker" ~ to!string(i++);
+            string text = new Writer().generate(containers[where](child(kind, marker)));
+            if (!text.canFind(proof(kind, marker)))
+                missing ~= kind ~ " in " ~ where;
+        }
+    assert(missing.length == 0, "not in the generated code: " ~ missing.join(", "));
+}
+
+unittest
+{
+    // Every node written records where its code is, so the Code View can
+    // highlight it: a function's span holds its header, a code block's
+    // its opening line, a code node's its text.
+    import std.algorithm.searching : canFind;
+    import fluid.project_reader : Reader;
+
+    auto roots = new Reader("version 1.0000\n"
+        ~ "decl {int counter;} {}\n"
+        ~ "Function {calculate()} {} {\n"
+        ~ "  codeblock {if (counter > 0)} {} {\n"
+        ~ "    code {counter--;} {}\n"
+        ~ "  }\n"
+        ~ "}\n"
+        ~ "Function {} {} {\n"
+        ~ "  code {calculate();} {}\n"
+        ~ "}\n").readProject();
+    string text = new Writer().generate(roots);
+
+    string spanText(TextSpan s)
+    {
+        assert(s.start >= 0 && s.end >= s.start);
+        return text[s.start .. s.end];
+    }
+
+    auto decl = roots[0];
+    auto calc = roots[1];
+    auto block = calc.children[0];
+    auto code = block.children[0];
+    auto mainFn = roots[2];
+    assert(spanText(decl.setupSpan).canFind("int counter;"));
+    assert(spanText(calc.setupSpan).canFind("calculate()"));
+    assert(spanText(calc.finalizeSpan).canFind("}"));
+    assert(text[calc.setupSpan.start .. calc.finalizeSpan.end].canFind("counter--;"));
+    assert(spanText(block.setupSpan).canFind("if (counter > 0) {"));
+    assert(spanText(code.setupSpan).canFind("counter--;"));
+    assert(spanText(mainFn.setupSpan).canFind("void main("));
+    assert(spanText(mainFn.finalizeSpan).canFind("fl.run();"));
 }

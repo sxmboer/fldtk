@@ -19,7 +19,7 @@ static this()
 {
     new UtTest("Preferences", "Strings", {
         {
-            auto prefs = new Preferences(rootUserL, "fltk.org", "unittests");
+            auto prefs = new Preferences(rootUserL, "fldtk", "unittests");
             prefs.set("a", "");
             prefs.set("b", "Hello");
             prefs.set("c", "Hel\\l\nö");
@@ -31,7 +31,7 @@ static this()
             prefs.flush();
         }
         {
-            auto prefs = new Preferences(rootUserL, "fltk.org", "unittests");
+            auto prefs = new Preferences(rootUserL, "fldtk", "unittests");
             string r;
             prefs.get("a", r, "x");
             if (r != "")

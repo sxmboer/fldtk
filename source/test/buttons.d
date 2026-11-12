@@ -40,7 +40,7 @@ void main(string[] args)
 
     // Add a scheme choice widget for easier testing. Position the widget at
     // the right window border so the menu popup doesn't cover the check boxes etc.
-    auto schemeChoice = new SchemeChoice(180, 130, 130, 30, "Active FLTK Scheme:");
+    auto schemeChoice = new SchemeChoice(180, 130, 130, 30, "Active fldtk Scheme:");
     schemeChoice.tooltip("SchemeChoice");
 
     window.end();

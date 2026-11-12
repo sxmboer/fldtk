@@ -112,7 +112,7 @@ class MainWindow : Window
 
 void main()
 {
-    auto window = new MainWindow(500, 232, "FLTK Coordinate Systems");
+    auto window = new MainWindow(500, 232, "fldtk Coordinate Systems");
     window.show();
     fl.run();
 }

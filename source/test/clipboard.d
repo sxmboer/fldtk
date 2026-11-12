@@ -205,8 +205,7 @@ void clipboardCb(int source, ClipboardViewer tabs)
 
 void main(string[] args)
 {
-    fl.registerImages(); // required for the X11 platform to allow pasting of images
-    auto win = new Window(500, 550, "FLTK Clipboard Viewer");
+    auto win = new Window(500, 550, "fldtk Clipboard Viewer");
     auto tabs = new ClipboardViewer(0, 0, 500, 500);
     auto g = new FlGroup(5, 30, 490, 460, fl.clipboardImage); // will display the image form
     g.box(Boxtype.flatBox);

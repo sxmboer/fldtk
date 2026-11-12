@@ -77,7 +77,9 @@
  * version (`FL_MAJOR_VERSION`/..., see `fl.enumerations`), as FLTK's own
  * Fluid prints its FLTK version.
  *
- * Deliberately NOT ported: `-d` (`Fluid.debug_external_editor`'s own gated
+ * Deliberately NOT ported: `-pr` (`fluid -c` always resolves relative
+ * output paths from the project file's own directory, as the editor
+ * does, so there is nothing to switch), `-d` (`Fluid.debug_external_editor`'s own gated
  * `printf()` tracing was never ported, see
  * `fluid.external_code_editor`'s own doc comment), `--autodoc`
  * (`autodoc.h`/`.cxx` itself was deliberately not ported, see

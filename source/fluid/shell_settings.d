@@ -390,7 +390,7 @@ void shellExportSelected()
     string path = fileChooser("Export Shell Commands", "*.flcmd", "");
     if (path.length == 0) return;
 
-    auto file = new Preferences(path, "flcmd.fluid.fltk.org", null, rootCLocale | rootClear);
+    auto file = new Preferences(path, "flcmd.fluid.fldtk", null, rootCLocale | rootClear);
     auto group = new Preferences(file, "shell_commands");
     auto entry = new Preferences(group, "0");
     cmd.writeTo(entry, true);
@@ -401,7 +401,7 @@ void shellImportFromFile()
     string path = fileChooser("Import Shell Commands", "*.flcmd", "");
     if (path.length == 0) return;
 
-    auto file = new Preferences(path, "flcmd.fluid.fltk.org", null, rootCLocale);
+    auto file = new Preferences(path, "flcmd.fluid.fldtk", null, rootCLocale);
     auto group = new Preferences(file, "shell_commands");
     int n = group.groups();
     foreach (i; 0 .. n)

@@ -494,6 +494,17 @@ decl {import std.algorithm : countUntil;}
     private
     local
   }
+decl {/// Whether `w` is a check button or a round button: a check box or
+/// radio dot has no frame to join into a compact bar, so the Compact
+/// setting is greyed out for them and not applied to them.
+private bool hasNoCompactFrame(Widget w)
+\{
+  return cast(CheckButton) w !is null || cast(RoundButton) w !is null;
+\}}
+  {
+    private
+    local
+  }
 decl {private Node currentCodeNode_;}
   {
     private
@@ -612,6 +623,10 @@ private bool widgetInClass(Node n)
 /// The Subtype choice's menu items; `menu(MenuItem[])` keeps a reference to
 /// the array, so it must outlive the choice's current menu.
 private MenuItem[] subtypeItems_;
+
+/// The "Change to:" choice's menu items, and the kind each one stands for.
+private MenuItem[] changeToItems_;
+private string[] changeToKinds_;
 
 /// Rebuilds the live menu that the menu item node `n` belongs to, after a
 /// change to the item that the menu displays.
@@ -1173,7 +1188,7 @@ private void onSizeRangeChanged()
         winNode.sizeRangeMinH = minH;
         winNode.sizeRangeMaxW = maxW;
         winNode.sizeRangeMaxH = maxH;
-        winNode.hasSizeRange = true;
+        winNode.hasSizeRange = minW || minH || maxW || maxH;
     \}
 \}
 
@@ -1610,6 +1625,32 @@ else
     styleCompact.show();
     styleCompact.value(wn.compactRaw.length ? wn.compactRaw == "1"
         : (cast(Button) liveForGating).compact());
+    // A check box or radio dot has no frame to join into a bar.
+    if (hasNoCompactFrame(liveForGating)) styleCompact.deactivate();
+    else styleCompact.activate();
+  \}
+
+// "Change to:" -- the kinds the selected widgets can all become, the
+// current one shown. Hidden for a widget that can't change kind.
+changeToKinds_ = changeTargets(wn);
+if (changeToKinds_.length == 0)
+  \{
+    styleChangeTo.hide();
+  \}
+else
+  \{
+    changeToItems_ = null;
+    int current = 0;
+    foreach (i, k; changeToKinds_)
+    \{
+      bool selectable = kindName(wn.typeName) == k || canChangeAll(selectedNodes_, k);
+      changeToItems_ ~= MenuItem(displayName(k), 0, null, selectable ? 0 : menuInactive);
+      if (kindName(wn.typeName) == k) current = cast(int) i;
+    \}
+    changeToItems_ ~= MenuItem(null);
+    styleChangeTo.menu(changeToItems_);
+    styleChangeTo.value(current);
+    styleChangeTo.show();
   \}
 
 // ---- C++ tab ----
@@ -1702,17 +1743,14 @@ codeChoice5.labelfont(wn.callback.length ? helveticaBoldItalic : helvetica);
 codeChoice5.redraw();
 userDataInput.value(wn.userData);
 
-// FLTK's own "When" Fl_Menu_Button LOAD branch -- deactivated for a
-// Menu_Item_Node selection with an early return (FLTK doesn't even
-// touch w_when_box's label in that case, so it's left showing whatever
-// it last did -- replicated faithfully here too, not "fixed" to
-// blank). Reads the *live* widget's own when() first (matching FLTK's
-// own current_widget->o->when(), which already reflects each widget
-// class's own real default correctly); falls back to the persisted
-// whenRaw when no live widget exists yet.
+// "When": inactive and blank for a menu item, which has no when().
+// Otherwise reads the live widget's own when() first (which reflects
+// each widget class's default), falling back to the saved whenRaw when
+// no live widget exists yet.
 if (isMenuItem)
   \{
     userDataWhen.deactivate();
+    wWhenBox.label("");
   \}
 else
   \{
@@ -2166,6 +2204,9 @@ root.callback((w) \{
     if (auto liveW = liveTree_.widgetOf.get(wn, null))
     \{
       applyProperties(wn, liveW, projectDir_, cast(WindowNode) wn is null || isNestedWindow(wn));
+      // A top-level window's W and H size the design window itself.
+      if (auto cv = cast(ProjectCanvas) liveW)
+        cv.sizeToNode();
       // Resizing or moving a container moves its children live: bring
       // their nodes along.
       if (auto before = wn in geometryBefore)
@@ -3661,6 +3702,7 @@ foreach (wn; selectedWidgetNodes())
                         callback {auto v = styleCompact.value() ? "1" : "0";
 foreach (wn; selectedWidgetNodes())
 \{
+  if (hasNoCompactFrame(liveTree_.widgetOf.get(wn, null))) continue;
   wn.compactRaw = v;
   wn.hasCompact = true;
 \}}
@@ -3674,6 +3716,21 @@ foreach (wn; selectedWidgetNodes())
                         xywh {195 205 40 40}
                         labelsize 11
                         resizable
+                      }
+                    Choice styleChangeTo
+                      {
+                        label {Change to:}
+                        callback {int i = styleChangeTo.value();
+if (i < 0 || i >= changeToKinds_.length) return;
+if (changeTypeCb !is null) changeTypeCb(changeToKinds_[i]);}
+                        xywh {99 255 148 20}
+                        down_box BORDER_BOX
+                        labelfont 1
+                        labelsize 11
+                        textsize 11
+                        tooltip {Replaces the widget with another kind of widget, keeping its place, label, name, callback and every other setting the new kind also has.}
+                      }
+                      {
                       }
                   }
                 Group wpCppTab
@@ -5064,7 +5121,7 @@ if (currentFuncNode_.instanceName != c)
                                 setup {o.buffer(new TextBuffer());
 enableHighlighting(o);
 enableAutoIndent(o);}
-                                tooltip {function name and args, or blank for `main(..)`}
+                                tooltip {Blank makes this function the program's main(). Type a name and arguments, like makeWindow(), for a function the program calls itself.}
                                 resizable
                               }
                           }
@@ -5178,6 +5235,14 @@ o.add(widgetTabGridChild);}
                 labelsize 10
                 tooltip {Hide the widget overlay box.}
               }
+            Button runButton
+              {
+                label {Run (F5)}
+                callback {runCb}
+                xywh {178 370 80 20}
+                labelsize 10
+                tooltip {Save the project, build the program with dub and start it (F5).}
+              }
             Box {}
               {
                 comment {Hidden resizable box}
@@ -5196,16 +5261,22 @@ o.add(widgetTabGridChild);}
           }
       }
   }
-comment {`liveModeCb`/`overlayCb`/`okCb` are the callbacks of the bottom
-bar's three buttons (`wLiveMode`, `overlayButton` and the Close
-`ReturnButton`). `gui_main.d` assigns them before it builds this panel:
-`liveModeCb` runs Live Resize (ported from FLTK's `live_mode_cb()`),
-`overlayCb` forwards to `toggleOverlays()`, and `okCb` closes the panel.}
+comment {`liveModeCb`/`overlayCb`/`runCb`/`okCb` are the callbacks of the
+bottom bar's four buttons (`wLiveMode`, `overlayButton`, `runButton` and
+the Close `ReturnButton`). `gui_main.d` assigns them before it builds
+this panel: `liveModeCb` runs Live Resize (ported from FLTK's
+`live_mode_cb()`), `overlayCb` forwards to `toggleOverlays()`, `runCb`
+runs File > Run (`runProject()`), and `okCb` closes the panel.}
   {
     in_source
     in_header
   }
 decl {void delegate(Widget) liveModeCb;}
+  {
+    public
+    global
+  }
+decl {void delegate(Widget) runCb;}
   {
     public
     global
@@ -5216,6 +5287,13 @@ decl {void delegate(Widget) overlayCb;}
     global
   }
 decl {void delegate(Widget) okCb;}
+  {
+    public
+    global
+  }
+decl {/// Changes the selected widgets into the given kind (`fluid.change_type`);
+/// set by `gui_main.d`, which also reloads the panel afterwards.
+void delegate(string) changeTypeCb;}
   {
     public
     global

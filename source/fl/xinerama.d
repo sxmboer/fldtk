@@ -1,7 +1,6 @@
 /*
  * Infrastructure module: raw `extern(C)` bindings for the small slice of
- * libXinerama this port needs (core-roadmap item 8 -- multi-monitor
- * geometry query only: which physical monitors exist and where they
+ * libXinerama this port needs (multi-monitor geometry query only: which physical monitors exist and where they
  * sit within the X server's single combined screen). No direct
  * FLTK header equivalent -- the same role `fl.xlib` plays for core
  * Xlib and `fl.xft` plays for the libXft/libXrender slice `fl.draw`

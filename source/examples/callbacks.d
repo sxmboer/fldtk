@@ -72,7 +72,7 @@ void main(string[] args)
     funcCbBtn0.callback((w) { hello0Args(); });
 
     auto funcCbBtn2 = new Button(10, 60, 180, 25, "2 args");
-    funcCbBtn2.callback((w) { hello2Args("FLTK", 2); });
+    funcCbBtn2.callback((w) { hello2Args("fldtk", 2); });
 
     auto funcCbBtn4 = new Button(10, 90, 180, 25, "4 args");
     funcCbBtn4.callback((w) { hello4Args(1, 2, 3, 4); });
@@ -100,7 +100,7 @@ void main(string[] args)
 
     auto inlineCbBtn2 = new Button(390, 60, 180, 25, "2 args");
     {
-        string text = "FLTK";
+        string text = "fldtk";
         int number = 2;
         inlineCbBtn2.callback((w) {
             message(format("We received the message %s with %d!", text, number));

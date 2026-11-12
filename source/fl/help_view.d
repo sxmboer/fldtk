@@ -18,22 +18,15 @@
  * `formatTable()`'s own doc comment for the column-width algorithm and
  * `TextBlock.border`/`.bgcolor`'s doc comment for the per-cell state it fills in.
  *
- * **Real `<img>` pixel rendering**: `getImage()` (ported from
- * `Impl::get_image()`), a fixed "broken
- * image" fallback (`brokenImage()`, an SVG redrawing of FLTK's own
- * inline `broken_xpm[]`), and `initialLoad_`
- * (FLTK's own `get()`-vs-`find()` refcount-management flag, an
- * instance field here rather than a process-wide `static`) are wired
- * into all four real call sites: `format()`'s and `formatTable()`'s
- * `<IMG>` layout branches (image size now comes from the real loaded
- * image, not a fixed 16x24 stand-in), `draw()`'s `<IMG>` branch (real
- * pixels now, via `Image.draw()`), and `freeData()` (releases every
- * image the document's initial `format()` pass loaded, matching
- * FLTK's own document-teardown contract). Recognizes whatever
- * `fl.shared_image.SharedImage`'s own format-detection handles (XBM/
- * XPM/PNM built in, plus anything registered via its `addHandler()`).
- * `fl.help_dialog` is Milestone 3, see `PORTING.md`'s own row for that
- * module.
+ * **Images**: `getImage()` (ported from `Impl::get_image()`) loads
+ * through `fl.shared_image.SharedImage`, with a "broken image" fallback
+ * (`brokenImage()`, an SVG redrawing of FLTK's `broken_xpm[]`).
+ * `imgTag()` gives `format()`, `formatTable()` and `draw()` the same
+ * image and size for an `<IMG>` tag: a missing `WIDTH` or `HEIGHT`
+ * follows the image's aspect ratio. `initialLoad_` (FLTK's
+ * `get()`-vs-`find()` refcount flag, per instance here) makes the
+ * initial `format()` pass hold the images, and `freeData()` releases
+ * them.
  *
  * **Deliberate structural deviation**: FLTK splits this widget
  * into `Fl_Help_View` (the public shell) plus a private nested `Impl`
@@ -350,6 +343,160 @@ package(fl) size_t vanilla(string p, size_t i, size_t end)
     }
 }
 
+/// Byte range `[start, end)` of the source character a folded code
+/// point came from.
+package(fl) struct FindSpan
+{
+    size_t start, end;
+}
+
+/// Appends `c` to `t` in the form `find()` compares text in: canonically
+/// decomposed (so a precomposed character and its base letter plus
+/// combining marks are the same) and lowercased. Each code point added
+/// records `o`, the byte range of the source character, in `off`.
+package(fl) void foldForFind(dchar c, ref dchar[] t, ref FindSpan[] off, FindSpan o)
+{
+    import std.uni : Canonical, decompose, decomposeHangul, toLower;
+
+    void put(dchar d)
+    {
+        t ~= toLower(d);
+        off ~= o;
+    }
+
+    if (c >= 0xAC00 && c <= 0xD7A3) // precomposed Hangul syllable
+    {
+        foreach (d; decomposeHangul(c)[]) put(d);
+    }
+    else
+    {
+        foreach (d; decompose!Canonical(c)[]) put(d);
+    }
+}
+
+/// Puts each run of combining marks in `t` into canonical order (by
+/// combining class, keeping the original order within a class), moving
+/// `off` along -- the last step of canonical decomposition.
+package(fl) void canonicalOrder(dchar[] t, FindSpan[] off)
+{
+    import std.uni : combiningClass;
+
+    for (size_t i = 1; i < t.length; i++)
+    {
+        ubyte cc = combiningClass(t[i]);
+        if (cc == 0) continue;
+        size_t j = i;
+        while (j > 0 && combiningClass(t[j - 1]) > cc)
+        {
+            dchar td = t[j]; t[j] = t[j - 1]; t[j - 1] = td;
+            FindSpan to = off[j]; off[j] = off[j - 1]; off[j - 1] = to;
+            j--;
+        }
+    }
+}
+
+/**
+ * Finds `key` in the text of `html[from .. end]` and returns the byte
+ * offset in `html` where the match starts, or -1; `matchEnd` is set to
+ * the offset just past the match's last character. The text is what a
+ * reader sees: tags are skipped, entities decode to their character, and
+ * a newline counts as a space. Text and `key` compare canonically
+ * decomposed and lowercased, so differently encoded forms of the same
+ * character match ("é" as one code point or as "e" plus a combining
+ * accent) and letters of any script match regardless of case. A match
+ * never starts or ends inside a character's combining marks, so "e"
+ * does not match the start of "é".
+ */
+package(fl) ptrdiff_t findInText(string html, size_t from, size_t end, string key,
+    out size_t matchEnd)
+{
+    import std.string : indexOf;
+    import std.uni : combiningClass;
+    import std.utf : byDchar, decode, UTFException;
+
+    dchar[] k;
+    FindSpan[] koff;
+    foreach (c; key.byDchar) foldForFind(c, k, koff, FindSpan.init);
+    canonicalOrder(k, koff);
+    if (k.length == 0) return -1;
+
+    if (end > html.length) end = html.length;
+    dchar[] t;
+    FindSpan[] off;
+    size_t i = vanilla(html, from, end);
+    while (i < end)
+    {
+        size_t next;
+        dchar c;
+        if (html[i] == '&')
+        {
+            int qc = quoteChar(html[i + 1 .. $]);
+            auto semi = html[i + 1 .. $].indexOf(';');
+            if (qc >= 0 && semi >= 0)
+            {
+                c = cast(dchar) qc;
+                next = i + 1 + semi + 1;
+            }
+            else
+            {
+                c = '&';
+                next = i + 1;
+            }
+        }
+        else
+        {
+            next = i;
+            try c = decode(html, next);
+            catch (UTFException)
+            {
+                c = html[i];
+                next = i + 1;
+            }
+        }
+        if (c == '\n') c = ' ';
+        foldForFind(c, t, off, FindSpan(i, next));
+        i = vanilla(html, next, end);
+    }
+    canonicalOrder(t, off);
+
+    outer: for (size_t a = 0; a + k.length <= t.length; a++)
+    {
+        if (a > 0 && combiningClass(t[a]) != 0) continue;
+        foreach (j; 0 .. k.length)
+            if (t[a + j] != k[j]) continue outer;
+        size_t b = a + k.length;
+        if (b < t.length && combiningClass(t[b]) != 0 && combiningClass(k[$ - 1]) == 0)
+            continue;
+        foreach (j; a .. b)
+            if (off[j].end > matchEnd) matchEnd = off[j].end;
+        return cast(ptrdiff_t) off[a].start;
+    }
+    return -1;
+}
+
+unittest
+{
+    import std.string : indexOf;
+
+    size_t e;
+    string html = "<p>Caf&eacute; <b>na\u00EFve</b>\nE\u0301TE \u00C9t\u00E9</p>";
+    // Entity, precomposed and combining forms all match each other.
+    assert(findInText(html, 0, html.length, "café", e) == html.indexOf("Caf"));
+    assert(findInText(html, 0, html.length, "cafe\u0301", e) == html.indexOf("Caf"));
+    assert(findInText(html, 0, html.length, "NAÏVE", e) == html.indexOf("na"));
+    // A newline matches a space; tags are skipped.
+    assert(findInText(html, 0, html.length, "naïve é", e) == html.indexOf("na"));
+    // Precomposed text found by a combining-form key and vice versa, any case.
+    assert(findInText(html, 0, html.length, "été", e) == html.indexOf("\u00C9t"));
+    assert(findInText(html, 0, html.length, "\u00E9te", e) == html.indexOf("E\u0301TE"));
+    // "e" alone doesn't match the start of "é".
+    assert(findInText("\u00E9 e", 0, 4, "e", e) == 3);
+    assert(findInText(html, 0, html.length, "xyz", e) == -1);
+    // The match ends after the last character, an entity included.
+    assert(findInText(html, 0, html.length, "café", e) == html.indexOf("Caf"));
+    assert(e == html.indexOf(";") + 1);
+}
+
 /// Ported from local function `command()`: packs up to the first 4
 /// significant characters of `cmd` (lowercased) into a big-endian
 /// `uint`, stopping early at `'>'`/space/end-of-string -- returns 0 if
@@ -627,14 +774,17 @@ class HelpView : FlGroup
         ubyte border;
         Color bgcolor;
         int x, y, w, h;
-        // Left starting position for each line -- FLTK caps at 32
-        // entries (line[32]) and silently stops advancing past index
-        // 31 (do_align()'s `if (line < 31) line++`); a block with more
-        // than 32 lines just re-uses line[31] for everything past it.
-        // Ported faithfully, not "fixed" -- see FLTK_ISSUES_n.md.
-        int[32] line;
+        // Left starting position of each line in the block.
+        int[] line;
         int ol;
         int olNum;
+
+        /// The left starting position of line i.
+        int lineX(int i) const
+        {
+            if (i < line.length) return line[i];
+            return line.length ? line[$ - 1] : 0;
+        }
     }
 
     /// Ported from `Fl_Help_View::Impl::Link`. A class (not a struct)
@@ -747,17 +897,14 @@ class HelpView : FlGroup
     private Color tmpSelectionColor_;
     private Color selectionTextColor_;
 
-    // Genuinely process-wide statics FLTK (its own comment says
-    // so -- "we need them only once during mouse events") -- same
-    // class of thing as fl.slider's `offcenter`/fl.roller's `ipos`,
-    // just needed across more than one method here so a function-local
-    // `static` (this project's usual idiom for that pattern) won't
-    // reach; a class-static is the direct D equivalent of FLTK's
-    // C++ `static` data member.
-    private static int selectionPushFirst_, selectionPushLast_;
-    private static int selectionDragFirst_, selectionDragLast_;
-    private static Mode drawMode_ = Mode.draw;
-    private static int currentPos_;
+    // Mouse-selection state: the range under the push and under the
+    // current drag, which pass draw() is making, and the text offset
+    // draw() has reached.
+    private int selectionPushFirst_, selectionPushLast_;
+    private int selectionDragFirst_, selectionDragLast_;
+    private Mode drawMode_ = Mode.draw;
+    private int currentPos_;
+    private Link linkp_; // link under the current mouse press
 
     // ---- Callback ----
 
@@ -951,6 +1098,34 @@ class HelpView : FlGroup
         return img !is null ? img : brokenImage();
     }
 
+    /// The image of an `<IMG>` tag (`null` without `SRC`) and the size it
+    /// takes. A missing `WIDTH` or `HEIGHT` follows the image's aspect
+    /// ratio; with neither, the image keeps its own size.
+    private Image imgTag(string attrs, out int width, out int height)
+    {
+        width = getLength(getAttr(attrs, "WIDTH"));
+        height = getLength(getAttr(attrs, "HEIGHT"));
+        auto src = getAttr(attrs, "SRC");
+        if (src is null) return null;
+
+        if (width != 0 && height != 0)
+            return getImage(src, width, height);
+
+        auto img = getImage(src, 0, 0);
+        int nw = img.w(), nh = img.h();
+        if (width == 0 && height == 0)
+        {
+            width = nw;
+            height = nh;
+            return img;
+        }
+        if (width == 0)
+            width = nh > 0 ? height * nw / nh : nw;
+        else
+            height = nw > 0 ? width * nh / nw : nh;
+        return width == nw && height == nh ? img : getImage(src, width, height);
+    }
+
     private Link findLink(int xx, int yy)
     {
         foreach (link; linkList_)
@@ -1025,10 +1200,10 @@ class HelpView : FlGroup
             break;
         }
 
+        if (line >= blocks_[blockIdx].line.length)
+            blocks_[blockIdx].line.length = line + 1;
         blocks_[blockIdx].line[line] = blocks_[blockIdx].x + offset;
-
-        if (line < 31)
-            line++;
+        line++;
 
         while (l < cast(int) linkList_.length)
         {
@@ -1109,15 +1284,9 @@ class HelpView : FlGroup
         int scrollsize = scrollbarSize_ != 0 ? scrollbarSize_ : fl.core.scrollbarSize();
         hsize_ = w() - scrollsize - boxDw(b);
 
-        // Ported verbatim from FLTK's own (odd) placement: OL_num
-        // is declared *outside* the retry loop below, so a mid-list
-        // retry (hsize_ growing because a word didn't fit) does not
-        // reset it -- this looks like it could be an FLTK
-        // list-numbering quirk across retries; not chased further
-        // here, ported bug-for-bug rather than silently changed.
-        int[] olStack = [-1];
         Color tc, rc;
 
+        int[] olStack;
         bool done = false;
         while (!done)
         {
@@ -1132,6 +1301,7 @@ class HelpView : FlGroup
             tc = rc = bgcolor_;
 
             title_ = "Untitled";
+            olStack = [-1];
 
             if (value_ is null)
                 return;
@@ -1678,16 +1848,8 @@ class HelpView : FlGroup
                         popfont(font, fsize, fcolor);
                     else if (buf.cmp("IMG"))
                     {
-                        int width = getLength(getAttr(attrs, "WIDTH"));
-                        int height = getLength(getAttr(attrs, "HEIGHT"));
-
-                        auto src = getAttr(attrs, "SRC");
-                        if (src !is null)
-                        {
-                            auto img = getImage(src, width, height);
-                            width = img.w();
-                            height = img.h();
-                        }
+                        int width, height;
+                        imgTag(attrs, width, height);
 
                         ww = width;
 
@@ -2130,15 +2292,8 @@ class HelpView : FlGroup
                     popfont(font, fsize, fcolor);
                 else if (buf.cmp("IMG") && incell)
                 {
-                    int iwidth = getLength(getAttr(attrs, "WIDTH"));
-                    int iheight = getLength(getAttr(attrs, "HEIGHT"));
-                    auto src = getAttr(attrs, "SRC");
-                    if (src !is null)
-                    {
-                        auto img = getImage(src, iwidth, iheight);
-                        iwidth = img.w();
-                        iheight = img.h();
-                    }
+                    int iwidth, iheight;
+                    imgTag(attrs, iwidth, iheight);
                     ensure(column < 0 ? 0 : column);
                     int mwIdx = column < 0 ? 0 : column;
                     if (iwidth > minwidths[mwIdx])
@@ -2484,7 +2639,7 @@ class HelpView : FlGroup
                 continue;
 
             int line = 0;
-            int xx = blk.line[line];
+            int xx = blk.lineX(line);
             int yy = blk.y - topline_;
             hh = 0;
             int pre = 0;
@@ -2516,9 +2671,8 @@ class HelpView : FlGroup
 
                         if ((xx + ww) > blk.w)
                         {
-                            if (line < 31)
-                                line++;
-                            xx = blk.line[line];
+                            line++;
+                            xx = blk.lineX(line);
                             yy += hh;
                             hh = 0;
                         }
@@ -2552,9 +2706,8 @@ class HelpView : FlGroup
                                         xx + x() - leftline_ + cast(int) buf.width());
                                 buf.clear();
                                 currentPos_ = cast(int) i;
-                                if (line < 31)
-                                    line++;
-                                xx = blk.line[line];
+                                line++;
+                                xx = blk.lineX(line);
                                 yy += hh;
                                 hh = fsize + 2;
                             }
@@ -2631,18 +2784,16 @@ class HelpView : FlGroup
                         head = 1;
                     else if (buf.cmp("BR"))
                     {
-                        if (line < 31)
-                            line++;
-                        xx = blk.line[line];
+                        line++;
+                        xx = blk.lineX(line);
                         yy += hh;
                         hh = 0;
                     }
                     else if (buf.cmp("HR"))
                     {
                         fl_line(blk.x + x(), yy + y(), blk.w + x(), yy + y());
-                        if (line < 31)
-                            line++;
-                        xx = blk.line[line];
+                        line++;
+                        xx = blk.lineX(line);
                         yy += 2 * fsize;
                         hh = 0;
                     }
@@ -2753,12 +2904,6 @@ class HelpView : FlGroup
                         auto sizeAttr = getAttr(attrs, "SIZE");
                         if (sizeAttr !is null)
                         {
-                            // FLTK uses atof() here vs. atoi() in
-                            // format()'s otherwise-identical FONT SIZE
-                            // handling -- a real inconsistency between
-                            // the two, harmless for integer SIZE
-                            // values (the only kind real documents
-                            // use); atoiLike() is reused for both.
                             if (sizeAttr.length > 0 && isDigit(sizeAttr[0]))
                                 fsize = cast(int)(textsize_ * pow(1.2, atoiLike(sizeAttr) - 3.0));
                             else
@@ -2797,24 +2942,8 @@ class HelpView : FlGroup
                     }
                     else if (buf.cmp("IMG"))
                     {
-                        int width = getLength(getAttr(attrs, "WIDTH"));
-                        int height = getLength(getAttr(attrs, "HEIGHT"));
-
-                        Image img;
-                        auto src = getAttr(attrs, "SRC");
-                        if (src !is null)
-                        {
-                            img = getImage(src, width, height);
-                            // Only fills in a *missing* dimension here
-                            // (vs. format()'s unconditional overwrite
-                            // for the same tag) -- a real FLTK
-                            // inconsistency, ported faithfully; see
-                            // FLTK_ISSUES_n.md.
-                            if (width == 0)
-                                width = img.w();
-                            if (height == 0)
-                                height = img.h();
-                        }
+                        int width, height;
+                        Image img = imgTag(attrs, width, height);
 
                         ww = width;
 
@@ -2823,9 +2952,8 @@ class HelpView : FlGroup
 
                         if ((xx + ww) > blk.w)
                         {
-                            if (line < 31)
-                                line++;
-                            xx = blk.line[line];
+                            line++;
+                            xx = blk.lineX(line);
                             yy += hh;
                             hh = 0;
                         }
@@ -2847,9 +2975,8 @@ class HelpView : FlGroup
                     hvDraw(buf.str(), xx + x() - leftline_, yy + y());
                     buf.clear();
 
-                    if (line < 31)
-                        line++;
-                    xx = blk.line[line];
+                    line++;
+                    xx = blk.lineX(line);
                     yy += hh;
                     hh = fsize + 2;
                     needspace = 0;
@@ -2917,9 +3044,8 @@ class HelpView : FlGroup
 
                 if ((xx + wwFinal) > blk.w)
                 {
-                    if (line < 31)
-                        line++;
-                    xx = blk.line[line];
+                    line++;
+                    xx = blk.lineX(line);
                     yy += hh;
                     hh = 0;
                 }
@@ -2940,10 +3066,6 @@ class HelpView : FlGroup
     {
         import fl.enumerations : Cursor, rightMouse, stateMeta, stateAlt,
             stateShift, stateCtrl, stateCommand;
-
-        static Link linkp; // currently clicked link -- genuinely
-        // process-wide FLTK too (its own `static` local), see the
-        // `selectionPush*_` fields' own note on this pattern.
 
         int xx = fl.core.eventX() - x() + leftline_;
         int yy = fl.core.eventY() - y() + topline_;
@@ -2998,8 +3120,8 @@ class HelpView : FlGroup
             if (super.handle(event))
                 return 1;
 
-            linkp = findLink(xx, yy);
-            if (linkp !is null)
+            linkp_ = findLink(xx, yy);
+            if (linkp_ !is null)
             {
                 if (window() !is null)
                     window().cursor(Cursor.hand);
@@ -3018,7 +3140,7 @@ class HelpView : FlGroup
                 window().cursor(Cursor.default_);
             return 1;
         case Event.drag:
-            if (linkp !is null)
+            if (linkp_ !is null)
             {
                 if (fl.core.eventIsClick())
                 {
@@ -3027,7 +3149,7 @@ class HelpView : FlGroup
                 }
                 else
                 {
-                    linkp = null;
+                    linkp_ = null;
                     if (beginSelection())
                     {
                         selectionMode_ = Mode.push;
@@ -3050,13 +3172,13 @@ class HelpView : FlGroup
                 window().cursor(Cursor.default_);
             return 1;
         case Event.release:
-            if (linkp !is null)
+            if (linkp_ !is null)
             {
                 if (fl.core.eventIsClick())
-                    followLink(linkp);
+                    followLink(linkp_);
                 if (window() !is null)
                     window().cursor(Cursor.default_);
-                linkp = null;
+                linkp_ = null;
                 return 1;
             }
 
@@ -3251,29 +3373,15 @@ class HelpView : FlGroup
     }
 
     /**
-     * Ported from `Fl_Help_View::Impl::find()`. See FLTK's own
-     * doc comment (transcribed on the D declaration below) for the
-     * matching rules: HTML tags never match, entities decode to
-     * Unicode first, ASCII letters compare case-insensitively,
-     * newlines count as a single space, everything else compares
-     * byte-for-byte.
-     *
-     * *FIXME* *UTF-8* (ported from FLTK's own flagged comment,
-     * not resolved here): when a decoded HTML entity's code point is
-     * outside ASCII, the comparison below decodes one code point from
-     * the search string and compares code-point values -- correct as
-     * far as it goes, but a search string containing a *pre-composed*
-     * multi-codepoint sequence that's canonically equivalent to the
-     * entity (e.g. combining diacritics) will never match. Same
-     * limitation FLTK, ported faithfully rather than silently
-     * fixed.
+     * Finds `s` in the document's text, starting at byte offset `p`
+     * (0 if out of range), selects the match (from the start of its
+     * word, see `hvDraw()`), scrolls the block containing it into view
+     * and returns the match's byte offset, or -1. See
+     * `findInText()` for how text and `s` are compared. Ported from
+     * `Fl_Help_View::Impl::find()`.
      */
     int find(string s, int p = 0)
     {
-        import std.string : indexOf;
-        import std.utf : decode;
-        import std.ascii : toLower;
-
         if (s is null || value_ is null)
             return -1;
 
@@ -3286,80 +3394,22 @@ class HelpView : FlGroup
                 continue;
 
             size_t bp = blk.start < cast(size_t) p ? cast(size_t) p : blk.start;
-
-            bp = vanilla(value_, bp, blk.end);
-            if (bp == blk.end)
-                continue;
-
-            size_t sp = 0;
-            size_t bs = bp;
-
-            while (sp < s.length && bp < value_.length && bp < blk.end)
+            size_t matchEnd;
+            auto at = findInText(value_, bp, blk.end, s, matchEnd);
+            if (at >= 0)
             {
-                bool isHtmlEntity = false;
-                int c;
-                if (value_[bp] == '&')
-                {
-                    int qc = quoteChar(value_[bp + 1 .. $]);
-                    if (qc < 0)
-                        c = '&';
-                    else
-                    {
-                        auto entityEnd = value_[bp + 1 .. $].indexOf(';');
-                        if (entityEnd >= 0)
-                        {
-                            isHtmlEntity = true;
-                            c = qc;
-                            bp = bp + 1 + entityEnd;
-                        }
-                        else
-                            c = '&';
-                    }
-                }
-                else
-                    c = value_[bp];
-
-                if (c == '\n')
-                    c = ' ';
-
-                if (c > 0x20 && c < 0x80 && toLower(s[sp]) == toLower(cast(char) c))
-                {
-                    sp++;
-                    bp = vanilla(value_, bp + 1, blk.end);
-                }
-                else if (isHtmlEntity)
-                {
-                    size_t idx = sp;
-                    dchar dc = decode(s, idx);
-                    if (cast(int) dc == c)
-                    {
-                        sp = idx;
-                        bp = vanilla(value_, bp + 1, blk.end);
-                    }
-                    else
-                    {
-                        sp = 0;
-                        bs = vanilla(value_, bs + 1, blk.end);
-                        bp = bs;
-                    }
-                }
-                else if (cast(int) s[sp] == c)
-                {
-                    sp++;
-                    bp = vanilla(value_, bp + 1, blk.end);
-                }
-                else
-                {
-                    sp = 0;
-                    bs = vanilla(value_, bs + 1, blk.end);
-                    bp = bs;
-                }
-            }
-
-            if (sp >= s.length)
-            {
+                // Selection is drawn a whole word at a time, so the
+                // selection starts at the beginning of the match's word.
+                size_t first = cast(size_t) at;
+                while (first > blk.start && value_[first - 1] != ' ' && value_[first - 1] != '\n'
+                        && value_[first - 1] != '\t' && value_[first - 1] != '>')
+                    first--;
+                selectionFirst_ = cast(int) first;
+                selectionLast_ = cast(int) matchEnd;
+                selected_ = true;
                 topline(blk.y - blk.h);
-                return cast(int) bs;
+                redraw();
+                return cast(int) at;
             }
         }
 

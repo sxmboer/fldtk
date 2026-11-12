@@ -116,12 +116,13 @@ class Node
     /// own doc comment. `setupSpan` is FLTK's `setup_node` (this
     /// node's own code, written before any children); `finalizeSpan` is
     /// `finalize_node` (written after children -- `.end()`,
-    /// `resizable()`, and similar postscript). Only `fluid.code_writer.
-    /// Writer`'s widget-tree node kinds (window/group/widget) set these
-    /// -- every other node kind (Function, Class, decl, comment, ...)
-    /// leaves them at `TextSpan.init`, which the Code View panel treats
-    /// the same way FLTK treats any untracked position: no
-    /// highlight, no pan, no crash.
+    /// `resizable()`, and similar postscript). `fluid.code_writer.Writer`
+    /// sets them for every node it writes. For a node without children
+    /// the whole code is the setup span and the finalize span is empty;
+    /// for a Function, Class or block, the setup span is its comment,
+    /// header and opening brace, the finalize span its closing code. A
+    /// node not written (yet) keeps `TextSpan.init`, which the Code View
+    /// panel treats as untracked: no highlight, no pan.
     TextSpan setupSpan;
     TextSpan finalizeSpan;
 

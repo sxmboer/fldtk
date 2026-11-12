@@ -72,20 +72,32 @@ private void chooseBackend()
         import std.stdio : stderr;
 
         import std.uni : toLower;
+        import fl.core : startupSetting;
+
+        // FLDTK_BACKEND is an explicit request for this run: a value that
+        // can't be met is an error. The Backend setting (fldtk-options)
+        // applies to every program, so one that can't be met falls back
+        // to the automatic choice.
         string value = environment.get("FLDTK_BACKEND");
+        bool fromEnv = value.length != 0;
+        if (!fromEnv) value = startupSetting("FLDTK_BACKEND", "Backend");
         string b = value is null ? null : value.toLower; // X11 and x11 alike
         if (b == "x11") return;
         if (b == "wayland")
         {
-            if (!platformWayland.connect())
+            if (platformWayland.connect())
+            {
+                backend_ = Backend.wayland;
+                return;
+            }
+            if (fromEnv)
             {
                 stderr.writeln("Error: no Wayland connection available, FLDTK_BACKEND='", value, "'");
                 exit(1);
             }
-            backend_ = Backend.wayland;
-            return;
+            return; // the setting asked for Wayland: X11 it is
         }
-        if (b !is null)
+        if (b !is null && b != "auto" && fromEnv)
         {
             stderr.writeln("Error: unexpected value of FLDTK_BACKEND: '", value, "' (x11 or wayland)");
             exit(1);
@@ -142,6 +154,8 @@ package(fl) void resizeWindow(FlWindow win, int x, int y, int w, int h, bool isM
 
 package(fl) void sizeRangeChanged(FlWindow win) { mixin(fwd!q{sizeRangeChanged(win)}); }
 package(fl) bool decoratedWinSize(FlWindow win, out int w, out int h) { mixin(fwd!q{decoratedWinSize(win, w, h)}); }
+package(fl) void decorationSizes(FlWindow win, out int top, out int left, out int right, out int bottom)
+{ mixin(fwd!q{decorationSizes(win, top, left, right, bottom)}); }
 package(fl) void updateWindowLabel(FlWindow win) { mixin(fwd!q{updateWindowLabel(win)}); }
 package(fl) void setIcons(FlWindow win) { mixin(fwd!q{setIcons(win)}); }
 package(fl) void fullscreenOn(FlWindow win) { mixin(fwd!q{fullscreenOn(win)}); }

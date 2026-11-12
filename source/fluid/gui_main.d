@@ -24,7 +24,7 @@
  * Sort/Earlier/Later/Group/Ungroup are real --
  * `sortSelectedCmd()`/`earlierSelectedCmd()`/`laterSelectedCmd()`
  * (`fluid.node_order`, ported from `Widget_Node.cxx`'s free `sort()`
- * function and `Node.cxx`'s `earlier_cb()`/`later_cb()`) and
+ * function and `Project.cxx`'s `move_selected_earlier()`/`move_selected_later()`) and
  * `groupSelectedCmd()`/`ungroupSelectedCmd()` (`fluid.group_ungroup`,
  * ported from `Group_Node.cxx`'s `group_cb()`/`ungroup_cb()`) -- both
  * modules build on three `fluid.node.Node` primitives,
@@ -101,9 +101,9 @@ import widget_panel : make_widget_panel, wireEditHooks, widgetPanelLoad = load,
     widgetPanelOnEdited = onEdited, widgetPanelOnEditSettled = onEditSettled,
     widgetPanelOnOpenExternalEditor = onOpenExternalEditor,
     widgetPanelOnBeforeTextEdit = onBeforeTextEdit,
-    overlayCb, okCb, liveModeCb, wLiveMode, thePanel, widgetTabs, tabsWizard, overlayButton,
+    overlayCb, okCb, liveModeCb, runCb, changeTypeCb, wLiveMode, thePanel, widgetTabs, tabsWizard, overlayButton,
     vCodeInput2, vCodeInput3, wCallback, userDataInput;
-import fluid.factory : createNode;
+import fluid.factory : createNode, isNodeType;
 import fluid.instantiate : instantiateOne, instantiateChild, instantiateStandalone, idealSizeFor, startsHorizontal, defaultLabelFor, defaultNameFor, LiveTree, loadImageFile, applyMenuItems, applyProperties, scrollOffsetWithin, getTextStuff, onImageLoadError;
 import fluid.menu_owner_node : MenuOwnerNode;
 import fluid.menu_item_node : MenuItemNode, SubmenuNode;
@@ -117,6 +117,7 @@ import std.algorithm.comparison : min, max;
 import fluid.layout_suite : layoutList, LayoutSuite, LayoutList;
 import fluid.align_widget : AlignHow, alignWidgets;
 import fluid.node_order : moveSelectedEarlier, moveSelectedLater, sortSelected;
+import fluid.change_type : changeTargets, canChangeAll, changeType, kindName, displayName;
 import fluid.group_ungroup : isContainerNode, groupSelected, ungroupSelected, fixGroupSize, groupSelectedMenuItems, ungroupSelectedMenuItems;
 import fluid.i18n : I18nSettings, I18nType;
 import fluid.project_settings : ProjectSettings;
@@ -131,13 +132,15 @@ import template_panel : makeTemplatePanel, templatePanel, templateBrowser,
     templateName, templateClear, templateLoad, templateSelectedPath;
 import codeview_panel : codeviewToggleVisibility, codeviewRefresh, codeviewPanel,
     codeviewUpdatePosition, codeviewAutoRefresh, cvOnReveal;
-import settings_panel : settingsToggleVisibility, settingsShowShellTab, settingsShowLayoutTab,
+import settings_panel : settingsRefreshProject, settingsToggleVisibility, settingsShowShellTab, settingsShowLayoutTab,
     layoutRefreshTabIfOpen, layoutSaveUser;
 import function_panel : makeWidgetBin, widgetBinPanel, binButtonCb, codeButtonCb, widgetBinToggleVisibility;
 import fluid.bin_button : BinButton, onWindowDropped, acceptsWidgetDrop;
 import fluid.shell_process;
 import shell_run_window : makeShellRunWindow, showShellRunWindow, shellRunWindow,
     shellRunTerminal, shellRunButton;
+import run_window : showRunWindow, runWindow, runTerminal, runStopButton;
+import fluid.run_program : runStart, runKill, runRunning, onRunOutput;
 import fluid.shell_command;
 import fluid.shell_settings : onProjectShellCommandChanged, onShellListChanged;
 import fluid.code_node : CodeNode;
@@ -468,11 +471,6 @@ private string[] recentMenuPaths_;
 /// branch that calls this.
 void runEditor(string[] args)
 {
-    // Ported from FLTK's own `fl_register_images();` call (`Fluid.cxx`):
-    // without it the file chooser's preview and `SharedImage.get()` only
-    // recognize XBM/XPM/PNM, not PNG/JPEG/GIF/BMP/ICO/SVG.
-    registerImages();
-
     // Ported from FLTK's own `loadPixmaps();` call in `make_main_
     // window()` (`Fluid.cxx`) -- populates `fluid.pixmaps`' per-node-
     // type icon table once at startup, before anything that might
@@ -527,6 +525,8 @@ void runEditor(string[] args)
     // Hidden unless the project has MergeBack enabled, see `updateMergebackMenu()`.
     menu.add("&File/MergeBack Code", stateCtrl + stateShift + 'm', (w) { mergebackCodeFiles(true); }, menuInvisible);
     menu.add("&File/&Write Strings", stateCtrl + stateShift + 'w', (w) { writeStringsFile(); }, menuDivider);
+    menu.add("&File/R&un", fl.enumerations.f + 5, (w) { runProject(); });
+    menu.add("&File/Set Up &dub Project...", 0, (w) { setUpDubProject(true); }, menuDivider);
 
     history_ = new History();
     history_.load(appPrefs);
@@ -642,9 +642,9 @@ void runEditor(string[] args)
     // (File/Edit/Layout/...). Category *names* (just below)
     // match FLTK's own `New_Menu[]` strings exactly.
     //
-    // Every leaf item also gets the same 16x16 icon the widget palette's
-    // own buttons use (`fluid.pixmaps.pixmapFor()`, matching FLTK's
-    // own `fill_in_New_Menu()`/`make_iconlabel()`).
+    // Every leaf item also gets its type's 16x16 icon
+    // (`fluid.pixmaps.pixmapFor()`, the same SVG the widget bin's button
+    // shows, matching FLTK's own `fill_in_New_Menu()`/`make_iconlabel()`).
     // Uses `Menu_.multiLabel()`, not `Menu_.image(idx, icon)` (a plain
     // `MenuItem.image()` field), which would produce an "icon and name show on two
     // lines instead of one" result -- `fl.widget.Label.measure()`/`draw()`
@@ -786,6 +786,20 @@ void runEditor(string[] args)
     newWidgetItem("&New/&Other/Bo&x", "Box");
     newWidgetItem("&New/&Other/&Terminal", "Terminal");
     newWidgetItem("&New/&Other/Pro&gress", "Progress");
+    {
+        // Where the next widget made next to a selected one goes: to its
+        // right (the default) or below it (`defaultPositionFor()`).
+        // A divider above it, after the last submenu.
+        int other = menu.findIndex("&New/&Other");
+        if (other >= 0) menu.mode(other, cast(MenuFlags)(menu.mode(other) | menuDivider));
+        int below;
+        appPrefs.get("new_widgets_below", below, 0);
+        newWidgetsBelow_ = below != 0;
+        menu.add("&New/Place New Widgets &Below", 0, (w) {
+            newWidgetsBelow_ = !newWidgetsBelow_;
+            appPrefs.set("new_widgets_below", newWidgetsBelow_ ? 1 : 0);
+        }, menuToggle | (newWidgetsBelow_ ? menuValue : 0));
+    }
 
     menu.add("&Layout/&Align/&Left", 0, (w) { alignSelected(AlignHow.left); });
     menu.add("&Layout/&Align/&Center", 0, (w) { alignSelected(AlignHow.hCenter); });
@@ -842,6 +856,7 @@ void runEditor(string[] args)
     FlGroup.current(shelf_);
     browser_.onSelect = (n) { selectFromBrowser(n); };
     browser_.onOpen = (n) { openNode(n); };
+    browser_.onContextMenu = (n) { showTreeContextMenu(); };
     shelf_.resizable(browser_);
 
     // `overlayCb`/`okCb`/`liveModeCb` are `widget_panel.fl`'s own
@@ -875,6 +890,9 @@ void runEditor(string[] args)
         reportedImageErrors_[msg] = true;
         fl.message(msg);
     };
+
+    runCb = (w) { runProject(); };
+    changeTypeCb = (kind) { changeSelectedType(kind); };
 
     okCb = (w) {
         import fluid.code_check : codeCheck;
@@ -1440,6 +1458,7 @@ private void newProject()
     updateMergebackMenu();
     codeFileName_ = "";
     projectPath_ = null;
+    settingsRefreshProject();
 
     browser_.build(projectRoots_);
     widgetPanelLoad([], LiveTree.init, projectDir_());
@@ -1707,6 +1726,7 @@ private void mergeProject(string path)
     }
     if (seen("code_name")) codeFileName_ = reader.codeFileName;
     if (seen("dub_header")) projectDubHeader_ = reader.dubHeader;
+    settingsRefreshProject();
     applyFileShellAndLayouts(reader.shellCommands, reader.layoutSuites, reader.layoutCurrentSuite,
         reader.layoutCurrentPreset, reader.hasSnap, seen("shell_commands"), reader.hasSnap);
 
@@ -1812,6 +1832,7 @@ private void loadProject(string path, bool asTemplate = false, string instance =
     projectSettings_ = settings;
     updateMergebackMenu();
     codeFileName_ = codeFileName;
+    settingsRefreshProject();
     openLoadedProject(windowRoots);
     undoStack_ = [];
     redoStack_ = [];
@@ -2163,6 +2184,7 @@ private void restoreFromText(string text)
     projectSettings_ = settings;
     updateMergebackMenu();
     codeFileName_ = codeFileName;
+    settingsRefreshProject();
 
     // A window with no previous counterpart is genuinely new (added
     // since the state being restored to) -- no live canvas to reuse, so
@@ -2292,6 +2314,7 @@ private void wireCanvasCallbacks(WindowNode wn, ProjectCanvas cv)
     cv.onDeleteRequested = () { activeWindow_ = wn; deleteSelected(); };
     cv.onWidgetDropped = (typeName, parent, x, y) { activeWindow_ = wn; dropWidget(typeName, parent, x, y); };
     cv.onBeforeGeometryEdit = () { activeWindow_ = wn; checkpoint(); };
+    cv.onDuplicateForDrag = () { activeWindow_ = wn; return duplicateSelected(); };
     cv.onBeforeWindowResize = () { activeWindow_ = wn; checkpointOnce(OnceType.windowResize); };
     cv.onGeometryEdited = () { activeWindow_ = wn; geometryEdited(); };
     cv.onOpenRequested = (n) { openNode(n); };
@@ -2421,11 +2444,16 @@ private void addWidget(string typeName)
     // Matches `Widget_Node::make()` (`nodes/Widget_Node.cxx`): a widget
     // goes into a group or window. With none to put it in, the node
     // creation assistant offers to create the missing Function and
-    // Window (`assistNodeCreation()`); declining creates nothing.
+    // Window (`assistNodeCreation()`); declining creates nothing. A
+    // selected widget that holds no children puts the new one in the
+    // group or window it is in, so clicking a bin button repeatedly
+    // keeps filling that group.
     scope(exit) selectionOverride_ = null;
     Node anchorNode = currentSelection();
     Node parentNode = anchorNode;
-    if (parentNode is null || !isContainerNode(parentNode))
+    while (parentNode !is null && !isContainerNode(parentNode))
+        parentNode = parentNode.parent;
+    if (parentNode is null)
         parentNode = activeWindow_;
     if (parentNode is null || !isContainerNode(parentNode))
     {
@@ -2469,6 +2497,12 @@ private void addWidgetIn(string typeName, Node parentNode, Node anchorNode)
     insertWidget(typeName, parentNode, px, py, w, h, popupX_ >= 0);
 }
 
+/// New > Place New Widgets Below: a widget made next to a selected one
+/// goes below it, starting a new column at the parent's bottom edge,
+/// instead of to its right, starting a new row at the right edge. Kept
+/// in `appPrefs` as `new_widgets_below`.
+private bool newWidgetsBelow_;
+
 /// Ported from `Widget_Node::make()`'s own position-selection algorithm
 /// (`nodes/Widget_Node.cxx`) -- computes where a newly-created widget
 /// should land when there's no explicit drop/right-click point: fill
@@ -2476,7 +2510,10 @@ private void addWidgetIn(string typeName, Node parentNode, Node anchorNode)
 /// FLTK's `dynamic_cast<Group_Node*>(this)`), otherwise place it
 /// directly adjacent to the currently selected sibling widget
 /// (`anchorNode`, FLTK's `q`) -- copying its position and wrapping
-/// to the next row if it would overflow the parent's right edge -- or a
+/// to a new row, under the parent's left-most widget, if it would
+/// overflow the parent's right edge, or, with `newWidgetsBelow_`,
+/// placing it below and wrapping to a new column, beside the top-most
+/// widget, at the bottom edge -- or a
 /// small top-left-corner square if nothing else is selected (`anchorNode
 /// is null` or *is* `parentNode` itself, FLTK's `q == p`).
 /// `parentNode` mirrors FLTK's `p`; `ulx`/`uly` mirror its `ULX`/
@@ -2512,10 +2549,31 @@ private void defaultPositionFor(Node parentNode, Node anchorNode, bool newIsGrou
     auto q = cast(WidgetNode) anchorNode;
     if (q !is null && anchorNode !is parentNode)
     {
+        // A full row continues below it, under the left-most widget in
+        // the parent; a full column continues to its right, beside the
+        // top-most one. So repeated adds fill the parent row by row (or
+        // column by column).
+        int leftMost = q.x, topMost = q.y;
+        foreach (c; parentNode.children)
+            if (auto cw = cast(WidgetNode) c)
+            {
+                if (cw.x < leftMost) leftMost = cw.x;
+                if (cw.y < topMost) topMost = cw.y;
+            }
+        if (newWidgetsBelow_)
+        {
+            x = q.x; y = q.y + q.h;
+            if (y + q.h > uly + p.h)
+            {
+                x = q.x + q.w; y = topMost;
+                if (x + q.w > ulx + p.w) x = ulx + b;
+            }
+            return;
+        }
         x = q.x + q.w; y = q.y;
         if (x + q.w > ulx + p.w)
         {
-            x = q.x; y = q.y + q.h;
+            x = leftMost; y = q.y + q.h;
             if (y + q.h > uly + p.h) y = uly + b;
         }
         return;
@@ -2575,16 +2633,52 @@ private void showCanvasContextMenu(ProjectCanvas cv, int x, int y)
     if (menu_ is null || cv is null) return;
     auto idx = menu_.findIndex("&New");
     if (idx < 0) return;
-    auto items = menu_.menu() + idx + 1;
+    const(MenuItem)* items = menu_.menu() + idx + 1;
 
     popupX_ = x;
     popupY_ = y;
     inThisOnly_ = activeWindow_;
     scope (exit) inThisOnly_ = null;
-    auto m = fl.popup(items, cv.xRoot() + x, cv.yRoot() + y, null, fl.MenuStyle.defaults(), "New");
+
+    // On a selected widget that can change kind, the menu offers
+    // "Change To" as well, with the New menu as a submenu next to it.
+    auto under = cv.nodeAt(x, y);
+    MenuItem[] changeItems = under !is null && cv.isSelected(under) ? changeToMenuItems() : [];
+    if (changeItems.length)
+    {
+        popupMenuItems_ = changeItems
+            ~ MenuItem("New", 0, null, menuSubmenu)
+            ~ copyMenuLevel(items)
+            ~ MenuItem(null)
+            ~ MenuItem(null);
+        items = popupMenuItems_.ptr;
+    }
+    auto m = fl.popup(items, cv.xRoot() + x, cv.yRoot() + y, null, fl.MenuStyle.defaults(),
+        changeItems.length ? null : "New");
     if (m !is null) m.doCallback(cv);
     popupX_ = -1;
     popupY_ = -1;
+}
+
+/// Copies one level of an inline menu array, starting at `items`, up to
+/// (not including) the null item that closes it; inline submenus are
+/// copied whole, their closing items included.
+private MenuItem[] copyMenuLevel(const(MenuItem)* items)
+{
+    MenuItem[] result;
+    int depth = 0;
+    for (auto p = items; ; p++)
+    {
+        if (p.text is null)
+        {
+            if (depth == 0) break;
+            depth--;
+        }
+        else if (p.flags & menuSubmenu)
+            depth++;
+        result ~= cast(MenuItem) *p;
+    }
+    return result;
 }
 
 /// The size of the live widget of `parent`, or 0x0 if it has none --
@@ -2629,7 +2723,9 @@ private void syncLayoutsFromLive()
 /// geometry this port doesn't track yet).
 private void dropWidget(string typeName, Node parent, int x, int y)
 {
-    if (parent is null) return;
+    // Any text can be dropped here (from a browser, another program's
+    // drag); only a type name from the widget bin makes a widget.
+    if (parent is null || !isNodeType(typeName)) return;
     // A menu item is a node of its menu owner/submenu, not a canvas
     // widget: the drag already selected the drop target
     // (`ProjectCanvas`'s `Event.dndEnter`/`dndDrag`), which is what
@@ -3123,8 +3219,23 @@ private FunctionNode createFunctionFor(Node current, bool asMethod)
         else
             insertAtPlacement(Placement(true, top, false), fn);
     }
+    nameNewFunction(fn);
     browser_.build(projectRoots_);
     return fn;
+}
+
+/// Names a Function just placed in the project: a top-level one in a
+/// project without a `main()` gets no name, which makes it the
+/// program's `main()`; any other (a method, or a second function) keeps
+/// `defaultNameFor()`'s `makeWindow()`.
+private void nameNewFunction(FunctionNode fn)
+{
+    if (fn.parent !is null) return;
+    foreach (r; projectRoots_)
+        if (auto other = cast(FunctionNode) r)
+            if (other !is fn && other.instanceName.length == 0)
+                return;
+    fn.instanceName = "";
 }
 
 /// Ported from `Code_Node`/`CodeBlock_Node`/`Window_Node`/`Widget_Node`/
@@ -3226,7 +3337,8 @@ private void addNode(string typeName)
     auto newNode = createNode(typeName);
     newNode.typeName = typeName;
     // FLTK's `..._Node::make()` gives each code-group node a starting
-    // name (see `defaultNameFor()`). A Function's return type stays unset
+    // name (see `defaultNameFor()`; a Function's is settled once it is
+    // placed, `nameNewFunction()`). A Function's return type stays unset
     // so `code_writer.d`'s `writePlainFunction()` infers it from the
     // function's first widget child.
     newNode.instanceName = defaultNameFor(typeName);
@@ -3245,6 +3357,7 @@ private void addNode(string typeName)
             || !placeNewNode(newNode, (Node p) => acceptsNewNode(typeName, p), true))
             return;
     }
+    if (auto fn = cast(FunctionNode) newNode) nameNewFunction(fn);
 
     if (auto menuItem = cast(MenuItemNode) newNode)
     {
@@ -3793,15 +3906,17 @@ private void pasteFromClipboard()
 ///
 /// A top-level Code-group root (`orig.parent is null`) is spliced into
 /// `projectRoots_` right after `orig`, matching `addNode()`'s own
-/// splice exactly.
-private void duplicateSelected()
+/// splice exactly. Returns whether the copies were made; a Ctrl+drag on
+/// the canvas (`ProjectCanvas.onDuplicateForDrag`) duplicates through
+/// here too, then moves the copies.
+private bool duplicateSelected()
 {
     import std.algorithm : countUntil;
     import std.format : format;
     flushTextWidgets();
 
     auto roots = topLevelSelection();
-    if (roots.length == 0) { fl.beep(); return; }
+    if (roots.length == 0) { fl.beep(); return false; }
 
     string text = new ProjectWriter().generate(roots, projectI18n_);
 
@@ -3814,9 +3929,9 @@ private void duplicateSelected()
     catch (Exception e)
     {
         fl.message(format("Could not duplicate:\n%s", e.msg));
-        return;
+        return false;
     }
-    if (parsedRoots.length != roots.length) return; // defensive only
+    if (parsedRoots.length != roots.length) return false; // defensive only
 
     checkpoint();
 
@@ -3845,6 +3960,7 @@ private void duplicateSelected()
     widgetPanelLoad(cv !is null ? cv.selected() : parsedRoots, cv !is null ? cv.liveTree() : LiveTree.init, projectDir_());
 
     codeviewAutoRefresh();
+    return true;
 }
 
 /// Shared tail of `pasteFromClipboard()`/`duplicateSelected()`:
@@ -4056,26 +4172,141 @@ private void sortSelectedCmd()
     refreshAfterReorder(snapshot);
 }
 
-/// `&Edit/&Earlier` -- ported from `earlier_cb()` (`nodes/Node.cxx`).
-private void earlierSelectedCmd()
+/// Changes every selected widget into a widget of `kind` (a D class name
+/// such as "ValueOutput"), the one command behind the project tree's and
+/// the canvas's "Change To" menus and the panel's "Change to:" choice. See
+/// `fluid.change_type` for which kinds a widget can become and what it
+/// keeps. One undo step; the live widgets are rebuilt from the changed
+/// nodes and stay selected.
+private void changeSelectedType(string kind)
 {
-    auto cv = activeCanvas();
-    if (cv is null || activeWindow_ is null) return;
+    flushTextWidgets();
+    auto sel = allSelectedNodes();
+    if (!canChangeAll(sel, kind)) return;
 
-    string snapshot = new ProjectWriter().generate(projectRoots_, projectI18n_, [], codeFileName_, null, true, projectDubHeader_, projectSettings_);
-    if (!moveSelectedEarlier(activeWindow_, cv.liveTree())) return;
-    refreshAfterReorder(snapshot);
+    checkpoint();
+    WidgetNode[] changed;
+    foreach (n; sel)
+        if (auto wn = cast(WidgetNode) n)
+        {
+            changeType(wn, kind);
+            changed ~= wn;
+        }
+
+    // Rebuild each affected design window from its nodes.
+    bool[WindowNode] rebuilt;
+    foreach (wn; changed)
+    {
+        auto win = enclosingWindowNode(wn);
+        if (win is null) continue;
+        auto top = outermostWindow(win);
+        if (top in rebuilt) continue;
+        rebuilt[top] = true;
+        auto cv = canvases_.get(top, null);
+        if (cv is null) continue;
+        dropNestedCanvases(top);
+        cv.rebuildFrom(top, projectDir_());
+        registerNestedCanvases(cv);
+    }
+
+    Node[] nodes = cast(Node[]) changed;
+    activeWindow_ = enclosingWindowNode(changed[$ - 1]);
+    auto cv = canvasFor(changed[$ - 1]);
+    if (cv !is null) cv.syncSelectionFrom(nodes);
+    browser_.build(projectRoots_);
+    browser_.syncSelection(nodes);
+    widgetPanelLoad(nodes, cv !is null ? cv.liveTree() : LiveTree.init, projectDir_());
+    codeviewAutoRefresh();
 }
 
-/// `&Edit/&Later` -- ported from `later_cb()` (`nodes/Node.cxx`).
+/// The "Change To" submenu for the current selection, as a
+/// `menuSubmenu` title followed by its items and the closing null item;
+/// empty when the selection can't change kind. The current kind is
+/// marked; kinds not every selected widget can become are inactive.
+private MenuItem[] changeToMenuItems()
+{
+    auto sel = allSelectedNodes();
+    if (sel.length == 0) return [];
+    auto primary = sel[$ - 1];
+    auto kinds = changeTargets(primary);
+    if (kinds.length == 0) return [];
+
+    Callback changeTo(string kind) { return (Widget w) { changeSelectedType(kind); }; }
+    MenuItem[] items = [MenuItem("Change To", 0, null, menuSubmenu)];
+    foreach (k; kinds)
+    {
+        MenuFlags flags = menuRadio;
+        if (kindName(primary.typeName) == k) flags |= menuValue;
+        else if (!canChangeAll(sel, k)) flags |= menuInactive;
+        items ~= MenuItem(displayName(k), 0, changeTo(k), flags);
+    }
+    items ~= MenuItem(null);
+    return items;
+}
+
+/// The project tree's right-click menu: "Change To" for a widget that
+/// can change kind, then the Edit menu's commands for the selection.
+private void showTreeContextMenu()
+{
+    MenuItem[] items = changeToMenuItems();
+    MenuItem[] edit = [
+        MenuItem("Cut", stateCtrl + 'x', (w) { cutSelected(); }),
+        MenuItem("Copy", stateCtrl + 'c', (w) { copySelected(); }),
+        MenuItem("Paste", stateCtrl + 'v', (w) { pasteFromClipboard(); }),
+        MenuItem("Duplicate", stateCtrl + 'u', (w) { duplicateSelected(); }),
+        MenuItem("Delete", deleteKey, (w) { deleteSelected(); }, menuDivider),
+        MenuItem("Earlier", fl.enumerations.f + 2, (w) { earlierSelectedCmd(); }),
+        MenuItem("Later", fl.enumerations.f + 3, (w) { laterSelectedCmd(); }),
+    ];
+    if (items.length)
+        items[0].flags |= menuDivider;
+    items ~= edit;
+    items ~= MenuItem(null);
+    popupMenuItems_ = items;
+    auto m = fl.popup(popupMenuItems_.ptr, fl.core.eventXRoot(), fl.core.eventYRoot());
+    if (m !is null) m.doCallback(browser_);
+}
+
+/// Keeps the items of a right-click menu built on the fly alive while it
+/// is shown.
+private MenuItem[] popupMenuItems_;
+
+/// `&Edit/&Earlier` -- ported from `Project::move_selected_earlier()`
+/// (`Project.cxx`). Works on the whole project, so it also moves a
+/// window or code node inside a function, and a top-level function or
+/// declaration; see `fluid.node_order.moveSelectedEarlier()`.
+private void earlierSelectedCmd()
+{
+    reorderSelected(true);
+}
+
+/// `&Edit/&Later` -- ported from `Project::move_selected_later()`.
 private void laterSelectedCmd()
 {
-    auto cv = activeCanvas();
-    if (cv is null || activeWindow_ is null) return;
+    reorderSelected(false);
+}
+
+/// Shared body of `earlierSelectedCmd()`/`laterSelectedCmd()`.
+private void reorderSelected(bool earlier)
+{
+    auto selList = allSelectedNodes();
+    if (selList.length == 0) return;
+    bool[Node] sel;
+    foreach (n; selList) sel[n] = true;
+    LiveTree liveOf(Node n)
+    {
+        auto cv = canvasFor(n);
+        return cv is null ? LiveTree.init : cv.liveTree();
+    }
 
     string snapshot = new ProjectWriter().generate(projectRoots_, projectI18n_, [], codeFileName_, null, true, projectDubHeader_, projectSettings_);
-    if (!moveSelectedLater(activeWindow_, cv.liveTree())) return;
+    bool moved = earlier ? moveSelectedEarlier(projectRoots_, sel, &liveOf)
+                         : moveSelectedLater(projectRoots_, sel, &liveOf);
+    if (!moved) return;
     refreshAfterReorder(snapshot);
+    // The browser rebuild above keeps only the canvas selection; a
+    // function, or a code node, is selected in the browser alone.
+    browser_.syncSelection(selList);
 }
 
 /// `&Edit/&Group` -- ported from `group_cb()` (`nodes/Group_Node.cxx`).
@@ -4373,26 +4604,46 @@ private void saveProjectCopy()
 }
 
 /// Asks for a `.fl` file name to save to, adding the extension when the
-/// typed name has none. Returns an empty string when cancelled.
+/// typed name has none. When the D code is written next to the design
+/// under the same name (no "Code File:" setting), a name that can't be a
+/// D file's (`fluid.dub_project.isDModuleName()`) gets a warning, with
+/// the choice to pick another name or save anyway. Returns an empty
+/// string when cancelled.
 private string chooseSavePath(string title)
 {
     import std.file : exists;
     import std.format : format;
-    import std.path : baseName;
+    import std.path : baseName, stripExtension;
+    import fluid.dub_project : isDModuleName;
     import fluid.path_util : ensureFlExtension;
 
-    string typed = fileChooser(title, "*.fl", projectPath_);
-    if (typed.length == 0) return null;
-    // Typing `example` saves `example.fl` (FLTK's Fluid writes it as-is).
-    string path = ensureFlExtension(typed);
-    // The chooser's own "already exists, replace?" prompt ran against the
-    // name as typed; if adding the extension turned it into a different,
-    // already-existing file, that file has not been confirmed yet.
-    if (path != typed && exists(path)
-        && fl.ask.choice(format("The file \"%s\" already exists.\nDo you want to replace it?", baseName(path)),
-            "Cancel", "Replace", null) == 0)
-        return null;
-    return path;
+    while (true)
+    {
+        string typed = fileChooser(title, "*.fl", projectPath_);
+        if (typed.length == 0) return null;
+        // Typing `example` saves `example.fl` (FLTK's Fluid writes it as-is).
+        string path = ensureFlExtension(typed);
+        // The chooser's own "already exists, replace?" prompt ran against the
+        // name as typed; if adding the extension turned it into a different,
+        // already-existing file, that file has not been confirmed yet.
+        if (path != typed && exists(path)
+            && fl.ask.choice(format("The file \"%s\" already exists.\nDo you want to replace it?", baseName(path)),
+                "Cancel", "Replace", null) == 0)
+            return null;
+
+        string name = baseName(path).stripExtension();
+        if (codeFileName_.length == 0 && !isDModuleName(name))
+        {
+            int c = fl.ask.choice(format("\"%s\" can't be the name of a D file, and the design's D code "
+                ~ "is written to %s.d, so the program won't build.\n\n"
+                ~ "Use only letters, digits and underscores, starting with a letter "
+                ~ "(my_app, not my-app or my app).",
+                name, name), "Cancel", "Choose Another Name", "Save Anyway");
+            if (c == 0) return null;
+            if (c == 1) continue;
+        }
+        return path;
+    }
 }
 
 /// `copy` writes the file only: the project keeps its own file name and
@@ -4494,22 +4745,30 @@ private void writeStringsFile()
 /// same CLI's own `-o` flag.
 private void writeCodeFile()
 {
-    import std.path : stripExtension, isAbsolute, buildPath, extension;
+    generateCodeFile(false);
+}
+
+/// `writeCodeFile()`'s work. `quiet` leaves out the completion dialog
+/// (errors are still shown). Returns whether the file was written.
+private bool generateCodeFile(bool quiet)
+{
+    import std.path : stripExtension, isAbsolute, buildPath, extension, dirName;
     import std.format : format;
     import fluid.code_writer : Writer;
     flushTextWidgets();
 
-    if (projectRoots_.length == 0) return;
+    if (projectRoots_.length == 0) return false;
 
     if (projectPath_.length == 0)
     {
         saveProjectAs();
-        if (projectPath_.length == 0) return;
+        if (projectPath_.length == 0) return false;
     }
 
     syncLayoutsFromLive();
     string outPath = codeFilePath_();
     auto writer = new Writer();
+    writer.outputDir = dirName(outPath);
     string code;
     try
         code = writer.generate(projectRoots_, projectDir_(), projectI18n_, projectDubHeader_, projectSettings_);
@@ -4525,22 +4784,29 @@ private void writeCodeFile()
         // gets written.
         stderr.writefln("fluid: could not generate %s: %s", outPath, e.msg);
         fl.message(format("Could not generate %s:\n%s", outPath, e.msg));
-        return;
+        return false;
     }
     foreach (err; writer.dataErrors)
         fl.alert(err);
 
     try
     {
+        import std.file : mkdirRecurse;
+        import std.path : dirName;
+
+        mkdirRecurse(dirName(outPath));
         write(outPath, code);
         if (projectSettings_.writeMergebackData)
             rememberCodePath(projectPath_, outPath);
-        showCompletionDialog(format("Wrote %s", outPath));
+        if (!quiet)
+            showCompletionDialog(format("Wrote %s", outPath));
+        return true;
     }
     catch (Exception e)
     {
         stderr.writefln("fluid: could not write %s: %s", outPath, e.msg);
         fl.message(format("Can't write %s: %s", outPath, e.msg));
+        return false;
     }
 }
 
@@ -4663,6 +4929,404 @@ private string codeFilePath_()
     string name = codeFileName_;
     if (name.extension().length == 0) name ~= ".d";
     return name.isAbsolute() ? buildNormalizedPath(name) : buildNormalizedPath(projectDir_(), name);
+}
+
+/// What File > Run and File > Set Up dub Project say when no fldtk
+/// folder is found (`fluid.dub_project.fldtkFolder()`).
+private enum noFldtkMessage = "Fluid can't find the fldtk folder, which the program is built with.\n"
+    ~ "Give its path in Edit > Settings > General > fldtk Folder.";
+
+/// Makes sure the project has a file, asking for one (titled `title`)
+/// when it has none yet. An empty project only gets the name: there is
+/// nothing to write. Returns false when cancelled.
+private bool ensureProjectPath(string title)
+{
+    if (projectPath_.length) return true;
+    string path = chooseSavePath(title);
+    if (path.length == 0) return false;
+    projectPath_ = path;
+    if (projectRoots_.length)
+        writeProjectTo(path);
+    else
+        updateShelfTitle();
+    return true;
+}
+
+/// Whether the dub project in `dir` builds this design as a program
+/// with fldtk: its recipe depends on fldtk, and the code file is in its
+/// `source/` (or `src/`) folder, where dub looks for source files.
+private bool dubProjectReady(string dir)
+{
+    import std.file : exists, readText;
+    import std.path : buildPath;
+    import std.algorithm : canFind;
+    import fluid.dub_project : sdlUsesFldtk, isInside;
+
+    string code = codeFilePath_();
+    if (!isInside(code, buildPath(dir, "source")) && !isInside(code, buildPath(dir, "src")))
+        return false;
+    try
+    {
+        string sdl = buildPath(dir, "dub.sdl");
+        if (exists(sdl)) return sdlUsesFldtk(readText(sdl));
+        return readText(buildPath(dir, "dub.json")).canFind(`"fldtk"`);
+    }
+    catch (Exception) { return false; }
+}
+
+/// Whether the design's folder lies below the dub project folder `root`,
+/// rather than being `root` itself.
+private bool designBelow(string root)
+{
+    import std.path : absolutePath, buildNormalizedPath;
+
+    return buildNormalizedPath(absolutePath(projectDir_())) != buildNormalizedPath(absolutePath(root));
+}
+
+/**
+ * File > Set Up dub Project: makes the folder of the project's `.fl`
+ * file a dub project for a program built with fldtk, or completes the
+ * dub project it is already in (the nearest folder above it with a
+ * `dub.sdl` or `dub.json`, `fluid.dub_project.findDubProject()`).
+ *
+ * In a folder without a recipe it writes what `dub init -n -f sdl`
+ * writes (`dub.sdl`, `.gitignore`, an empty `source/`), the dub.sdl
+ * with fldtk's lines (`newDubSdl()`). An existing `dub.sdl` gets the
+ * lines it lacks (`addFldtkSdlLines()`); a `dub.json` is not edited,
+ * and the lines to add are shown instead. The project's Code File is
+ * moved to `source/<name>.d` unless it already is in `source/` or
+ * `src/`, and the project is saved. When that file exists, the user
+ * decides first whether it is overwritten; nothing is written if not.
+ * The placeholder `source/app.d` of `dub init` is removed, since its
+ * `main()` would clash with the design's (`isDubInitPlaceholder()`).
+ * The dub single-file-package header is turned off, since with it on
+ * Run builds the code file on its own.
+ *
+ * A design in a subfolder of a dub project that doesn't build it yet
+ * becomes part of that project only after the user confirms it, with
+ * what will change spelled out.
+ *
+ * A design in the fldtk folder is refused: that folder's `dub.sdl` is
+ * fldtk's own. `fromMenu` reports "already set up" too; from
+ * `runProject()` only changes are reported. Returns the dub project's folder, or null when
+ * cancelled or it can't be used yet.
+ */
+private string setUpDubProject(bool fromMenu)
+{
+    import std.array : join, replace;
+    import std.file : exists, mkdirRecurse, readText, remove;
+    import std.format : format;
+    import std.algorithm : canFind;
+    import std.path : absolutePath, baseName, buildNormalizedPath, buildPath, dirName, stripExtension;
+    import fluid.dub_project;
+
+    flushTextWidgets();
+    if (!ensureProjectPath("Save the project in the folder of its dub project")) return null;
+
+    string flDir = projectDir_();
+    string fldtkDir = fldtkFolder(flDir);
+    if (fldtkDir is null) { fl.alert(noFldtkMessage); return null; }
+
+    string root = findDubProject(flDir, fldtkDir);
+    if (root is null)
+    {
+        if (isInside(flDir, fldtkDir))
+        {
+            fl.message(format("%s is in the fldtk folder, which can't hold a dub project of its own.\n"
+                ~ "Save the design in a folder of its own to make it a dub project.\n"
+                ~ "Run builds it as a single file where it is.", baseName(projectPath_)));
+            return null;
+        }
+        root = buildNormalizedPath(absolutePath(flDir));
+    }
+    string flRel = dubPath(root, projectPath_);
+    string fldtkPath = fldtkDubPath(root, fldtkDir);
+    string name = dubPackageName(stripExtension(baseName(projectPath_)));
+    string[] done;
+
+    // The design's code goes to source/<name>.d, where dub finds it,
+    // unless the Code File already is in the project's sources.
+    string target;
+    string code = codeFilePath_();
+    if (!isInside(code, buildPath(root, "source")) && !isInside(code, buildPath(root, "src")))
+        target = buildPath(root, "source", name.replace("-", "_") ~ ".d");
+
+    // A design in a subfolder becomes part of the project above it;
+    // check that this is what the user means.
+    if (designBelow(root) && !dubProjectReady(root))
+    {
+        bool sdl = exists(buildPath(root, "dub.sdl")) || !exists(buildPath(root, "dub.json"));
+        string[] steps = [sdl
+            ? format("- Its dub.sdl gets the lines it lacks to build the design with fldtk; "
+                ~ "every build first runs fluid -c on %s.", flRel)
+            : "- Its dub.json needs entries to build the design with fldtk, which Fluid shows "
+                ~ "you to add yourself."];
+        if (target !is null)
+            steps ~= format("- The design's D code goes to %s, in that project's source folder "
+                ~ "(Code File %s).", dubPath(root, target), dubPath(flDir, target));
+        if (fl.ask.choice(format("%s is in the folder %s, inside the dub project in %s.\n\n"
+            ~ "Set Up makes the design part of that project:\n%s\n\n"
+            ~ "Is that what you want? To give the design a dub project of its own instead, "
+            ~ "cancel and save it in a folder outside %s.",
+            baseName(projectPath_), dubPath(root, flDir), root, steps.join("\n"), root),
+            "Cancel", "Set Up", null) == 0)
+            return null;
+    }
+
+    if (target !is null && exists(target) && fl.ask.choice(format("%s already exists.\n"
+        ~ "Overwrite it with the code generated from %s?", target, baseName(projectPath_)),
+        "Cancel", "Overwrite", null) == 0)
+        return null;
+
+    string sdlPath = buildPath(root, "dub.sdl");
+    string jsonPath = buildPath(root, "dub.json");
+    try
+    {
+        if (exists(sdlPath))
+        {
+            string[] added;
+            string text = addFldtkSdlLines(readText(sdlPath), fldtkPath, flRel, added);
+            if (added.length)
+            {
+                write(sdlPath, text);
+                done ~= format("Added to dub.sdl:\n    %s", added.join("\n    "));
+            }
+        }
+        else if (exists(jsonPath))
+        {
+            if (!readText(jsonPath).canFind(`"fldtk"`))
+            {
+                fl.message(format("%s is described by dub.json, which Fluid doesn't edit.\n"
+                    ~ "Add these entries to it, then choose Run again:\n\n%s",
+                    root, fldtkLinesJson(fldtkPath, flRel)));
+                return null;
+            }
+        }
+        else
+        {
+            write(sdlPath, newDubSdl(name, userName(), fldtkPath, flRel));
+            done ~= "Wrote dub.sdl";
+            string ignore = buildPath(root, ".gitignore");
+            if (!exists(ignore))
+            {
+                write(ignore, dubGitignore(name));
+                done ~= "Wrote .gitignore";
+            }
+        }
+
+        if (target !is null)
+        {
+            mkdirRecurse(dirName(target));
+            codeFileName_ = dubPath(flDir, target);
+            dirty_ = true;
+            refreshSettingsProjectFields();
+            done ~= format("Code File is now %s", codeFileName_);
+
+            string placeholder = buildPath(root, "source", "app.d");
+            if (placeholder != target && isDubInitPlaceholder(placeholder))
+            {
+                remove(placeholder);
+                done ~= "Removed dub init's placeholder source/app.d";
+            }
+        }
+    }
+    catch (Exception e)
+    {
+        fl.alert(format("Could not set up the dub project in %s:\n%s", root, e.msg));
+        return null;
+    }
+
+    // The header would make Run build the code file on its own.
+    if (projectDubHeader_)
+    {
+        projectDubHeader_ = false;
+        dirty_ = true;
+        refreshSettingsProjectFields();
+        done ~= "Turned off the dub single-file-package header (Edit > Settings..., Project tab)";
+    }
+
+    if (dirty_ && projectRoots_.length)
+        writeProjectTo(projectPath_);
+
+    if (done.length)
+        fl.message(format("%s is a dub project for this design now.\n\n%s\n\n"
+            ~ "Run (F5) builds and starts the program; in a terminal, so does dub run in that folder.",
+            root, done.join("\n")));
+    else if (fromMenu)
+        fl.message(format("%s is already set up as a dub project for this design.", root));
+    return root;
+}
+
+/// Brings the Settings dialog's Project tab up to date after
+/// `setUpDubProject()` or `runProject()` changed a setting it shows.
+private void refreshSettingsProjectFields()
+{
+    settingsRefreshProject();
+}
+
+/**
+ * File > Run (F5), and the Run button of the properties panel: saves
+ * the project, writes the code file, builds the program with `dub
+ * build` and starts it, with the output of both in the Run window
+ * (`panels/run_window.fl`). A program still running from the last Run
+ * is ended first.
+ *
+ * A design with the dub single-file-package header on is built from
+ * the code file alone with `dub build --single`, without asking, even
+ * inside a dub project. Otherwise a design in a dub project
+ * (`fluid.dub_project.findDubProject()`) is built as that project, once
+ * it uses fldtk (`dubProjectReady()`; if not, Run offers Set Up dub
+ * Project), and for a design in no dub project Run asks: Set Up Project
+ * makes it one, Single File turns the header on. A design in the fldtk
+ * folder is always built as a single file.
+ *
+ * The program is started by Fluid itself, from the dub project's
+ * folder (or the code file's), at the path `dub describe` gives, so
+ * Stop can end it (`fluid.run_program`).
+ */
+private void runProject()
+{
+    import std.format : format;
+    import std.path : baseName, dirName;
+    import fluid.dub_project : fldtkFolder, findDubProject, isInside;
+
+    flushTextWidgets();
+    if (projectRoots_.length == 0)
+    {
+        fl.message("The project is empty: there is nothing to run yet.");
+        return;
+    }
+    if (!ensureProjectPath("Save the project before running it")) return;
+
+    string fldtkDir = fldtkFolder(projectDir_());
+    if (fldtkDir is null) { fl.alert(noFldtkMessage); return; }
+
+    // The dub header means Single File: the code file is built on its
+    // own even when a dub project lies around it.
+    string dubDir = projectDubHeader_ ? null : findDubProject(projectDir_(), fldtkDir);
+    if (projectDubHeader_)
+    {
+        // Single File: dubDir stays null.
+    }
+    else if (dubDir is null && isInside(projectDir_(), fldtkDir))
+    {
+        // A design in the fldtk folder (a sample, docs/TUTORIAL01.md's)
+        // can only be a single file.
+        projectDubHeader_ = true;
+        dirty_ = true;
+        refreshSettingsProjectFields();
+    }
+    else if (dubDir is null)
+    {
+        int c = fl.ask.choice(format("%s is not in a dub project yet.\n\n"
+            ~ "Set Up Project makes its folder a dub project (File > Set Up dub Project), "
+            ~ "where the program can grow to more source files.\n"
+            ~ "Single File builds the generated code file on its own.", baseName(projectPath_)),
+            "Cancel", "Set Up Project", "Single File");
+        if (c == 0) return;
+        if (c == 1)
+        {
+            dubDir = setUpDubProject(false);
+            if (dubDir is null) return;
+        }
+        else
+        {
+            projectDubHeader_ = true;
+            dirty_ = true;
+            refreshSettingsProjectFields();
+        }
+    }
+    else if (!dubProjectReady(dubDir))
+    {
+        // For a design in a subfolder, setUpDubProject() asks itself.
+        if (!designBelow(dubDir) && fl.ask.choice(format("The dub project in %s isn't set up to build this design yet.\n"
+            ~ "Set it up (File > Set Up dub Project)?", dubDir), "Cancel", "Set Up", null) == 0)
+            return;
+        dubDir = setUpDubProject(false);
+        if (dubDir is null || !dubProjectReady(dubDir)) return;
+    }
+
+    if (dirty_) writeProjectTo(projectPath_);
+    if (dirty_) return; // the save failed and said why
+    if (!generateCodeFile(true)) return;
+
+    string code = codeFilePath_();
+    string workDir = dubDir !is null ? dubDir : dirName(code);
+    string[] target = dubDir !is null ? [] : ["--single", baseName(code)];
+    startRun(["dub", "build"] ~ target, ["dub", "describe"] ~ target
+        ~ ["--data=target-path", "--data=target-name", "--data-list"], workDir);
+}
+
+/// `runProject()`'s second half: `dub build` with `buildArgs` in
+/// `workDir`, then, when it succeeded, the program it built, found
+/// with `describeArgs` (`programPath()`).
+private void startRun(string[] buildArgs, string[] describeArgs, string workDir)
+{
+    import std.array : join;
+    import std.format : format;
+    import std.path : baseName;
+
+    showRunWindow();
+    runTerminal.append("\x1b[2J\x1b[3J\x1b[H"); // each Run starts with a clear window
+    onRunOutput = (text) { runTerminal.append(text); };
+
+    void ended(string text)
+    {
+        runTerminal.append(text);
+        runStopButton.deactivate();
+        runWindow.label("Run");
+    }
+
+    void started(string what)
+    {
+        runStopButton.activate();
+        runWindow.label("Run: " ~ what);
+    }
+
+    runTerminal.append("\033[0;32m" ~ buildArgs.join(" ") ~ "\033[0m\n");
+    bool ok = runStart(buildArgs, workDir, (status, stopped) {
+        if (stopped) { ended("\033[1;31mStopped.\033[0m\n"); return; }
+        if (status != 0) { ended("\033[1;31mThe build failed.\033[0m\n"); return; }
+
+        string exe = programPath(describeArgs, workDir);
+        if (exe is null)
+        {
+            ended("\033[1;31mdub describe didn't say where the program is.\033[0m\n");
+            return;
+        }
+        runTerminal.append("\033[0;32m" ~ exe ~ "\033[0m\n");
+        bool ran = runStart([exe], workDir, (st, stp) {
+            ended(stp ? "\033[1;31mStopped.\033[0m\n"
+                : format("\033[0;32mThe program ended (exit status %d).\033[0m\n", st));
+        }, true);
+        if (ran) started(baseName(exe));
+        else ended("");
+    });
+    if (ok) started("building");
+    else ended("");
+}
+
+/// The program `dub build` made, from `dub describe`'s target path and
+/// name (`args`, run in `workDir`); null when dub can't tell.
+private string programPath(string[] args, string workDir)
+{
+    import std.process : execute, Config;
+    import std.algorithm : filter;
+    import std.array : array;
+    import std.path : buildPath;
+    import std.string : strip, splitLines;
+
+    try
+    {
+        auto r = execute(args, null, Config.none, size_t.max, workDir);
+        if (r.status != 0) return null;
+        auto parts = r.output.splitLines().filter!(l => l.strip().length).array;
+        if (parts.length < 2) return null;
+        string exe = buildPath(parts[0].strip(), parts[1].strip());
+        version (Windows) exe ~= ".exe";
+        return exe;
+    }
+    catch (Exception) { return null; }
 }
 
 /// Shows or hides `&File/MergeBack Code` to match the project's
@@ -5048,6 +5712,8 @@ private void doQuit()
         && fl.ask.choice("Previous shell command still running!", "Cancel", "Exit", null) == 0)
         return;
     if (!confirmDiscardChanges()) return;
+    // A program started by File > Run ends with Fluid.
+    runKill();
     saveWindowPosition(shelf_, "main_window_pos");
     saveWindowPosition(widgetBinPanel, "widgetbin_pos", false);
     fl.hideAllWindows();

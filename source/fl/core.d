@@ -224,6 +224,8 @@ import fl.enumerations : CallbackReason, Boxtype, Event, Keysym, EventState, Ges
     Color, colorTable, grayRamp, numGray, fl_gray_ramp, foregroundColor,
     background2Color, selectionColor, Mode, black, white, timesBold;
 import fl.widget;
+// Linked in for its constructor: see that module.
+import fl.output_buffering;
 // Aliased, not a plain `import fl.window : Window;` -- fl.platform_x11
 // already has to alias this same import the same way (`FlWindow =
 // Window`), since it also wildcard-imports fl.xlib, whose own `Window`
@@ -745,6 +747,26 @@ private int composeState_ = 0;
 /// win32`, a different module.
 package(fl) void markComposeState(int n) { composeState_ = n; }
 
+/// The length in bytes of the marked (provisional) text the last
+/// `compose()` call left before the cursor, 0 when there is none --
+/// FLTK's `Fl::compose_state`. Only meaningful while `hasMarkedText()`.
+package(fl) int composeState() { return composeState_; }
+
+/// Whether the input method's provisional text is inserted into the
+/// widget as marked text, which the widget shows underlined and the
+/// next keystroke replaces -- FLTK's `Fl_Screen_Driver::
+/// has_marked_text()`. True on Wayland. On X11 and Windows the input
+/// method draws the text being composed in a window of its own, and
+/// the widget only ever receives finished text.
+package(fl) bool hasMarkedText()
+{
+    version (linux) version (FLDTK_HAVE_WAYLAND) if (!onX11()) return true;
+    return false;
+}
+
+/// `hasMarkedText()` and marked text is in the widget now.
+package(fl) bool markedTextActive() { return hasMarkedText() && composeState_ != 0; }
+
 /**
  * Ported from Fl_X11_Screen_Driver::compose(int&)/Fl_WinAPI_Screen_
  * Driver::compose(int&) -- real per-platform bodies, not just the
@@ -1049,13 +1071,8 @@ void paste(Widget receiver, int clipboard, string type = clipboardPlainText)
         && selectionType_[1] == clipboardImage)
     {
         auto img = new BMPImage("clipboard", ownedImageBmp_[1]);
-        auto savedData = eClipboardData_;
-        auto savedType = eClipboardType_;
-        eClipboardData_ = img.fail() ? null : img;
-        eClipboardType_ = clipboardImage;
-        receiver.handle(Event.paste);
-        eClipboardData_ = savedData;
-        eClipboardType_ = savedType;
+        pendingPasteReceiver_ = receiver;
+        deliverPasteImage(img.fail() ? null : img);
         return;
     }
 
@@ -1109,6 +1126,54 @@ void paste(Widget receiver, int clipboard, string type = clipboardPlainText)
  */
 package(fl) void deliverPaste(string text)
 {
+    deliverPasteTo(text);
+}
+
+/**
+ * package(fl): a `text/uri-list` (what a file manager offers for dragged
+ * files) as the text a drop delivers: one path per line, joined with
+ * `\n`, the same as a file drop on Windows. `file://` addresses become
+ * plain paths (with or without a host name, `file:///a/b` and
+ * `file://localhost/a/b` both give `/a/b`), `%xx` escapes are decoded,
+ * comment lines (`#...`) and empty lines are dropped. Other addresses
+ * (`https://...`) are delivered unchanged.
+ */
+package(fl) string uriListToPaths(string text)
+{
+    import std.uri : decodeComponent;
+    import std.string : lineSplitter, startsWith, indexOf;
+    import std.array : join;
+    string[] lines;
+    foreach (line; text.lineSplitter)
+    {
+        string l = line.idup;
+        if (l.length == 0 || l[0] == '#') continue;
+        if (l.startsWith("file://"))
+        {
+            l = l[7 .. $];
+            if (!l.startsWith("/"))
+            {
+                auto slash = l.indexOf('/');
+                l = slash < 0 ? "" : l[slash .. $];
+            }
+            try l = decodeComponent(l);
+            catch (Exception) { }
+        }
+        if (l.length) lines ~= l;
+    }
+    return lines.join("\n");
+}
+
+unittest
+{
+    assert(uriListToPaths("file:///home/a/b%20c.jpg\r\nfile:///tmp/x.png\r\n")
+        == "/home/a/b c.jpg\n/tmp/x.png");
+    assert(uriListToPaths("# comment\r\nfile://localhost/etc/hosts\r\n") == "/etc/hosts");
+    assert(uriListToPaths("https://example.com/a%20b") == "https://example.com/a%20b");
+}
+
+private void deliverPasteTo(string text)
+{
     Widget receiver = pendingPasteReceiver_;
     pendingPasteReceiver_ = null;
     if (receiver is null) return;
@@ -1123,10 +1188,11 @@ package(fl) void deliverPaste(string text)
 }
 
 /**
- * The image counterpart to deliverPaste() -- called by
- * fl.platform_x11's SelectionNotify handler once an image paste()
- * request has been negotiated and its data decoded (or failed to
- * decode/negotiate, in which case `img` is null). `img` is typed
+ * The image counterpart to deliverPaste() -- called once an image
+ * paste() request (fl.platform_x11's SelectionNotify handler, or
+ * fl.platform_win32 directly) or a dropped picture (fl.platform_win32's
+ * drop target) has been decoded, or failed to decode, in which case
+ * `img` is null. `img` is typed
  * `Object` purely to keep this module free of an `fl.image` import for
  * one narrow use; callers cast `eventClipboard()` to `RGBImage`,
  * matching FLTK's own `void*`-cast-to-`Fl_RGB_Image*` convention.
@@ -1143,11 +1209,17 @@ package(fl) void deliverPasteImage(Object img)
     pendingPasteReceiver_ = null;
     if (receiver is null) return;
 
+    // No text goes with an image: a text widget receiving it (a picture
+    // dropped onto an `Input`) finds an empty `eventText()`, not the
+    // previous event's.
+    auto savedText = eText_;
     auto savedData = eClipboardData_;
     auto savedType = eClipboardType_;
+    eText_ = "";
     eClipboardData_ = img;
     eClipboardType_ = clipboardImage;
     receiver.handle(Event.paste);
+    eText_ = savedText;
     eClipboardData_ = savedData;
     eClipboardType_ = savedType;
 }
@@ -2144,12 +2216,9 @@ package(fl) void resetForTest()
     // lazily reads the *actual* system/user `Fl_Preferences` files off
     // disk (`readOptions_()`), which is correct production behavior but
     // makes any test that just calls `option()` depend on whatever this
-    // host machine's real FLTK-family preferences happen to contain —
-    // hit for real when a stray `~/.config/fltk.org/fltk.prefs` with a
-    // persisted `PrintUsesGTK:0` (written by some unrelated real FLTK
-    // app run on the dev machine, not this port) made
-    // `option(Option.printerUsesGtk)`'s own "starts at its documented
-    // default" unittest fail. Marking options as already-read means a
+    // host machine's real `~/.config/fldtk/options.prefs` happens to
+    // contain (a persisted option there would make a "starts at its
+    // documented default" unittest fail). Marking options as already-read means a
     // reset test exercises the in-memory default table only, matching
     // this module's own "Shared static state needs hermetic tests"
     // convention (CONVENTIONS.md) — same category of ambient-state leak as
@@ -2213,21 +2282,17 @@ enum Option
     fnfcUsesKdialog,    /// OPTION_FNFC_USES_KDIALOG -- ditto
     printerUsesGtk,     /// OPTION_PRINTER_USES_GTK -- no Fl_Printer port yet
     showScaling,        /// OPTION_SHOW_SCALING -- see transientScaleDisplay() below
-    simpleZoomShortcut, /// OPTION_SIMPLE_ZOOM_SHORTCUT -- see scaleHandler() below
+    /// OPTION_SIMPLE_ZOOM_SHORTCUT. Has no effect: Ctrl and '=' always
+    /// zoom in (see scaleHandler()).
+    deprecated("Ctrl and '=' always zoom in; this option has no effect")
+    simpleZoomShortcut,
 }
 
 /// Default value for each `Option`, matching FLTK's own system-
 /// preferences defaults (`src/Fl.cxx`'s `opt_prefs.get("...", tmp, N)`
 /// calls) -- used as `readOptions_()`'s own system-tier fallback when
 /// no `Fl_Preferences` file exists yet (see that function's own doc
-/// comment). **One deliberate exception**: `simpleZoomShortcut` defaults
-/// to `true` here, not FLTK's own `false` (`OPTION_SIMPLE_ZOOM_
-/// SHORTCUT` defaults off in real FLTK too, confirmed against `Fl.cxx`)
-/// -- a deliberate project decision, not a porting gap, so that
-/// Ctrl-`=` zooms in without needing Shift as well as Ctrl-Shift-`=`
-/// (i.e. Ctrl-`+`) continuing to work -- see `scaleHandler()`'s own
-/// doc comment for why the plain `+`-requiring path alone isn't
-/// convenient on layouts where `+` needs Shift (nearly all of them).
+/// comment).
 private immutable bool[Option.max + 1] optionDefaults_ = [
     Option.arrowFocus: false,
     Option.visibleFocus: true,
@@ -2238,16 +2303,14 @@ private immutable bool[Option.max + 1] optionDefaults_ = [
     Option.fnfcUsesKdialog: false,
     Option.printerUsesGtk: true,
     Option.showScaling: true,
-    Option.simpleZoomShortcut: true,
 ];
 
 private bool[Option.max + 1] optionValues_ = optionDefaults_;
 private bool optionsRead_ = false;
 
-/// Preferences key name for each `Option`, matching FLTK's own
-/// `opt_prefs.get("...", tmp, N)` key strings (`src/Fl.cxx`) exactly --
-/// needed so a persisted override written by real FLTK (or
-/// `fltk-options`) reads back correctly here too.
+/// Preferences key name for each `Option`, the same key strings as
+/// FLTK's (`src/Fl.cxx`'s `opt_prefs.get("...", tmp, N)`). The
+/// deprecated `simpleZoomShortcut` has none and is never read.
 private immutable string[Option.max + 1] optionKeys_ = [
     Option.arrowFocus: "ArrowFocus",
     Option.visibleFocus: "VisibleFocus",
@@ -2258,8 +2321,48 @@ private immutable string[Option.max + 1] optionKeys_ = [
     Option.fnfcUsesKdialog: "UseKdialog",
     Option.printerUsesGtk: "PrintUsesGTK",
     Option.showScaling: "ShowZoomFactor",
-    Option.simpleZoomShortcut: "SimpleZoomShortcut",
 ];
+
+/// The preferences key `option()` reads `opt` from, in the "options"
+/// group of the `fldtk`/`options` preferences (see `readOptions_()`).
+string optionKey(Option opt) { return optionKeys_[opt]; }
+
+/// The value `opt` has when neither the system nor the user
+/// preferences set it.
+bool optionDefault(Option opt) { return optionDefaults_[opt]; }
+
+/**
+ * A setting fldtk reads when a program starts: the environment variable
+ * `envVar` when it is set, otherwise `key` in the "options" group of the
+ * user's `fldtk`/`options` preferences, otherwise the system's; `null`
+ * when none of them sets it. The settings are `Backend` (`FLDTK_BACKEND`),
+ * `Graphics` (`FLDTK_GRAPHICS`), `Scheme` (`FLDTK_SCHEME`) and `Zoom`
+ * (`FLDTK_SCALING_FACTOR`); `fldtk-options` shows and changes them. A
+ * unittest build reads only the environment, so the tests don't depend on
+ * the machine's preferences.
+ */
+package(fl) string startupSetting(string envVar, string key)
+{
+    import std.process : environment;
+
+    string v = environment.get(envVar);
+    if (v.length) return v;
+    version (unittest) return null;
+    else
+    {
+        import prefsmod = fl.preferences;
+
+        foreach (root; [prefsmod.rootCoreUserL, prefsmod.rootCoreSystemL])
+        {
+            auto prefs = new prefsmod.Preferences(root, "fldtk", "options");
+            auto group = new prefsmod.Preferences(prefs, "options");
+            string value;
+            group.get(key, value, "");
+            if (value.length) return value;
+        }
+        return null;
+    }
+}
 
 /**
  * Lazily reads the system-wide, then user-level, `Fl_Preferences`
@@ -2282,20 +2385,22 @@ private void readOptions_()
     import prefsmod = fl.preferences;
 
     {
-        auto prefs = new prefsmod.Preferences(prefsmod.rootCoreSystemL, "fltk.org", "fltk");
+        auto prefs = new prefsmod.Preferences(prefsmod.rootCoreSystemL, "fldtk", "options");
         auto optPrefs = new prefsmod.Preferences(prefs, "options");
         foreach (opt; Option.min .. cast(Option)(Option.max + 1))
         {
+            if (optionKeys_[opt].length == 0) continue;
             int tmp;
             optPrefs.get(optionKeys_[opt], tmp, optionDefaults_[opt] ? 1 : 0);
             optionValues_[opt] = tmp != 0;
         }
     }
     {
-        auto prefs = new prefsmod.Preferences(prefsmod.rootCoreUserL, "fltk.org", "fltk");
+        auto prefs = new prefsmod.Preferences(prefsmod.rootCoreUserL, "fldtk", "options");
         auto optPrefs = new prefsmod.Preferences(prefs, "options");
         foreach (opt; Option.min .. cast(Option)(Option.max + 1))
         {
+            if (optionKeys_[opt].length == 0) continue;
             int tmp;
             optPrefs.get(optionKeys_[opt], tmp, -1);
             if (tmp >= 0) optionValues_[opt] = tmp != 0;
@@ -3319,7 +3424,7 @@ version (linux) bool flParseColor(string spec, out ubyte r, out ubyte g, out uby
 /// `argBg2_`, captured by `arg()` above) wins if present; otherwise
 /// `XGetDefault()` is consulted (`"Text"` as the resource class for
 /// bg2, matching FLTK's own hardcoded choice there, `key1` --
-/// `firstWindow()->xclass()` or `"fltk"` -- for fg/bg, same as
+/// `firstWindow()->xclass()` or `"fldtk"` -- for fg/bg, same as
 /// `getSystemScheme()` just below uses for its own `XGetDefault()`
 /// call); a hardcoded fallback applies if neither resolved anything.
 /// Whichever wins is *always* applied (matching FLTK: `getsyscolor()`
@@ -3335,7 +3440,7 @@ version (linux) void getSystemColors()
     string key1;
     auto win = firstWindow();
     key1 = win !is null ? win.xclass() : null;
-    if (key1.length == 0) key1 = "fltk";
+    if (key1.length == 0) key1 = "fldtk";
 
     void getsyscolor(string k1, string k2, string arg, string defarg,
         void delegate(ubyte, ubyte, ubyte) func)
@@ -3504,7 +3609,7 @@ void boxBorderRadiusMax(int r)
 // ---------------------------------------------------------------------
 // Fl_Scheme (color-scheme reactivity) -- FL/Fl.H's scheme()/is_scheme()/
 // reload_scheme(), src/Fl_get_system_colors.cxx/src/fl_boxtype.cxx
-// (core-roadmap item 11: the mechanism itself. The four schemes' own
+// (the mechanism itself. The four schemes' own
 // boxtype *drawing* functions live in fl.draw's `drawBoxAt()`; the
 // "plastic" scheme's tiled window background is `plasticSchemeTile()`).
 // ---------------------------------------------------------------------
@@ -3624,14 +3729,12 @@ unittest
 }
 
 /// Ported from `Fl_X11_Screen_Driver::get_system_scheme()`
-/// (`src/drivers/X11/Fl_X11_Screen_Driver.cxx`): the `FLDTK_SCHEME`
-/// environment variable first, then the X resource database
-/// (`XGetDefault(fl_display, key, "scheme")`, `key` being
-/// `firstWindow()->xclass()` if a window exists yet, else `"fltk"`
-/// matching FLTK's own hardcoded fallback -- note FLTK's
-/// literal fallback is `"fltk"` even there, nothing to do with this
-/// port's own `xclass()` default sentinel of the same string, see
-/// `fl.window`'s row), via
+/// (`src/drivers/X11/Fl_X11_Screen_Driver.cxx`): the
+/// `Scheme` startup setting (`startupSetting()`: the `FLDTK_SCHEME`
+/// environment variable, then the user's and the system's value), then
+/// the X resource database (`XGetDefault(fl_display, key, "scheme")`,
+/// `key` being `firstWindow()->xclass()` if a window exists yet, else
+/// `"fldtk"`), via
 /// `fl.platform_x11.getDefaultResource()`. A `null` return (neither
 /// source set) means `scheme(null)` falls back to the default look,
 /// matching FLTK exactly.
@@ -3639,14 +3742,14 @@ private string getSystemScheme()
 {
     import std.process : environment;
 
-    string s = environment.get("FLDTK_SCHEME");
+    string s = startupSetting("FLDTK_SCHEME", "Scheme");
     if (s.length != 0) return s;
 
     version (linux)
     {
         auto win = firstWindow();
         string key = win !is null ? win.xclass() : null;
-        if (key.length == 0) key = "fltk";
+        if (key.length == 0) key = "fldtk";
         return onX11() ? platformX11.getDefaultResource(key, "scheme") : null;
     }
     else return null;
@@ -3669,6 +3772,7 @@ bool scheme(string s)
 {
     import std.uni : toLower;
 
+    if (s.length != 0) schemeChosen_ = true;
     if (s.length == 0) s = getSystemScheme();
 
     if (s.length != 0)
@@ -3688,6 +3792,21 @@ bool scheme(string s)
     scheme_ = s;
     reloadScheme();
     return s.length != 0;
+}
+
+/// Set by a `scheme()` call naming a scheme (the program's own choice,
+/// or `-scheme` on the command line).
+private bool schemeChosen_;
+
+/// Applies the system scheme (`getSystemScheme()`: the `Scheme` startup
+/// setting or the X resource) unless the program has chosen a scheme.
+/// Called by `Window.show()` when the first top-level window is shown,
+/// so a program that never mentions a scheme gets the one the user set.
+package(fl) void applySystemScheme()
+{
+    if (schemeChosen_) return;
+    string s = getSystemScheme();
+    if (s.length != 0) scheme(s);
 }
 
 /// Returns the current scheme name (already lowercase), or `null` for
@@ -4117,8 +4236,7 @@ Widget readqueue()
  * Still not ported: raising the clicked window to the top on FL_PUSH
  * (single-window scope so far). The add_handler() chain and sendEvent()'s
  * subwindow coordinate-offset adjustment are both real -- see
- * addHandler()'s and sendEvent()'s own doc comments (core-roadmap
- * items 1 and 5).
+ * addHandler()'s and sendEvent()'s own doc comments.
  */
 int handle(Event e, Widget window)
 {
@@ -5181,7 +5299,7 @@ long ticksBetween(Timestamp back, Timestamp furtherBack)
 // comparison.
 //
 // The awake-notification pipe reuses this module's own addFd()
-// (core-roadmap item 6) to get folded into fl.platform_x11's
+// to get folded into fl.platform_x11's
 // select() loop, instead of a bespoke second fd-multiplexing mechanism
 // -- the same entry point a caller's own fd would use.
 // ---------------------------------------------------------------------
@@ -5648,57 +5766,32 @@ float currentScale()
 /// device-pixel computation `fl.draw` makes).
 package(fl) void currentScale(float factor)
 {
-    if (factor <= 0) return;
+    if (factor <= 0 || factor == currentScale_) return;
     currentScale_ = factor;
-}
-
-/// Where fldtk remembers the zoom last chosen with Ctrl +/-/0, shared by
-/// every fldtk program -- a fldtk addition: FLTK's scale handler doesn't
-/// remember it. The value is the zoom relative to the base scale (the
-/// desktop's scale, see `baseScale()`), not
-/// the absolute drawing scale, so it means the same on X11, whose base
-/// includes the desktop scale, and on Wayland, whose compositor applies
-/// its scale separately. Vendor `"fldtk"`, application `"core"`:
-/// `~/.config/fldtk/core.prefs`, group `scaling`, key `Zoom`.
-private enum scaleFactorPrefsGroup_ = "scaling";
-private enum zoomPrefsKey_ = "Zoom"; // PascalCase, like optionKeys_ above
-
-/// The zoom `persistZoom()` last stored, or `float.nan` when none was.
-/// Read by `startupZoom()`. Always `float.nan` in a unittest build, so
-/// the tests never depend on the user's preferences file.
-package(fl) float loadPersistedZoom()
-{
-    version (unittest) return float.nan;
-    else
-    {
-        import prefsmod = fl.preferences;
-
-        auto prefs = new prefsmod.Preferences(prefsmod.rootCoreUserL, "fldtk", "core");
-        auto scalePrefs = new prefsmod.Preferences(prefs, scaleFactorPrefsGroup_);
-        float value;
-        if (scalePrefs.get(zoomPrefsKey_, value, -1.0f) && value > 0)
-            return value;
-        return float.nan;
-    }
+    fldraw.penScaleChanged(); // the default line width follows the scale
 }
 
 /// The zoom a program starts with, relative to the base scale (the
-/// desktop's scale, see `baseScale()`): the `FLDTK_SCALING_FACTOR`
-/// environment variable when it is a positive number, otherwise the zoom
-/// last chosen with Ctrl +/- (`loadPersistedZoom()`), otherwise 1. It is
-/// the same number Ctrl +/- then changes, so `FLDTK_SCALING_FACTOR=2`
-/// starts at 200% and Ctrl-- goes to 170%. Called once at startup by the
-/// platform's `useStartupScaleFactor()`. Always 1 in a unittest build.
+/// desktop's scale, see `baseScale()`): the `Zoom` startup setting
+/// (`startupSetting()`: `FLDTK_SCALING_FACTOR`, then the user's, then the
+/// system's) when it is a positive number, otherwise 1. Ctrl +/-/0 store
+/// the user's setting (`persistZoom()`), so every fldtk program starts
+/// with the zoom last chosen. It is the same number Ctrl +/- then
+/// changes, so `FLDTK_SCALING_FACTOR=2` starts at 200% and Ctrl-- goes to
+/// 170%. The zoom is relative to the base scale, not the absolute drawing
+/// scale, so it means the same on X11, whose base includes the desktop
+/// scale, and on Wayland, whose compositor applies its scale separately.
+/// Called once at startup by the platform's `useStartupScaleFactor()`.
+/// Always 1 in a unittest build.
 package(fl) float startupZoom()
 {
     version (unittest) return 1.0f;
     else
     {
-        import std.process : environment;
         import std.conv : parse, ConvException;
-        import std.math : isNaN;
 
-        if (auto str = environment.get("FLDTK_SCALING_FACTOR"))
+        string str = startupSetting("FLDTK_SCALING_FACTOR", "Zoom");
+        if (str.length)
         {
             try
             {
@@ -5707,22 +5800,22 @@ package(fl) float startupZoom()
             }
             catch (ConvException) {}
         }
-        float zoom = loadPersistedZoom();
-        return isNaN(zoom) ? 1.0f : zoom;
+        return 1.0f;
     }
 }
 
-/// Stores `zoom` for the next fldtk program to start with -- called by
-/// `scaleHandler()` after each Ctrl +/-/0. Flushed at once: a
-/// `Preferences` object finalized by the garbage collector may write late
-/// or never.
+/// Stores `zoom` as the user's `Zoom` setting, for the next fldtk program
+/// to start with -- called by `scaleHandler()` after each Ctrl +/-/0,
+/// except in a program started with `FLDTK_SCALING_FACTOR`.
+/// Flushed at once: a `Preferences` object finalized by the garbage
+/// collector may write late or never.
 private void persistZoom(float zoom)
 {
     import prefsmod = fl.preferences;
 
-    auto prefs = new prefsmod.Preferences(prefsmod.rootCoreUserL, "fldtk", "core");
-    auto scalePrefs = new prefsmod.Preferences(prefs, scaleFactorPrefsGroup_);
-    scalePrefs.set(zoomPrefsKey_, zoom);
+    auto prefs = new prefsmod.Preferences(prefsmod.rootCoreUserL, "fldtk", "options");
+    auto group = new prefsmod.Preferences(prefs, "options");
+    group.set("Zoom", zoom);
     prefs.flush();
 }
 
@@ -6061,13 +6154,10 @@ private int scaleHandler(Event event)
         else if (testShortcut(stateCommand | '0')) zoom = Zoom.zoomReset;
     }
 
-    // Kludge to recognize shortcut Ctrl+'+' without pressing Shift --
-    // see Option.simpleZoomShortcut's own doc comment for the caveats
-    // (keyboard-layout dependent). FLTK defaults this off; this
-    // port deliberately defaults it *on* instead (optionDefaults_'s
-    // own doc comment) so Ctrl-'=' zooms in as a Shift-free alternative
-    // to Ctrl-'+' on every layout, not just as an opt-in.
-    if (option(Option.simpleZoomShortcut) && zoom == Zoom.none)
+    // Ctrl and the '=' key zoom in too, so no Shift is needed where '+'
+    // is Shift-'='. Recognised by the key, so a layout that types '='
+    // with another key (Shift-0 on a German keyboard) isn't affected.
+    if (zoom == Zoom.none)
     {
         if ((eState_ & (stateMeta | stateAlt | stateCtrl | stateShift)) == stateCommand)
         {
@@ -6127,7 +6217,12 @@ private int scaleHandler(Event event)
     if (f == oldF) return 1;
 
     rescaleAllWindowsFromScreen(screen, f * initialScale, screenScale(screen));
-    persistZoom(f);
+    // FLDTK_SCALING_FACTOR is a zoom for this run only; zooming a program
+    // started with it doesn't change the stored one.
+    {
+        import std.process : environment;
+        if (environment.get("FLDTK_SCALING_FACTOR").length == 0) persistZoom(f);
+    }
     transientScaleDisplay(f, screen);
     dispatch(Event.zoomEvent, null);
     return 1;
@@ -7357,7 +7452,7 @@ unittest
 
 unittest
 {
-    // addFd()/removeFd() (core-roadmap item 6): plain registration/
+    // addFd()/removeFd(): plain registration/
     // bookkeeping, no live fd or select() call needed to exercise it --
     // fl.platform_x11.waitForEventOrTimeout() is what actually reads
     // fdEntries() and dispatches callbacks against a real select(), and
@@ -7754,7 +7849,6 @@ unittest
     assert(option(Option.fnfcUsesKdialog) == false);
     assert(option(Option.printerUsesGtk) == true);
     assert(option(Option.showScaling) == true);
-    assert(option(Option.simpleZoomShortcut) == true); // this port's own default, not FLTK's (see optionDefaults_'s own doc comment)
 
     option(Option.arrowFocus, true);
     option(Option.showTooltips, false);
@@ -7808,7 +7902,7 @@ unittest
 
 unittest
 {
-    // core-roadmap item 4: paste() when we don't own the requested
+    // paste() when we don't own the requested
     // selection must NOT deliver synchronously anymore -- it has to
     // match FLTK's real asynchronous model (fire an X11 request,
     // return immediately, deliver later once the reply arrives). The

@@ -53,6 +53,7 @@ import fl.group;
 import fl.widget : Widget, Label;
 import fl.image : Image, RGBImage;
 import fl.bitmap : Bitmap;
+import fl.pixmap : Pixmap;
 import fl.tiled_image : TiledImage;
 import fl.enumerations : Event, Cursor, Boxtype, Labeltype, damageChild, alignInside,
     alignCenter, alignClip, Color, white;
@@ -232,10 +233,7 @@ class Window : FlGroup
      * resource already exists" behavior; otherwise takes effect at the
      * next `show()` (see `createWindow()`'s own call site). Passing an
      * empty array clears this window's own icons and falls back to
-     * `defaultIconsForWM()` -- matching FLTK's identical
-     * `icon_->count` fallback exactly (this is *not* the same as
-     * `freeIcons()` below, which faithfully replicates a real FLTK
-     * quirk instead -- see that method's own doc comment).
+     * `defaultIconsForWM()`, as `freeIcons()` does.
      */
     void icons(RGBImage[] imgs)
     {
@@ -260,27 +258,11 @@ class Window : FlGroup
         icons(ic is null ? [] : [ic]);
     }
 
-    /**
-     * Clears this window's own icon(s) (falling back to
-     * `defaultIconsForWM()` on the *next* icon-property update).
-     * Ported from `Fl_Window::free_icons()`. **Faithfully replicates a
-     * real FLTK quirk, not silently corrected**: unlike `icons([])`
-     * above, this does *not* immediately re-push `_NET_WM_ICON` even on
-     * an already-`shown()` window -- FLTK's own `Fl_X11_Window_
-     * Driver::free_icons()` just clears `icon_`'s fields, with no
-     * `set_icons()` call anywhere in it, unlike `icons()`'s driver-level
-     * counterpart which explicitly calls `set_icons()` right after its
-     * own `free_icons()`. So on a shown window, calling `icons([])`
-     * updates the on-screen icon right away; calling `freeIcons()`
-     * alone leaves the previous icon showing until something else
-     * (e.g. a later `icons()`/`icon()` call) triggers a repaint of the
-     * property. Logged as an `FLTK_ISSUES_n.md` candidate rather than
-     * fixed here, per this project's standing policy on suspected
-     * FLTK inconsistencies.
-     */
+    /// Clears this window's own icon(s), like `icons([])`: the window
+    /// falls back to `defaultIconsForWM()` at once if it is shown.
     void freeIcons()
     {
-        icons_ = [];
+        icons([]);
     }
 
     /**
@@ -580,13 +562,15 @@ class Window : FlGroup
      */
     override void show()
     {
-        // Apply `-scaling_factor` once, when the first top-level window shows.
+        // Apply `-scaling_factor` and the system scheme once, when the
+        // first top-level window shows.
         static bool firstShow = true;
         if (firstShow && parent() is null)
         {
             firstShow = false;
             if (fl.core.argScalingFactor_ != 1.0f)
                 fl.core.normalizedScreenScale(-1, fl.core.argScalingFactor_);
+            fl.core.applySystemScheme();
         }
 
         if (!shown_) defaultSizeRange();
@@ -876,6 +860,7 @@ class Window : FlGroup
             {
                 platform.makeCurrent(this);
                 current_ = this;
+                version (FLDTK_HAVE_CAIRO) { import fl.cairo : cairoAutolinkWindow; cairoAutolinkWindow(this); }
             }
         }
 
@@ -945,6 +930,7 @@ class Window : FlGroup
             driver.setHdc(dc);
             current_ = this;
             fl.core.currentScale(fl.core.screenScale(screenNum()));
+            version (FLDTK_HAVE_CAIRO) { import fl.cairo : cairoAutolinkWindow; cairoAutolinkWindow(this); }
         }
 
         /// Internal use only; called by fl.platform_win32 once the
@@ -1237,14 +1223,9 @@ class Window : FlGroup
      * `shown()` yet, and it may be resized one or more times before its
      * next repaint, in which case only the size at that repaint matters).
      *
-     * Deliberately unsupported, unlike FLTK: a `Pixmap`-family image
-     * with more than one underlying data array (FLTK's `count() >= 2`
-     * branch, `shape_pixmap_()`) -- this port's `Image` base class has no
-     * `count()`/generic `data()` at all (a documented simplification, see
-     * `fl.image`'s own module comment), and no sample or test in this
-     * port's tree ever passes one to `shape()` (`shapedwindow.d` only
-     * ever passes an `ImageSurface.image()` result, a plain `RGBImage`).
-     * A no-op for any image type that isn't a `Bitmap` or `RGBImage`.
+     * A `Pixmap` is first converted to a 4-channel `RGBImage`, and the
+     * window covers its non-transparent pixels (FLTK's `shape_pixmap_()`).
+     * A no-op for any other image type.
      */
     void shape(const(Image) img)
     {
@@ -1271,7 +1252,8 @@ class Window : FlGroup
         auto bm = cast(const(Bitmap)) img;
         if (bm !is null) return bm;
 
-        auto rgb = cast(const(RGBImage)) img;
+        auto pxm = cast(const(Pixmap)) img;
+        const(RGBImage) rgb = pxm !is null ? new RGBImage(pxm) : cast(const(RGBImage)) img;
         if (rgb is null) return null;
 
         int w = rgb.dataW(), h = rgb.dataH(), d = rgb.d();
@@ -1845,19 +1827,11 @@ class Window : FlGroup
      * Used by `fl.ask`'s message dialogs to appear where the user is
      * looking, matching FLTK's own default behavior there.
      *
-     * **Real multi-monitor targeting**: clamps against the actual bounding box of whichever
-     * monitor contains the mouse (`fl.core.getMouse()`'s now-real
-     * returned screen index, fed into `fl.core.screenXYWH()`), matching
-     * FLTK's own `this->screen_num(ms)` + `Fl::screen_work_area()`
-     * pairing in spirit. Two remaining simplifications versus FLTK:
-     * `screen_work_area()` (monitor bounds minus taskbar/dock -- see
-     * `fl.platform_x11`'s own note on why this wasn't ported alongside
-     * `screen_xywh()`) collapses to the plain monitor bounding box, and
-     * no window-manager decoration-size query
-     * (`pWindowDriver->decoration_sizes()` isn't ported -- no concept of
-     * border/titlebar pixel dimensions exists anywhere in this port --
-     * so the on-screen clamp below treats the border as zero-sized
-     * rather than reserving real space for it).
+     * Unless `offscreen` is set, the window is kept inside the usable
+     * area (`fl.core.screenWorkArea()`, without taskbars and docks) of
+     * the monitor the mouse is on, its contents first and then, as far
+     * as possible, its window-manager frame (estimated sizes, see
+     * `fl.platform_x11.decorationSizes()`).
      */
     void hotspot(int X, int Y, bool offscreen = false)
     {
@@ -1869,12 +1843,19 @@ class Window : FlGroup
         if (!offscreen)
         {
             int scrX, scrY, scrW, scrH;
-            fl.core.screenXYWH(scrX, scrY, scrW, scrH, screenIdx);
+            fl.core.screenWorkArea(scrX, scrY, scrW, scrH, screenIdx);
 
-            if (X + w() > scrW + scrX) X = scrW + scrX - w();
-            if (X < scrX) X = scrX;
-            if (Y + h() > scrH + scrY) Y = scrH + scrY - h();
-            if (Y < scrY) Y = scrY;
+            int top, left, right, bottom;
+            if (border())
+            {
+                version (linux) platform.decorationSizes(this, top, left, right, bottom);
+                else version (Windows) platformWin32.decorationSizes(this, top, left, right, bottom);
+            }
+            // The contents matter more than the frame: those clamps come last.
+            if (X + w() + right > scrW + scrX) X = scrW + scrX - right - w();
+            if (X - left < scrX) X = left + scrX;
+            if (Y + h() + bottom > scrH + scrY) Y = scrH + scrY - bottom - h();
+            if (Y - top < scrY) Y = top + scrY;
             // Force this position even if it happens to already match
             // x() -- matches FLTK's `if (X==x()) x(X-1);` trick
             // (FLTK's Fl_Widget::x(int) is a bare field setter, no

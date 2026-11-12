@@ -114,23 +114,11 @@ immutable string[] fontNames = [
     "FL_ZAPF_DINGBATS",
 ];
 
-/**
- * Ported from `fl_fontname_str()`. **Faithfully replicates a real
- * FLTK off-by-one, not silently corrected** (logged in
- * `FLTK_ISSUES_n.md`): FLTK's own bounds check is
- * `if ((font < 0) || (font >= FL_ZAPF_DINGBATS)) return "FL_FONT_" +
- * to_string(font);` -- but `FL_ZAPF_DINGBATS` (15) is the *last valid*
- * index into a 16-entry array, so `font >= 15` incorrectly also
- * excludes that last valid entry, meaning `fl_fontname_str(FL_ZAPF_
- * DINGBATS)` never actually returns `"FL_ZAPF_DINGBATS"` -- it falls
- * through to the generic `"FL_FONT_15"` fallback instead, exactly like
- * every genuinely out-of-range value does. Looks like the boundary
- * constant should have been `FL_ZAPF_DINGBATS + 1` (or the comparison
- * `>`), not a deliberate exclusion.
- */
+/// The name of a `Font` value (`"FL_HELVETICA"`), or `"FL_FONT_<n>"` for
+/// a font without one.
 string fontNameStr(int font)
 {
-    if (font < 0 || font >= zapfDingbats) return "FL_FONT_" ~ font.to!string;
+    if (font < 0 || font >= cast(int) fontNames.length) return "FL_FONT_" ~ font.to!string;
     return fontNames[font];
 }
 
@@ -161,24 +149,11 @@ immutable string[] callbackReasonNames = [
     "FL_REASON_USER+3",
 ];
 
-/**
- * Ported from `fl_callback_reason_str()`. **Faithfully replicates the
- * same off-by-one pattern as `fontNameStr()` above, not silently
- * corrected** (logged in `FLTK_ISSUES_n.md`):
- * FLTK's bounds check is `if ((reason < 0) || (reason >=
- * FL_REASON_USER+3) || (fl_callback_reason_names[reason] == nullptr))`
- * -- but `FL_REASON_USER+3` (35) is the *last valid* index into a
- * 36-entry array, so `reason >= 35` incorrectly also excludes that
- * last valid entry: `fl_callback_reason_str(FL_REASON_USER+3)` never
- * returns `"FL_REASON_USER+3"`, it falls through to the generic
- * `"FL_REASON_35"` fallback instead. Same shape of bug as
- * `fontNameStr()`'s, in the same small header -- worth noting these
- * were found together, in case they share a root cause (a copy-pasted
- * boundary-check pattern).
- */
+/// The name of a `CallbackReason` value (`"FL_REASON_CHANGED"`), or
+/// `"FL_REASON_<n>"` for a reason without one.
 string callbackReasonStr(int reason)
 {
-    if (reason < 0 || reason >= CallbackReason.user + 3 || callbackReasonNames[reason] is null)
+    if (reason < 0 || reason >= cast(int) callbackReasonNames.length || callbackReasonNames[reason] is null)
         return "FL_REASON_" ~ reason.to!string;
     return callbackReasonNames[reason];
 }
@@ -189,14 +164,14 @@ unittest
     assert(eventNameStr(9999) == "FL_EVENT_9999");
 
     assert(fontNameStr(helvetica) == "FL_HELVETICA");
-    // The off-by-one: the *last* valid font never returns its real name.
-    assert(fontNameStr(zapfDingbats) == "FL_FONT_15");
+    assert(fontNameStr(zapfDingbats) == "FL_ZAPF_DINGBATS");
+    assert(fontNameStr(zapfDingbats + 1) == "FL_FONT_16");
     assert(fontNameStr(-1) == "FL_FONT_-1");
     assert(fontNameStr(99) == "FL_FONT_99");
 
     assert(callbackReasonStr(CallbackReason.cancelled) == "FL_REASON_CANCELLED");
     assert(callbackReasonStr(20) == "FL_REASON_20"); // unnamed gap slot
-    // The off-by-one: the *last* valid reason never returns its real name.
-    assert(callbackReasonStr(CallbackReason.user + 3) == "FL_REASON_" ~ (CallbackReason.user + 3).to!string);
+    assert(callbackReasonStr(CallbackReason.user + 3) == "FL_REASON_USER+3");
+    assert(callbackReasonStr(CallbackReason.user + 4) == "FL_REASON_36");
     assert(callbackReasonStr(CallbackReason.user + 2) == "FL_REASON_USER+2");
 }

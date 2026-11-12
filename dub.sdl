@@ -135,10 +135,12 @@ configuration "windows-cairo" {
 
 // For a dub project that uses fldtk, selected with
 // `subConfiguration "fldtk" "program"` (see docs/TUTORIAL02.md). Nothing is
-// compiled here: the configuration has `dub build` keep the library in
-// this folder up to date (linux-default or windows-default) and passes
-// on the import path, the versions and the link line, the system
-// libraries included, for a program that calls Cairo, GL, ... itself.
+// compiled here: the program links the library already in this folder,
+// which `dub build` or `rdmd buildfluid.d` made (linux-default or
+// windows-default), and the configuration passes on the import path, the
+// versions and the link line, the system libraries included, for a
+// program that calls Cairo, GL, ... itself. After fldtk itself changes,
+// `dub build` in this folder brings the library up to date.
 // On Linux, the program links the one libfldtk.so in this folder and
 // finds it there when it runs (an rpath to this folder), so rebuilding
 // fldtk updates every program built this way; through linux-default
@@ -149,8 +151,6 @@ configuration "windows-cairo" {
 configuration "program" {
     targetType "sourceLibrary"
     excludedSourceFiles "source/fl/*.d"
-    preGenerateCommands "cd \"$PACKAGE_DIR\" && dub build --config=linux-default" platform="linux"
-    preGenerateCommands "cd /d \"$PACKAGE_DIR\" && dub build --config=windows-default" platform="windows"
     versions "FLDTK_HAVE_CAIRO" "FLDTK_HAVE_PANGO" "FLDTK_HAVE_WAYLAND" platform="linux"
     libs "fldtk" "X11" "Xft" "Xinerama" "Xrandr" "fontconfig" "Xcursor" "Xfixes" "Xext" "Xi" "GL" "GLU" "z" "cairo" "pangocairo-1.0" "pango-1.0" "gobject-2.0" "glib-2.0" "wayland-client" "wayland-cursor" "xkbcommon" "EGL" "wayland-egl" platform="linux"
     libs "fldtk" "gdi32" "user32" "kernel32" "msvcrt120" "oldnames" "ole32" "gdiplus" "opengl32" "glu32" "msimg32" "shell32" "comdlg32" "imm32" platform="windows"
@@ -160,3 +160,4 @@ configuration "program" {
 
 // buildfluid needs fluid to be defined as a sub package
 subPackage "source/fluid"
+subPackage "source/options"

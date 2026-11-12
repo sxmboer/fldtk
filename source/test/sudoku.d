@@ -376,7 +376,7 @@ class Sudoku : DoubleWindow
 
     static this()
     {
-        prefs_ = new Preferences(rootUserL, "fltk.org", "sudoku");
+        prefs_ = new Preferences(rootUserL, "fldtk", "sudoku");
     }
 
     this()

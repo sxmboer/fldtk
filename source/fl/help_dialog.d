@@ -44,28 +44,11 @@
  *    judgment call the way most deviations in this project are; it's
  *    doing what FLTK's own comment already asked for.
  *
- *  - **`fl_register_images()` is called**, matching FLTK's own
- *    constructor: it registers `fl.shared_image.registerImages()`'s
- *    real, native format detectors (XBM/XPM/PNM/BMP/ICO/GIF/SVG/PNG/
- *    JPEG, see that function's own doc comment in `fl.shared_image.d`)
- *    so `<IMG>` tags load real image data via `SharedImage`.
- *
  *  - **`show(int argc, char **argv)` is not ported** -- FLTK's
  *    X11-command-line-flag-parsing overload of `Fl_Window::show()`
  *    (`-display`/`-geometry`/etc.) has no equivalent anywhere in this
  *    port's window-creation path; `fl.window`/`fl.platform_x11` don't
  *    have an argv-parsing entry point to forward to.
- *
- *  - **Found a likely FLTK bug while porting `cb_forward_`,
- *    ported faithfully (not fixed) -- see `FLTK_ISSUES_n.md`**:
- *    `cb_back__i` sets the target page's scroll position from
- *    `line_[index_]` (the *recorded* topline for the history entry
- *    being navigated to), but `cb_forward__i` instead captures
- *    `view_->topline()` -- the *current* page's scroll position,
- *    read *before* the target page is loaded -- and applies that
- *    stale value to the new page instead. `forwardCB()` below
- *    reproduces this exact asymmetry (`currentTopline`, captured
- *    before `view_.load()`, not `history_[index_].line`).
  */
 module fl.help_dialog;
 
@@ -75,7 +58,6 @@ import fl.button : Button;
 import fl.input : Input;
 import fl.box : Box;
 import fl.help_view : HelpView;
-import fl.shared_image : registerImages;
 import fl.enumerations;
 import fl.core;
 
@@ -162,14 +144,6 @@ class HelpDialog
         back_.deactivate();
         forward_.deactivate();
 
-        // Ported from `Fl_Help_Dialog::Fl_Help_Dialog()`'s own trailing
-        // `fl_register_images();` call -- registers GIF/BMP/ICO/SVG
-        // detection with `SharedImage` so this dialog's `<IMG>` tags can
-        // actually load (see `registerImages()`'s own doc comment in
-        // `fl.shared_image.d`). A no-op on a second/third HelpDialog in
-        // the same process (`addHandler()`'s own dedup).
-        registerImages();
-
         FlGroup.current(prevCurrent);
     }
 
@@ -196,9 +170,8 @@ class HelpDialog
         view_.topline(l);
     }
 
-    /// Ported from `cb_forward__i()` -- see the module comment for the
-    /// `currentTopline`-vs-`history_[index_].line` asymmetry against
-    /// `backCB()`, faithfully reproduced from FLTK.
+    /// Ported from `cb_forward__i()`. Like `backCB()`, restores the
+    /// scroll position recorded for the target page.
     private void forwardCB()
     {
         if (index_ < cast(int) history_.length - 1)
@@ -209,12 +182,12 @@ class HelpDialog
 
         back_.activate();
 
-        int currentTopline = view_.topline();
+        int l = history_[index_].line;
 
         if (view_.filename() != history_[index_].file)
             view_.load(history_[index_].file);
 
-        view_.topline(currentTopline);
+        view_.topline(l);
     }
 
     /// Ported from `cb_smaller__i()`.
@@ -239,10 +212,12 @@ class HelpDialog
         smaller_.activate();
     }
 
-    /// Ported from `cb_find__i()`.
+    /// Ported from `cb_find__i()`. Each search continues after the
+    /// previous match; after the last match it starts over at the top.
     private void findCB()
     {
-        findPos_ = view_.find(find_.value(), findPos_);
+        int at = view_.find(find_.value(), findPos_);
+        findPos_ = at >= 0 ? at + 1 : 0;
     }
 
     /**

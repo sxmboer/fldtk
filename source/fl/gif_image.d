@@ -351,6 +351,13 @@ class GifImage : Pixmap
                     return;
                 }
                 codeSize++;
+                // Pixel values are bytes: an LZW minimum code size above
+                // 8 bits isn't a valid GIF.
+                if (codeSize > 9)
+                {
+                    ld(errFormat);
+                    return;
+                }
 
                 // No color table at all: the standard allows this and
                 // recommends a default black/white(/ramp) table.
@@ -365,18 +372,6 @@ class GifImage : Pixmap
                         cmapR[k] = cmapG[k] = cmapB[k] = cast(ubyte)(255 * k / (colorMapSize - 1));
                 }
 
-                // Workaround for broken GIF files (matches FLTK).
-                int bitsPerPixel = codeSize - 1;
-                if (bitsPerPixel >= 0 && bitsPerPixel <= 8) colorMapSize = 1 << bitsPerPixel;
-
-                // Transparent index outside the color map: extend it.
-                if (hasTransparent && transparentPixel >= colorMapSize)
-                {
-                    foreach (k; colorMapSize .. transparentPixel + 1)
-                        cmapR[k] = cmapG[k] = cmapB[k] = 0xff;
-                    colorMapSize = transparentPixel + 1;
-                }
-
                 if (width <= 0 || height <= 0)
                 {
                     ld(errFormat);
@@ -384,10 +379,31 @@ class GifImage : Pixmap
                 }
 
                 auto image = new ubyte[width * height];
-                if (!lzwDecode(rdr, image, width, height, codeSize, colorMapSize, interlace))
+                if (!lzwDecode(rdr, image, width, height, codeSize, interlace))
                 {
                     ld(errFormat);
                     return;
+                }
+
+                // The frame's colors: its color table, extended (in black)
+                // to cover any pixel value past the end of the table,
+                // which broken files contain, and (in white) to cover a
+                // transparent index past it.
+                int clrs = colorMapSize;
+                int maxIndex = 0;
+                foreach (px; image) if (px > maxIndex) maxIndex = px;
+                foreach (k; clrs .. maxIndex + 1)
+                {
+                    cmapR[k] = cmapG[k] = cmapB[k] = 0;
+                    if (hasLocalTable) localTable[k] = Cpal(0, 0, 0);
+                    else if (hasGlobalTable) globalTable[k] = Cpal(0, 0, 0);
+                }
+                if (maxIndex >= clrs) clrs = maxIndex + 1;
+                if (hasTransparent && transparentPixel >= clrs)
+                {
+                    foreach (k; clrs .. transparentPixel + 1)
+                        cmapR[k] = cmapG[k] = cmapB[k] = 0xff;
+                    clrs = transparentPixel + 1;
                 }
 
                 auto gf = GifFrame(frame);
@@ -397,7 +413,7 @@ class GifImage : Pixmap
                 gf.y = top;
                 gf.w = width;
                 gf.h = height;
-                gf.clrs = colorMapSize;
+                gf.clrs = clrs;
                 gf.bkgd = backgroundColorIndex;
                 gf.trans = hasTransparent ? transparentPixel : -1;
                 gf.dispose = dispose;
@@ -405,14 +421,14 @@ class GifImage : Pixmap
                 gf.bptr = image;
                 Cpal[256] synthCpal;
                 if (hasLocalTable)
-                    gf.cpal = localTable[0 .. colorMapSize];
+                    gf.cpal = localTable[0 .. clrs];
                 else if (hasGlobalTable)
-                    gf.cpal = globalTable[0 .. colorMapSize];
+                    gf.cpal = globalTable[0 .. clrs];
                 else
                 {
-                    foreach (k; 0 .. colorMapSize)
+                    foreach (k; 0 .. clrs)
                         synthCpal[k] = Cpal(cmapR[k], cmapG[k], cmapB[k]);
-                    gf.cpal = synthCpal[0 .. colorMapSize];
+                    gf.cpal = synthCpal[0 .. clrs];
                 }
                 onFrameData(gf);
 
@@ -424,7 +440,7 @@ class GifImage : Pixmap
                 if (frame == 0)
                 {
                     xpmData = convertToXpm(image, width, height, cmapR, cmapG, cmapB,
-                        colorMapSize, gf.trans);
+                        clrs, gf.trans);
                     w(width);
                     h(height);
                     ld(0);
@@ -473,7 +489,7 @@ class GifImage : Pixmap
  * keeps whatever was already written rather than failing the image.
  */
 private bool lzwDecode(ref ByteReader rdr, ubyte[] image, int width, int height,
-    int codeSize, int colorMapSize, bool interlace)
+    int codeSize, bool interlace)
 {
     int yc = 0, pass = 0; // de-interlacing state
     size_t p = 0;
@@ -558,7 +574,7 @@ private bool lzwDecode(ref ByteReader rdr, ubyte[] image, int width, int height,
         else
             break; // corrupt LZW stream -- stop, keep what's decoded so far
 
-        while (i >= colorMapSize)
+        while (i >= clearCode) // below clearCode, a code is a pixel value
         {
             if (i < freeCode)
             {
@@ -821,13 +837,9 @@ unittest
         {
             frameCalls++;
             assert(f.w == 2 && f.h == 1);
-            // clrs (and so cpal's length) is derived from the LZW code
-            // size's bit depth, not the real color table's own entry
-            // count -- matches FLTK's own "workaround for broken
-            // GIF files" (ColorMapSize = 1 << BitsPerPixel,
-            // unconditionally); min code size 2 here means clrs=4, two
-            // more than the 2 real colors actually defined.
-            assert(f.cpal.length == 4);
+            // The 2-entry color table gives 2 colors, although the LZW
+            // minimum code size (2) has room for 4.
+            assert(f.cpal.length == 2);
             assert(f.cpal[0] == Cpal(255, 0, 0)); // untouched -- not remapped to ' '
             assert(f.cpal[1] == Cpal(0, 255, 0));
             assert(f.bptr == [0, 1]);
@@ -849,4 +861,42 @@ unittest
     // Frame 0 still produced real Pixmap/XPM data, same as the
     // non-anim path.
     assert(probe.w() == 2 && probe.h() == 1);
+}
+
+unittest
+{
+    // A pixel value past the end of the color table (3, with a 2-entry
+    // table) extends the frame's colors to cover it, in black.
+    ubyte[] gif = [
+        'G', 'I', 'F', '8', '9', 'a',
+        2, 0, 1, 0,
+        0x80, 0, 0,
+        255, 0, 0, // color 0: red
+        0, 255, 0, // color 1: green
+        0x2c, 0, 0, 0, 0, 2, 0, 1, 0, 0, 2, 2, 0xC4, 0x0A, 0, // pixels [0,3]
+        0x3b,
+    ];
+
+    static class Probe : GifImage
+    {
+        Cpal[] cpal;
+
+        this(string imagename, const(ubyte)[] data)
+        {
+            super();
+            load(imagename, data, false);
+        }
+
+        override protected void onFrameData(ref GifFrame f)
+        {
+            cpal = f.cpal.dup;
+            assert(f.bptr == [0, 3]);
+        }
+    }
+
+    auto probe = new Probe("mem", gif);
+    assert(!probe.fail());
+    assert(probe.cpal.length == 4);
+    assert(probe.cpal[0] == Probe.Cpal(255, 0, 0));
+    assert(probe.cpal[3] == Probe.Cpal(0, 0, 0));
 }

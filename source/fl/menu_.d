@@ -720,10 +720,8 @@ abstract class Menu_ : Widget
     }
 }
 
-// Fl_Menu_::the_widget/handler() (src/Fl_Menu_global.cxx) -- genuinely
-// process-wide state FLTK too (a plain file-scope static, not a
-// per-instance field), same treatment already established for
-// fl.slider's offcenter/fl.roller's ipos.
+// Fl_Menu_::the_widget/handler() (src/Fl_Menu_global.cxx): at most one
+// menu is global() at a time, so this is process-wide state.
 private Menu_ theGlobalWidget_;
 
 private int globalHandler_(Event e)

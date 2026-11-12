@@ -77,10 +77,10 @@ void main(string[] args)
 
     if (FL_ABI_VERSION != fl.abiVersion())
     {
-        writefln("*** FLTK ABI version mismatch: headers = %d, lib = %d ***",
+        writefln("*** fldtk ABI version mismatch: headers = %d, lib = %d ***",
             FL_ABI_VERSION, fl.abiVersion());
         stdout.flush();
-        message(format("*** FLTK ABI version mismatch: headers = %d, lib = %d ***",
+        message(format("*** fldtk ABI version mismatch: headers = %d, lib = %d ***",
             FL_ABI_VERSION, fl.abiVersion()));
     }
 

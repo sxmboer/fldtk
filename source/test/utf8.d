@@ -200,7 +200,7 @@ void chooseCb(Widget)
         fontIdx -= 1;
         string name = fl.getFontName(cast(Font) fontIdx, fontType);
         writefln("idx %d\nUser name :%s:", fontIdx, name);
-        writefln("FLTK name :%s:", fl.getFont(cast(Font) fontIdx));
+        writefln("fldtk name :%s:", fl.getFont(cast(Font) fontIdx));
 
         fl.setFont(extraFont, cast(Font) fontIdx);
         //          fl.setFont(extraFont, fl.getFont(cast(Font) fontIdx));

@@ -93,6 +93,12 @@ final class GlGraphicsDriver : GraphicsDriver
     private float pixelsPerUnit_ = 1.0f;
     private float lineWidth_ = 1.0f;
     private int lineStipple_ = lineSolid;
+    // Whether a dash style is in effect (GL_LINE_STIPPLE enabled); lines
+    // and rectangle outlines are then drawn as GL lines.
+    private bool stippled_;
+    // A custom dash array (on, off, on, ... lengths in FLTK units), or
+    // empty. While set, stroke() cuts each path into dashes itself.
+    private float[] dashes_;
 
     // The FLTK-unit height of the window currently being drawn into --
     // needed only by pushClip()'s y-flip (see this module's own top
@@ -166,20 +172,65 @@ final class GlGraphicsDriver : GraphicsDriver
         glRectf(cast(GLfloat) x, cast(GLfloat) y, cast(GLfloat)(x + w), cast(GLfloat)(y + h));
     }
 
-    /// Ported verbatim from `Fl_OpenGL_Graphics_Driver::rect()`: draws
-    /// the outline as four filled `glRectf()` bars rather than an
-    /// actual `GL_LINE_LOOP` stroke. Consequence: a dashed/dotted
-    /// `lineStyle()` (e.g. `focusRect()`'s own `lineDot`) has no visible
-    /// effect here -- `glLineStipple()`/`GL_LINE_STIPPLE` only affects
-    /// `GL_LINES`/`GL_LINE_STRIP`/`GL_LINE_LOOP` primitives, and this
-    /// function never issues any of those. A focus rectangle renders
-    /// solid under GL compositing, unlike the native Xlib path's real
-    /// dashed `XDrawRectangle()`. This is a faithfully-ported FLTK
-    /// limitation (same `glRectf()`-bars body, no stipple check), not a
-    /// fldtk-introduced regression. See `FLTK_ISSUES_n.md`'s
-    /// `Fl_OpenGL_Graphics_Driver::rect() ignores line stipple` entry.
+    /**
+     * Draws a line strip through `pts` (closed back to the first point
+     * when `closed`). Without a custom dash array this is one
+     * `GL_LINE_STRIP`/`GL_LINE_LOOP`, which the line stipple applies to;
+     * with one, the path is cut into `GL_LINES` dash pieces, the dash
+     * pattern running on along the whole path from its first point.
+     */
+    private void stroke(const(float[2])[] pts, bool closed)
+    {
+        if (pts.length == 0) return;
+        if (dashes_.length == 0)
+        {
+            glBegin(closed ? GL_LINE_LOOP : GL_LINE_STRIP);
+            foreach (p; pts) glVertex2f(p[0], p[1]);
+            glEnd();
+            return;
+        }
+
+        size_t di = 0;               // current dash entry; even = on
+        float left = dashes_[0];     // what remains of it
+        glBegin(GL_LINES);
+        size_t n = closed ? pts.length + 1 : pts.length;
+        foreach (i; 1 .. n)
+        {
+            auto a = pts[i - 1], b = pts[i % pts.length];
+            float dx = b[0] - a[0], dy = b[1] - a[1];
+            float len = sqrt(dx * dx + dy * dy);
+            float t = 0;
+            while (t < len)
+            {
+                float step = left < len - t ? left : len - t;
+                if (di % 2 == 0)
+                {
+                    glVertex2f(a[0] + dx * t / len, a[1] + dy * t / len);
+                    glVertex2f(a[0] + dx * (t + step) / len, a[1] + dy * (t + step) / len);
+                }
+                t += step;
+                left -= step;
+                if (left <= 0)
+                {
+                    di = (di + 1) % dashes_.length;
+                    left = dashes_[di];
+                }
+            }
+        }
+        glEnd();
+    }
+
+    /// Ported from `Fl_OpenGL_Graphics_Driver::rect()`: four filled
+    /// `glRectf()` bars, or with a dash style a line loop, which the
+    /// dashes apply to (so a focus rectangle is dotted, as on screen).
     override void rect(int x, int y, int w, int h)
     {
+        if (stippled_)
+        {
+            stroke([[x + 0.5f, y + 0.5f], [x + w - 0.5f, y + 0.5f],
+                [x + w - 0.5f, y + h - 0.5f], [x + 0.5f, y + h - 0.5f]], true);
+            return;
+        }
         float offset = lineWidth_ / 2.0f;
         float xx = x + 0.5f, yy = y + 0.5f;
         float rr = x + w - 0.5f, bb = y + h - 0.5f;
@@ -197,12 +248,9 @@ final class GlGraphicsDriver : GraphicsDriver
 
         float xx = x + 0.5f, xx1 = x1 + 0.5f;
         float yy = y + 0.5f, yy1 = y1 + 0.5f;
-        if (lineWidth_ == 1.0f)
+        if (lineWidth_ == 1.0f || stippled_)
         {
-            glBegin(GL_LINE_STRIP);
-            glVertex2f(xx, yy);
-            glVertex2f(xx1, yy1);
-            glEnd();
+            stroke([[xx, yy], [xx1, yy1]], false);
         }
         else
         {
@@ -222,6 +270,11 @@ final class GlGraphicsDriver : GraphicsDriver
 
     override void xyline(int x, int y, int x1)
     {
+        if (stippled_)
+        {
+            stroke([[cast(float) x, y + 0.5f], [x1 + 1.0f, y + 0.5f]], false);
+            return;
+        }
         float offset = lineWidth_ / 2.0f;
         float xx = cast(float) x, yy = y + 0.5f, rr = x1 + 1.0f;
         glRectf(xx, yy - offset, rr, yy + offset);
@@ -229,6 +282,11 @@ final class GlGraphicsDriver : GraphicsDriver
 
     override void yxline(int x, int y, int y1)
     {
+        if (stippled_)
+        {
+            stroke([[x + 0.5f, cast(float) y], [x + 0.5f, y1 + 1.0f]], false);
+            return;
+        }
         float offset = lineWidth_ / 2.0f;
         float xx = x + 0.5f, yy = cast(float) y, bb = y1 + 1.0f;
         glRectf(xx - offset, yy, xx + offset, bb);
@@ -313,13 +371,13 @@ final class GlGraphicsDriver : GraphicsDriver
         int nSeg = cast(int)(10 * sqrt(rMax)) + 1;
         double incr = (a2 - a1) / cast(double) nSeg;
 
-        glBegin(GL_LINE_STRIP);
+        auto pts = new float[2][nSeg + 1];
         foreach (i; 0 .. nSeg + 1)
         {
-            glVertex2d(cx + cos(a1) * rx, cy - sin(a1) * ry);
+            pts[i] = [cast(float)(cx + cos(a1) * rx), cast(float)(cy - sin(a1) * ry)];
             a1 += incr;
         }
-        glEnd();
+        stroke(pts, false);
     }
 
     override void pie(int x, int y, int w, int h, double a1, double a2)
@@ -345,8 +403,8 @@ final class GlGraphicsDriver : GraphicsDriver
     }
 
     // ---- Fl_OpenGL_Graphics_Driver_line_style.cxx ----
-    // OpenGL implementation does not support custom dash patterns
-    // (`dashes` is ignored, matching FLTK exactly) or cap/join types.
+    // The named dash styles use the GL line stipple; a custom dash array
+    // is drawn by stroke(). Cap and join types are not supported.
 
     override void lineStyle(int style, int width, const(ubyte)[] dashes)
     {
@@ -356,10 +414,25 @@ final class GlGraphicsDriver : GraphicsDriver
         int stipple = style & 0x00ff;
         lineStipple_ = stipple;
 
-        if (stipple == lineSolid)
+        dashes_.length = 0;
+        foreach (b; dashes)
+        {
+            if (b == 0) break;
+            dashes_ ~= b;
+        }
+        if (dashes_.length % 2) dashes_ ~= dashes_[]; // odd count: on/off swap each cycle
+
+        if (dashes_.length)
         {
             glLineStipple(1, 0xFFFF);
             glDisable(GL_LINE_STIPPLE);
+            stippled_ = true;
+        }
+        else if (stipple == lineSolid)
+        {
+            glLineStipple(1, 0xFFFF);
+            glDisable(GL_LINE_STIPPLE);
+            stippled_ = false;
         }
         else
         {
@@ -385,6 +458,7 @@ final class GlGraphicsDriver : GraphicsDriver
             }
             if (enable) glEnable(GL_LINE_STIPPLE);
             else glDisable(GL_LINE_STIPPLE);
+            stippled_ = enable;
         }
         glLineWidth(cast(GLfloat)(pixelsPerUnit_ * lineWidth_));
         glPointSize(cast(GLfloat) pixelsPerUnit_);
@@ -410,17 +484,20 @@ final class GlGraphicsDriver : GraphicsDriver
     override void endLine(const(Point)[] pts)
     {
         if (pts.length == 0) return;
-        glBegin(GL_LINE_STRIP);
-        foreach (p; pts) glVertex2i(p.x, p.y);
-        glEnd();
+        stroke(toFloat(pts), false);
     }
 
     override void endLoop(const(Point)[] pts)
     {
         if (pts.length == 0) return;
-        glBegin(GL_LINE_LOOP);
-        foreach (p; pts) glVertex2i(p.x, p.y);
-        glEnd();
+        stroke(toFloat(pts), true);
+    }
+
+    private static float[2][] toFloat(const(Point)[] pts)
+    {
+        auto r = new float[2][pts.length];
+        foreach (i, p; pts) r[i] = [cast(float) p.x, cast(float) p.y];
+        return r;
     }
 
     override void endPolygon(const(Point)[] pts)
@@ -436,38 +513,55 @@ final class GlGraphicsDriver : GraphicsDriver
     /// comment for the GAP-marker simplification.
     override void endComplexPolygon(const(Point)[] pts)
     {
-        int n = cast(int) pts.length;
-        if (n < 2) return;
+        endComplexPolygonParts(pts, [cast(int) pts.length]);
+    }
 
-        static struct FPoint { float x, y; }
-        auto v = new FPoint[n];
-        foreach (i, p; pts)
-            v[i] = FPoint(cast(float) p.x, cast(float) p.y - 0.1f);
+    /**
+     * Ported from `Fl_OpenGL_Graphics_Driver::end_complex_polygon()`: a
+     * scanline fill, one `glRectf()` per span between pairs of edge
+     * crossings. The edges are those of each sub-loop `fl.draw.gap()`
+     * made (`counts` points each), closed back to the loop's first
+     * point; no edge joins one sub-loop to the next, as FLTK skips its
+     * `GAP` markers, so a second shape or a hole fills correctly.
+     */
+    override void endComplexPolygonParts(const(Point)[] pts, const(int)[] counts)
+    {
+        if (pts.length < 2) return;
 
-        float xMin = v[0].x, xMax = v[0].x;
-        int yMin = cast(int) v[0].y, yMax = yMin;
-        foreach (i; 1 .. n)
+        static struct Edge { float x0, y0, x1, y1; }
+        Edge[] edges;
+        float xMin = pts[0].x, xMax = pts[0].x;
+        int yMin = cast(int)(pts[0].y - 0.1f), yMax = yMin;
+        size_t start = 0;
+        foreach (n; counts)
         {
-            if (v[i].x <= xMin) xMin = v[i].x;
-            if (v[i].x >= xMax) xMax = v[i].x;
-            int vy = cast(int) v[i].y;
-            if (vy <= yMin) yMin = vy;
-            if (vy >= yMax) yMax = vy;
+            if (n <= 0) continue;
+            size_t end = start + n > pts.length ? pts.length : start + n;
+            foreach (i; start .. end)
+            {
+                auto p = pts[i], q = pts[i + 1 < end ? i + 1 : start]; // closed loop
+                float py = p.y - 0.1f;
+                edges ~= Edge(p.x, py, q.x, q.y - 0.1f);
+                if (p.x < xMin) xMin = p.x;
+                if (p.x > xMax) xMax = p.x;
+                if (cast(int) py < yMin) yMin = cast(int) py;
+                if (cast(int) py > yMax) yMax = cast(int) py;
+            }
+            start = end;
         }
+        if (edges.length < 2) return;
 
-        auto nodeX = new float[n - 1];
+        auto nodeX = new float[edges.length];
         for (int y = yMin; y <= yMax; y++)
         {
             int nNodes = 0;
-            foreach (i; 1 .. n)
+            foreach (e; edges)
             {
-                auto v0 = v[i - 1];
-                auto v1 = v[i];
-                if ((v1.y < y && v0.y >= y) || (v0.y < y && v1.y >= y))
+                if ((e.y1 < y && e.y0 >= y) || (e.y0 < y && e.y1 >= y))
                 {
-                    float dy = v0.y - v1.y;
+                    float dy = e.y0 - e.y1;
                     nodeX[nNodes++] = (fabs(dy) > 0.0001f)
-                        ? v1.x + ((y - v1.y) / dy) * (v0.x - v1.x) : v1.x;
+                        ? e.x1 + ((y - e.y1) / dy) * (e.x0 - e.x1) : e.x1;
                 }
             }
 
@@ -484,7 +578,7 @@ final class GlGraphicsDriver : GraphicsDriver
                 else idx++;
             }
 
-            for (int i = 0; i < nNodes; i += 2)
+            for (int i = 0; i + 1 < nNodes; i += 2)
             {
                 float x0 = nodeX[i];
                 if (x0 >= xMax) break;
@@ -628,17 +722,9 @@ final class GlGraphicsDriver : GraphicsDriver
      * rather than caching a GL texture keyed by image identity, correct
      * but less efficient for a repeatedly-redrawn bitmap.
      *
-     * `w`/`h` (the requested destination *size*) aren't consulted --
-     * `gl_draw_image()` has no destination-stretch primitive the way
-     * GDI's `StretchBlt()` does (`fl.gdi_graphics_driver.
-     * GdiGraphicsDriver.drawBitmap()`'s own real stretch), so the
-     * buffer draws at its own native `dataW`x`dataH` pixel size,
-     * matching `fl.postscript.PostscriptGraphicsDriver.drawBitmap()`'s
-     * faithfully-reproduced FLTK quirk of the same shape (see that
-     * method's own doc comment). `cx`/`cy` are honored as a real
-     * position offset, matching `SvgGraphicsDriver.drawBitmap()`'s own
-     * choice for the same reason -- `GraphicsDriver.drawBitmap()`'s own
-     * doc comment leaves this to each concrete driver's discretion.
+     * The whole buffer is drawn at `(x - cx, y - cy)` at its own pixel
+     * size (already the display's resolution, see `fl.bitmap.Bitmap.
+     * draw()`), clipped to `(x, y, w, h)`, as on screen.
      */
     override void drawBitmap(const(ubyte)* bits, int dataW, int dataH, int x, int y, int w, int h, int cx, int cy)
     {
@@ -675,9 +761,13 @@ final class GlGraphicsDriver : GraphicsDriver
             }
         }
 
+        import fl.draw : pushClip, popClip;
+
+        pushClip(x, y, w, h);
         glPixelZoom(1.0f, -1.0f);
         gl_draw_image(rgba.ptr, x - cx, y - cy, dataW, dataH, 4, dataW * 4);
         glPixelZoom(1.0f, 1.0f);
+        popClip();
     }
 
     /// Real GL already maps its logical-unit `glOrtho()` range onto the

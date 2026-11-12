@@ -41,7 +41,7 @@ MenuItem[] choices = [
 
 void main(string[] args)
 {
-    auto window = new DoubleWindow(400, 300, "FLTK Window Icon Test");
+    auto window = new DoubleWindow(400, 300, "fldtk Window Icon Test");
     win = window;
 
     auto choice = new Choice(120, 100, 200, 25, "Window icon:");

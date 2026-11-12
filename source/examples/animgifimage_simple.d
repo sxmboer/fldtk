@@ -10,7 +10,7 @@ void main(string[] args)
     auto win = new DoubleWindow(400, 300, "AnimGifImage demo");
 
     // prepare a canvas (widget) for the animation
-    auto canvas = new Box(20, 40, win.w() - 40, win.h() - 80, "Hello from FLTK GIF-animation!");
+    auto canvas = new Box(20, 40, win.w() - 40, win.h() - 80, "Hello from fldtk GIF-animation!");
     canvas.alignment(alignTop | alignImageBackdrop);
     canvas.labelsize(20);
 

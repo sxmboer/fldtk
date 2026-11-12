@@ -50,13 +50,13 @@ void main(string[] args)
             ~ "usage: %s [options]\n"
             ~ " -h | --help     : print extended help message\n"
             ~ " -o | --option # : example option with parameter\n"
-            ~ " plus standard fltk options\n",
+            ~ " plus standard fldtk options\n",
             args[i], args[0]));
     if (helpFlag)
         fl.fatal(format("usage: %s [options]\n"
             ~ " -h | --help     : print extended help message\n"
             ~ " -o | --option # : example option with parameter\n"
-            ~ " plus standard fltk options:\n"
+            ~ " plus standard fldtk options:\n"
             ~ "%s\n",
             args[0], fl.argsHelp));
 

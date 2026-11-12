@@ -286,10 +286,22 @@ Examples:
 appPrefs.get("use_external_editor", b, 0);
 o.value(b != 0);}
                   }
+                Input fldtkFolderField
+                  {
+                    label {fldtk Folder:}
+                    callback {appPrefs.set(fldtkFolderPrefKey, fldtkFolderField.value());}
+                    xywh {130 303 210 20}
+                    labelfont 1
+                    labelsize 12
+                    setup {string s;
+appPrefs.get(fldtkFolderPrefKey, s, "");
+o.value(s);}
+                    tooltip {The fldtk folder that File > Run, Set Up dub Project and the dub header build against. Leave blank to use the folder Fluid itself is in.}
+                  }
                 Box {}
                   {
                     label {Overlays: }
-                    xywh {130 306 0 20}
+                    xywh {130 331 0 20}
                     labelfont 1
                     labelsize 12
                     align 4
@@ -298,7 +310,7 @@ o.value(b != 0);}
                   {
                     label {Show Positioning Guides}
                     callback {showGuides(guidesButton.value() != 0);}
-                    xywh {130 306 210 20}
+                    xywh {130 331 210 20}
                     down_box DOWN_BOX
                     labelsize 12
                     setup {o.value(showGuides());}
@@ -308,7 +320,7 @@ o.value(b != 0);}
                   {
                     label {Show Restricted Areas}
                     callback {showRestricted(restrictedButton.value() != 0);}
-                    xywh {130 326 210 20}
+                    xywh {130 351 210 20}
                     down_box DOWN_BOX
                     labelsize 12
                     setup {o.value(showRestricted());}
@@ -318,7 +330,7 @@ o.value(b != 0);}
                   {
                     label {Show Ghosted Group Outlines}
                     callback {showGhostedOutline(ghostedOutlineButton.value() != 0);}
-                    xywh {130 346 210 20}
+                    xywh {130 371 210 20}
                     down_box DOWN_BOX
                     labelsize 12
                     setup {o.value(showGhostedOutline());}
@@ -1571,7 +1583,7 @@ case I18nType.posix:
                     setup {if (projectI18n().type == I18nType.gnu) o.show(); else o.hide();}
                   }
                   {
-                    Input {}
+                    Input i18nGnuInclude
                       {
                         label {Import:}
                         callback {projectI18n().gnuInclude = o.value();}
@@ -1583,7 +1595,7 @@ case I18nType.posix:
                         setup {o.value(projectI18n().gnuInclude);}
                         tooltip {What to import for internationalization support, as a D import path such as fl.gettext. It must provide the translation function named below. Leave empty to import nothing and define the function yourself in a "decl" block.}
                       }
-                    Input {}
+                    Input i18nGnuConditional
                       {
                         label {Conditional:}
                         callback {projectI18n().gnuConditional = o.value();}
@@ -1595,7 +1607,7 @@ case I18nType.posix:
                         setup {o.value(projectI18n().gnuConditional);}
                         tooltip {Only import internationalization support if this D version identifier is defined, for example ENABLE_NLS. Otherwise the generated file defines pass-through functions that return the text untranslated. Leave empty to always import.}
                       }
-                    Input {}
+                    Input i18nGnuFunction
                       {
                         label {Function:}
                         callback {projectI18n().gnuFunction = o.value();}
@@ -1607,7 +1619,7 @@ case I18nType.posix:
                         setup {o.value(projectI18n().gnuFunction);}
                         tooltip {The function to call to translate labels and tooltips, usually "gettext" or "_"}
                       }
-                    Input {}
+                    Input i18nGnuStaticFunction
                       {
                         label {Static Function:}
                         callback {projectI18n().gnuStaticFunction = o.value();}
@@ -1627,7 +1639,7 @@ case I18nType.posix:
                     setup {if (projectI18n().type == I18nType.posix) o.show(); else o.hide();}
                   }
                   {
-                    Input {}
+                    Input i18nPosixInclude
                       {
                         label {Import:}
                         callback {projectI18n().posixInclude = o.value();}
@@ -1639,7 +1651,7 @@ case I18nType.posix:
                         setup {o.value(projectI18n().posixInclude);}
                         tooltip {What to import for internationalization support, as a D import path. It must provide the catgets function and the message catalog type. Leave empty to import nothing and define them yourself in a "decl" block.}
                       }
-                    Input {}
+                    Input i18nPosixConditional
                       {
                         label {Conditional:}
                         callback {projectI18n().posixConditional = o.value();}
@@ -1651,7 +1663,7 @@ case I18nType.posix:
                         setup {o.value(projectI18n().posixConditional);}
                         tooltip {Only import internationalization support if this D version identifier is defined, for example ENABLE_NLS. Otherwise the generated file defines pass-through functions that return the text untranslated. Leave empty to always import.}
                       }
-                    Input {}
+                    Input i18nPosixFile
                       {
                         label {Catalog:}
                         callback {projectI18n().posixFile = o.value();}
@@ -1668,7 +1680,7 @@ case I18nType.posix:
                         xywh {110 178 90 20}
                       }
                       {
-                        IntInput {}
+                        IntInput i18nPosixSet
                           {
                             label {Set:}
                             callback {projectI18n().posixSet = o.value();}
@@ -2020,7 +2032,7 @@ auto b = browser(); if (b !is null) b.redraw();}
                 Button userResetButton
                   {
                     label {Reset}
-                    callback {labelColor = cast(Color) 72; labelFont = helvetica;
+                    callback {labelColor = darkRed; labelFont = helvetica;
 classColor = foregroundColor; classFont = helveticaBold;
 funcColor = foregroundColor; funcFont = helvetica;
 nameColor = foregroundColor; nameFont = helvetica;
@@ -2075,6 +2087,34 @@ else \{
     layoutRefreshTab();
     settingsPanel.show();
 \}}
+      {
+      }
+  }
+Function settingsRefreshProject()
+  {
+    comment {Shows the current project's settings in the Project and i18n
+fields, after a project is opened, made, inserted or restored by undo.}
+    return_type void
+  }
+  {
+    code {if (settingsPanel is null) return;
+codeFileField.value(*(codeFileName()));
+useFlCommandButton.value(projectSettings().useFlCommand);
+mergebackButton.value(projectSettings().writeMergebackData);
+dubHeaderButton.value(*(projectDubHeader()));
+auto s = projectI18n();
+i18nTypeChooser.value(cast(int) s.type);
+if (s.type == I18nType.gnu) i18nGnuGroup.show(); else i18nGnuGroup.hide();
+if (s.type == I18nType.posix) i18nPosixGroup.show(); else i18nPosixGroup.hide();
+i18nGnuInclude.value(s.gnuInclude);
+i18nGnuConditional.value(s.gnuConditional);
+i18nGnuFunction.value(s.gnuFunction);
+i18nGnuStaticFunction.value(s.gnuStaticFunction);
+i18nPosixInclude.value(s.posixInclude);
+i18nPosixConditional.value(s.posixConditional);
+i18nPosixFile.value(s.posixFile);
+i18nPosixSet.value(s.posixSet);
+settingsPanel.redraw();}
       {
       }
   }

@@ -1,9 +1,7 @@
 /*
  * The interactive editor's single, shared `fl.preferences.Preferences`
- * instance -- vendor "fldtk", application "fluid" (deliberately
- * distinct from real Fluid's own "fltk.org"/"fluid" pair, so this
- * port's own preferences file never collides with a real installed
- * FLTK Fluid's on the same machine). Matches FLTK's own single
+ * instance -- vendor "fldtk", application "fluid", the same vendor
+ * every fldtk program and the library itself use. Matches FLTK's own single
  * `Fluid.preferences` global used by every panel that persists UI
  * state (`fluid/panels/template_panel.fl`'s own `Fluid.preferences`
  * calls, `settings_panel.fl`'s, ...) -- factored out here rather than

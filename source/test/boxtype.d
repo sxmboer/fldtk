@@ -86,7 +86,7 @@ void main(string[] args)
 
     // set window title to show active scheme
     scheme(scheme()); // init scheme
-    string title = format("FLTK boxtypes: scheme = '%s'", scheme() ? scheme() : "none");
+    string title = format("fldtk boxtypes: scheme = '%s'", scheme() ? scheme() : "none");
     window.label(title);
 
     // create special container group for box size debugging

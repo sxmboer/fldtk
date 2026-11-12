@@ -96,22 +96,13 @@
  *   without the cross-instance-destructor hazard.
  * - **IME / marked-text composition** (`setSpot()`,
  *   `Fl::compose_state`, `Fl::screen_driver()->has_marked_text()`):
- *   real dead-key/CJK composition is ported
- *   (`fl.core.compose()`, `fl.platform_x11`'s XIM support), and
- *   `fl.text_editor`'s own `handleKey()` uses it. **`setSpot()` is
- *   real**: `drawCursor()` calls
- *   `fl.core.setSpot()` with this widget's own live cursor
- *   position whenever it's focused, matching
- *   `Fl_Text_Display::draw_cursor()` exactly -- `fl.platform_x11`
- *   negotiates real `XIMPreeditPosition` support with the input method,
- *   so a CJK/other composing input method (ibus, fcitx, ...) can
- *   position its own floating preedit window at the text cursor
- *   instead of a fixed default location. `draw_string()`'s marked-text
- *   underline stays correctly always-off, since `Fl::compose_state`
- *   never becomes non-zero on X11 even in real FLTK -- not a
- *   port gap, see `fl.core.compose()`'s own doc comment (and
- *   `has_marked_text()`'s own base-class default of `0`, never
- *   overridden by FLTK's own real X11 driver either).
+ *   `drawCursor()` calls `fl.core.setSpot()` with the cursor position
+ *   whenever the widget is focused, as `Fl_Text_Display::draw_cursor()`
+ *   does, so an input method opens its candidate window at the cursor.
+ *   Where the input method's provisional text arrives as marked text
+ *   (`fl.core.hasMarkedText()`, Wayland), `fl.text_editor` leaves it
+ *   selected, and `drawString()` draws that selection underlined, not
+ *   highlighted, with the cursor after it.
  * - **The printer-surface background fill** in `draw()` is real:
  *   `SurfaceDevice.surface() !is null` (this port's own "the display is
  *   `null`" convention, see `fl.image_surface`'s own doc comment) is the
@@ -129,17 +120,6 @@
  *   plus-`void*` convention: `UnfinishedStyleCb` is a `void
  *   delegate(int)` that can already close over whatever context it
  *   needs.
- *
- * A faithfully-reproduced apparent **FLTK bug** (not fixed here;
- * logged as a candidate in FLTK_ISSUES_n.md): `wrapped_line_counter()`
- * ends with `*retLines = buf->next_char(*retLines);` when the buffer
- * ends mid-line -- `next_char()` expects a *buffer byte position*, but
- * `*retLines` at that point holds a *line count*, an apparent type
- * confusion (`next_char()` almost certainly meant to just add 1). Ported
- * verbatim (`retLines = buf.nextChar(retLines);`) rather than "fixed" to
- * `retLines + 1`, since faithfully reproducing FLTK's actual
- * behavior -- bugs included -- is this port's whole point; see the
- * function body for the exact spot.
  */
 module fl.text_display;
 
@@ -153,7 +133,7 @@ import fl.widget : Widget;
 import fl.group : FlGroup;
 import fl.scrollbar : Scrollbar;
 import fl.slider : horSlider;
-import fl.text_buffer : TextBuffer, TextSelection;
+import fl.text_buffer : TextBuffer, TextSelection, graphemeLen;
 import fl.draw;
 import fl.core;
 import fl.menu_item : MenuItem;
@@ -1800,7 +1780,7 @@ class TextDisplay : FlGroup
         int start, end;
         bool hasSelection = buffer_.selectionPosition(start, end);
         if ((damage() & (damageAll | damageScroll | damageExpose)) != 0
-            && (!hasSelection || cursorPos_ < start || cursorPos_ > end)
+            && (fl.core.markedTextActive() || !hasSelection || cursorPos_ < start || cursorPos_ > end)
             && cursorOn_ && fl.core.focus() is this)
         {
             pushClip(textArea_.x - leftMargin, textArea_.y,
@@ -1947,6 +1927,15 @@ class TextDisplay : FlGroup
             setSpot(textfont(), textsize(), X, bot, textArea_.w, textArea_.h, window());
     }
 
+    /// The background of highlighted text (`TextBuffer.highlight()`) over
+    /// `base`, the background it would otherwise have: `base` blended
+    /// with `selectionColor()`. A subclass can give highlighted text a
+    /// background of its own.
+    protected Color highlightBackground(Color base, bool focused)
+    {
+        return colorAverage(base, selectionColor(), focused ? 0.5f : 0.6f);
+    }
+
     void drawString(StyleFlags style, int X, int Y, int toX, const(char)[] str, int nChars)
     {
         if (style & styleFillMask)
@@ -1975,9 +1964,11 @@ class TextDisplay : FlGroup
 
             bool focused = fl.core.focus() is this;
             if (style & stylePrimaryMask)
-                background = focused ? selectionColor() : colorAverage(bgbasecolor, selectionColor(), 0.4f);
+                background = !focused ? colorAverage(bgbasecolor, selectionColor(), 0.4f)
+                    : fl.core.markedTextActive() ? bgbasecolor // marked text is underlined instead
+                    : selectionColor();
             else if (style & styleHighlightMask)
-                background = colorAverage(bgbasecolor, selectionColor(), focused ? 0.5f : 0.6f);
+                background = highlightBackground(bgbasecolor, focused);
             else if (style & styleSecondaryMask)
                 background = colorAverage(bgbasecolor, secondarySelectionColor(), focused ? 0.5f : 0.6f);
             else
@@ -1989,12 +1980,14 @@ class TextDisplay : FlGroup
             bool focused = fl.core.focus() is this;
             if (style & stylePrimaryMask)
             {
-                background = focused ? selectionColor() : colorAverage(color(), selectionColor(), 0.4f);
+                background = !focused ? colorAverage(color(), selectionColor(), 0.4f)
+                    : fl.core.markedTextActive() ? color() // marked text is underlined instead
+                    : selectionColor();
                 foreground = contrast(textcolor_, background);
             }
             else if (style & styleHighlightMask)
             {
-                background = colorAverage(color(), selectionColor(), focused ? 0.5f : 0.6f);
+                background = highlightBackground(color(), focused);
                 foreground = contrast(textcolor_, background);
             }
             else if (style & styleSecondaryMask)
@@ -2065,9 +2058,13 @@ class TextDisplay : FlGroup
                 lineStyle(lineSolid, 1);
                 antialias(prevAA);
             }
-            // IME marked-text underline isn't ported -- gated FLTK
-            // on Fl::compose_state, which is confirmed dead on X11 (see
-            // fl.core's own compose() doc comment); not a gap here.
+            // Marked text from an input method is the primary selection,
+            // underlined rather than highlighted.
+            if (fl.core.markedTextActive() && (style & stylePrimaryMask))
+            {
+                fl_color(colorAverage(foreground, background, 0.6f));
+                fl_line(X, Y + maxsize_ - 1, X + cast(int) width(str[0 .. nChars]), Y + maxsize_ - 1);
+            }
         }
     }
 
@@ -2099,8 +2096,7 @@ class TextDisplay : FlGroup
         int lastW = 0;
         while (i < len)
         {
-            int cl = utf8Len1(s[i]);
-            if (i + cl > len) cl = len - i;
+            int cl = cast(int) graphemeLen(s[i .. len]);
             int w = cast(int) stringWidth(s, i + cl, style);
             if (w > x)
             {
@@ -2415,7 +2411,7 @@ class TextDisplay : FlGroup
         if (style & stylePrimaryMask)
             c = focused ? selectionColor() : colorAverage(bgbasecolor, selectionColor(), 0.4f);
         else if (style & styleHighlightMask)
-            c = colorAverage(bgbasecolor, selectionColor(), focused ? 0.5f : 0.6f);
+            c = highlightBackground(bgbasecolor, focused);
         else
             c = bgbasecolor;
 
@@ -3218,14 +3214,8 @@ class TextDisplay : FlGroup
         retLines = nLines;
         if (countLastLineMissingNewLine && colNum > 0)
         {
-            // NOTE: reproduces an apparent FLTK type-confusion bug
-            // verbatim (src/Fl_Text_Display.cxx's wrapped_line_counter(),
-            // near `*retLines = buf->next_char(*retLines);`): next_char()
-            // expects a *buffer byte position*, but retLines here holds a
-            // *line count*. See FLTK_ISSUES_n.md -- not "fixed" to
-            // `retLines + 1` here on purpose; faithfully reproducing
-            // FLTK behavior (bugs included) is this port's point.
-            retLines = buf.nextChar(retLines);
+            // A last line without a newline still counts.
+            retLines++;
         }
         retLineStart = curLineStart;
         retLineEnd = buf.length();
@@ -3430,6 +3420,27 @@ unittest
     // With wrapping on, the single real line should be reported as
     // spanning more than one (soft-wrapped) line.
     assert(td.countLines(0, buf.length(), true) > 1);
+
+    FlGroup.current(null);
+}
+
+unittest
+{
+    // Counting to the end of the buffer adds one line for a last line
+    // without a newline, also when the text before it is multibyte.
+    FlGroup.current(null);
+
+    auto td = new TextDisplay(0, 0, 200, 200);
+    auto buf = new TextBuffer();
+    buf.text("éé\n\nx");
+    td.buffer(buf);
+    td.wrapMode(WrapMode.wrapAtPixel, 1000);
+    td.recalcDisplay();
+
+    int pos, lines, lineStart, lineEnd;
+    td.wrappedLineCounter(buf, 0, int.max, int.max, true, 0, pos, lines, lineStart, lineEnd);
+    assert(pos == buf.length());
+    assert(lines == 3);
 
     FlGroup.current(null);
 }

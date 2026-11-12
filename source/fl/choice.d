@@ -5,8 +5,7 @@
  *
  * Deviations from FLTK, all deliberate:
  *  - `draw()`'s box/divider branches are real (`fl.core.isScheme()`
- *    is real as of core-roadmap item 11 Phase A -- see that
- *    function's own doc comment) -- `Boxtype btype` picks `upBox` under
+ *    is real -- see that function's own doc comment) -- `Boxtype btype` picks `upBox` under
  *    any active scheme, `downBox` under "none", matching FLTK's
  *    `Fl::scheme() ? FL_UP_BOX : FL_DOWN_BOX`; the box-color
  *    contrast/lighten recolor is gated behind `!scheme()` too, matching

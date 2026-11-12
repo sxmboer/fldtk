@@ -52,11 +52,8 @@ class Bitmap : Image
 
     /**
      * Creates a bitmap from bits. If bits is too short for the
-     * claimed dimensions, the image is left empty (array.length == 0)
-     * -- see fl.image.RGBImage's own constructor doc comment for why
-     * `fail()`, not just `array.length`, doesn't reliably catch this
-     * (the same FLTK `Fl_Image::fail()` quirk applies here too,
-     * logged in `FLTK_ISSUES_n.md`).
+     * claimed dimensions, the image is left empty and `fail()` returns
+     * `errMemoryAccess`.
      */
     this(const(ubyte)[] bits, int W, int H)
     {
@@ -70,8 +67,10 @@ class Bitmap : Image
         }
         else
         {
+            // No data for a 0x0 image (a loader filling it in later) is
+            // simply empty.
             array = null;
-            ld(errMemoryAccess);
+            if (W > 0 && H > 0) ld(errMemoryAccess);
         }
     }
 
@@ -231,6 +230,7 @@ unittest
 
     auto tooShort = new Bitmap(bits[0 .. 1], 8, 2);
     assert(tooShort.array.length == 0);
+    assert(tooShort.fail() == Image.errMemoryAccess);
 }
 
 unittest

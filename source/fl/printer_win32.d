@@ -465,7 +465,7 @@ class Printer : GdiPagedDevice
             if (hPr_ !is null)
             {
                 DOCINFOA di;
-                di.lpszDocName = "FLTK";
+                di.lpszDocName = "fldtk";
                 int prerr = StartDocA(hPr_, &di);
                 if (prerr < 1)
                 {

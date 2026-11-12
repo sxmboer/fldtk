@@ -61,7 +61,7 @@
 
 @main:Tools...:@t
 	@t:Fluid\n(UI design tool):fluid valuators.fl
-	@t:FLTK\nRuntime\nOptions:fltk-options
+	@t:fldtk\nRuntime\nOptions:fldtk-options
 
 @main:Cool\nDemos...:@e
 	@e:Mandelbrot:mandelbrot

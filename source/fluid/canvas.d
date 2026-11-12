@@ -72,7 +72,9 @@
  * replacing it; Shift-click range-selects from the last plain-clicked
  * widget through the new target (`selectRange()`, using the pre-order
  * `flattenWidgets()` walk, shared with Tab-cycling, as its
- * traversal order). Deliberately scoped to
+ * traversal order). Dragging the selection with Ctrl held copies it
+ * instead of moving it (`startCopyDrag()`): a Ctrl-click without moving
+ * still toggles. Deliberately scoped to
  * *selection* only:
  * the widget panel (`panels/widget_panel.fl`) still shows/edits only the
  * `primarySelection()` (the most recently added member) -- "apply an
@@ -239,13 +241,20 @@ final class ProjectCanvas : OverlayWindow
     /// this, so selecting something never pushes an empty undo entry.
     void delegate() onBeforeGeometryEdit;
 
+    /// Fired instead of `onBeforeGeometryEdit` when a move drag starts
+    /// with Ctrl held: the owner duplicates the selection (one undo step)
+    /// and selects the copies, which the drag then moves, so the originals
+    /// stay where they were. Returns whether the copies were made; if not,
+    /// the drag does nothing.
+    bool delegate() onDuplicateForDrag;
+
     /// Fired on every resize of this window that changes its size, before
     /// the window node follows it. A drag sends many; the owner records one
     /// undo step for the run (`gui_main.d`'s `checkpointOnce()`).
     void delegate() onBeforeWindowResize;
 
-    /// Set while `rebuildFrom()` sizes the window to the restored node, so
-    /// that resize is not taken as an edit.
+    /// Set while `sizeToNode()` sizes the window to its node, so that
+    /// resize is not taken as an edit.
     private bool restoring_;
 
     /// Fired once after a real move/resize drag ends (`Event.release`)
@@ -422,38 +431,53 @@ final class ProjectCanvas : OverlayWindow
     /// `applyProperties()`'s `hidden`/`deactivated` handling) -- rebuilds
     /// them from `newRoot`. The window itself never unmaps, never loses
     /// focus/stacking order, and never gets a new X11 id.
+    ///
+    /// A `Scroll` keeps its scroll position across the rebuild, found again
+    /// by its node's `uid` (undo snapshots keep the uids).
     void rebuildFrom(WindowNode newRoot, string projectDir = ".")
     {
+        int[2][ushort] scrolled;
+        foreach (n, w; live_.widgetOf)
+            if (auto s = cast(Scroll) w)
+                if (s.xposition() || s.yposition())
+                    scrolled[n.uid] = [s.xposition(), s.yposition()];
+
         clear();
         selected_ = [];
         rangeAnchor_ = null;
         root_ = newRoot;
         projectDir_ = projectDir;
         live_ = instantiate(newRoot, this, projectDir);
+
+        foreach (n, w; live_.widgetOf)
+            if (auto s = cast(Scroll) w)
+                if (auto pos = n.uid in scrolled)
+                    s.scrollTo((*pos)[0], (*pos)[1]);
         // An undone or redone window resize restores the window's size too.
-        if (newRoot.hasXywh && (newRoot.w != w() || newRoot.h != h()))
-        {
-            restoring_ = true;
-            size(newRoot.w, newRoot.h);
-            restoring_ = false;
-        }
+        sizeToNode();
         redraw();
     }
 
-    /// Resizing the design window
-    /// itself -- via the window manager (`gui_main.d`'s own
-    /// `resizable(this)`) or the Properties
-    /// panel's own W/H fields -- must update the project's own
-    /// `WindowNode.w`/`.h`, or the panel would keep showing stale values
-    /// after a WM-driven resize, and generated code (Code View, `-c`)
-    /// would use the *original* size regardless of what the window had
-    /// actually been resized to since. `WindowNode` is the single
-    /// source of truth `code_writer.d`/the panel both read from --
-    /// nothing kept it in sync with the live window's own real,
-    /// current size the way an ordinary widget's node is kept in sync
-    /// by every edit path that touches it.
+    /// Sizes this window to its window node's W and H, when they differ.
+    /// The node already holds the new size, so this is not reported as
+    /// an edit (no `onBeforeWindowResize`, no `onGeometryEdited`). Used
+    /// after undo/redo and after the Properties panel's W/H fields.
+    void sizeToNode()
+    {
+        auto wn = cast(WindowNode) root_;
+        if (wn is null || !wn.hasXywh || (wn.w == w() && wn.h == h())) return;
+        restoring_ = true;
+        size(wn.w, wn.h);
+        restoring_ = false;
+    }
+
+    /// Resizing the design window through the window manager
+    /// (`gui_main.d`'s own `resizable(this)`) updates the project's
+    /// `WindowNode.w`/`.h`, so the panel and the generated code follow
+    /// the window's real size. The other direction, the Properties
+    /// panel's W/H fields sizing the window, is `sizeToNode()`.
     ///
-    /// Deliberately only syncs `w`/`h`, not `x`/`y`: this window's own
+    /// Only syncs `w`/`h`, not `x`/`y`: this window's own
     /// on-screen *position* is an editor-session, window-manager-
     /// decided detail with no meaningful equivalent in the generated
     /// program (the same reason `instantiate()`'s own `applyProperties(
@@ -512,6 +536,14 @@ final class ProjectCanvas : OverlayWindow
     /// selected. See this module's own top comment on why multi-target
     /// apply isn't built here.
     Node primarySelection() { return selected_.length ? selected_[$ - 1] : null; }
+
+    /// The node of the deepest design widget at `(x, y)` (window-local),
+    /// or null when there is none there.
+    Node nodeAt(int x, int y)
+    {
+        auto w = hitTest(this, x, y);
+        return w is null ? null : live_.nodeOf.get(w, null);
+    }
 
     bool isSelected(Node n) const
     {
@@ -1136,6 +1168,24 @@ final class ProjectCanvas : OverlayWindow
         }
     }
 
+    /// Ctrl+drag: replaces the move drag of the selection with a move of
+    /// a copy of it, made through `onDuplicateForDrag` as the mouse first
+    /// moves. The copies start where the originals are (in a grid or flex,
+    /// where the container put them), so the drag goes on from the same
+    /// press point with their geometry as its origin. The window itself
+    /// can't be copied this way. Returns false if no copy was made.
+    private bool startCopyDrag()
+    {
+        if (onDuplicateForDrag is null || dragOrigins_.length == 0 || isSelected(root_))
+            return false;
+        if (!onDuplicateForDrag()) return false;
+        int bx, by, br, bt;
+        if (!selectionBounds(bx, by, br, bt)) return false;
+        beginDrag(dragMove, bx, by, br, bt, pushX_, pushY_);
+        dragMoved_ = true;
+        return dragOrigins_.length > 0;
+    }
+
     /// The minimum width/height a drag is ever allowed to shrink a
     /// widget to -- FLTK has no equivalent explicit clamp in this
     /// exact function (`Fl_Widget::resize()` itself doesn't reject a
@@ -1146,15 +1196,10 @@ final class ProjectCanvas : OverlayWindow
 
     /// Applies the current drag's accumulated delta (`ddx`/`ddy`,
     /// relative to `pushX_`/`pushY_`) to every widget captured in
-    /// `dragOrigins_` -- ported from `Window_Node::newposition()`
-    /// exactly (per-widget edge clamping against the drag's own fixed
-    /// starting bounding box `dragBx_`-`dragBt_`), including one
-    /// faithfully-preserved FLTK quirk: the `FD_BOTTOM` branch's
-    /// "don't invert past the new bound" check compares against
-    /// `dragBt_ + ddx` (not `+ ddy`) -- almost certainly an FLTK
-    /// typo (see `FLTK_ISSUES_n.md`), ported as-is rather than
-    /// silently corrected, matching this port's own "log it, don't
-    /// quietly fix it" policy for unconfirmed FLTK bugs.
+    /// `dragOrigins_` -- ported from `Window_Node::newposition()`:
+    /// a widget whose edge lies on the dragged edge of the starting
+    /// bounding box (`dragBx_`-`dragBt_`) moves with it, and any other
+    /// widget is clamped so it doesn't stick out past the new bound.
     private void applyDrag(int ddx, int ddy)
     {
         foreach (o; dragOrigins_)
@@ -1184,7 +1229,7 @@ final class ProjectCanvas : OverlayWindow
                 if (dragMode_ & dragBottom)
                 {
                     if (T == dragBt_) T += ddy;
-                    else if (T > dragBt_ + ddx) T = dragBt_ + ddx; // see this function's own doc comment
+                    else if (T > dragBt_ + ddy) T = dragBt_ + ddy;
                 }
             }
             if (R < X) { int t = X; X = R; R = t; }
@@ -1699,7 +1744,18 @@ final class ProjectCanvas : OverlayWindow
                 if (!dragMoved_)
                 {
                     dragMoved_ = true;
-                    if (onBeforeGeometryEdit !is null) onBeforeGeometryEdit();
+                    if (dragMode_ == dragMove && fl.core.eventCtrl())
+                    {
+                        if (!startCopyDrag())
+                        {
+                            dragMode_ = dragNone;
+                            dragOrigins_ = [];
+                            lastSnapData_ = SnapData.init;
+                            redrawOverlay();
+                            return 1;
+                        }
+                    }
+                    else if (onBeforeGeometryEdit !is null) onBeforeGeometryEdit();
                 }
                 applyDrag(ddx, ddy);
                 relayoutDraggedChildren(0);
@@ -2086,12 +2142,18 @@ final class ProjectCanvas : OverlayWindow
     /// than searched). Children are checked back-to-front (highest
     /// index -- normally the most recently added, so visually on top
     /// -- first) so an overlapping pair resolves to whichever one a
-    /// user would actually see under the cursor.
-    private static Widget hitTest(FlGroup g, int px, int py)
+    /// user would actually see under the cursor. Only widgets that
+    /// stand for a node of the design are returned: the parts a
+    /// composite widget builds for itself (a `Spinner`'s input field
+    /// and arrow buttons, an `InputChoice`'s menu button, a `Scroll`'s
+    /// scrollbars) are skipped, so a click on them resolves to the
+    /// composite widget itself.
+    private Widget hitTest(FlGroup g, int px, int py)
     {
         for (int i = g.children() - 1; i >= 0; i--)
         {
             auto c = g.child(i);
+            if ((c in live_.nodeOf) is null) continue;
             // Matches FLTK's own ancestor-chain visibility walk
             // (`for (Fl_Widget *o1 = myo->o; o1; o1 = o1->parent()) if
             // (!o1->visible()) goto CONTINUE2;`) -- a single per-level

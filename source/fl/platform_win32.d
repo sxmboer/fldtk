@@ -89,10 +89,9 @@
  * Drag-and-drop is real: real
  * COM (`IDropTarget`/`IDropSource`/`IDataObject`/`DoDragDrop()`/
  * `RegisterDragDrop()`), not the simpler `WM_DROPFILES` shell mechanism.
- * Text-only
- * delivery, matching this port's own already-established X11/XDND MIME-
- * negotiation scope, but covering all three of FLTK's own source
- * formats (`CF_UNICODETEXT`, legacy `CF_TEXT`/CP1252, and `CF_HDROP`
+ * A dropped picture (see `pictureSource()`) arrives as an image paste;
+ * everything else as text, from FLTK's three source formats
+ * (`CF_UNICODETEXT`, legacy `CF_TEXT`/CP1252, and `CF_HDROP`
  * dropped-file-lists) -- see that section's own doc comment.
  *
  * `ensureGraphicsDriver()` creates a real `fl.gdiplus_graphics_
@@ -187,6 +186,8 @@ private enum DVASPECT_CONTENT = DVASPECT.DVASPECT_CONTENT;
 // `oleidl`, per the `objidl`/`wtypes` comment above) -- neither is an
 // importable top-level symbol on its own.
 private enum TYMED_HGLOBAL = TYMED.TYMED_HGLOBAL;
+private enum TYMED_ISTREAM = TYMED.TYMED_ISTREAM;
+private enum TYMED_ENHMF = TYMED.TYMED_ENHMF;
 private enum DROPEFFECT_NONE = DROPEFFECT.DROPEFFECT_NONE;
 private enum DROPEFFECT_COPY = DROPEFFECT.DROPEFFECT_COPY;
 private enum DROPEFFECT_MOVE = DROPEFFECT.DROPEFFECT_MOVE;
@@ -2468,6 +2469,27 @@ void screenXYWH(out int x, out int y, out int w, out int h, int n)
     h = cast(int)(rh / s);
 }
 
+/// The frame Windows draws around a window's contents (sizing or fixed
+/// border plus caption), for keeping a newly placed window's frame on
+/// screen (`Window.hotspot()`). From
+/// `Fl_WinAPI_Window_Driver::decoration_sizes()`.
+package(fl) void decorationSizes(FlWindow win, out int top, out int left, out int right, out int bottom)
+{
+    int minw, minh, maxw, maxh;
+    win.getSizeRange(&minw, &minh, &maxw, &maxh);
+    if (maxw != minw || maxh != minh)
+    {
+        left = right = GetSystemMetrics(SM_CXSIZEFRAME);
+        top = bottom = GetSystemMetrics(SM_CYSIZEFRAME);
+    }
+    else
+    {
+        left = right = GetSystemMetrics(SM_CXFIXEDFRAME);
+        top = bottom = GetSystemMetrics(SM_CYFIXEDFRAME);
+    }
+    top += GetSystemMetrics(SM_CYCAPTION);
+}
+
 /// ditto, for the monitor's work area -- direct equivalent of
 /// `Fl_WinAPI_Screen_Driver::screen_work_area()`.
 void screenWorkAreaUnscaled(out int x, out int y, out int w, out int h, int n)
@@ -2663,6 +2685,7 @@ private extern (Windows) LRESULT wndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LP
 
             gdiDriver_.setHdc(drawDc);
             FlWindow.setCurrentForDraw(win);
+            version (FLDTK_HAVE_CAIRO) { import fl.cairo : cairoAutolinkWindow; cairoAutolinkWindow(win); }
             // Ported from Fl_win32.cxx's own WM_PAINT case: every widget
             // (including this window) starts with damage() == 0, so
             // without setting some non-FL_DAMAGE_CHILD bit here first,
@@ -4318,62 +4341,73 @@ package(fl) Object pasteImage(int screenNum = 0)
         auto bi = cast(BITMAPINFO*) GlobalLock(h);
         if (bi is null) return null;
         scope (exit) GlobalUnlock(h);
-
-        int width = bi.bmiHeader.biWidth;
-        int height = bi.bmiHeader.biHeight; // negative -> already top-down
-        int bitCount = bi.bmiHeader.biBitCount;
-        uint compression = bi.bmiHeader.biCompression;
-
-        bool direct = width > 0 && height != 0 && (bitCount == 24 || bitCount == 32)
-            && bi.bmiHeader.biClrUsed == 0
-            && (compression == BI_RGB || compression == BI_BITFIELDS);
-
-        auto pixelsBase = cast(const(ubyte)*)&bi.bmiColors;
-        if (direct && compression == BI_BITFIELDS)
-        {
-            if (bitCount != 32) direct = false; // BI_BITFIELDS at 24bpp isn't a real DIB shape
-            else
-            {
-                auto masks = cast(const(uint)*) pixelsBase;
-                if (masks[0] != 0x00ff0000 || masks[1] != 0x0000ff00 || masks[2] != 0x000000ff)
-                    direct = false; // non-standard channel layout -- don't guess
-                else
-                    pixelsBase += 3 * uint.sizeof; // the 3 DWORD masks sit where a color table would
-            }
-        }
-
-        if (!direct) return decodeComplexDib(bi, width, height);
-
-        int depth = bitCount / 8;
-        int absHeight = height > 0 ? height : -height;
-        int linewidth = depth == 3 ? 4 * ((3 * width + 3) / 4) : 4 * width;
-
-        auto rgb = new ubyte[width * absHeight * depth];
-        size_t p = 0;
-        int step = height > 0 ? -1 : 1;
-        int from = height > 0 ? height - 1 : 0;
-        int to = height > 0 ? 0 : -height - 1;
-        for (int i = from; height > 0 ? i >= to : i <= to; i += step)
-        {
-            auto r = pixelsBase + i * linewidth;
-            foreach (col; 0 .. width)
-            {
-                ubyte bb = r[0], gg = r[1], rr = r[2];
-                r += 3;
-                rgb[p++] = rr;
-                rgb[p++] = gg;
-                rgb[p++] = bb;
-                if (depth == 4) { rgb[p++] = *r; r++; }
-            }
-        }
-
-        return new RGBImage(rgb, width, absHeight, depth);
+        return decodeDib(bi);
     }
 
     HANDLE hEmf = GetClipboardData(CF_ENHMETAFILE);
     if (hEmf !is null) return decodeEnhMetaFileClip(cast(HENHMETAFILE) hEmf, screenNum);
 
     return null;
+}
+
+/// Decodes a `CF_DIB` block into an `RGBImage`: the fast path and the
+/// `decodeComplexDib()` fallback that `pasteImage()`'s doc comment
+/// describes. Shared by pasting and by dropping a picture.
+private Object decodeDib(BITMAPINFO* bi)
+{
+    int width = bi.bmiHeader.biWidth;
+    int height = bi.bmiHeader.biHeight; // negative -> already top-down
+    int bitCount = bi.bmiHeader.biBitCount;
+    uint compression = bi.bmiHeader.biCompression;
+
+    bool direct = width > 0 && height != 0 && (bitCount == 24 || bitCount == 32)
+        && bi.bmiHeader.biClrUsed == 0
+        && (compression == BI_RGB || compression == BI_BITFIELDS);
+
+    // The pixels follow the header, whose size says which kind it is: a
+    // BITMAPINFOHEADER (40 bytes), or a BITMAPV4/V5HEADER (108/124 bytes),
+    // which Office and browsers use and which holds the masks itself.
+    auto pixelsBase = cast(const(ubyte)*) bi + bi.bmiHeader.biSize;
+    if (direct && compression == BI_BITFIELDS)
+    {
+        if (bitCount != 32) direct = false; // BI_BITFIELDS at 24bpp isn't a real DIB shape
+        else
+        {
+            // Right after a 40-byte header, or inside a longer one.
+            auto masks = cast(const(uint)*)&bi.bmiColors;
+            if (masks[0] != 0x00ff0000 || masks[1] != 0x0000ff00 || masks[2] != 0x000000ff)
+                direct = false; // non-standard channel layout -- don't guess
+            else if (bi.bmiHeader.biSize == BITMAPINFOHEADER.sizeof)
+                pixelsBase += 3 * uint.sizeof; // the 3 DWORD masks sit where a color table would
+        }
+    }
+
+    if (!direct) return decodeComplexDib(bi, width, height);
+
+    int depth = bitCount / 8;
+    int absHeight = height > 0 ? height : -height;
+    int linewidth = depth == 3 ? 4 * ((3 * width + 3) / 4) : 4 * width;
+
+    auto rgb = new ubyte[width * absHeight * depth];
+    size_t p = 0;
+    int step = height > 0 ? -1 : 1;
+    int from = height > 0 ? height - 1 : 0;
+    int to = height > 0 ? 0 : -height - 1;
+    for (int i = from; height > 0 ? i >= to : i <= to; i += step)
+    {
+        auto r = pixelsBase + i * linewidth;
+        foreach (col; 0 .. width)
+        {
+            ubyte bb = r[0], gg = r[1], rr = r[2];
+            r += 3;
+            rgb[p++] = rr;
+            rgb[p++] = gg;
+            rgb[p++] = bb;
+            if (depth == 4) { rgb[p++] = *r; r++; }
+        }
+    }
+
+    return new RGBImage(rgb, width, absHeight, depth);
 }
 
 /**
@@ -4996,18 +5030,13 @@ package(fl) void setIcons(FlWindow win)
 // the much simpler `WM_DROPFILES` shell mechanism a first guess might
 // reach for.
 //
-// **Scope matches this port's own already-established X11 DND scope
-// for MIME/format negotiation, not FLTK's full Windows surface**:
-// `PORTING.md`'s `FL/x.H` row documents this port's XDND implementation
-// as text-only ("DND is text-only... `COMPOUND_TEXT`/other charset
-// target variants aren't negotiated either"), deliberately narrower than
-// FLTK's own XDND (which also negotiates other MIME types).
-// The two Windows-only fallback branches (`CF_HDROP` dropped-file-lists,
-// and the legacy `CF_TEXT`/CP1252 fallback) are real -- see
-// `fillCurrentDragData()`'s own doc comment for each.
-// Both stay within this port's text-only *delivery* scope
-// (everything arrives as a plain `Event.paste` string, from
-// three different source formats), so they don't widen the MIME-negotiation gap the paragraph above describes.
+// **What a drop delivers**: a picture ("PNG", `CF_DIB`, a browser's
+// image file, or a metafile; see `pictureSource()`) arrives as an
+// image paste (`eventClipboardType() == clipboardImage`, the image in
+// `eventClipboard()`), the same as pasting an image; anything else
+// arrives as `Event.paste` text, from `CF_UNICODETEXT`, legacy
+// `CF_TEXT`/CP1252 or a `CF_HDROP` file list. See
+// `fillCurrentDragData()`'s own doc comment for the order.
 //
 // **`FLEnum`/`IEnumFORMATETC` is deliberately not ported at all**:
 // checked FLTK's actual `FLDataObject::EnumFormatEtc()` body, not
@@ -5039,37 +5068,281 @@ private int dndPx_, dndPy_;
 /// against the *reference*, not re-decoding every call, is what makes
 /// `DragOver()`'s frequent re-checks cheap -- matches FLTK's own
 /// `if (data==currDragRef) return currDragResult;` short-circuit.
+/// `dndHasImage_` says the drag carries a picture instead, which is
+/// decoded only when it is dropped (`dropImage()`).
+/// What each source was seen to offer can be listed with
+/// `smoke-tests/drop_formats.d`.
 private IDataObject dndDataRef_;
 private string dndText_;
-private bool dndHaveText_;
+private bool dndHaveData_;
+private bool dndHasImage_;
 
 /// Ported from the file-scope `clearCurrentDragData()`.
 private void clearCurrentDragData()
 {
     dndDataRef_ = null;
     dndText_ = null;
-    dndHaveText_ = false;
+    dndHaveData_ = false;
+    dndHasImage_ = false;
+}
+
+/// Registered clipboard formats by name, registered on first use.
+private CLIPFORMAT[wstring] registeredFormats_;
+
+private CLIPFORMAT registeredFormat(wstring name)
+{
+    if (auto f = name in registeredFormats_) return *f;
+    auto f = cast(CLIPFORMAT) RegisterClipboardFormatW((name ~ "\0"w).ptr);
+    registeredFormats_[name] = f;
+    return f;
+}
+
+/// "PNG", which Office offers alongside `CF_DIB`.
+private CLIPFORMAT pngFormat() { return registeredFormat("PNG"w); }
+
+/// The two formats a browser drags an image as: the file's name, and its
+/// contents (a file it has yet to write anywhere).
+private CLIPFORMAT fileDescriptorFormat() { return registeredFormat("FileGroupDescriptorW"w); }
+private CLIPFORMAT fileContentsFormat() { return registeredFormat("FileContents"w); }
+
+/// The formats `data` offers, as its `EnumFormatEtc()` lists them --
+/// more reliable than asking `QueryGetData()` about one storage medium at
+/// a time, since sources differ in which media they offer (a PNG in
+/// global memory or as a stream). Empty if the source lists none.
+private FORMATETC[] offeredFormats(IDataObject data)
+{
+    import core.sys.windows.objbase : CoTaskMemFree;
+
+    FORMATETC[] formats;
+    IEnumFORMATETC e;
+    if (data.EnumFormatEtc(cast(DWORD) DATADIR.DATADIR_GET, &e) != S_OK || e is null) return formats;
+    scope (exit) e.Release();
+    FORMATETC f;
+    ULONG fetched;
+    while (e.Next(1, &f, &fetched) == S_OK && fetched == 1)
+    {
+        if (f.ptd !is null) { CoTaskMemFree(f.ptd); f.ptd = null; }
+        formats ~= f;
+    }
+    return formats;
+}
+
+/// The offered entry for `format`, if `formats` has one.
+private FORMATETC* findFormat(FORMATETC[] formats, CLIPFORMAT format)
+{
+    foreach (ref f; formats)
+        if (f.cfFormat == format) return &f;
+    return null;
+}
+
+/// The bytes in `medium`, from global memory or a stream.
+private ubyte[] mediumBytes(ref STGMEDIUM medium)
+{
+    if (medium.tymed == cast(DWORD) TYMED_HGLOBAL)
+    {
+        auto mem = cast(const(ubyte)*) GlobalLock(medium.hGlobal);
+        if (mem is null) return null;
+        scope (exit) GlobalUnlock(medium.hGlobal);
+        return mem[0 .. GlobalSize(medium.hGlobal)].dup;
+    }
+    if (medium.tymed == cast(DWORD) TYMED_ISTREAM && medium.pstm !is null)
+    {
+        // A source may hand over the stream positioned at its end.
+        LARGE_INTEGER start;
+        medium.pstm.Seek(start, cast(DWORD) STREAM_SEEK.STREAM_SEEK_SET, null);
+        ubyte[] bytes;
+        ubyte[65536] buf;
+        for (;;)
+        {
+            ULONG n = 0;
+            // S_FALSE: the end was reached, with the last n bytes read.
+            HRESULT hr = medium.pstm.Read(buf.ptr, cast(ULONG) buf.length, &n);
+            bytes ~= buf[0 .. n];
+            if (hr != S_OK || n == 0) break;
+        }
+        return bytes;
+    }
+    return null;
+}
+
+/// Gets `format` from `data` as bytes, through whichever of global
+/// memory or a stream `offered` says it has. `index` picks one file of
+/// several (`FileContents`).
+private ubyte[] getBytes(IDataObject data, FORMATETC offered, LONG index = -1)
+{
+    FORMATETC fmt = offered;
+    fmt.ptd = null;
+    fmt.lindex = index;
+    fmt.tymed = offered.tymed & cast(DWORD)(TYMED_HGLOBAL | TYMED_ISTREAM);
+    if (fmt.tymed == 0) return null;
+    STGMEDIUM medium;
+    if (data.GetData(&fmt, &medium) != S_OK) return null;
+    scope (exit) ReleaseStgMedium(&medium);
+    return mediumBytes(medium);
+}
+
+/// The name of the first file a browser drags (`FileGroupDescriptorW`),
+/// or `null`.
+private string draggedFileName(IDataObject data, FORMATETC offered)
+{
+    import core.sys.windows.shlobj : FILEGROUPDESCRIPTORW;
+
+    auto bytes = getBytes(data, offered);
+    if (bytes.length < FILEGROUPDESCRIPTORW.sizeof) return null;
+    auto group = cast(const(FILEGROUPDESCRIPTORW)*) bytes.ptr;
+    if (group.cItems == 0) return null;
+    const(wchar)[] name = group.fgd[0].cFileName[];
+    size_t len = 0;
+    while (len < name.length && name[len] != 0) len++;
+    return name[0 .. len].toUTF8;
+}
+
+/// Whether a file named `name` is a picture fldtk can decode.
+private bool isDecodableImageName(string name)
+{
+    import std.path : extension;
+    import std.uni : toLower;
+
+    switch (name.extension.toLower)
+    {
+    case ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg": return true;
+    default: return false;
+    }
+}
+
+/// Where a dragged picture comes from (see `pictureSource()`).
+private enum PictureSource { none, png, dib, metafile, file }
+
+/// Which kind of picture `formats` offer, best first: "PNG" (which keeps
+/// transparency), `CF_DIB`, a browser's image file, then an enhanced
+/// metafile -- the last only when no text is offered, since Word offers a
+/// metafile picture of selected text too. A browser's file counts only
+/// when no real files (`CF_HDROP`) are offered: dropped files arrive as
+/// their paths.
+private PictureSource pictureSource(IDataObject data, FORMATETC[] formats)
+{
+    if (findFormat(formats, pngFormat()) !is null) return PictureSource.png;
+    if (findFormat(formats, cast(CLIPFORMAT) CF_DIB) !is null) return PictureSource.dib;
+    if (findFormat(formats, cast(CLIPFORMAT) CF_HDROP) is null
+        && findFormat(formats, fileContentsFormat()) !is null)
+        if (auto desc = findFormat(formats, fileDescriptorFormat()))
+            if (isDecodableImageName(draggedFileName(data, *desc))) return PictureSource.file;
+    if (findFormat(formats, cast(CLIPFORMAT) CF_ENHMETAFILE) !is null
+        && findFormat(formats, cast(CLIPFORMAT) CF_UNICODETEXT) is null
+        && findFormat(formats, cast(CLIPFORMAT) CF_TEXT) is null)
+        return PictureSource.metafile;
+    return PictureSource.none;
+}
+
+/// Decodes a picture file's bytes by its name's extension into an
+/// `RGBImage`; `null` if it doesn't decode.
+private Object decodeImageFile(string name, const(ubyte)[] bytes)
+{
+    import std.path : extension;
+    import std.uni : toLower;
+    import fl.png_image : PngImage;
+    import fl.jpeg_image : JpegImage;
+    import fl.gif_image : GifImage;
+    import fl.bmp_image : BMPImage;
+    import fl.svg_image : SvgImage;
+
+    if (bytes.length == 0) return null;
+    switch (name.extension.toLower)
+    {
+    case ".png": return decodedOrNull(new PngImage(null, bytes));
+    case ".jpg", ".jpeg": return decodedOrNull(new JpegImage(null, bytes));
+    case ".bmp": return decodedOrNull(new BMPImage(null, bytes));
+    case ".svg": return decodedOrNull(new SvgImage(null, bytes));
+    case ".gif":
+        auto gif = new GifImage(null, bytes);
+        if (gif.fail()) return null;
+        return new RGBImage(gif);
+    default: return null;
+    }
+}
+
+/// `img`, or `null` if it failed to decode.
+private Object decodedOrNull(T)(T img)
+{
+    return img.fail() ? null : img;
+}
+
+/// Decodes the picture `data` offers (see `pictureSource()`) into an
+/// `RGBImage`; `null` if it doesn't decode. `screenNum` is the target
+/// window's screen, for sizing a metafile.
+private Object dropImage(IDataObject data, int screenNum)
+{
+    import fl.png_image : PngImage;
+
+    auto formats = offeredFormats(data);
+    switch (pictureSource(data, formats))
+    {
+    default:
+        return null;
+    case PictureSource.png:
+    {
+        auto bytes = getBytes(data, *findFormat(formats, pngFormat()));
+        if (bytes.length)
+        {
+            auto img = new PngImage(null, bytes);
+            if (!img.fail()) return img;
+        }
+        // A PNG that doesn't decode: the DIB, if there is one.
+        if (findFormat(formats, cast(CLIPFORMAT) CF_DIB) is null) return null;
+        goto case PictureSource.dib;
+    }
+    case PictureSource.dib:
+    {
+        auto bytes = getBytes(data, *findFormat(formats, cast(CLIPFORMAT) CF_DIB));
+        if (bytes.length < BITMAPINFOHEADER.sizeof) return null;
+        return decodeDib(cast(BITMAPINFO*) bytes.ptr);
+    }
+    case PictureSource.file:
+    {
+        string name = draggedFileName(data, *findFormat(formats, fileDescriptorFormat()));
+        auto bytes = getBytes(data, *findFormat(formats, fileContentsFormat()), 0);
+        return decodeImageFile(name, bytes);
+    }
+    case PictureSource.metafile:
+    {
+        FORMATETC fmt = *findFormat(formats, cast(CLIPFORMAT) CF_ENHMETAFILE);
+        fmt.ptd = null;
+        fmt.tymed = cast(DWORD) TYMED_ENHMF;
+        STGMEDIUM medium;
+        if (data.GetData(&fmt, &medium) != S_OK) return null;
+        scope (exit) ReleaseStgMedium(&medium);
+        return decodeEnhMetaFileClip(medium.hEnhMetaFile, screenNum);
+    }
+    }
 }
 
 /**
  * Ported from the file-scope `fillCurrentDragData()`
- * (`fl_dnd_win32.cxx`) -- all three of FLTK's own fallback branches
- * now, closing what this section's own header comment used to list as
- * two deliberate scope gaps: `CF_UNICODETEXT` (preferred), then legacy
- * `CF_TEXT`/CP1252 text, then `CF_HDROP` (a file-manager's dropped-file
- * list, delivered as the same `\n`-separated-path-list `Event.paste`
- * text FLTK sends). `data is null` (matching FLTK's `!data`)
- * re-answers from the already-decoded `dndText_`/`dndHaveText_` without
- * touching the `IDataObject` again -- `DragOver()`'s own repeat calls
- * use this shortcut. Returns whether text is now available.
+ * (`fl_dnd_win32.cxx`), with pictures added: a picture (see
+ * `pictureSource()`) comes first, ahead of any text the source also
+ * offers (a browser offers the image's address as text too), and is
+ * decoded only on drop; then `CF_UNICODETEXT`, legacy `CF_TEXT`/CP1252 text,
+ * and `CF_HDROP` (a file-manager's dropped-file list, delivered as the
+ * same `\n`-separated-path-list `Event.paste` text FLTK sends).
+ * `data is null` (matching FLTK's `!data`) re-answers from what was
+ * already decoded without touching the `IDataObject` again --
+ * `DragOver()`'s own repeat calls use this shortcut. Returns whether a
+ * picture or text is available.
  */
 private bool fillCurrentDragData(IDataObject data)
 {
-    if (data is null) return dndHaveText_;
-    if (data is dndDataRef_) return dndHaveText_;
+    if (data is null) return dndHaveData_;
+    if (data is dndDataRef_) return dndHaveData_;
 
     clearCurrentDragData();
     dndDataRef_ = data;
+
+    if (pictureSource(data, offeredFormats(data)) != PictureSource.none)
+    {
+        dndHasImage_ = true;
+        dndHaveData_ = true;
+        return dndHaveData_;
+    }
 
     FORMATETC fmt;
     fmt.dwAspect = cast(DWORD) DVASPECT_CONTENT;
@@ -5089,8 +5362,8 @@ private bool fillCurrentDragData(IDataObject data)
             GlobalUnlock(medium.hGlobal);
         }
         ReleaseStgMedium(&medium);
-        dndHaveText_ = true;
-        return dndHaveText_;
+        dndHaveData_ = true;
+        return dndHaveData_;
     }
 
     // Legacy CP1252 ("ANSI") text -- FLTK re-decodes it byte-by-byte
@@ -5120,8 +5393,8 @@ private bool fillCurrentDragData(IDataObject data)
             GlobalUnlock(medium.hGlobal);
         }
         ReleaseStgMedium(&medium);
-        dndHaveText_ = true;
-        return dndHaveText_;
+        dndHaveData_ = true;
+        return dndHaveData_;
     }
 
     // A file-manager drag (dropped file/folder icons) -- no text format
@@ -5143,11 +5416,11 @@ private bool fillCurrentDragData(IDataObject data)
         }
         dndText_ = paths.join("\n");
         ReleaseStgMedium(&medium);
-        dndHaveText_ = true;
-        return dndHaveText_;
+        dndHaveData_ = true;
+        return dndHaveData_;
     }
 
-    return dndHaveText_;
+    return dndHaveData_;
 }
 
 /**
@@ -5285,7 +5558,10 @@ private final class FLDropTarget : IDropTarget
             // `xdndDrop_` branch) -- Windows just calls it immediately,
             // synchronously, rather than waiting for a later reply.
             fl.core.setPendingPasteReceiver(fl.core.belowmouse());
-            fl.core.deliverPaste(crlfToLf(dndText_));
+            if (dndHasImage_)
+                fl.core.deliverPasteImage(dropImage(data, target.screenNum()));
+            else
+                fl.core.deliverPaste(crlfToLf(dndText_));
 
             FlWindow top = target;
             while (top.window() !is null) top = top.window();

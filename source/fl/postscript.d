@@ -62,18 +62,20 @@
  * `Helvetica2B`-style Type 0 fonts `prologText2` below builds and the
  * `show_pos_width` operator that stretches glyph spacing to match the
  * width `fl.draw.width()` measured on screen. Rotated text
- * (`draw(int angle, ...)`) is real. **Not ported**: the
- * bitmap-fallback path (`transformed_draw_extra()`, FLTK's own
- * answer for `FL_FREE_FONT`-and-above fonts or any codepoint outside
- * that table -- it draws a captured screen bitmap instead of vector
- * text) and `rtl_draw()`'s bitmap-only implementation. A `draw()` call
- * that hits either case draws nothing at all rather than mis-render.
+ * (`draw(int angle, ...)`) is real. Text in a font from `freeFont` up,
+ * or with any code point outside that table, is drawn into an offscreen
+ * `ImageSurface` with the display driver at twice its size and written
+ * as a 1-bit mask in the text color (`drawExtra()`, FLTK's
+ * `transformed_draw_extra()`). Right-to-left text (`fl.draw.rtlDraw()`)
+ * arrives here reversed and takes the same two paths.
  *
  * **Images**: `drawImage()`/`drawBitmap()` emit RGB, RGBA, gray and
  * 1-bit data through the RLE+ASCII85 encoder (`Rle85Encoder`, over
  * `Ascii85Encoder`), as FLTK's `draw_image()`/`draw_rgb()`/
- * `draw_bitmap()` do. Not ported: `draw_pixmap()`'s colour-keyed
- * transparency, so a `Pixmap`'s transparent colour prints opaque.
+ * `draw_bitmap()` do. Fully transparent pixels are left out by a clip
+ * (`clipToVisible()`), so a `Pixmap`'s transparent color shows what is
+ * behind it; partly transparent pixels are blended against the
+ * background color.
  */
 module fl.postscript;
 
@@ -899,6 +901,25 @@ class PostscriptGraphicsDriver : GraphicsDriver
         emitPath(pts, "EFP");
     }
 
+    /// Each sub-loop `fl.draw.gap()` made starts its own sub-path with a
+    /// `moveto`, as FLTK's `gap()` makes the next vertex one, so no edge
+    /// joins the sub-loops; all are filled together.
+    override void endComplexPolygonParts(const(Point)[] pts, const(int)[] counts)
+    {
+        if (pts.length == 0) return;
+        if (counts.length == 0) { endComplexPolygon(pts); return; }
+        output_.write("GS\nBP\n");
+        size_t i = 0;
+        foreach (n; counts)
+            foreach (k; 0 .. n)
+            {
+                if (i >= pts.length) break;
+                output_.writef(k == 0 ? "%d %d MT\n" : "%d %d LT\n", pts[i].x, pts[i].y);
+                i++;
+            }
+        output_.write("EFP\nGR\n");
+    }
+
     /// A PostScript page has no "screen" to be device-pixel-dense
     /// relative to -- `Fl_PostScript_Graphics_Driver` extends the plain
     /// `Fl_Graphics_Driver` FLTK (not `Fl_Scalable_Graphics_Driver`)
@@ -911,9 +932,8 @@ class PostscriptGraphicsDriver : GraphicsDriver
 
     /**
      * Ported from `Fl_PostScript_Graphics_Driver::transformed_draw()`
-     * (real vector text) -- see this module's own top comment for what
-     * `transformed_draw_extra()`'s bitmap fallback path this
-     * deliberately drops. Always re-selects the PostScript font (`SF`/
+     * (real vector text, with `drawExtra()` for what the PostScript
+     * fonts can't show; see this module's top comment). Always re-selects the PostScript font (`SF`/
      * `FS`) from `fl.draw.fl_font()`/`fl_size()` rather than caching
      * "did it change", same "just recompute every call" simplification
      * `fl.svg_file_surface.SvgGraphicsDriver.draw()` already uses.
@@ -926,8 +946,24 @@ class PostscriptGraphicsDriver : GraphicsDriver
         if (w == 0) return;
 
         auto face = fldraw.fl_font();
-        if (face < 0 || face >= freeFont) return; // see this module's own top comment
+        if (face < 0 || face >= freeFont)
+        {
+            drawExtra(slice, x, y, w);
+            return;
+        }
         auto size = fldraw.fl_size();
+
+        // A code point the PostScript fonts lack sends the whole string
+        // to drawExtra(), checked before anything is written.
+        for (size_t k = 0; k < slice.length;)
+        {
+            uint unused;
+            if (!psCodeFor(cast(uint) decode(slice, k), unused))
+            {
+                drawExtra(slice, x, y, w);
+                return;
+            }
+        }
 
         output_.writef("/%s SF\n", psFontNames[face]);
         output_.writef("%g FS\n", cast(double) size);
@@ -939,20 +975,82 @@ class PostscriptGraphicsDriver : GraphicsDriver
         {
             dchar ch = decode(slice, i);
             uint code;
-            if (!psCodeFor(cast(uint) ch, code))
-            {
-                // Unhandled codepoint -- close and discard the opened
-                // (and, so far, empty or partial) hex string rather
-                // than emit invalid PostScript, matching FLTK's
-                // own "close and ignore" comment at this exact point.
-                output_.write("~> pop pop\n");
-                return;
-            }
+            psCodeFor(cast(uint) ch, code); // every code point was checked above
             ubyte[2] c = [cast(ubyte)((code >> 8) & 0xff), cast(ubyte)(code & 0xff)];
             enc.write(c[]);
         }
         enc.close();
         output_.writef(" %g %g show_pos_width\n", cast(double) x, cast(double) y);
+    }
+
+    /**
+     * Draws `str` (`w` units wide on screen) at `(x,y)` as a 1-bit mask
+     * in the current color. Ported from `Fl_PostScript_Graphics_Driver::
+     * transformed_draw_extra()`: the string is drawn with the display
+     * driver into an `ImageSurface` at twice the size, on a background
+     * contrasting with the text color; every pixel that isn't background
+     * goes into the mask, which the `MI` operator scales back to `w`.
+     */
+    private void drawExtra(const(char)[] str, int x, int y, int w)
+    {
+        import fl.image_surface : ImageSurface;
+        import fl.core : getColor;
+
+        enum float scale = 2; // FLTK's scale_bitmap_for_PostScript()
+        Font face = fldraw.fl_font();
+        auto oldSize = fldraw.fl_size();
+        Color textColor = fldraw.fl_color();
+        Color bgColor = fldraw.contrast(white, textColor);
+        int wScaled = cast(int)(w * (scale + 0.5) + 1);
+        int h = cast(int)(fldraw.height() * scale);
+
+        // The buffer is sized for scale 1, so draw into it at scale 1
+        // whatever the screen's scale is.
+        import fl.core : currentScale;
+        float savedScale = currentScale();
+        currentScale(1);
+        auto off = new ImageSurface(wScaled, cast(int)(h + 3 * scale));
+        SurfaceDevice.pushCurrent(off);
+        fldraw.fl_color(bgColor);
+        fldraw.fl_rectf(0, 0, wScaled, cast(int)(h + 3 * scale));
+        fldraw.fl_color(textColor);
+        fldraw.fl_font(face, cast(int)(scale * oldSize));
+        int w2 = cast(int) fldraw.width(str);
+        if (w2 > wScaled) w2 = wScaled;
+        fldraw.fl_draw(str, 0, cast(int)(h * 0.8));
+        auto img = off.image();
+        SurfaceDevice.popCurrent();
+        currentScale(savedScale); // before fl_font(), which opens the font at the scale
+        fldraw.fl_font(face, oldSize);
+        fldraw.fl_color(textColor);
+        off.destroy();
+        if (img is null || w2 <= 0 || h <= 0 || img.dataW() < w2 || img.dataH() < h) return;
+
+        // calc_mask(): a set bit for every pixel that isn't background
+        ubyte br, bg, bb;
+        getColor(bgColor, br, bg, bb);
+        const(ubyte)[] px = img.array;
+        int d = img.d(), ld = img.dataW() * d;
+        if (d < 3) return;
+        int wMask = (w2 + 7) / 8;
+        auto mask = new ubyte[wMask * h];
+        foreach (row; 0 .. h)
+            foreach (col; 0 .. w2)
+            {
+                const(ubyte)* p = px.ptr + row * ld + col * d;
+                if (p[0] != br || p[1] != bg || p[2] != bb)
+                    mask[row * wMask + col / 8] |= cast(ubyte)(0x80 >> (col % 8));
+            }
+
+        float s = w2 / cast(float) w;
+        output_.writef("%g %g %g %g %d %d MI\n", cast(double) x, y - h * 0.77 / s,
+            w2 / s, h / s, w2, h);
+        auto rle = Rle85Encoder(output_);
+        for (int row = h - 1; row >= 0; row--)
+            foreach (b; mask[row * wMask .. (row + 1) * wMask])
+                rle.write(b);
+        rle.close();
+        output_.write("\n");
     }
 
     /**
@@ -1027,6 +1125,11 @@ class PostscriptGraphicsDriver : GraphicsDriver
         if (d < 3) { drawImageMono(buf, x, y, w, h, d, l, boxW, boxH); return; }
 
         output_.write("save\n");
+        if (!clipToVisible(buf, w, h, d, l, x, y, boxW, boxH))
+        {
+            output_.write("restore\n");
+            return;
+        }
         output_.writef("%g %g %g %g %d %d %s CII\n",
             cast(double) x, cast(double)(y + boxH), cast(double) boxW, cast(double)(-boxH), w, h,
             interpolate_ ? "true" : "false");
@@ -1063,6 +1166,11 @@ class PostscriptGraphicsDriver : GraphicsDriver
     private void drawImageMono(const(ubyte)* buf, int x, int y, int w, int h, int d, int l, int boxW, int boxH)
     {
         output_.write("save\n");
+        if (!clipToVisible(buf, w, h, d, l, x, y, boxW, boxH))
+        {
+            output_.write("restore\n");
+            return;
+        }
         output_.writef("%g %g %g %g %d %d %s GII\n",
             cast(double) x, cast(double)(y + boxH), cast(double) boxW, cast(double)(-boxH), w, h,
             interpolate_ ? "true" : "false");
@@ -1090,39 +1198,85 @@ class PostscriptGraphicsDriver : GraphicsDriver
     }
 
     /**
+     * For an image with alpha (`d` 2 or 4), clips to its pixels that are
+     * not fully transparent, so what is behind a transparent pixel (a
+     * `Pixmap`'s `None` color, say) shows through; partly transparent
+     * pixels are blended against the background color by the caller.
+     * The clip is one `rectclip` over the runs of visible pixels, rows
+     * with the same runs merged. Returns false when no pixel is
+     * visible. An image needing more rectangles than a PostScript array
+     * holds is drawn unclipped.
+     */
+    private bool clipToVisible(const(ubyte)* buf, int w, int h, int d, int l, int x, int y, int boxW, int boxH)
+    {
+        import std.array : appender;
+        import std.format : formattedWrite;
+
+        if (d != 2 && d != 4) return true;
+        enum maxRects = 16_000;
+        double sx = cast(double) boxW / w, sy = cast(double) boxH / h;
+
+        static struct Run { int start, end; }
+        auto rects = appender!string();
+        size_t count;
+        bool anyHidden;
+        Run[] prev;
+        int prevTop;
+        void flush(int bottom)
+        {
+            foreach (r; prev)
+                rects.formattedWrite(" %g %g %g %g", x + r.start * sx, y + prevTop * sy,
+                    (r.end - r.start) * sx, (bottom - prevTop) * sy);
+            count += prev.length;
+        }
+        foreach (row; 0 .. h)
+        {
+            Run[] runs;
+            const(ubyte)* src = buf + row * l;
+            int col = 0;
+            while (col < w)
+            {
+                while (col < w && src[col * d + d - 1] == 0) { anyHidden = true; col++; }
+                int start = col;
+                while (col < w && src[col * d + d - 1] != 0) col++;
+                if (col > start) runs ~= Run(start, col);
+            }
+            if (runs != prev)
+            {
+                flush(row);
+                prev = runs;
+                prevTop = row;
+            }
+        }
+        flush(h);
+
+        if (!anyHidden || count > maxRects) return true;
+        if (count == 0) return false;
+        output_.write("[");
+        output_.write(rects.data);
+        output_.write(" ] rectclip\n");
+        return true;
+    }
+
+    /**
      * Draws a 1-bit bitmap via the `MI` PostScript operator (in
-     * `psProlog`). Ported from
-     * `Fl_PostScript_Graphics_Driver::draw_bitmap(Fl_Bitmap*,...)` --
-     * including a real, faithfully-reproduced FLTK quirk: `bits` is
-     * always the bitmap's *full* `dataW`x`dataH` data, `cx`/`cy`
-     * genuinely ignored (FLTK's own `draw_bitmap()` reassigns its
-     * local `WP`/`HP` -- the declared image dimensions the `MI`-
-     * equivalent line uses -- to `bitmap->data_w()`/`data_h()` *after*
-     * `scale_for_image_()` already computed the page-placement
-     * transform from the *original*, caller-supplied `WP`/`HP`, so a
-     * cropped `Fl_Bitmap::draw()` call still emits and places the whole
-     * bitmap, just scaled as if it were the requested sub-rectangle --
-     * an odd but real, unconditional FLTK behavior, not something
-     * this port introduced). Unlike `drawImage()` above, this *does*
-     * need an outer scale/translate wrapper (FLTK's own
-     * `scale_for_image_()`, called once before the reassignment quirk
-     * above ever applies): `MI` itself declares only the bitmap's own
-     * native `dataW`x`dataH` pixel grid, so mapping that onto the
-     * requested `(x,y,w,h)` destination rectangle needs a real
-     * `translate(x,y) scale(w/dataW, h/dataH)` around it. Each row is
-     * bit-reversed via `swapByte()` before RLE85 encoding -- PostScript's
-     * `imagemask` expects each byte's bits MSB-first (bit 7 = leftmost
-     * pixel), the opposite of this port's own `Bitmap.array` convention
-     * (bit 0 = leftmost, same as FLTK's `Fl_Bitmap`), matching
-     * FLTK's own `swap_byte()`/`swapped[16]` nibble-reversal table
-     * exactly.
+     * `psProlog`), ported from
+     * `Fl_PostScript_Graphics_Driver::draw_bitmap(Fl_Bitmap*,...)`: the
+     * whole bitmap at `(x - cx, y - cy)`, one unit per pixel, clipped to
+     * `(x, y, w, h)`, as on screen. Each row is bit-reversed via
+     * `swapByte()` before RLE85 encoding -- PostScript's `imagemask`
+     * expects each byte's bits MSB-first (bit 7 = leftmost pixel), the
+     * opposite of `Bitmap.array` (bit 0 = leftmost).
      */
     override void drawBitmap(const(ubyte)* bits, int dataW, int dataH, int x, int y, int w, int h, int cx, int cy)
     {
         if (dataW <= 0 || dataH <= 0 || bits is null || w <= 0 || h <= 0) return;
 
-        output_.writef("GS %d %d translate %g %g scale\n",
-            x, y, cast(double) w / dataW, cast(double) h / dataH);
+        import fl.draw : pushClip, popClip;
+
+        pushClip(x, y, w, h);
+        scope (exit) popClip();
+        output_.writef("GS %d %d translate\n", x - cx, y - cy);
         output_.writef("%d %d %d %d %d %d MI\n", 0, dataH, dataW, -dataH, dataW, dataH);
 
         int xx = (dataW + 7) / 8;
@@ -1512,10 +1666,7 @@ class EpsFileSurface : WidgetSurface
 
     /// **Known gap**: `draw(Widget)`/`drawDecoratedWindow()` (both
     /// inherited from `WidgetSurface`) have not been exercised against
-    /// every image kind. `PostscriptGraphicsDriver` draws RGB, RGBA, gray
-    /// and 1-bit images, but a `Pixmap`'s transparent colour prints
-    /// opaque. Drive the surface directly (see this module's own
-    /// unittest) until that is confirmed.
+    /// every image kind.
 }
 
 /**
@@ -1803,6 +1954,68 @@ unittest
     assert(text.canFind("FR\n")); // fl_rectf() -> rectf() -> FR
     assert(text.canFind("MT\n")); // fl_rect()/fl_line()/fl_polygon() all path through moveto
     assert(text.canFind("%%EOF"));
+}
+
+unittest
+{
+    // A complex polygon of two sub-loops (fl_gap()) is one path of two
+    // sub-paths: each starts with a moveto, so no edge joins them.
+    import std.file : tempDir, exists, remove, readText;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import std.algorithm : count;
+    import std.string : indexOf;
+
+    auto path = buildPath(tempDir(), "fldtk-eps-gap-" ~ randomUUID().toString() ~ ".eps");
+    scope (exit) if (exists(path)) remove(path);
+    {
+        auto f = File(path, "wb");
+        auto surf = new EpsFileSurface(100, 100, f);
+        SurfaceDevice.pushCurrent(surf);
+        fldraw.beginComplexPolygon();
+        fldraw.vertex(10, 10); fldraw.vertex(40, 10); fldraw.vertex(40, 40);
+        fldraw.fl_gap();
+        fldraw.vertex(60, 60); fldraw.vertex(90, 60); fldraw.vertex(90, 90);
+        fldraw.endComplexPolygon();
+        SurfaceDevice.popCurrent();
+        surf.close();
+    }
+    auto text = readText(path);
+    auto start = text.indexOf("BP\n");
+    auto end = text.indexOf("EFP", start);
+    assert(start >= 0 && end > start);
+    assert(text[start .. end].count(" MT\n") == 2);
+}
+
+unittest
+{
+    // Transparent pixels of an RGBA image are clipped away: a 2x2 image
+    // with only its top-left pixel visible gets one clip rectangle; a
+    // fully transparent image draws nothing; an opaque one is unclipped.
+    import std.file : tempDir, exists, remove, readText;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    import std.algorithm : canFind, count;
+
+    auto path = buildPath(tempDir(), "fldtk-eps-alpha-" ~ randomUUID().toString() ~ ".eps");
+    scope (exit) if (exists(path)) remove(path);
+
+    {
+        auto f = File(path, "wb");
+        auto surf = new EpsFileSurface(100, 100, f);
+        ubyte[] oneVisible = [255, 0, 0, 255,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0];
+        ubyte[] hidden = new ubyte[16];
+        ubyte[] opaque = [1, 2, 3, 255,  1, 2, 3, 255,  1, 2, 3, 255,  1, 2, 3, 255];
+        surf.psDriver_.drawImage(oneVisible.ptr, 10, 20, 2, 2, 4, 0);
+        surf.psDriver_.drawImage(hidden.ptr, 10, 20, 2, 2, 4, 0);
+        surf.psDriver_.drawImage(opaque.ptr, 10, 20, 2, 2, 4, 0);
+        surf.close();
+    }
+
+    auto text = readText(path);
+    assert(text.canFind("[ 10 20 1 1 ] rectclip\n"));
+    assert(text.count("rectclip") == 1);
+    assert(text.count(" CII\n") == 2);
 }
 
 unittest

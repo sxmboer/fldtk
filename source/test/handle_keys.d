@@ -351,9 +351,7 @@ void toggleScaling(Widget w)
     if (toggle)
     {
         auto tty = (cast(App) w.window()).tty;
-        bool simpleZoom = fl.option(Option.simpleZoomShortcut);
-        tty.printf("GUI-Scaling = %s, OPTION_SIMPLE_ZOOM_SHORTCUT = %s\n",
-                toggle ? "ON" : "OFF", simpleZoom ? "ON" : "OFF");
+        tty.printf("GUI-Scaling = %s\n", toggle ? "ON" : "OFF");
     }
     toggleCb(w); // give focus to 'app'
 }

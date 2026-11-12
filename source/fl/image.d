@@ -120,7 +120,10 @@ class Image
     /// size looks smoother than the blockier nearest-neighbor result a
     /// program gets from calling `copy()` itself (e.g. for a fast
     /// thumbnail list) -- `RGBImage.draw()` does the same temporary-
-    /// override dance around its own scale-aware `copy()` call.
+    /// override dance around its own scale-aware `copy()` call. The same
+    /// setting picks the resampling of raw buffers drawn at a scale
+    /// (`fl.draw.drawImage()`, `drawImageMono()`, the callback forms) and
+    /// whether the Cairo driver smooths a stretched image.
     static void scalingAlgorithm(RGBScaling m) { scalingAlgorithm_ = m; }
     /// ditto
     static RGBScaling scalingAlgorithm() { return scalingAlgorithm_; }
@@ -187,14 +190,14 @@ class Image
      */
     protected void hasData(bool has) { count_ = has ? 1 : 0; }
 
-    /// Non-zero if there is currently no usable image (a failed load,
-    /// or a default-constructed placeholder). Ported from `fail()`,
-    /// including its exact condition shape (`d_ <= 0 && count_ == 0`)
-    /// -- see `hasData()`'s own doc comment for why `count_` still
-    /// matters here even though the rest of FLTK's `count_`/
-    /// `data()` mechanism isn't ported.
+    /// Non-zero if there is no usable image: a failed load, data too
+    /// short for the image's size (`errMemoryAccess`), or a
+    /// default-constructed placeholder. A negative `ld()` holds the
+    /// error code; `count_` (see `hasData()`) tells an empty `Bitmap`,
+    /// whose `d()` is always 0, from a loaded one.
     int fail() const
     {
+        if (ld_ < 0) return ld_;
         if (w_ <= 0 || h_ <= 0 || (d_ <= 0 && count_ == 0))
         {
             if (ld_ == 0) return errNoImage;
@@ -381,15 +384,9 @@ class RGBImage : Image
     /**
      * Creates an image from bits (dataW()*dataH()*D bytes, or more if
      * LD pads each row). If bits is too short for the claimed
-     * dimensions, the image is left empty (array.length == 0) --
-     * matching FLTK's own bits_length-checked constructor exactly,
-     * just unconditionally (see the module's own top comment for why
-     * the unchecked raw-pointer constructor FLTK also has isn't
-     * ported). **Check `array.length == 0`, not `fail()`, to detect
-     * this** -- `fail()` doesn't actually catch this specific case, a
-     * real, faithfully-reproduced FLTK quirk (`ld()` is set to
-     * `errMemoryAccess`, but `fail()`'s own condition never consults
-     * `ld()` for a normal positive `D`; see `FLTK_ISSUES_n.md`).
+     * dimensions, the image is left empty and `fail()` returns
+     * `errMemoryAccess` (see the module's top comment for why FLTK's
+     * unchecked raw-pointer constructor isn't ported).
      */
     this(const(ubyte)[] bits, int W, int H, int D = 3, int LD = 0)
     {
@@ -404,8 +401,10 @@ class RGBImage : Image
         }
         else
         {
+            // No data for a 0x0 image (a loader filling it in later) is
+            // simply empty.
             array = null;
-            ld(errMemoryAccess);
+            if (W > 0 && H > 0) ld(errMemoryAccess);
         }
     }
 
@@ -947,12 +946,8 @@ unittest
     assert(img.array.length == 4 * 4 * 3);
     assert(img.d() == 3);
 
-    // fail() itself doesn't actually catch this case -- a real,
-    // faithfully-reproduced FLTK quirk (Fl_Image::fail()'s own
-    // condition never consults ld_ when d_ is a normal positive depth,
-    // see FLTK_ISSUES_n.md). array.length == 0 is the real signal.
     auto tooShort = new RGBImage(bits[0 .. 4], 4, 4, 3);
-    assert(tooShort.fail() == 0);
+    assert(tooShort.fail() == Image.errMemoryAccess);
     assert(tooShort.array.length == 0);
 }
 

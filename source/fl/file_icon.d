@@ -79,22 +79,6 @@
  *    the same "concrete D stdlib over hand-rolled C" substitution
  *    `fl.file_browser`'s `loadDirectory()` already established.
  *
- *  - **A likely FLTK bug, ported faithfully rather than fixed**:
- *    `load_kde_mimelnk()`'s "KDE 1.x icons" fallback branch builds the
- *    icon path from `tmp` -- but `tmp` is the byte buffer from the
- *    file's *last `fgets()` line*, not a directory path; it was never
- *    assigned anything path-like. This looks like a copy/paste leftover
- *    (the variable name "tmp" back when it may have held a scratch
- *    directory string) rather than intentional. Noted as an
- *    `FLTK_ISSUES_n.md` candidate. Since this branch is already
- *    unreachable on any modern system (it only runs for KDE 1.x, which
- *    additionally requires the *outer* `!fl_access(icondir, F_OK)`
- *    check above it to have failed, i.e. no KDE 2/3 icon theme
- *    directory was found), this port reproduces the same "use the last
- *    line read" value (renamed `lastLine` here) rather than silently
- *    correcting it -- it will almost always fail the subsequent
- *    existence check either way.
- *
  *  - **`Fl_File_Icon::label(Fl_Widget*)`/`labeltype()`**: ported as
  *    `FileIcon.label(Widget)` and the static `FileIcon.labeltype()`,
  *    which `fl.widget` registers as `Labeltype.iconLabel`'s drawing
@@ -883,12 +867,12 @@ private void loadKdeIcons(string directory, string icondir)
     }
 }
 
-/// Loads one KDE "mimelnk" file. Ported from `load_kde_mimelnk()` --
-/// see the module comment for the one faithfully-preserved FLTK
-/// oddity (the KDE-1.x fallback path's `tmp`/`lastLine` reuse).
+/// Loads one KDE "mimelnk" file. Ported from `load_kde_mimelnk()`. A
+/// relative icon name is looked up in the KDE 2/3 icon theme
+/// directory `icondir`.
 private void loadKdeMimelnk(string filename, string icondir)
 {
-    string mimetype, pattern, iconfilename, lastLine;
+    string mimetype, pattern, iconfilename;
 
     string content;
     try content = readText(filename);
@@ -896,7 +880,6 @@ private void loadKdeMimelnk(string filename, string icondir)
 
     foreach (line; content.splitLines())
     {
-        lastLine = line;
         string v = getKdeVal(line, "Icon");
         if (v !is null) { iconfilename = v; continue; }
         v = getKdeVal(line, "MimeType");
@@ -914,9 +897,9 @@ private void loadKdeMimelnk(string filename, string icondir)
     {
         fullIconfilename = iconfilename;
     }
-    else if (exists(icondir))
+    else
     {
-        // KDE 3.x and 2.x icons.
+        if (!exists(icondir)) return;
         static immutable string[] paths = [
             "16x16/actions", "16x16/apps", "16x16/devices", "16x16/filesystems", "16x16/mimetypes",
             "32x32/actions", "32x32/apps", "32x32/devices", "32x32/filesystems", "32x32/mimetypes",
@@ -929,12 +912,6 @@ private void loadKdeMimelnk(string filename, string icondir)
             if (exists(fullIconfilename)) { found = true; break; }
         }
         if (!found) return;
-    }
-    else
-    {
-        // KDE 1.x icons -- see the module comment on `lastLine`.
-        fullIconfilename = lastLine ~ "/" ~ iconfilename;
-        if (!exists(fullIconfilename)) return;
     }
 
     FileIcon icon;

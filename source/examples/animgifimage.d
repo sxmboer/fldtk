@@ -315,7 +315,6 @@ immutable string testsuite = "testsuite";
 
 void main(string[] args)
 {
-    registerImages();
     fl.addHandler((e) { return events(e); });
     string openFlags;
     if (args.length > 1)

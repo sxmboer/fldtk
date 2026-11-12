@@ -6,28 +6,13 @@
  * *same* in-memory image after the first load, only actually
  * releasing it once every caller has released() its own reference.
  *
- * Format detection: FLTK hardcodes XBM (`"#define"` header) and
- * XPM (`"/* XPM *"~"/"` header) detection directly in `reload()`,
- * with everything else (JPEG/PNG/GIF/BMP/ICO/SVG in real FLTK,
- * registered by the separate `fltk_images` library's own
- * `fl_register_images()`) going through a pluggable handler chain
- * (`add_handler()`/`remove_handler()`). This port follows the same
- * split: XBM/XPM detection stays hardcoded (matching FLTK exactly,
- * both being genuinely built into this port's own core `fl.image`
- * now, not optional/pluggable), **PNM detection is hardcoded here too
- * for the same reason** (`fl.pnm_image` is just as much a core,
- * always-available part of this port as XBM/XPM are, unlike FLTK
- * where PNM support is *also* only ever added via the same external
- * `fltk_images`-registered handler as JPEG/PNG). GIF/BMP/ICO/SVG stay
- * behind `registerImages()`'s `addHandler()` chain, matching FLTK's
- * own choice not to hardcode those either -- GIF/BMP/ICO/SVG/PNG/JPEG
- * are all real, native decoders, see `registerImages()`'s
- * own doc comment below for the handler that actually registers them.
- * They still go
- * through the same real, public `addHandler()`/`removeHandler()`
- * extension point FLTK exposes, so user code can already register
- * its own format support today exactly as FLTK's own documentation
- * describes.
+ * Format detection: `reload()` recognizes XBM (`"#define"` header),
+ * XPM (`"/* XPM *"~"/"` header) and PNM itself, then tries the
+ * handlers a program registered with `addHandler()`, then every other
+ * format fldtk decodes: GIF, BMP, ICO, PNG, JPEG and SVG
+ * (`checkNativeFormats()`). No setup call is needed for any of them.
+ * `addHandler()`/`removeHandler()` let a program add a format of its
+ * own, or take one over.
  *
  * Deliberate simplifications from FLTK, all documented at their
  * point of use below:
@@ -223,11 +208,14 @@ class SharedImage : Image
             img = new PNMImage(name_);
         else
         {
+            // A program's own handlers first, so it can take over a
+            // format; then every other format fldtk decodes.
             foreach (h; handlers_)
             {
                 img = h(name_, header);
                 if (img !is null) break;
             }
+            if (img is null) img = checkNativeFormats(name_, header);
         }
 
         if (img !is null)
@@ -431,17 +419,14 @@ class SharedImage : Image
     }
 }
 
-/// Header-sniffing handler for the natively-decodable formats this port
-/// has that (unlike XBM/XPM/PNM above) aren't hardcoded directly into
-/// `reload()` -- matches FLTK's own choice to keep these behind the
-/// same pluggable `add_handler()` chain rather than hardcoding them too
-/// (`fl_images_core.cxx`'s own `fl_check_images()`, which this is a
-/// ported reduction of). None of GIF/SVG/PNG/JPEG link an
-/// external codec in this port (see CONVENTIONS.md's "Correction"
-/// note for GIF/SVG; `fl.png_image`'s/`fl.jpeg_image`'s
-/// own module comments for PNG/JPEG -- both adapted from already-D
-/// `arsd.png`/`arsd.jpeg` rather than bound to libpng/libjpeg).
-/// Checked in FLTK's own order: GIF, BMP, ICO, PNG, JPEG, SVG.
+/// Recognizes GIF, BMP, ICO, PNG, JPEG and SVG files by their first
+/// bytes and loads them -- ported from `fl_images_core.cxx`'s
+/// `fl_check_images()`. `reload()` tries it after the program's own
+/// handlers. Every one of these decoders is fldtk's own D code, with no
+/// external codec library to load (see `fl.png_image`'s and
+/// `fl.jpeg_image`'s module comments), so there's nothing to gain from
+/// leaving any of them out. Checked in this order: GIF, BMP, ICO, PNG,
+/// JPEG, SVG.
 private Image checkNativeFormats(string name, const(ubyte)[] header)
 {
     import fl.bmp_image : BMPImage;
@@ -520,41 +505,15 @@ private Image checkNativeFormats(string name, const(ubyte)[] header)
 }
 
 /**
- * Ported from `fl_register_images()` (`FL/Fl_Shared_Image.H` +
- * `src/fl_images_core.cxx`). Registers `checkNativeFormats()` above into
- * `SharedImage`'s `addHandler()` chain, so `SharedImage.get()`/
- * `reload()` can recognize `.gif`/`.bmp`/`.ico`/`.svg`/`.png`/`.jpg`
- * files it otherwise falls through on, matching FLTK's own
- * `fl_check_images()` handler -- every format FLTK's own handler
- * covers is a real, native decoder here too, none deferred. A no-op if
- * already called (`addHandler()`'s
- * own dedup).
- *
- * **Not load-bearing for clipboard image paste** in this port --
- * `fl.platform_x11`'s `SelectionNotify` handler decodes a pasted BMP
- * directly via `new BMPImage("clipboard", data)`, bypassing
- * `SharedImage`/this handler chain entirely (no temp file, unlike
- * FLTK's own `mkstemp()` + `Fl_Shared_Image::get()` approach for
- * the same step). Calling this is still worth doing for API fidelity
- * (matching every real FLTK program's own `fl_register_images()`
- * call, e.g. `source/test/clipboard.d`'s), and for its *other* real
- * effect -- any plain `SharedImage.get("some.gif")`/`get("some.bmp")`/
- * `get("some.ico")`/`get("some.svg")` call elsewhere in an app now
- * actually finds those files -- just don't assume it's on the
- * clipboard-paste code path if tracing through that feature later.
- *
- * **This is what `fl.help_view.HelpView`'s `<IMG>` tag loading goes
- * through** (via `SharedImage.get()`) -- a program that never calls
- * this silently
- * shows no image at all for a referenced `.gif`/`.svg`/etc. file, not
- * an error, since `reload()` just falls through every detection branch
- * with nothing registered.
+ * Does nothing: `SharedImage.get()` reads every format fldtk decodes
+ * without it (see `checkNativeFormats()`). Kept, deprecated, so programs
+ * written against v1.0.2, which had to call it before loading a PNG,
+ * JPEG, GIF, BMP, ICO or SVG file, still compile, with a message telling
+ * them the call can go.
  */
+deprecated("registerImages() is no longer needed: SharedImage.get() reads every image format by itself. Remove the call.")
 void registerImages()
 {
-    import std.functional : toDelegate;
-
-    SharedImage.addHandler(toDelegate(&checkNativeFormats));
 }
 
 unittest

@@ -623,7 +623,7 @@ private class PrintPanel
 
         string printerName = (idx != 0 && idx < printerNames_.length)
             ? printerNames_[idx] : "";
-        auto prefs = new Preferences(rootCoreUser, "fltk.org", "printers");
+        auto prefs = new Preferences(rootCoreUser, "fldtk", "printers");
         int val;
         prefs.get(printerName ~ "/page_size", val, 1);
         printPageSize_.value(val);
@@ -644,7 +644,7 @@ private class PrintPanel
         int idx = printChoice_.value();
         string printerName = (idx != 0 && idx < printerNames_.length)
             ? printerNames_[idx] : "";
-        auto prefs = new Preferences(rootCoreUser, "fltk.org", "printers");
+        auto prefs = new Preferences(rootCoreUser, "fldtk", "printers");
         prefs.set(printerName ~ "/page_size", printPageSize_.value());
         int val = 0;
         foreach (i, btn; printOutputMode_)

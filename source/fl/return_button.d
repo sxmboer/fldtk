@@ -65,7 +65,7 @@ class ReturnButton : Button
 
         Boxtype bt = value() ? (downBox() != Boxtype.noBox ? downBox() : fl_down(box())) : box();
         int dx = fl.core.boxDx(bt);
-        drawBox(bt, value() ? selectionColor() : color());
+        drawButtonBox(bt, value() ? selectionColor() : color());
         int W = h();
         if (w() / 3 < W) W = w() / 3;
         returnArrow(x() + w() - (W + dx), y(), W, h());
@@ -141,4 +141,25 @@ unittest
     assert(!called);
 
     fl.core.resetForTest();
+}
+
+unittest
+{
+    // compact(): a ReturnButton draws its frame through Button.drawButtonBox()
+    // too, so it joins a bar of buttons. Headless: only checks that the
+    // compact drawing runs.
+    import fl.group : FlGroup;
+    import fl.button : Button;
+
+    FlGroup.current(null);
+    auto g = new FlGroup(0, 0, 150, 30);
+    auto a = new Button(0, 0, 50, 30, "A");
+    auto b = new ReturnButton(50, 0, 50, 30, "B");
+    auto c = new Button(100, 0, 50, 30, "C");
+    a.compact(true); b.compact(true); c.compact(true);
+    g.end();
+    g.draw();
+    assert(b.compact());
+    destroy(g);
+    FlGroup.current(null);
 }

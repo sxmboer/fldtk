@@ -81,11 +81,17 @@ coordinates are divided by the scale of the window the event came from.
   170, 200, 240 and 300%, Ctrl-Shift +/- by 1% within that range, and
   Ctrl-0 sets it back to 100% (`keyboardScreenScaling()`); a popup shows
   the new value.
-- A program starts with `fl.core.startupZoom()`: the
-  `FLDTK_SCALING_FACTOR` environment variable if set, otherwise the zoom
-  last chosen with Ctrl +/-. That zoom is kept for all fldtk programs in
-  `~/.config/fldtk/core.prefs` (`%APPDATA%\fldtk\core.prefs` on Windows),
-  key `Zoom` (`loadPersistedZoom()`/`persistZoom()`).
+- A program starts with `fl.core.startupZoom()`, the `Zoom` startup
+  setting: the `FLDTK_SCALING_FACTOR` environment variable if set,
+  otherwise the user's value, otherwise the system's (`startupSetting()`,
+  `~/.config/fldtk/options.prefs`, `%APPDATA%\fldtk\options.prefs` on
+  Windows). Ctrl +/-/0 store the user's value (`persistZoom()`), so every
+  fldtk program starts with the zoom last chosen; `fldtk-options` shows
+  and changes it.
+- With the `FLDTK_FLUSH_OUTPUT` environment variable set, a program's
+  `stdout` is line buffered (on Windows unbuffered) from before `main()`
+  (`fl.output_buffering`), so its output through a pipe shows line by
+  line; Fluid's File > Run sets it.
 - On X11 a desktop scale change while windows are open is followed:
   `RRScreenChangeNotify` re-reads the monitors, and a change of
   `_NET_WORKAREA` or `RESOURCE_MANAGER` re-reads `Xft.dpi` and rescales
@@ -176,8 +182,19 @@ Event state (`e_number`/`e_state`/`e_x`/`e_y`/... and their accessors),
 ([header](https://github.com/fltk/fltk/blob/master/FL/core/options.H))
 
 `Fl_Option`/`option()`, read from the system-wide and per-user
-preferences (`fl.preferences`) on first use. `visibleFocus()`/
-`dndTextOps()` are shortcuts for two options. The setter reads the
+preferences (`fl.preferences`, `fldtk`/`options`) on first use.
+`optionKey()` and `optionDefault()` give each option's preferences key
+and default. The same preferences group holds the startup settings
+`Backend`, `Graphics`, `Scheme` and `Zoom`, which `startupSetting()`
+reads after their environment variables (`FLDTK_BACKEND`,
+`FLDTK_GRAPHICS`, `FLDTK_SCHEME`, `FLDTK_SCALING_FACTOR`).
+`simpleZoomShortcut` is deprecated and has no effect: Ctrl and '=' always
+zoom in. `visibleFocus()`/`dndTextOps()` are shortcuts for two
+options. The `fldtk-options` program (`source/options/`) writes the
+preferences; it shows the startup settings and only the options fldtk
+acts on, so the GTK, Zenity
+and Kdialog file chooser options and the GTK print dialog option, which
+fldtk has no use for, aren't in it. The setter reads the
 preferences first, so an option set at the top of `main()` is not
 overwritten by the first read later.
 
@@ -377,12 +394,8 @@ helpers with `fl_utf8.h` names live in the modules that use them:
 ([header](https://github.com/fltk/fltk/blob/master/FL/names.h))
 
 `eventNames`/`fontNames`/`callbackReasonNames` and their `*Str()`
-lookups, for debugging output. `eventNames` includes the pen events.
-
-- `fontNameStr()` and `callbackReasonStr()` return the generic fallback
-  (`"FL_FONT_15"`, `"FL_REASON_35"`) for the last entry of their table,
-  an off-by-one in FLTK's bounds check that is still reproduced here (see
-  `FLTK_ISSUES_n.md`).
+lookups, for debugging output. `eventNames` includes the pen events. A
+value without a name gives a generic one (`"FL_FONT_16"`).
 
 ### `FL/fl_ask.H`
 
@@ -417,7 +430,7 @@ C++ cast macros.
 
 ### `FL/fl_draw.H`
 
-**Status:** Partial — `fl.draw`
+**Status:** Complete — `fl.draw`
 ([header](https://github.com/fltk/fltk/blob/master/FL/fl_draw.H))
 
 Lines, rectangles, polygons and their outlined and filled forms; every
@@ -457,8 +470,13 @@ drawing and reading images (`fl_draw_image()`, `fl_read_image()`,
     `scaledFloor()`. `fl_xyline()`/`fl_yxline()` draw filled rectangles
     as thick as the scaled line (or the width a `lineStyle()` set), so
     adjacent lines leave no gaps.
-  - Polygon outlines and line strips widen the X line width to the whole
-    part of the scale.
+  - The default line is 1 pixel wide below 200% and `int(scale)`
+    pixels from 200% up, as in FLTK, and a line style's width is
+    multiplied by the scale; every line primitive (`fl_line()`,
+    `fl_rect()`, `loop()`, polygon outlines, line strips, `fl_arc()`)
+    draws with it. The style is applied again when the scale changes
+    (`penScaleChanged()`). An explicitly wide `fl_xyline()`/`fl_yxline()`
+    is centered on its logical row's device pixels.
   - Fonts open at `size * currentScale()` device pixels; measurements
     and the pen position are converted back to FLTK units.
   - Vertex paths scale every point in one place
@@ -472,6 +490,12 @@ drawing and reading images (`fl_draw_image()`, `fl_read_image()`,
     remakes a buffer at a new scale with its picture scaled.
     `fl.image_surface` and double buffering use device-pixel buffers
     (`createOffscreenPixels()`, the seven-argument `copyOffscreen()`).
+  - Images drawn at the scale are resampled with
+    `Image.scalingAlgorithm()`, bilinear by default: `RGBImage.draw()`
+    through `copy()`, raw buffers (`fl_draw_image()`, mono and callback
+    forms) through `resampleImage()`, on X11 and on screen on Windows.
+    The Cairo driver smooths a stretched image only when it is bilinear,
+    and a GDI page stretches with `HALFTONE`.
   - 1-bit bitmaps are resampled to the current scale (`Bitmap.copy(w,
     h)`), and `drawBitmapFixed()` scales the destination and crop offsets.
   - A Pixmap's transparency mask is placed at the same scaled position
@@ -487,6 +511,17 @@ drawing and reading images (`fl_draw_image()`, `fl_read_image()`,
   `overrideScale()`/`restoreScale()`, `canDoAlphaBlending()` (always
   true), `fl_frame(string, x, y, w, h)`/`frame2()`, and `drawBoxFocus()`
   (uses the boxtype's own focus function when it has one).
+- `circle()` and the vertex-path `fl_arc(double, ...)` use as many chords
+  as keep each within 1/8 device pixel of the curve (`arcSegments()`,
+  the rule of FLTK's `fl_arc.cxx`), at the current scale and through the
+  current matrix. The count comes from the larger semi-axis of a
+  stretched circle, since evenly spaced points stray furthest at an
+  ellipse's flat sides. They reach every driver as points.
+- `fl_arc(int, ...)` and `fl_rect()` draw a wide line centered on the
+  box's edge, so half of it falls outside. `fl_pie()` and `fl_rectf()` are
+  fills and ignore the line style: on X11 and GDI the pie's edge is drawn
+  with the default line (`build/arc_width` shows all four at several
+  widths).
 - `fl_expand_text()` is not ported: `fl_measure(text, w, h)` with `w` set
   to the wrap width gives the size of wrapped text, and `fl_draw(text, x,
   y, w, h, alignWrap)` draws it. For a layout of your own, use
@@ -494,16 +529,10 @@ drawing and reading images (`fl_draw_image()`, `fl_read_image()`,
   `fl.draw.width()` and `std.ascii.isControl()`.
 - Not ported: `fl_clip_region()` (clipping has no regions) and
   `fl_set_status()` (the input method has no status area).
-
-Missing:
-- At a fractional scale (150%, say) polygon outlines and diagonal lines
-  stay 1 device pixel wide, and `fl_xyline()`/`fl_yxline()` don't adjust
-  a line width that doesn't divide the scale evenly.
-- `fl_arc()`/`fl_pie()` don't take the line width into account.
-- `fl_circle()` and vertex-path arcs use a fixed number of segments.
-- Scaled images are resampled nearest-neighbor
-  (`resampleImageNearest()`), not smoothed.
-- Printer output and SVG export at a scale other than 1 are untested.
+- Printing and SVG export don't depend on the display scale: on Windows
+  the printer driver draws at a fixed scale of 1 and SVG export differs
+  only by a pixel of rounding here and there; on Linux PostScript and SVG
+  from `test/device` at 150% match the window.
 
 ### `FL/fl_ask.H` (compat alias)
 
@@ -517,10 +546,8 @@ Old-name compatibility header; no content of its own.
 ([header](https://github.com/fltk/fltk/blob/master/FL/fl_show_colormap.H))
 
 `showColormap()`/`ColorMenu`: a 256-swatch color picker, holding
-`fl.core.grab()` while it is open.
-
-- `ColorMenu.run()`'s `which > 255` branch uses `y()` where `h()` looks
-  intended, an FLTK bug still reproduced here (see `FLTK_ISSUES_n.md`).
+`fl.core.grab()` while it is open. It opens with the initial swatch
+under the mouse, or centred on the mouse for a true-color value.
 
 ### `FL/fl_show_input.H`
 
@@ -639,10 +666,13 @@ buttons are 4 and 5, then 10, 11, ...); cursors; repainting clipped to
 the damaged rectangle; window manager hints (size range, fullscreen,
 maximize, iconify through EWMH, icons through `_NET_WM_ICON`,
 `WM_CLASS`, `_NET_WM_PID`); the clipboard and selection (text and
-images, with change notification through Xfixes or polling); XDND drag
-and drop within and between programs, with the dragged text shown at the
-pointer; XIM input with the preedit at the cursor; and multi-monitor
-geometry.
+images, with change notification through Xfixes or polling, and large
+transfers in parts through `INCR`); XDND drag and drop within and between
+programs, with the dragged text shown at the pointer, and a dropped
+picture (`image/png`, else `image/bmp`) arriving as an image paste ahead
+of any text the source also offers, and dropped files (`text/uri-list`)
+arriving as one path per line (`fl.core.uriListToPaths()`); XIM input with the preedit at the
+cursor; and multi-monitor geometry.
 
 - `fl.xlib`, `fl.xft`, `fl.fontconfig`, `fl.xcursor`, `fl.xfixes`,
   `fl.xinerama`, `fl.xrandr`, `fl.xshape` and `fl.xinput2` are
@@ -689,14 +719,18 @@ geometry.
   X11-only code such as GLX.
 
 Missing:
-- Drag and drop carries text only; `COMPOUND_TEXT` and other charset
-  targets are not negotiated.
-- `XWMHints.icon_pixmap` icons (`_NET_WM_ICON` is used).
+- Dragging out carries text only; `COMPOUND_TEXT` and other charset
+  targets are not negotiated. A dropped `INCR` transfer has not been
+  tried yet.
+- The sideways wheel's direction (buttons 6/7) has been tried with a
+  thumb wheel, a TrackPoint, a touchpad and a touch screen, not with a
+  tilting scroll wheel (`build/value_wheel` shows it).
 - `readPixelsFromDrawable()` reads only 16, 24 and 32 bpp layouts.
 - A CJK input method (ibus, fcitx) has not been tried; dead keys through
   XIM work (`smoke-tests/ime.d`).
 - Damage is one bounding rectangle per flush, so a little more than
   needed may be repainted.
+- Not ported: `XWMHints.icon_pixmap` icons (`_NET_WM_ICON` is used).
 
 ### `FL/wayland.H`
 
@@ -712,8 +746,10 @@ since then:
     git -C ~/Repositories/fltk diff 3a049d826 -- src/drivers/Wayland src/drivers/Cairo
 
 `fl.platform` uses this backend when `XDG_RUNTIME_DIR` is set and a
-Wayland connection can be made; `FLDTK_BACKEND=x11` or
-`FLDTK_BACKEND=wayland` forces one. A unittest build uses X11 unless
+Wayland connection can be made. The `Backend` setting (`fldtk-options`)
+picks one for every program, falling back to X11 when it asks for
+Wayland and there is none; `FLDTK_BACKEND=x11` or `FLDTK_BACKEND=wayland`
+forces one for a single run, and is an error when it can't be met. A unittest build uses X11 unless
 `FLDTK_BACKEND` says otherwise, since the unit tests are written for X11.
 Wayland draws only through `fl.cairo_graphics_driver`, so it needs
 `FLDTK_HAVE_CAIRO`; the `linux-no-cairo` configuration builds X11 only.
@@ -781,7 +817,10 @@ Wayland draws only through `fl.cairo_graphics_driver`, so it needs
   images) with change notification (`fl.core.addClipboardNotify()`), the
   middle-click selection (primary-selection protocol), and text drag and
   drop both ways, with the dragged text, black on white, as the drag
-  icon.
+  icon. A dropped picture (PNG/BMP, the clipboard's choice) arrives as an
+  image paste, ahead of any text the source also offers; dropped files
+  (`text/uri-list`) arrive as one path per line
+  (`fl.core.uriListToPaths()`).
 - `fl_beep()` rings the desktop bell through xdg-system-bell where the
   compositor has it, and otherwise writes a BEL character to stderr.
 - **Bindings:** `fl.wayland_client`, `fl.wayland_cursor` and
@@ -861,9 +900,11 @@ plain `GdiGraphicsDriver` is used if `GdiplusStartup()` fails.
   API) overrides `color()`, `line()`, `polygon()`,
   `arcUnscaled()`/`pieUnscaled()`, `lineStyle()` and the vertex-path
   `end*()` calls, and inherits the rest. `lineStyle()` honors
-  `FL_CAP_SQUARE` and `FL_JOIN_BEVEL` (FLTK's cap/join test is wrong; see
-  `FLTK_ISSUES_n.md`). Closed loops are drawn as separate segments, so
+  `FL_CAP_SQUARE` and `FL_JOIN_BEVEL`. Closed loops are drawn as separate segments, so
   their corners are capped rather than joined.
+- `lineStyle()` stays in effect when the color changes: every pen is
+  made in the current style, and a cached pen is reused only in the
+  style it was made in.
 - `drawImage()` uses `StretchDIBits()`, and `AlphaBlend()` (msimg32) for
   2- and 4-byte pixels, falling back to blending over white. The DIB is
   built per call. `drawBitmap()` uses two masked `StretchBlt()` passes
@@ -932,10 +973,23 @@ titles follow `label()`.
 
 **Drag and drop.** Through COM (`IDropTarget`/`IDropSource`/
 `IDataObject`, `RegisterDragDrop()`/`DoDragDrop()`), with one drop target
-for the process. Drops deliver text: `CF_UNICODETEXT`, `CF_TEXT` (through
+for the process. A dropped picture arrives as an image paste
+(`eventClipboardType() == clipboardImage`, an `RGBImage` in
+`eventClipboard()`), ahead of any text the source also offers. The
+formats are read from the source's `EnumFormatEtc()` list, best first:
+"PNG" (global memory or a stream), `CF_DIB`, a browser's image file
+(`FileGroupDescriptorW` + `FileContents`, a PNG/JPEG/GIF/BMP/SVG
+decoded by its extension; not when real files are offered), then an
+enhanced metafile (only when no text is offered, since Word offers one
+for selected text too). Tested on Windows 11 with pictures from Word,
+PowerPoint, Chrome and Edge, and image files from Explorer
+(`smoke-tests/drop_image.d`); `smoke-tests/drop_formats.d` lists what a
+source offers. Other
+drops deliver text: `CF_UNICODETEXT`, `CF_TEXT` (through
 `MultiByteToWideChar(CP_ACP, ...)`), or a file list from `CF_HDROP` as
-`\n`-separated paths (`examples/howto_drag_and_drop.d`). Dragging out is
-one blocking `DoDragDrop()` call.
+`\n`-separated paths (`examples/howto_drag_and_drop.d`,
+`smoke-tests/drop_image.d`). Dragging out is one blocking `DoDragDrop()`
+call.
 
 **Input methods.** Composed text (CJK, the emoji picker) arrives as a
 `WM_CHAR` and is delivered; surrogate pairs are merged; dead keys
@@ -955,8 +1009,9 @@ enough; no Windows SDK or Visual Studio is needed. Tested on Windows 11:
 
 Missing:
 - `addFd()` for `fdWrite`/`fdExcept`.
-- Drag and drop delivers text only. The `CF_TEXT` path has not been
-  tried with a real ANSI-only drag source.
+- Dragging out carries text only.
+- The `CF_TEXT` path has not been tried with a real ANSI-only drag
+  source.
 - A DLL build.
 - Not ported: `IEnumFORMATETC` (never executed in FLTK either).
 
@@ -1063,7 +1118,7 @@ writes to a file or pipes the PostScript to `lp`/`lpr`
   one copy is asked for (`PrintPanel.updateCollateState()`).
 - Printer names are listed from `lpstat -p -d` or `/etc/printcap`, parsed
   by separately tested functions.
-- Page size and output mode are kept per printer in the `fltk.org/printers`
+- Page size and output mode are kept per printer in the `fldtk/printers`
   preferences; a stored output mode out of range is ignored.
 - There is no GTK print dialog; fldtk never loads GTK or Qt.
 
@@ -1093,7 +1148,7 @@ printer's `HDC` with its own `GdiGraphicsDriver`.
 
 Writes drawing to a PDF file, one page at a time, used like `Printer`.
 `beginJob(defaultFileName)` shows a page-format dialog (page size, with
-"Set as default" stored under `PDF/page_size` in the `fltk.org/printers`
+"Set as default" stored under `PDF/page_size` in the `fldtk/printers`
 preferences, and orientation, remembered for the next call), then a
 `NativeFileChooser`; `beginDocument(path, format, layout)` writes to a
 given path. Both return 0, 1 (cancelled) or 2 (error, with a message).
@@ -1127,7 +1182,7 @@ window to PDF; the unittest writes a two-page document.
 
 ### `FL/Fl_PostScript.H`
 
-**Status:** Partial — `fl.postscript`
+**Status:** Complete — `fl.postscript`
 ([header](https://github.com/fltk/fltk/blob/master/FL/Fl_PostScript.H))
 
 `EpsFileSurface` (`Fl_EPS_File_Surface`) and `PostscriptFileDevice`
@@ -1138,16 +1193,25 @@ characters, as real glyphs), rotated text, RGB/RGBA/gray images and 1-bit
 bitmaps (RLE + ASCII85). Images keep their own resolution
 (`drawImageScaled()`).
 
-- Vertex paths arrive transformed from `fl.draw`.
-- RGBA and gray+alpha images are blended over the page background.
-- `closeCommand` is a `bool`.
+- Text in a font from `freeFont` up, or containing any other code point
+  (Greek, Cyrillic, CJK, Hebrew, ...), is drawn with the display driver
+  into an `ImageSurface` at twice its size and written as a 1-bit mask in
+  the text color (`drawExtra()`). Right-to-left text (`rtlDraw()`) takes
+  the same paths after `fl.draw` reverses it
+  (`smoke-tests/postscript_text.d`).
 
-Missing:
-- Text in fonts or code points outside the vector-text table, and
-  right-to-left text (`rtl_draw()`), draw nothing.
-- A `Pixmap`'s transparent color prints opaque.
-- `EpsFileSurface.draw(Widget)`/`drawDecoratedWindow()` have not been
-  tried on widgets showing every kind of image.
+- Vertex paths arrive transformed from `fl.draw`. Each sub-loop of a
+  complex polygon (`fl_gap()`) starts its own sub-path, so no edge joins
+  them (`endComplexPolygonParts()`).
+- RGBA and gray+alpha images are clipped to their pixels that aren't
+  fully transparent (one `rectclip`), so a `Pixmap`'s transparent color
+  shows what is behind it; partly transparent pixels are blended over the
+  page background.
+- A bitmap is drawn at its own size and clipped to the visible
+  rectangle, as on screen.
+- `closeCommand` is a `bool`.
+- `draw(Widget)`/`drawDecoratedWindow()` print widgets showing RGBA
+  images, pixmaps and bitmaps (`test/device`, PostScript output).
 
 ### `FL/Fl_SVG_File_Surface.H`
 
@@ -1164,13 +1228,14 @@ stroked path), plain and rotated text, and images.
 - Images and bitmaps are embedded as base64 PNG `<image>` elements
   (`fl.png_image.encodePngBytes()`), one per draw call. An image keeps its
   own pixels whatever size it is drawn at (`drawImageScaled()`,
-  `preserveAspectRatio="none"`).
+  `preserveAspectRatio="none"`). A bitmap is clipped to the visible
+  rectangle, as on screen.
 - `draw(Widget)`/`drawDecoratedWindow()` work on any widget, images
   included.
 
 ### `FL/Fl_Cairo.H`
 
-**Status:** Partial — `fl.cairo`, on `fl.cairo_c` + `fl.cairo_c_xlib` +
+**Status:** Complete — `fl.cairo`, on `fl.cairo_c` + `fl.cairo_c_xlib` +
 `fl.cairo_c_win32`
 ([header](https://github.com/fltk/fltk/blob/master/FL/Fl_Cairo.H))
 
@@ -1206,17 +1271,22 @@ re-exported from `fl.core` and `fl`.
   libraries (pixman, GLib, GObject), which the Microsoft-style C runtime
   never calls: its static constructor walks lld-link's `__CTOR_LIST__`
   (`-lldmingw`) in MinGW's order.
-- `cairoMakeCurrent()` reuses a window's context as FLTK does, including
-  a likely FLTK bug for single-buffered windows (see `FLTK_ISSUES_n.md`,
-  `Fl::cairo_make_current(Fl_Window*)`).
-
-Missing:
-- FLTK_OPTION_CAIRO_EXT (a Cairo context attached to every window as it
-  is made current); `cairoAutolinkContext(true)` is fatal.
-- In Cairo display mode (`FLDTK_GRAPHICS=cairo`, and on Wayland),
-  `cairoMakeCurrent()` makes its own context instead of handing out the
-  one the window is drawn with.
-- The macOS branch.
+- `cairoMakeCurrent(Window)` keeps a context while the drawing target,
+  size and screen scale stay the same, and hands it out each time in the
+  state it was made in (scaled to the screen), so nothing carries over
+  from an earlier draw; a new size or scale makes a new one.
+- On X11 the context is a surface of its own on the window's drawable,
+  also in Cairo display mode (`FLDTK_GRAPHICS=cairo`). `cairoMakeCurrent()`
+  first sends the graphics driver's pending drawing to the X server, and
+  `cairoFlush()` marks the drawable changed for the driver, so the two
+  draw in program order. On Wayland the context is the one the window's
+  buffer is drawn with.
+- `cairoAutolinkContext(true)` (FLTK's FLTK_OPTION_CAIRO_EXT) gives every
+  window except GL windows a context as it is drawn, and in
+  `Window.makeCurrent()`, so `draw()` reads it with `cairoCc()`
+  (`smoke-tests/cairo_autolink.d`, `USE_CAIRO_AUTOLINK` in
+  `test/cairo_test.d`).
+- The macOS branch is not ported (no macOS backend).
 
 ### `FL/Fl_Cairo_Window.H`
 
@@ -1301,14 +1371,12 @@ The class is `FlGroup`, since `Group` would collide with Phobos's
 - `FlGroup`'s own code uses the non-virtual `rawArray()`/`rawChildren()`,
   so a subclass overriding `array()`/`children()` (`Table`) doesn't
   change how the group draws, handles events or resizes.
+- `drawChild()`/`updateChild()` skip a child only when nothing it paints
+  is in the clip: its box, and for a group that doesn't clip its
+  children, its children and their outside labels, whose text may be
+  larger than the space left for it and reach past the group's edge
+  (`paintsInClip()`; `smoke-tests/group_label_overhang.d`).
 - Not ported: `sizes()` (deprecated); use `bounds()`.
-
-Missing:
-- `drawChild()` skips a child whose box is outside the clip, even when a
-  grandchild's outside label reaches into the clip. A repaint of just that
-  label's area then leaves it stale until the next full repaint (seen in
-  Fluid's Settings dialog after dragging a window across it). Fixing it
-  needs damage regions made of several rectangles.
 
 ### `FL/Fl_Window.H`
 
@@ -1337,7 +1405,8 @@ override-redirect window on X11). Also `clearModalStates()`,
   module's `flushDamage()` (see `fl.double_window`).
 - `forcePosition()` adds `USPosition` to the size hints; the Ctrl +/-
   indicator uses it to centre itself.
-- `shape()`'s mask is made at the window's size in device pixels.
+- `shape()`'s mask is made at the window's size in device pixels. A
+  `Pixmap` shape is converted to an RGBA image and masked on its alpha.
 - **Rescaling** (`resizeAfterScaleChange()`): the window keeps its
   device-pixel position, read from the last position the window system
   confirmed (`devicePosX_`/`devicePosY_`), and only its size changes, so
@@ -1348,10 +1417,9 @@ override-redirect window on X11). Also `clearModalStates()`,
   `isARescale_` makes `resize()` resize the native window even though its
   size in FLTK units is unchanged.
 
-Missing:
-- `hotspot()` keeps the window inside the monitor's bounds, not its work
-  area, and ignores the window frame's size.
-- A shape made from a `Pixmap` with more than one data array.
+- `hotspot()` keeps the window inside the work area of the monitor the
+  mouse is on, leaving room for the frame: estimated sizes on X11, the
+  system metrics on Windows.
 
 ### `FL/Fl_Double_Window.H`
 
@@ -1439,6 +1507,10 @@ declarations work on Linux and Windows (WGL comes from druntime's
 `gl_draw()` (7 overloads), `gl_start()`/`gl_finish()`, `glVisual()`
 (`Fl::gl_visual()`, kept out of `fl.core`) and the rest.
 
+- `gl_start()` draws into the front buffer, so on X11 and Windows it
+  doesn't work in a double-buffered window, whose repaint can overwrite
+  it; use a single-buffered window. On Wayland it draws into a surface
+  of its own over the window.
 - **Text with textures**: each string is drawn into an alpha texture at
   the window's scale (`computeTexture()`/`alphaMaskForString()`, which
   renders at scale 1 in device pixels so the whole texture is filled),
@@ -1489,7 +1561,9 @@ switching, forwarding to `fl.wayland_gl_window_driver` on Wayland.
 
 `value()`/`setonly()`/`shortcut()`/`downBox()`/`compact()`, drawing (the
 label recolored with `contrast()` when pressed; a `compact()` button's
-box spans its parent and is clipped to the button), and the brief "on"
+box spans its parent and is clipped to the button, `drawButtonBox()`,
+which `LightButton` and `ReturnButton` draw their frame through too, so
+they join a bar; `build/compact_buttons` shows each), and the brief "on"
 flash when a button is triggered from the keyboard
 (`simulateKeyAction()`). Destroying a button cancels a pending flash
 timer.
@@ -1699,7 +1773,7 @@ item (no `|` splitting).
 
 ### `FL/Fl_Input_.H`
 
-**Status:** Partial — `fl.input_`
+**Status:** Complete — `fl.input_`
 ([header](https://github.com/fltk/fltk/blob/master/FL/Fl_Input_.H))
 
 The editing engine of the text fields: `expand()`, word and line
@@ -1710,17 +1784,23 @@ through the clipboard.
 - The text is a `string` (`size()` is its length), and undo is an array
   of steps.
 - UTF-8 helpers come from `fl.text_buffer`.
-- `isword()` tests only the low 8 bits of a code point (an FLTK quirk
-  still reproduced here).
-- `up_down_pos`/`was_up_down`/`l_secret` are module-level variables,
-  shared by all fields as in FLTK.
+- Word-wise movement and selection step over letters, digits and
+  combining marks of any script, plus `#%-@_~`, a whole character at a
+  time.
+- The cursor, Delete and Backspace step over one user-perceived
+  character, a Unicode grapheme cluster: a whole emoji sequence, or a
+  letter with its combining accents (`fl.text_buffer`'s `graphemeLen()`/
+  `prevGrapheme()`, on `std.uni.graphemeStride()`).
 - `resetSpot()` is called when a field loses focus or is hidden.
-
-Missing:
-- Preedit (marked) text from an input method is not underlined.
-- The cursor moves by single code points, so it can stop inside an emoji
-  sequence (flags, ZWJ sequences); `TextDisplay`/`TextBuffer` step over
-  them.
+- Where the input method's provisional text arrives as marked text
+  (`fl.core.hasMarkedText()`, Wayland), it is the selection, drawn
+  underlined instead of highlighted, and the next keystroke replaces it.
+  `TextEditor`/`TextDisplay` do the same. On X11 and Windows the input
+  method shows the text being composed in a window of its own.
+- Pasting into a `FloatInput` checks the whole text against a stricter
+  pattern than typing does: an exponent is only accepted after a `.`, so
+  `1e5` and `0x1F` can be typed but not pasted (`Input_.handle()`,
+  `Event.paste`; `FLTK_ISSUES_3.md`).
 
 ### `FL/Fl_Input.H`
 
@@ -1769,8 +1849,8 @@ An `Input` with `type(outputNormal)`.
 
 **Status:** Complete — `fl.secret_input`
 
-An `Input` with `type(inputSecret)`. Its `handle()` override, which only
-removes the preedit underline, is not needed (see `FL/Fl_Input_.H`).
+An `Input` with `type(inputSecret)`. Its `handle()` leaves marked text
+unselected, so the field doesn't underline it (see `FL/Fl_Input_.H`).
 
 ### `FL/Fl_File_Input.H`
 
@@ -1807,9 +1887,11 @@ movement, forward and backward search, and loading and saving files
 (non-UTF-8 input is read as CP1252/ISO-8859-1).
 
 - `TextSelection` is a struct.
-- `nextChar()`/`prevChar()` step over emoji sequences (flags, ZWJ
-  sequences, skin-tone modifiers, keycaps, subdivision flags) as FLTK's
-  `fl_utf8_next_composed_char()` does.
+- `nextChar()`/`prevChar()` step over one Unicode grapheme cluster
+  (`std.uni.graphemeStride()`): emoji sequences (flags, ZWJ sequences,
+  skin-tone modifiers, keycaps, subdivision flags), a letter with its
+  combining accents, Hangul jamo, CR LF. `TextDisplay` maps a mouse
+  position to the same characters.
 - Case-insensitive search folds case with `std.uni.toLower()`.
 - `printf()` takes a `std.format` format string. `vprintf()` is not
   ported.
@@ -1831,7 +1913,7 @@ highlighting, mouse and keyboard movement, conversions between positions,
 rows and columns, and pixels, underline and strikethrough, the clipboard
 (drag and drop copies too), the right-click Cut/Copy/Paste menu, and the
 input method's preedit placed at the cursor (`setSpot()`, X11's
-`XIMPreeditPosition`).
+`XIMPreeditPosition`), and marked text underlined (see `FL/Fl_Input_.H`).
 
 - The scroll-while-dragging state (`scrollDirection_`/`scrollAmount_`/
   `scrollX_`/`scrollY_`) belongs to each display, so destroying one
@@ -1839,9 +1921,6 @@ input method's preedit placed at the cursor (`setSpot()`, X11's
   `FLTK_ISSUES_n.md`).
 - The right-click menu opens at the current mouse position.
 - `highlightData()` takes a slice of styles and a delegate.
-- `wrapped_line_counter()`'s end-of-buffer path passes a line count
-  where a buffer position is expected, an FLTK bug still reproduced here
-  (see `FLTK_ISSUES_n.md`).
 - There is no input-method status area.
 
 ### `FL/Fl_Text_Editor.H`
@@ -1860,7 +1939,7 @@ functions, `handle()` (mouse, keyboard, focus, shortcuts, drag and drop),
 
 ### `FL/Fl_Terminal.H`
 
-**Status:** Partial — `fl.terminal`
+**Status:** Complete — `fl.terminal`
 ([header](https://github.com/fltk/fltk/blob/master/FL/Fl_Terminal.H))
 
 A VT100/ANSI/xterm-style terminal output widget: a ring buffer of
@@ -1876,12 +1955,10 @@ strikeout) and cursor control.
   it is read.
 - The constructor taking rows, columns and history uses the given
   history size (FLTK's ignores it; see `FLTK_ISSUES_n.md`).
-
-Missing:
-- A `Terminal` built before any window is shown uses fallback font
-  metrics that are not recomputed when the display opens, so it shows one
-  row fewer than it should. Left as is, since fixing it would change when
-  `fl.draw` opens fonts, which `dub test` relies on to run headless.
+- A `Terminal` built before the display is open measures its font with
+  `fl.draw`'s headless placeholder metrics; its first `draw()` measures
+  the font again and, if the metrics changed, fits the display rows and
+  columns to the real ones (`smoke-tests/terminal_before_show.d`).
 
 ## Valuators
 
@@ -1899,9 +1976,9 @@ Range, step, value, rounding and clamping, with no drawing of its own.
   platforms turn a Shifted wheel sideways; `fl.core.wheelUnswapped()`
   undoes that first, so Shift only makes the change finer. `Adjuster`,
   `Counter`, `Dial`, `Roller`, `Slider` (and `ValueSlider`), `Spinner`,
-  `ValueInput`, `ValueOutput` and `Positioner` use it.
-- `ValueInput`, `ValueOutput` and `Adjuster` don't change the value by
-  dragging.
+  `ValueInput` and `Positioner` use it.
+- `ValueInput` and `Adjuster` don't change the value by dragging.
+- `ValueOutput` takes no user input at all.
 
 ### `FL/Fl_Adjuster.H`
 
@@ -1958,8 +2035,7 @@ A `Dial` with `type(lineDial)`.
 **Status:** Complete — `fl.roller`
 ([header](https://github.com/fltk/fltk/blob/master/FL/Fl_Roller.H))
 
-Dragging, the keyboard and the mouse wheel. `ipos` is shared by all
-rollers, as in FLTK.
+Dragging, the keyboard and the mouse wheel.
 
 - Rolling up or right adds: dragging up and the Up key on a vertical
   roller, dragging right and the Right key on a horizontal one. The ridges
@@ -1994,7 +2070,7 @@ An `FlClock` with `type(roundClock)` and `box(noBox)`.
 
 Dragging and the keyboard (linear and logarithmic), `scrollvalue()`, and
 drawing. `drawSlider()`/`handleAt()`/`drawTicks()` are protected, for
-`ValueSlider`. `offcenter` is shared by all sliders, as in FLTK.
+`ValueSlider`.
 
 - A vertical slider has its maximum at the top: knob position, dragging,
   ticks, fill (from the end with the smaller number), the Up key and the
@@ -2051,8 +2127,8 @@ A slider with its value shown as text.
 **Status:** Complete — `fl.value_output`
 ([header](https://github.com/fltk/fltk/blob/master/FL/Fl_Value_Output.H))
 
-Shows the value as text; the mouse wheel changes it when `step()` is not
-0.
+Shows the value as text. Only the program changes it; the user cannot,
+with the mouse or the keyboard. `step()` only sets the formatting.
 
 ### `FL/Fl_Value_Input.H`
 
@@ -2102,8 +2178,6 @@ item into view, selection, `sort()`, and keyboard and mouse handling for
 all four `type()`s.
 
 - Items are `Object`s.
-- The state `handle()` keeps between events is shared by all browsers,
-  as in FLTK.
 
 ### `FL/Fl_Browser.H`
 
@@ -2119,8 +2193,7 @@ tab-separated columns, and icons.
   length limit.
 - The protected line accessors for subclasses are `blineTxt()`/
   `blineFlags()`/`blineData()`/`blineIcon()`/`blineLength()`.
-- The `@` code scanner reads one byte past a lone `@` at the end of a
-  line, as FLTK does.
+- A lone `@` at the end of a line ends the format codes.
 
 ### `FL/Fl_Select_Browser.H`
 
@@ -2373,8 +2446,7 @@ the cell bookkeeping; `layout()` is unit-tested on both axes.
 - `Cell::align()` is `alignment()` (`align` is a D keyword).
 - `showGrid()` draws helper lines. `Fl_Grid::debug()` and
   `FLTK_GRID_DEBUG` are not ported.
-- `widget()`'s bounds check lets an index one past the end through, as in
-  FLTK, which then throws a `RangeError` (see `FLTK_ISSUES_n.md`).
+- `widget()` refuses a row or column outside the grid (returns `null`).
 
 ## Misc widgets
 
@@ -2391,8 +2463,9 @@ the cell bookkeeping; `layout()` is unit-tested on both axes.
 The data API and all seven chart types (bar, horizontal bar, line, fill,
 spike, pie, special pie).
 
-- The entries are a `ChartEntry[]`. With `maxsize()` reached, `add()`
-  drops the oldest entry and `insert()` drops the new one, as in FLTK.
+- The entries are a `ChartEntry[]`. `insert()`/`replace()` positions
+  count from 0. With `maxsize()` reached, `add()` drops the first entry,
+  `insert()` drops the last one, and `insert()` at `size()` does nothing.
 - The bounds are read with `boundsMin()`/`boundsMax()` (an out-parameter
   getter would be ambiguous with the setter).
 
@@ -2430,11 +2503,16 @@ symbol (drawn from SVG).
   zero-size clip, so nothing is drawn while positions are measured; that
   pass doesn't change the scrollbars.
 - Table columns are dynamic arrays, with no column limit.
-- Still as in FLTK (see `FLTK_ISSUES_n.md`): `format()` overwrites
-  `WIDTH`/`HEIGHT` whenever `SRC` is present, while `draw()` only fills in
-  a missing one; one attribute is read with `atof()` in one place and
-  `atoi()` in another; a list-numbering stack is declared outside its
-  retry loop.
+- An `<IMG>` with only `WIDTH` or only `HEIGHT` keeps the image's
+  aspect ratio; layout and drawing use the same size (`imgTag()`).
+- Each text block keeps a left position for every line, so centred and
+  right-aligned text stays aligned however many lines a block has.
+- `find()` compares the text as shown (tags skipped, entities decoded)
+  with the search string, both canonically decomposed and lowercased:
+  differently encoded forms of a character match, and letters of every
+  script match regardless of case (`findInText()`). The match becomes
+  the selection, starting at the beginning of its word, since selection
+  is drawn a word at a time.
 
 ### `FL/Fl_Help_Dialog.H`
 
@@ -2444,8 +2522,10 @@ symbol (drawn from SVG).
 Back/Forward and text-size buttons and a find field over a `HelpView`,
 with a navigation history of any length (`HistoryEntry[]`).
 
-- Forward scrolls the target page to the current page's position rather
-  than the one recorded for it, as in FLTK (see `FLTK_ISSUES_n.md`).
+- Back and Forward both restore the scroll position recorded for the
+  page they go to.
+- Find continues after the previous match, and starts over at the top
+  after the last one.
 - Not ported: `show(int argc, char **argv)`.
 
 ### `FL/Fl_Tooltip.H`
@@ -2480,7 +2560,7 @@ text, word wrap, and `@` symbols.
 A tree of groups with key/value entries, read from and written to FLTK's
 file format (header comments, `[group]` sections, 80-column
 continuations, backslash and octal escapes, hex binary data), with the
-world-readable protection of system-wide files under `/etc/fltk/`.
+world-readable protection of system-wide files under `/etc/fldtk/`.
 
 - Files live under `$XDG_CONFIG_HOME` or `$HOME/.config` on Linux, and
   under `SHGetFolderPathW(CSIDL_APPDATA` / `CSIDL_COMMON_APPDATA)` on
@@ -2562,8 +2642,9 @@ nearest-neighbor resampling (`RGBScaling`).
   is no generic `data()`/`count()`.
 - No colormaps, and no negative `ld()` on an `RGBImage` (the raw-buffer
   `fl.draw.drawImage()` accepts negative deltas).
-- `fail()` doesn't detect a too-short buffer for an ordinary `RGBImage`,
-  as in FLTK (see `FLTK_ISSUES_n.md`).
+- `fail()` returns `errMemoryAccess` when the data given to `RGBImage`
+  or `Bitmap` is too short for its size; a negative `ld()` holds the
+  error code.
 - `RGBImage.maxSize()` (the size limit the BMP, ICO, PNM, PNG and JPEG
   loaders check), `asSharedImage()`, `asSvgImage()`.
 - Not ported: `draw_scaled(X, Y, W, H)` (deprecated; use `scale(W, H,
@@ -2601,9 +2682,12 @@ resampled to the current scale. `array` is a D slice.
 **Status:** Complete — `fl.shared_image`
 ([header](https://github.com/fltk/fltk/blob/master/FL/Fl_Shared_Image.H))
 
-A reference-counted image cache keyed by file name. XBM, XPM and PNM are
-recognized directly; BMP, ICO, GIF, SVG, PNG and JPEG through the public
-`addHandler()`/`removeHandler()` mechanism (`fl_register_images()`). A
+A reference-counted image cache keyed by file name. Every format fldtk
+decodes is recognized with no setup call: XBM, XPM, PNM, GIF, BMP, ICO,
+PNG, JPEG and SVG. Handlers added with `addHandler()` are tried before
+the built-in GIF-to-SVG formats, so a program can add a format or take
+one over. `registerImages()` does nothing and is deprecated, kept so
+programs that call it still compile. A
 PNG, JPEG or SVG image made from memory with a name is added under that
 name (`SharedImage.addNamed()`), so `get(name)` and a `HelpView`
 `<img src>` find it.
@@ -2630,9 +2714,6 @@ canvas-sized RGBA buffer, the four disposal methods, the Netscape loop
 count, playback on a timer, `frameCount()` and `isAnimated()`. Scaled
 playback calls `scale()` before each frame is drawn.
 
-- Still as in FLTK: a transparent color index of 0 is treated as "no
-  transparency", and one disposal copy uses the previous frame's width as
-  the row stride.
 - Not ported: `LOG_FLAG`/`DEBUG_FLAG` and `debug()`.
 
 ### `FL/Fl_BMP_Image.H`
@@ -2653,8 +2734,9 @@ cursor; `RGBImage.maxSize()` is checked before allocating.
 `GifImage`, a `Pixmap` subclass: LZW decoding (interlaced images
 included), with the rows turned into a compressed-colormap XPM.
 
-- The color count comes from the LZW minimum code size, as in FLTK, so a
-  2-color GIF may report 4 colors (the extra two black).
+- A frame has as many colors as its color table, extended in black when
+  a pixel value lies past the end of the table (a broken file). An LZW
+  minimum code size above 8 bits is rejected as invalid.
 - There is no warning for an unknown GIF version string (fldtk has no
   `Fl::warning()`).
 
@@ -2769,20 +2851,21 @@ done by the modules below; most are described in rows above.
 | `src/drivers/OpenGL/` | `fl.gl_graphics_driver` + `fl.gl_display_device` | Complete — see below |
 | `src/drivers/PostScript/` | `fl.postscript` + `fl.printer` + `fl.pdf_file_surface` | See `FL/Fl_PostScript.H`, `FL/Fl_Printer.H`, `FL/Fl_PDF_File_Surface.H` |
 | `src/drivers/SVG/` | `fl.svg_file_surface` | See `FL/Fl_SVG_File_Surface.H` |
-| `src/drivers/Cairo/` | `fl.cairo_graphics_driver` (+ the Cairo mode in `fl.draw`) | Partial — see below |
+| `src/drivers/Cairo/` | `fl.cairo_graphics_driver` (+ the Cairo mode in `fl.draw`) | Complete — see below |
 | `src/drivers/Wayland/` | `fl.platform_wayland` (+ `fl.wayland_decoration`, the bindings and protocol modules) | See `FL/wayland.H` |
 | `src/drivers/WinAPI/`, `src/drivers/GDI/` | `fl.platform_win32` + `fl.gdi_graphics_driver`/`fl.gdiplus_graphics_driver` | See `FL/win32.H` |
 | `src/drivers/Cocoa/`, `src/drivers/Quartz/`, `src/drivers/Darwin/` | — | Not started (no macOS hardware) |
 
 ### `src/drivers/Cairo/` — `Fl_Cairo_Graphics_Driver` / `Fl_X11_Cairo_Graphics_Driver`
 
-**Status:** Partial — `fl.cairo_graphics_driver` (+ the Cairo mode in
+**Status:** Complete — `fl.cairo_graphics_driver` (+ the Cairo mode in
 `fl.draw`), Cairo build
 
 `CairoGraphicsDriver` draws every `fl.draw` primitive through Cairo and
 lays out and draws text through Pango. It draws everything on Wayland,
-and on X11 when the environment variable `FLDTK_GRAPHICS=cairo` is set
-(otherwise X11 drawing uses Xlib and Xft).
+and on X11 when the `Graphics` startup setting is `cairo`: the
+environment variable `FLDTK_GRAPHICS=cairo`, or the Graphics setting in
+`fldtk-options` (otherwise X11 drawing uses Xlib and Xft).
 
 On X11 in Cairo mode:
 - `setDrawable()` gives the driver a Cairo context for the window or
@@ -2808,12 +2891,19 @@ Details (see the module's top comment):
 - Vertex paths arrive as device-pixel points, rounded to whole pixels.
 - Images arrive as buffers, and a Cairo pattern is made for each draw.
 - Indexed colors are opaque.
-
-Missing:
-- `setFonts()` lists fonts through Xft/fontconfig, not Pango's font map.
-- No `overlay_rect()`/`focus_rect()` of its own: the overlay is drawn with
-  Xlib on X11, and the focus rectangle from line style and rectangle
-  calls.
+- Text is placed on the baseline Pango reports for the layout being drawn
+  (`pango_layout_get_baseline()`), so a character from a fallback font
+  with a larger ascent (CJK, emoji) doesn't push the line down and get its
+  bottom clipped.
+- `setFonts()` lists every face in Pango's font map, each under its own
+  name ("DejaVu Sans Condensed" bold, "DejaVu Sans ExtraLight"), read with
+  `LANG=C` so the face names are untranslated
+  (`pangoFontNames()`).
+- The focus rectangle is a 1-unit dotted line through the driver's
+  line-style and rectangle calls. The overlay rectangle is drawn and
+  erased with Xlib on X11, with the driver's drawing flushed first and
+  the drawable marked changed afterwards; on Wayland it is copied in the
+  window's Cairo buffer.
 
 ### `src/drivers/OpenGL/` — `Fl_OpenGL_Graphics_Driver` / `Fl_OpenGL_Display_Device`
 
@@ -2827,10 +2917,19 @@ turned about the start of its baseline; bitmap-font text is drawn level;
 `test/gl_text.d`), and images (`gl_draw_image()`, flipped with
 `glPixelZoom(1, -1)`, since `RGBImage` rows run top-down).
 
+- Complex polygons are filled scanline by scanline from the edges of
+  each sub-loop (`endComplexPolygonParts()`), with no edge between one
+  sub-loop and the next, so shapes drawn together and holes fill
+  correctly.
 - `drawImage()` uses `glDrawPixels()` each time, with no texture cache.
 - `drawBitmap()` builds an RGBA buffer in the current color (alpha 255
-  or 0 per bit) each time and draws it the same way, at its own size;
-  `cx`/`cy` offset it.
+  or 0 per bit) each time and draws it the same way, at its own size,
+  clipped to the visible rectangle.
+- With a dash style (`FL_DASH`, `FL_DOT`, ...), lines and rectangle
+  outlines are drawn as stippled GL lines, so a focus rectangle is dotted.
+  A custom dash array is cut into dash pieces by `stroke()`, in FLTK
+  units, the pattern running on along each path
+  (`smoke-tests/gl_dashes.d`). Cap and join styles are ignored.
 
 ## Fluid (the UI designer / D-source exporter)
 
@@ -2842,7 +2941,9 @@ Rows follow the subdirectories of FLTK's `fluid/`. The program is
 Fluid reads a `.fl` project and writes one D module from it. The editor
 shows the project's windows with live `fl.*` widgets, with selection
 shared with a tree-shaped node browser, the property panel, the widget
-bin (drag and drop onto the canvas), moving and resizing with the mouse,
+bin (drag and drop onto the canvas; a drop whose text names no widget
+type, from another program say, is ignored), moving and resizing with the
+mouse, Ctrl+drag to copy,
 align and distribute commands, undo and redo, and saving to `.fl`.
 
 How the `.fl` dialect and the generated code work (details in
@@ -2871,6 +2972,16 @@ How the `.fl` dialect and the generated code work (details in
 - The `in header`/`in source` controls of `decl`, `class` and `Function`
   nodes are kept in the `.fl` file but change nothing in D output.
 
+File > Run (F5, and the Run button of the widget panel) saves, writes
+the code, builds with `dub build` and starts the program, and File > Set
+Up dub Project writes or completes the dub.sdl of the design's dub
+project (`gui_main.d`'s `runProject()`/`setUpDubProject()`,
+`fluid.dub_project`, `fluid.run_program`, `panels/run_window.fl`;
+`BUILDING.md`, "Running a design from Fluid"). The Run window shows
+dub's output, compiler errors included, and the program's output as
+plain text. A `dub.json` recipe is not edited; Set Up dub Project shows
+the entries to add.
+
 ### Not ported
 
 On purpose, and not waiting on work:
@@ -2884,7 +2995,9 @@ On purpose, and not waiting on work:
 - C/C++ header settings (Header File, Include Header from Code, Include
   Guard, Allow Unicode UTF-8 in source code, Avoid early include of
   Fl.H); their `.fl` options are read and dropped.
-- `-h header-filename`, `-d` (external editor tracing) and `--autodoc`.
+- `-h header-filename`, `-pr` (output paths are always relative to the
+  project file, in `fluid -c` as in the editor), `-d` (external editor
+  tracing) and `--autodoc`.
 - `autodoc.h`/`.cxx` (screenshots for FLTK's own documentation).
 - Rebuilding `fluid` when only its help page's chart
   (`documentation/fluid_flow_chart_paths.svg`) changed: `buildfluid.d`
@@ -2945,7 +3058,7 @@ changes.
 
 ### `fluid/nodes/` (28 files)
 
-**Status:** Partial — `source/fluid/*_node.d`
+**Status:** Complete — `source/fluid/*_node.d`
 
 The node kinds:
 - `Node` (label, callback, user data, comment, open, selected).
@@ -2965,7 +3078,15 @@ The node kinds:
 - `FunctionNode`: `main()`, named functions, and a class's constructor,
   destructor and methods.
 - `CommentNode`: a comment entry in the tree (with `in_h_`/`in_c_`),
-  separate from every node's `comment` property.
+  separate from every node's `comment` property, written where it
+  stands: at the top of the file, or in a function body, code block or
+  widget class, as a `/* ... */` block.
+
+A class or widget class inside another class is written as a `static`
+nested class; a function in a declaration block inside a class is a
+method. A unit test at the end of `code_writer.d` generates every node
+kind in every container Fluid allows it in, and fails if any of them is
+missing from the output.
 
 Properties:
 - A widget's `type` is chosen from a table per widget kind
@@ -3016,8 +3137,9 @@ On the canvas:
   `scrollOffsetWithin()`/`geometryFromLive()`/`syncDescendantsFromLive()`
   convert between them. Moving or resizing a container writes its
   descendants' geometry back to their nodes. `ScrollProxy` repaints the
-  whole canvas window on every scroll; rebuilding the canvas (undo,
-  reload) scrolls back to 0.
+  whole canvas window on every scroll. Rebuilding the canvas for undo or
+  redo keeps each `Scroll`'s position (`ProjectCanvas.rebuildFrom()`,
+  matched by node `uid`); reopening a file starts at 0.
 - Images: XPM and GIF are embedded as pixmaps and XBM as bitmaps; other
   formats as their compressed bytes with `compress`, or as decoded RGB
   pixels without. `bind_image`/`bind_deimage` (`Widget.bindImage()`/
@@ -3029,10 +3151,7 @@ On the canvas:
   Reset button, "convert to raw pixel data" (the inverse of `compress`)
   and bind, for both images, written to the selected nodes. It shows the
   image file's own size (`SharedImage.get()`).
-
-Missing:
-- Changing the scale in the Image Options dialog doesn't update the
-  widget on the canvas until it is rebuilt.
+  Changing the scale there updates the widget on the canvas at once.
 
 ### `fluid/io/`
 
@@ -3053,7 +3172,7 @@ Missing:
   `o.doCallback()` in `setup` runs the real callback (`test/tree.fl`'s
   "Selection Mode" choice relies on it).
 
-### `source/fluid/panels/` (10 `.fl` files)
+### `source/fluid/panels/` (11 `.fl` files)
 
 **Status:** Complete
 
@@ -3067,7 +3186,7 @@ Fluid's own windows are `.fl` files in the D dialect, generated by
 uses `make_widget_panel()`, `load()`, `current()`,
 `refreshCodeFromNode()`, `wireEditHooks()`, the `onBeforeEdit`/
 `onEdited`/`onOpenExternalEditor` hooks and `overlayCb`/`okCb`/
-`liveModeCb`/`thePanel`/`widgetTabs`.
+`liveModeCb`/`runCb`/`thePanel`/`widgetTabs`.
 
 - Every field applies its edit at once, to every selected node. `load()`
   fills the panel through one `propagateLoad*()` function per page.
@@ -3077,7 +3196,8 @@ uses `make_widget_panel()`, `load()`, `current()`,
   differences are saved and generated
   (`fluid.instantiate.defaultWidgetFor()`/`clearDefaultProperties()`).
 - A control that has no effect in the current state is inactive (the
-  Inside alignment button for a centred label).
+  Inside alignment button for a centred label, Compact for a check or
+  round button, which has no frame to join into a bar).
 - OK checks that brackets and quotes balance in the widget's code,
   callback and user data (`fluid.code_check`, which knows D's backtick
   and `r"..."` strings and `/+ +/` comments), reports "Error in
@@ -3085,17 +3205,20 @@ uses `make_widget_panel()`, `load()`, `current()`,
 - Live Resize (`liveModeCb`) opens a resizable copy of the selected
   window or group (`fluid.instantiate.instantiateStandalone()`), since the
   canvas doesn't reflow while editing. Hide Overlays forwards to
-  `toggleOverlays()`.
+  `toggleOverlays()`, and Run (`runCb`) to File > Run.
 - An image file that can't be opened or decoded is reported ("Can't open
   image file" / "Can't read image file") once per path per project.
 - The canvas shows a plain window and menu bar whichever Single/Double or
-  `Fl_Sys_Menu_Bar` choice is made.
+  `Fl_Sys_Menu_Bar` choice is made, which is how both look on every
+  platform fldtk supports (`SysMenuBar` differs from `MenuBar` only on
+  macOS).
 
 **Other panels and resources:**
 - `fluid_icon.fl`: the app icon, the SVG flask of `fluid.flask_logo` at
   every size a desktop asks for.
 - `fldtkLicense.fl`: the bundled project template.
 - `about_panel.fl`: the flask logo with rising bubbles.
+- `run_window.fl`: File > Run's output, with Stop and Close.
 - `template_panel.fl`: New from Template and Save As Template (see
   `fluid/app/`).
 - `codeview_panel.fl`: Source and Project tabs, Find, and two-way
@@ -3108,7 +3231,10 @@ uses `make_widget_panel()`, `load()`, `current()`,
   highlight.
 - `settings_panel.fl`: FLTK's six tabs at its 360×585 size, with tab
   icons drawn from SVG (`panels/pixmaps/`).
-  - General and Locale work.
+  - General and Locale work. General's fldtk Folder
+    (`fluid.dub_project.fldtkFolderPrefKey`) is the fldtk folder Run,
+    Set Up dub Project and the dub header use; blank means the folder
+    `fluid` is in.
   - Project: the Code File field (`gui_main.codeFileName()`, kept as
     the `code_name` option; the editor's `fluid -c -o`).
   - Layout: named layout suites (`fluid.layout_suite`).
@@ -3121,7 +3247,7 @@ uses `make_widget_panel()`, `load()`, `current()`,
 
 ### `fluid/proj/`
 
-**Status:** Partial
+**Status:** Complete
 
 - **`undo.h`/`.cxx`**: undo steps are in-memory snapshots of the
   project's `.fl` text. `checkpointOnce()` makes a window resize drag
@@ -3158,22 +3284,19 @@ uses `make_widget_panel()`, `load()`, `current()`,
     build step is found.
   - Blocks keep their indentation and are un-indented by the tag line's
     indentation. `setup` and `finalize` code is written with the widget's
-    name (`this` in a widget class) for `o`, and merged back with `o`.
+    name (`this` in a widget class) for `o`, and merged back with `o`
+    (`fluid.code_highlight.renameIdentifier()`): only uses as code are
+    renamed, not text in strings, character literals or comments, and
+    not a member access (`x.o`). Merging back also turns a use of the
+    widget's name that was written out in the `.fl` file into `o`, which
+    means the same. D's token strings (`q{...}`) count as code.
     `FINALIZE` blocks are written for every widget, and menu-item
-    callbacks merge back (FLTK does neither; see `FLTK_ISSUES_n.md`).
+    callbacks merge back.
   - Command line: `-m`/`--merge-back`, `-mb`/`--merge-back-if-safe` and
     `-mi`/`--merge-back-info` (`compile.d`'s `mergeBackProject()`) merge
     into the `.fl` file and save it (the info mode only reports), exit
     with 1 on an unreadable tag or an unsafe `--merge-back-if-safe`
     merge, and combine with `-c` to merge before regenerating.
-
-Missing:
-- The `o` ↔ widget-name substitution in `setup` and `finalize` code
-  (`translateOwnSlot()` in `code_writer.d`, `setupToGenerated()`/
-  `setupFromGenerated()` in `fluid.mergeback`) is a whole-word regex, so
-  it also changes an `o` inside a string or comment (`"press o"` becomes
-  `"press btn"`), and merging back turns any use of the widget's name,
-  in strings too, into `o`.
 
 ### `fluid/app/`
 
@@ -3201,7 +3324,8 @@ Missing:
   a PNG preview through `fl.core.captureWindow()`/`writePng()`). Each
   browser row carries its file through `Browser.data()`.
 - **Menus** (`gui_main.d`): File, Edit, New, Layout, Shell and Help, in
-  FLTK's order, with its shortcuts and dividers.
+  FLTK's order, with its shortcuts and dividers. File also has Run (F5)
+  and Set Up dub Project.
   - **File:** New, Open, Save, Save As, New From Template, Save As
     Template, Write Code (`writeCodeFile()`), MergeBack Code (only when
     the project uses MergeBack), Write Strings, Print, Revert, Insert (the
@@ -3287,8 +3411,12 @@ Missing:
   group edges and margins, tabs margins, which replace the group margins
   inside a `Tabs`, sibling alignment, ideal widget size, window and group
   grids with the grid dots drawn while dragging) snap and draw when
-  guides are shown (`ProjectCanvas.showGuides`). The edge clamping keeps
-  a likely typo from FLTK's code (see `FLTK_ISSUES_n.md`).
+  guides are shown (`ProjectCanvas.showGuides`). Resizing a selection
+  moves the widgets on the dragged edge with it and keeps the others
+  within the new bounds. Moving the selection with Ctrl held moves a copy
+  of it instead, made the way Duplicate makes one, and the copy and its
+  move are one undo step; whether a drag copies is decided when the mouse
+  first moves.
 - **shell_command:** `fluid.shell_process` runs a command
   (`std.process.pipeShell()`), expands macros and streams the output
   through `addFd()` and a timer; `fluid.shell_command`
@@ -3305,7 +3433,7 @@ Missing:
 
 ### `fluid/tools/`
 
-**Status:** Partial
+**Status:** Complete
 
 - **`filename.h`/`.cxx`**: `path_util.d` (`filenameShortened()` and the
   rest), working on code points. `History` shortens recent-file paths to
@@ -3319,11 +3447,19 @@ Missing:
   Editor:" and "Use for Code Nodes". `gui_main.d` keeps one editor per
   code node and a 2-second timer that takes in changes from all of them.
   The same code is used on Windows (`ExternalCodeEditor_WIN32` is not
-  ported).
+  ported); the temp files go under `std.file.tempDir()`. It works with
+  Notepad on Windows and with `vi`, `nano`, `mc -e`, KWrite and Kate on
+  Linux: a save comes back into the node at once, and a command that
+  can't be started gives an alert. A terminal editor runs in the
+  terminal Fluid was started from; when Fluid was started without one,
+  the command has to open a terminal itself (`konsole -e nano`).
+  Quitting the editor without saving leaves the node as it was. Watching
+  ends when the editor process does, so an editor that passes the file
+  to a copy of itself that is already running, and exits at once, is
+  not watched at all: what is saved there never reaches the node. Such
+  editors need their wait option (`kate --block`, `code --wait`). The command is split at
+  spaces, so an editor path containing spaces doesn't work.
 - **`autodoc.h`/`.cxx`**: not ported (see "Not ported" above).
-
-Missing:
-- The external editor has not been tried yet, on Linux or Windows.
 
 ### `fluid/widgets/`
 
@@ -3345,7 +3481,12 @@ Fluid's own widgets, built on `fl.*`.
   the browser to the selected row (`syncSelection()`). The browser shows
   every top-level node of the project.
 - **Widget bin** (`panels/function_panel.fl`, the "Widget Bin" window):
-  all 8 groups and 57 buttons at FLTK's positions. `BinButton` adds its
+  all 8 groups and 57 buttons. Each group's buttons sit on a 24-pixel grid
+  in an inner group they fill completely, as `compact()` buttons, so each
+  group draws as one bar; empty grid places are blank buttons. Each
+  button's icon is an `image` line in the `.fl` file naming its SVG in
+  `pixmaps_svg/`, and its `setup` code sets its node type
+  (`BinButton.typeName()`). `BinButton` adds its
   widget on a click or by dragging it onto a canvas (XDND drag source);
   the 9 Code buttons are click-only; the 4 menu-item buttons can be
   dropped on a menu widget or submenu. The Window button
@@ -3353,8 +3494,9 @@ Fluid's own widgets, built on `fl.*`.
   borderless preview following the pointer and creates the window where it
   is dropped on the desktop (`fluid.bin_button.onWindowDropped`).
 - **Icons** (`fluid.pixmaps`, `pixmapFor()`/`loadPixmaps()`): one per
-  node type, used by the bin buttons and browser rows
-  (`TreeItem.usericon()`). They are SVG redrawings of FLTK's
+  node type, used by the browser rows (`TreeItem.usericon()`) and the
+  New menu; the bin buttons load the same files through their `image`
+  lines. They are SVG redrawings of FLTK's
   `fluid/pixmaps/*.xpm` (`source/fluid/pixmaps_svg/`, embedded with a
   string import), drawn by `SvgImage` at the screen's scale.
 - **Which widgets the bin and New menu offer:** every widget kind
@@ -3379,6 +3521,16 @@ Fluid's own widgets, built on `fl.*`.
   active canvas's, or the browser's when there is no canvas
   (`currentSelection()`). A new node opens in the property panel
   (`openNode()`), as does double-clicking a row.
+- **Change To** (`fluid.change_type`): a widget changes into another
+  kind of its family in place: text fields and number widgets (one
+  family), buttons, menus, and Group/Pack/Scroll/Tabs/Tile/Wizard. It
+  keeps its place, geometry, label, name, callback and every property
+  the new kind also has; the rest is cleared. Flex and Grid, and kinds
+  outside these families, can't change kind. It is offered in the
+  project tree's right-click menu (which also holds Cut, Copy, Paste,
+  Duplicate, Delete, Earlier and Later), in the canvas's right-click menu
+  on a selected widget (next to New), and as "Change to:" on the Style
+  tab. Each change is one undo step.
 - **New widget geometry:** each type gets its size from the active
   layout preset (`fluid.instantiate.idealSizeFor()`, `fluid.layout_suite`
   with FLTK's "FLTK" and "Grid" suites, and user suites stored in the
@@ -3395,8 +3547,8 @@ Fluid's own widgets, built on `fl.*`.
   FormulaInput` override), with FLTK's variables `i`, `x`, `y`, `w`, `h`,
   `px`, `py`, `pw`, `ph`, `sx`, `sy`, `sw`, `sh`, `cx`, `cy`, `cw`, `ch`
   read from the canvas; `i` is the widget's index in the selection. The
-  Image Options scale fields use it without variables. `eval_var()`
-  keeps an FLTK bug (see `FLTK_ISSUES_n.md`).
+  Image Options scale fields use it without variables (a name is then
+  0).
 - **Code highlighting** (`fluid.code_highlight`, from `Code_Editor`/
   `Code_Viewer`/`Style_Parser`): a D lexer (`styleParse()`) with token
   classes following nano's `d.syntax` and colors for a white background,

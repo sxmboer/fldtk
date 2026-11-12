@@ -39,8 +39,7 @@
  *    `preference_system_rootnode()`/`preference_memory_rootnode()` in
  *    `Fl_Unix_System_Driver.cxx`) is ported, verbatim, as private
  *    functions in this module -- including the exact `$XDG_CONFIG_HOME`
- *    resolution, the legacy `~/.fltk/<vendor>` fallback-if-it-already-
- *    exists check, and `/etc/fltk/<vendor>/<application>.prefs` for
+ *    resolution and `/etc/fldtk/<vendor>/<application>.prefs` for
  *    `Root.system`. `newUUID()` uses Phobos' `std.uuid.randomUUID()`
  *    (a real RFC4122 random UUID generator) instead of transliterating
  *    FLTK's raw entropy-gathering fallback (time + rand() + a stack
@@ -773,7 +772,7 @@ final class RootNode
             f = File(filename_, "wb");
         catch (Exception)
             return -1;
-        f.writef("; FLTK preferences file format 1.0\n");
+        f.writef("; fldtk preferences file format 1.0\n");
         f.writef("; vendor: %s\n", vendor_);
         f.writef("; application: %s\n", application_);
         prefs_.node.write(f);
@@ -802,7 +801,7 @@ final class RootNode
             p = p[0 .. dot];
 
         bool ok = makePath(p);
-        if (preferencesNeedProtectionCheck && p.startsWith("/etc/fltk/"))
+        if (preferencesNeedProtectionCheck && p.startsWith("/etc/fldtk/"))
             protectDir(p);
         path = p ~ "/";
         return ok;
@@ -813,7 +812,7 @@ final class RootNode
 // Unix path resolution, ported from Fl_Unix_System_Driver.cxx.
 // ---------------------------------------------------------------------
 
-private enum preferencesNeedProtectionCheck = true; // Unix: RootNode::write()/getPath() chmod the /etc/fltk/ tree user-readable
+private enum preferencesNeedProtectionCheck = true; // Unix: RootNode::write()/getPath() chmod the /etc/fldtk/ tree user-readable
 
 private string preferenceRootnode(Root root, string vendor, string application)
 {
@@ -830,7 +829,7 @@ private string preferenceRootnode(Root root, string vendor, string application)
         version (Windows)
             return preferenceWindowsRootnode(root, vendor, application);
         else
-            return "/etc/fltk/%s/%s.prefs".format(vendor, application);
+            return "/etc/fldtk/%s/%s.prefs".format(vendor, application);
     case rootMemory:
     default:
         return "";
@@ -893,9 +892,7 @@ private string homeDirectory()
 
 /// Ported from `Fl_Unix_System_Driver::preference_user_rootnode()`:
 /// `$XDG_CONFIG_HOME/<vendor>/<application>.prefs` (defaulting
-/// `$XDG_CONFIG_HOME` to `$HOME/.config`), falling back to the legacy
-/// `$HOME/.fltk/<vendor>/<application>.prefs` location only if that
-/// legacy vendor directory already exists on disk.
+/// `$XDG_CONFIG_HOME` to `$HOME/.config`).
 private string preferenceUserRootnode(string vendor, string application)
 {
     auto home = homeDirectory();
@@ -913,13 +910,6 @@ private string preferenceUserRootnode(string vendor, string application)
     }
     if (base.length == 0 || base[$ - 1] != '/') base ~= "/";
     base ~= vendor;
-
-    if (!exists(base))
-    {
-        auto legacy = home ~ "/.fltk/" ~ vendor;
-        if (exists(legacy))
-            return legacy ~ "/" ~ application ~ ".prefs";
-    }
 
     return base ~ "/" ~ application ~ ".prefs";
 }
@@ -960,11 +950,11 @@ private void protectPath(string filename)
     {
         import core.sys.posix.sys.stat : chmod;
 
-        if (!filename.startsWith("/etc/fltk/")) return;
+        if (!filename.startsWith("/etc/fldtk/")) return;
         // chmod every directory component down to (not including) the
         // file itself user-readable, matching RootNode::write()'s own
-        // loop exactly: filename[9] is the '/' right after "/etc/fltk".
-        size_t p = 9;
+        // loop exactly: filename[10] is the '/' right after "/etc/fldtk".
+        size_t p = 10;
         while (true)
         {
             chmod(filename[0 .. p].toStringz(), octal!755);
@@ -1021,7 +1011,7 @@ class Preferences
 
     /// Opens (creating if necessary) the base/root database for
     /// `vendor`/`application`, e.g.
-    /// `new Preferences(rootUserL, "fltk.org", "myapp")`.
+    /// `new Preferences(rootUserL, "fldtk", "myapp")`.
     this(Root root, string vendor, string application)
     {
         node = new PreferencesNode(".");

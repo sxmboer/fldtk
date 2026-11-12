@@ -741,7 +741,7 @@ class Board : DoubleWindow
 {
     this(int w, int h)
     {
-        super(w, h, "FLTK Checkers");
+        super(w, h, "fldtk Checkers");
         color(15);
     }
 

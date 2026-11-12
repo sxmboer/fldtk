@@ -39,16 +39,6 @@
  *    units -- FLTK's own C++ workaround for not wanting a shared
  *    header just for one internal function; D's module system doesn't
  *    need that workaround.
- *  - **Known, faithfully-ported FLTK quirk, not silently fixed**:
- *    the arbitrary-rotation `'0'` escape (`drawSymbol()`'s
- *    `case '0':` branch) is documented (`documentation/src/common.dox`)
- *    as "'0', followed by four more digits", but the actual
- *    implementation reads only `p[1]`, `p[2]`, `p[3]` (three digits,
- *    skipping the character immediately after '0') while still
- *    advancing `p` by 4 -- silently discarding the first of the four
- *    documented digits rather than using or validating it. Ported
- *    exactly as FLTK behaves (not as documented); see
- *    FLTK_ISSUES_n.md.
  */
 module fl.symbols;
 
@@ -56,6 +46,9 @@ import fl.enumerations : Color, white, light3, dark3, lineSolid;
 import fl.draw;
 import fl.return_button : returnArrow;
 import std.math : cos, sin, PI;
+import std.algorithm.searching : all;
+import std.ascii : isDigit;
+import std.conv : to;
 
 private struct SymbolEntry
 {
@@ -163,35 +156,11 @@ int drawSymbol(const(char)[] label, int x, int y, int w, int h, Color col)
         switch (c)
         {
             case '0':
-                // See this module's top comment: faithfully reproduces
-                // FLTK's own off-by-one (skips the digit right
-                // after '0', reads the next three, still advances 4).
-                //
-                // Bounds-checked departure from FLTK here, not a
-                // faithfulness gap: FLTK's C string is NUL-
-                // terminated, so a short/malformed "@0" label just
-                // reads past the NUL into whatever bytes happen to
-                // follow in memory (real, if silent, undefined
-                // behavior) and still unconditionally advances p by 4.
-                // A D slice has no such give -- advancing p past
-                // label.length and then slicing label[p .. $] below is
-                // a hard crash (a real
-                // core.exception.ArraySliceError, reachable via
-                // test/fullscreen). Only
-                // advance the full 4 when there's actually a 4th
-                // character to land on; otherwise clamp to the end of
-                // the string, matching this function's normal
-                // "p == label.length means no symbol name follows"
-                // handling for every other short-label case just above.
-                if (p + 3 < label.length)
+                // '0' and four digits: the angle in degrees.
+                if (p + 4 <= label.length && label[p .. p + 4].all!isDigit)
                 {
-                    rotangle = 1000 * (label[p + 1] - '0') + 100 * (label[p + 2] - '0')
-                        + 10 * (label[p + 3] - '0');
+                    rotangle = 10 * label[p .. p + 4].to!int;
                     p += 4;
-                }
-                else
-                {
-                    p = label.length;
                 }
                 break;
             case '1': rotangle = 2250; break;

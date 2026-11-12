@@ -95,6 +95,66 @@ unittest
     assert(pangoFontName(16, "Noto Serif", false) == "Noto Serif");
 }
 
+/**
+ * Every face in Pango's font map as an `fl.draw` font name, for
+ * `fl.draw.setFonts()` in Cairo mode: a style character for the face
+ * name's "Bold" and "Italic"/"Oblique" words (`'B'`, `'I'`, `'P'` or
+ * `' '`), then the family followed by the face name's other words, so
+ * "DejaVu Sans" face "Condensed Bold Oblique" becomes
+ * "PDejaVu Sans Condensed" and `pangoFontName()` turns it back into
+ * "DejaVu Sans Condensed Bold Italic". "Regular" is dropped. Face names
+ * are read with `LANG=C`, so they are the untranslated ones. Unsorted;
+ * faces that come out the same appear once.
+ */
+string[] pangoFontNames()
+{
+    import std.string : fromStringz, toStringz;
+    import std.array : split, join;
+    import std.uni : sicmp;
+    import std.process : environment;
+    import fl.glib_c : g_free;
+
+    string savedLang = environment.get("LANG");
+    environment["LANG"] = "C";
+    scope (exit)
+    {
+        if (savedLang is null) environment.remove("LANG");
+        else environment["LANG"] = savedLang;
+    }
+
+    bool[string] seen;
+    string[] names;
+    PangoFontFamily** families;
+    int nFamilies;
+    pango_font_map_list_families(pango_cairo_font_map_get_default(), &families, &nFamilies);
+    foreach (f; 0 .. nFamilies)
+    {
+        string family = pango_font_family_get_name(families[f]).fromStringz.idup;
+        PangoFontFace** faces;
+        int nFaces;
+        pango_font_family_list_faces(families[f], &faces, &nFaces);
+        foreach (j; 0 .. nFaces)
+        {
+            bool isBold, isItalic;
+            string[] rest;
+            foreach (word; pango_font_face_get_face_name(faces[j]).fromStringz.idup.split(' '))
+            {
+                if (sicmp(word, "bold") == 0) isBold = true;
+                else if (sicmp(word, "italic") == 0 || sicmp(word, "oblique") == 0) isItalic = true;
+                else if (sicmp(word, "regular") != 0 && word.length) rest ~= word;
+            }
+            char style = isBold ? (isItalic ? 'P' : 'B') : (isItalic ? 'I' : ' ');
+            string name = style ~ (rest.length ? family ~ " " ~ rest.join(" ") : family);
+            if (name in seen) continue;
+            seen[name] = true;
+            names ~= name;
+        }
+        g_free(faces);
+    }
+    g_free(families);
+    return names;
+}
+
 /// Replaces invalid UTF-8 with U+FFFD -- FLTK's `fl_utf8_clean()`.
 /// Returns `s` itself when it is already valid.
 private const(char)[] utf8Clean(const(char)[] s)
@@ -120,7 +180,7 @@ private const(char)[] utf8Clean(const(char)[] s)
 private final class FontDescriptor
 {
     PangoFontDescription* fontref;
-    int ascent, descent, lineHeight;
+    int descent, lineHeight;
     int[][] widths; // 64 pages of 1024 widths, -1 = not measured yet
 
     this(string name, Fontsize size, PangoContext* context)
@@ -132,7 +192,6 @@ private final class FontDescriptor
         PangoFontset* fontset = pango_font_map_load_fontset(pango_cairo_font_map_get_default(),
             context, fontref, pango_language_get_default());
         PangoFontMetrics* metrics = pango_fontset_get_metrics(fontset);
-        ascent = pango_font_metrics_get_ascent(metrics);
         descent = pango_font_metrics_get_descent(metrics);
         lineHeight = pango_font_metrics_get_height(metrics);
         pango_font_metrics_unref(metrics);
@@ -891,7 +950,7 @@ class CairoGraphicsDriver : GraphicsDriver
         pango_layout_get_extents(pangoLayout_, &ink, null);
         double f = PANGO_SCALE;
         dx = cast(int)(ink.x / f);
-        dy = cast(int)((ink.y - font_.ascent) / f);
+        dy = cast(int)((ink.y - pango_layout_get_baseline(pangoLayout_)) / f);
         w = cast(int) ceil(ink.width / f);
         h = cast(int) ceil(ink.height / f);
     }
@@ -913,9 +972,12 @@ class CairoGraphicsDriver : GraphicsDriver
         cairo_save(cairo_);
         cairo_translate(cairo_, x - 0.5, y - 0.5);
         if (s != 1) cairo_scale(cairo_, s, s);
-        cairo_translate(cairo_, 0, -font_.ascent / cast(double) PANGO_SCALE);
         str = utf8Clean(str);
         pango_layout_set_text(pangoLayout_, str.ptr, cast(int) str.length);
+        // The layout's own baseline, not the font's ascent: a fallback
+        // font (CJK, emoji) with a larger ascent lowers the baseline of
+        // the line it is on, which would push the text below `y`.
+        cairo_translate(cairo_, 0, -pango_layout_get_baseline(pangoLayout_) / cast(double) PANGO_SCALE);
         pango_cairo_show_layout(cairo_, pangoLayout_);
         cairo_restore(cairo_);
         drew();
@@ -1024,7 +1086,9 @@ class CairoGraphicsDriver : GraphicsDriver
             cairo_matrix_translate(&m, -xs, -ys);
             if (ws != srcW || hs != srcH)
             {
-                bool smooth = fabs(ws / cast(double) srcW - 1) > 0.02 || fabs(hs / cast(double) srcH - 1) > 0.02;
+                import fl.image : Image;
+                bool smooth = Image.scalingAlgorithm() == Image.RGBScaling.bilinear
+                    && (fabs(ws / cast(double) srcW - 1) > 0.02 || fabs(hs / cast(double) srcH - 1) > 0.02);
                 cairo_pattern_set_filter(pat, smooth ? CAIRO_FILTER_GOOD : CAIRO_FILTER_FAST);
                 cairo_pattern_set_extend(pat, CAIRO_EXTEND_PAD);
             }

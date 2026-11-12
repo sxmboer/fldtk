@@ -2,7 +2,7 @@
 version 1.0000
 comment {About test/preferences:
 
-The preferences app shows two features of FLTK and FLTK.
+The preferences app shows two features of fldtk and Fluid.
 
 The Preferences class is used as a storage for user
 settings between app launches. Preferences can store
@@ -27,7 +27,7 @@ below.
 decl {int gLanguage = 0;
 // Current languages: 0 = English, 1 = German.
 
-immutable string project = "fltk.org";
+immutable string project = "fldtk";
 immutable string application = "test/preferences";
 
 immutable string[2][] translationTable = [

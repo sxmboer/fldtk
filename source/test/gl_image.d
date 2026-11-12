@@ -97,7 +97,6 @@ void chooserCb(Widget widget, GlImageWindow mainwin)
 void main(string[] args)
 {
     fl.useHighResGL(true);
-    registerImages();
 
     GlImageWindow mainwin;
 

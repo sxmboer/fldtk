@@ -102,6 +102,11 @@ unittest
     a.is_word_start = 1;
     assert(a.isWordStart == 1 && !a.isLineBreak);
 
-    assert(pango_version() >= PANGO_VERSION_ENCODE(1, 57, 0));
+    // The installed library's version functions are reachable and agree.
+    // (The bindings follow the 1.57 headers; a system Pango can be older.)
+    int v = pango_version();
+    assert(v >= PANGO_VERSION_ENCODE(1, 0, 0));
+    assert(pango_version_string() !is null && *pango_version_string() != 0);
+    assert(pango_version_check(v / 10000, v / 100 % 100, v % 100) is null);
     assert(PANGO_TYPE_LAYOUT() == pango_layout_get_type());
 }

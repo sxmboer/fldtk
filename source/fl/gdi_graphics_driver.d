@@ -148,14 +148,24 @@ class GdiGraphicsDriver : GraphicsDriver
     /// Ported from `Fl_XMap` (`FL/win32.H`): one cached pen (plus, once a
     /// brush is requested for it, an index into `brushSlots_`) per real
     /// GDI color. `brush == -1` means "no cached brush slot yet",
-    /// matching FLTK's own sentinel exactly.
+    /// matching FLTK's own sentinel exactly. The pen is reused only
+    /// while its width, style and dashes match the current line style.
     private struct Xmap
     {
         COLORREF rgb;
         HPEN pen;
         int brush = -1;
         int pwidth;
+        int pstyle;
+        uint[] pdashes;
     }
+
+    /// The current line style as `ExtCreatePen()` flags and dashes, set
+    /// by `lineStyle()` and used for every pen `color()` makes, so the
+    /// style stays in effect when the color changes (as an X11 GC's
+    /// line attributes do).
+    private int penStyle_ = PS_GEOMETRIC | PS_ENDCAP_FLAT | PS_JOIN_ROUND;
+    private uint[] penDashes_;
 
     /// One slot per indexed `Fl_Color` (0-255) -- matches FLTK's own
     /// `Fl_XMap fl_xmap[256]`.
@@ -725,7 +735,8 @@ class GdiGraphicsDriver : GraphicsDriver
     }
 
     /// Ported from the file-scope `set_xmap()`: (re)creates `xmap`'s pen
-    /// at color `c`/width `lw`, deleting whatever pen it had before
+    /// at color `c`/width `lw` in the current line style, deleting
+    /// whatever pen it had before
     /// (same deselect-first dance as `clearXmap()`, inlined since
     /// FLTK's own `set_xmap()` duplicates it rather than calling
     /// `clear_xmap()`).
@@ -741,8 +752,11 @@ class GdiGraphicsDriver : GraphicsDriver
         LOGBRUSH penbrush;
         penbrush.lbStyle = BS_SOLID;
         penbrush.lbColor = c;
-        xmap.pen = ExtCreatePen(PS_GEOMETRIC | PS_ENDCAP_FLAT | PS_JOIN_ROUND, lw, &penbrush, 0, null);
+        xmap.pen = ExtCreatePen(penStyle_, lw, &penbrush, cast(uint) penDashes_.length,
+            penDashes_.length ? penDashes_.ptr : null);
         xmap.pwidth = lw;
+        xmap.pstyle = penStyle_;
+        xmap.pdashes = penDashes_;
         xmap.brush = -1;
     }
 
@@ -774,7 +788,8 @@ class GdiGraphicsDriver : GraphicsDriver
             ubyte r, g, b;
             colorToRgb8(c, r, g, b);
             COLORREF cr = RGB(r, g, b);
-            if (freeColorXmap_.pen is null || cr != freeColorXmap_.rgb || tw != freeColorXmap_.pwidth)
+            if (freeColorXmap_.pen is null || cr != freeColorXmap_.rgb || tw != freeColorXmap_.pwidth
+                || !penMatchesStyle(freeColorXmap_))
             {
                 clearXmap(freeColorXmap_);
                 setXmap(freeColorXmap_, cr, tw);
@@ -798,7 +813,7 @@ class GdiGraphicsDriver : GraphicsDriver
             ubyte r, g, b;
             colorToRgb8(c, r, g, b);
             COLORREF cr = RGB(r, g, b);
-            if (xmap.pen is null || xmap.pwidth != tw || cr != xmap.rgb)
+            if (xmap.pen is null || xmap.pwidth != tw || cr != xmap.rgb || !penMatchesStyle(*xmap))
             {
                 clearXmap(*xmap);
                 setXmap(*xmap, cr, tw);
@@ -806,6 +821,11 @@ class GdiGraphicsDriver : GraphicsDriver
             currentXmap_ = xmap;
         }
         SelectObject(hdc_, currentXmap_.pen);
+    }
+
+    private bool penMatchesStyle(ref const Xmap xmap) const
+    {
+        return xmap.pstyle == penStyle_ && xmap.pdashes == penDashes_;
     }
 
     /// Ported from `fl_brush()`/`fl_brush_action()`
@@ -1085,17 +1105,9 @@ class GdiGraphicsDriver : GraphicsDriver
     // rather than hardcoding `1` -- it reduces to that exact behavior
     // when the scale is `1.0`.
     //
-    // **A real, faithfully-ported FLTK quirk, not a bug**: unlike
-    // `color()`, this method does *not* persist style/dash state for a
-    // later `color()` call to reapply -- it directly overwrites whatever
-    // pen `currentXmap_` (the *current* color) already has, immediately.
-    // A subsequent `color()` call with a *different* color rebuilds a
-    // plain solid pen with no memory of any dash pattern `lineStyle()`
-    // set on the *previous* color -- matching FLTK's real, if
-    // easy-to-miss, behavior exactly (real FLTK code almost always calls
-    // `line_style()` *after* `color()` and resets it back to solid
-    // afterward, which is why this ordering dependency rarely surfaces
-    // as a visible bug in practice).
+    // The style is kept (`penStyle_`/`penDashes_`) and applies to every
+    // pen `color()` makes afterwards, so a dash pattern survives a color
+    // change.
     /// Ported from the base class's own tracked fields (`Fl_Graphics_
     /// Driver::line_style_`, and GDI's own private `style_` -- both hold
     /// the same raw `style` value in FLTK too, just tracked in two
@@ -1164,28 +1176,11 @@ class GdiGraphicsDriver : GraphicsDriver
             s1 |= style & 0xff;
         }
 
+        penStyle_ = s1;
+        penDashes_ = a[0 .. n].dup;
         if (currentXmap_ is null) color(black);
-        LOGBRUSH penbrush;
-        penbrush.lbStyle = BS_SOLID;
-        penbrush.lbColor = currentXmap_.rgb;
-        HPEN newpen = ExtCreatePen(s1, width, &penbrush, n, n ? a.ptr : null);
-        if (newpen is null) return;
-        // `SelectObject(hdc_, newpen)`'s returned old pen must NOT also
-        // be passed to `DeleteObject()`: `color()` always leaves
-        // `currentXmap_.pen` selected into `hdc_` beforehand, so the
-        // returned old pen *is* `currentXmap_.pen` in the normal case --
-        // deleting it via both that return value and `currentXmap_.pen`
-        // below would double-free the same HPEN handle, corrupting
-        // whatever unrelated GDI object Windows had already reissued
-        // that recycled handle value to. Matches the existing, already-
-        // safe `setXmap()`/`clearXmap()` pattern just above: delete only
-        // the cache's own retired pen, exactly once, and don't touch
-        // whatever `SelectObject()` reports as previously selected (may
-        // not even be a pen this driver owns, e.g. a stock object on a
-        // freshly-acquired `hdc_`).
-        SelectObject(hdc_, newpen);
-        DeleteObject(currentXmap_.pen);
-        currentXmap_.pen = newpen;
+        setXmap(*currentXmap_, currentXmap_.rgb, width);
+        SelectObject(hdc_, currentXmap_.pen);
     }
 
     // ---- clipping -- HRGN + CombineRgn/SelectClipRgn, closer to
@@ -1357,8 +1352,21 @@ class GdiGraphicsDriver : GraphicsDriver
         }
         else
         {
+            // A pie is a fill: its edge is drawn with the default line,
+            // so the pie's size doesn't depend on the current line width
+            // or style.
+            float s = effectiveScale();
+            if (currentXmap_ is null) color(black);
+            LOGBRUSH lb;
+            lb.lbStyle = BS_SOLID;
+            lb.lbColor = currentXmap_.rgb;
+            HPEN thin = ExtCreatePen(PS_GEOMETRIC | PS_ENDCAP_FLAT | PS_JOIN_ROUND,
+                s < 2 ? 0 : cast(int) s, &lb, 0, null);
+            HGDIOBJ oldPen = SelectObject(hdc_, thin);
             int e = advancedModeEdge();
             Pie(hdc_, x, y, x + w - e, y + h - e, xa, ya, xb, yb);
+            SelectObject(hdc_, oldPen);
+            DeleteObject(thin);
         }
     }
 
@@ -1582,9 +1590,23 @@ class GdiGraphicsDriver : GraphicsDriver
      * instance already uses, matching where FLTK's own mechanism
      * actually lives rather than inventing a subclass just to house it.
      */
+    /// On screen, a buffer drawn at another size is first resampled to
+    /// the device size (`fl.draw.resampleImage()`, bilinear unless
+    /// `Image.scalingAlgorithm()` says nearest), as FLTK's
+    /// `draw_image_rescale()` does; on a page GDI stretches it.
     override void drawImage(const(ubyte)* buf, int x, int y, int w, int h, int d, int l)
     {
-        drawImageImpl(buf, w, h, d, l, scaledBox(x, y, w, h));
+        auto dst = scaledBox(x, y, w, h);
+        if (!resolutionIndependent() && buf !is null && w > 0 && h > 0
+            && dst.w > 0 && dst.h > 0 && (dst.w != w || dst.h != h))
+        {
+            import fl.draw : resampleImage;
+            int ad = d < 0 ? -d : d;
+            auto scaled = resampleImage(buf, w, h, d, l, dst.w, dst.h);
+            drawImageImpl(scaled.ptr, dst.w, dst.h, ad, dst.w * ad, dst);
+            return;
+        }
+        drawImageImpl(buf, w, h, d, l, dst);
     }
 
     /// `dataW` x `dataH` pixels stretched over the FLTK-unit box
@@ -1694,7 +1716,20 @@ class GdiGraphicsDriver : GraphicsDriver
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB;
 
+        // A page stretches the image itself: smoothly (HALFTONE) unless
+        // Image.scalingAlgorithm() says nearest, as FLTK's GDI printer
+        // driver does.
+        int oldMode = 0;
+        bool stretched = dst.w != w || dst.h != h;
+        if (stretched)
+        {
+            import fl.image : Image;
+            oldMode = SetStretchBltMode(hdc_,
+                Image.scalingAlgorithm() == Image.RGBScaling.bilinear ? HALFTONE : COLORONCOLOR);
+            SetBrushOrgEx(hdc_, 0, 0, null); // required after HALFTONE
+        }
         StretchDIBits(hdc_, dst.x, dst.y, dst.w, dst.h, 0, 0, w, h, pixels.ptr, &bmi, DIB_RGB_COLORS, SRCCOPY);
+        if (stretched) SetStretchBltMode(hdc_, oldMode);
     }
 
     /// Real per-pixel alpha compositing via `AlphaBlend()` -- see

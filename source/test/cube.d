@@ -133,7 +133,7 @@ class CubeBox : GlWindow
 // callback for overlay button (Button on OpenGL scene)
 void showInfoCb(Widget w)
 {
-    message("This is an example of using FLTK widgets inside OpenGL windows.\n" ~
+    message("This is an example of using fldtk widgets inside OpenGL windows.\n" ~
                "Multiple widgets can be added to GlWindows. They will be\n" ~
                "rendered as overlays over the scene.");
 }

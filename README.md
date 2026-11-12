@@ -7,9 +7,9 @@ the system's own libraries (Xlib, OpenGL, ...), not a compiled FLTK. It also
 includes a port of Fluid, FLTK's UI designer, which exports D source files
 instead of C++.
 
-fldtk has the look and feel of FLTK, and its API follows FLTK's closely,
+fldtk has the look and feel of FLTK, and its API mostly follows FLTK's,
 expressed in idiomatic D: callbacks are delegates, labels are `string`s, memory is
-garbage-collected, and `Fl_Widget` is `fl.widget.Widget`.
+garbage-collected, and `Fl_Widget` is `fl.widget.Widget`. Bugs found in FLTK along the way are fixed in fldtk.
 
 ## Example
 
@@ -19,11 +19,11 @@ import std;
 
 void main()
 {
-  auto win = new Window(100, 100, 400, 300, "fldtk smoke test: Button");
-  auto btn = new Button(20, 20, 360, 260, "Click!"); // auto-parents into win (Group.current())
-  win.end(); // not really needed here
-  win.show();
+  auto win = new Window(480, 320, "Minimal fldtk Application");
+  auto btn = new Button(150, 100, 200, 100, "fldtk");
+  btn.labelsize(32);
 
+  win.show();
   fl.run();
 }
 ```
@@ -32,13 +32,85 @@ which produces a window with a clickable button.
 
 ![A window with a clickable button](https://raw.githubusercontent.com/sxmboer/fldtk/main/docs/button.png)
 
+## New in v1.1.0: press F5 to run the compiled application almost instantly
+
+Fluid is now fully integrated with the dub infrastructure for a seamless,
+truly **lightning-fast** workflow.
+
+Fluid now takes care of all the hassle to set up a dub project, add the
+necessary library dependency and so on. You can literally get a brand new GUI
+project going in under a minute. By just pressing **F5** Fluid will export the
+D code, compile and run. With the fast compile times of dmd, your
+application will launch in seconds for testing. Adding a GUI to an existing
+program? Fluid will honor an existing dub project and add the necessary
+infrastructure. The run console monitors the compilation and offers control to
+stop the program.
+
+![The Run (F5) button in Fluid](https://raw.githubusercontent.com/sxmboer/fldtk/main/docs/run-button.png)
+
+Fluid offers two project modes: a single file, the generated .d file building on its own, for a quick and easy
+start, or a full dub project folder with as many files as you like.
+
+Once saved, a Fluid-generated dub project can be launched from a terminal by `dub run`.
+
+And after you close Fluid, your program is simply there: a native binary
+in the project folder that you start like any other program, with no
+interpreter, virtual machine, browser or runtime to install first.
+
+Also new in v1.1.0:
+
+- **Your program's output, live.** What your program prints with
+  `writeln()` shows in the Run window line by line, as it happens.
+- **Change To.** Turn a widget into another kind in place, such as a
+  Slider into a Value Slider, from the right-click menu in the tree or on
+  the canvas, or from the Style tab. The tree's right-click menu also
+  has Cut, Copy, Paste, Duplicate, Delete, Earlier and Later.
+- **Copy widgets by dragging.** Ctrl-drag a selection to copy it.
+- **Smarter placement.** New widgets land where you expect them, inside
+  groups and when you add several in a row.
+- **Generated code that reads like hand-written code.** Alignment, When
+  and colors appear as names (`alignLeft`, `whenRelease | whenChanged`,
+  `red`), and default settings are no longer written out. A unittest
+  places every kind of node in every kind of container, so nothing in a
+  design goes missing from the generated code.
+- **Drop pictures and files.** A picture dragged from another program,
+  such as a browser or an office program, arrives as an image, on Linux
+  (X11 and Wayland) and on Windows. Dropped files arrive as plain paths,
+  one per line, on every platform.
+- **fldtk-options: one place for every program's settings.** A new
+  program (`dub build fldtk:options`) shows and changes the settings
+  every fldtk program reads when it starts, for you or for every user of
+  the computer: the scheme, the zoom, tooltips, visible keyboard focus,
+  dragging text and, on Linux, Wayland or X11 and Xlib or Cairo drawing.
+  It also works from the command line (`fldtk-options -h`).
+- **Sharp at any zoom.** Lines, rectangles, arcs and loops have the
+  width the zoom asks for, and images are resampled smoothly, on screen,
+  in print and in SVG output. The zoom can be set in steps of 1%.
+- **Text in every script, in print too.** PostScript output prints text
+  in every script, right to left included. With Cairo, every font face
+  Pango knows is available, each under its own name.
+- **Number widgets that behave.** The mouse wheel works on every number
+  widget: 10 steps a notch, 1 with Shift, 100 with Ctrl, always within
+  the range. A Value Output is for output only.
+- **Four tutorials.** Tutorials 1 to 3 are rewritten around F5 and dub
+  projects, and Tutorial 4 is new: a bill splitter built from a Spinner,
+  a Value Input, a Value Slider and Value Outputs.
+- **More complete.** A great number of gaps were closed and bugs fixed,
+  among them dashed lines and filled polygons in OpenGL, window shapes
+  from a pixmap, round indicators in the Gleam scheme, and window titles
+  that change at runtime on Windows.
+- **Changed:** `Chart.insert()` and `replace()` count positions from 0,
+  as D does. `ValueOutput.soft()` is removed. After updating fldtk, run
+  `dub build` in the fldtk folder once: a program's build no longer
+  rebuilds the library.
+
 ## Status
 
 The library and Fluid run stably on **Linux/X11**, **Linux/Wayland** and
 **Windows**; Linux binaries pick Wayland or X11 at run time. macOS is out
 of scope for now because I don't have the hardware to test it.
 
-Highlights of v1.0.5:
+Earlier highlights (v1.0.5):
 
 - **Tutorials.** [`docs/TUTORIALS.md`](docs/TUTORIALS.md) starts a series of
   step-by-step tutorials for newcomers: a first Fluid program, a Fluid
@@ -146,9 +218,10 @@ packages for X11, Xft, Xinerama, fontconfig, Xcursor, Xfixes, Xext, Xi, OpenGL,
 GLU and zlib must be installed, which is the case by default on most
 Linux distributions. Then, from the repository root:
 
-    dub build              # the library: ./libfldtk.so
-    rdmd buildfluid.d      # the Fluid designer: ./fluid
-    rdmd buildsamples.d    # the demo programs: ./build/*
+    dub build                # the library: ./libfldtk.so
+    rdmd buildfluid.d        # the Fluid designer: ./fluid
+    rdmd buildsamples.d      # the demo programs: ./build/*
+    dub build fldtk:options  # the settings program: ./fldtk-options
 
 New to fldtk? Start with the [tutorials](docs/TUTORIALS.md).
 [`docs/BUILDING.md`](docs/BUILDING.md) has the details, including how to compile your own
@@ -168,8 +241,10 @@ It should be mentioned that dmd and gdc have both been tested to work. ldc has n
 ## Contributing
 
 Bug reports and pull requests are welcome. Where fldtk behaves differently from
-FLTK, it may or may not have been by design. Deliberate deviations from FLTK should
-have been documented clearly in the source or in docs/PORTING.md.
+FLTK, that is often on purpose: fldtk fixes the FLTK bugs it inherits and takes
+the simpler way where it can. Anything fldtk doesn't do yet, or does only in
+part, is listed in [`docs/PORTING.md`](docs/PORTING.md) and summarised in
+[`PORTING-TODO.md`](PORTING-TODO.md).
 
 ## License
 

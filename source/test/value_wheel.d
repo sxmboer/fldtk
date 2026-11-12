@@ -48,8 +48,6 @@ void main(string[] args)
     int y = 100;
     auto vi = new ValueInput(120, y, 100, 25, "ValueInput");
     watch(vi, "ValueInput");
-    auto vo = new ValueOutput(370, y, 100, 25, "ValueOutput");
-    watch(vo, "ValueOutput");
 
     y += 40;
     auto co = new Counter(120, y, 150, 25, "Counter");

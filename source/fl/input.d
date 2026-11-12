@@ -5,8 +5,8 @@
  * calls against Fl_Input_'s editing primitives.
  *
  * Deliberate deviations from FLTK, on top of the ones already
- * documented in fl.input_'s module comment (string-buffer value_, no
- * IME, simplified next/prevComposedChar, in-process-only clipboard):
+ * documented in fl.input_'s module comment (string-buffer value_,
+ * in-process-only clipboard):
  *
  *  - **Drag-and-drop** is real, backed by `fl.core.dnd()` (see
  *    `PORTING.md`'s `FL/Fl.H`/`FL/x.H` rows), the same XDND mechanism
@@ -20,12 +20,10 @@
  *    `eventIsClick()` the same way FLTK is); dropping text back
  *    onto the same field removes the dragged range, dropping onto a
  *    different widget/app leaves this field's own selection untouched.
- *    FLTK's 4 function-local `static`s (`dnd_save_position`/
- *    `dnd_save_mark`/`drag_start`/`dnd_save_focus`) are ported the same
- *    way as `fl.slider`'s `offcenter`/`fl.roller`'s `ipos` -- plain D
- *    `static` locals inside `handle()`, genuinely shared across every
- *    `Input` instance FLTK too (only one drag can be in progress
- *    process-wide), not per-instance fields.
+ *    The drag state (`dndSavePosition_`/`dndSaveMark_`/`dragStart_`/
+ *    `dndSaveFocus_`) is `static` inside `handle()`, shared by every
+ *    `Input`: only one drag is in progress at a time, and the source
+ *    and the drop target both read it.
  *  - handleRmb() (Fl_Input::handle_rmb()) is now fully ported,
  *    including the real Cut/Copy/Paste popup, built on fl.menu_item/
  *    fl.menu_popup (same popup engine fl.menu_button/fl.choice/
@@ -395,8 +393,9 @@ class Input : Input_
     // handle_key()
     // -------------------------------------------------------------
 
-    /// Ported from Fl_Input::handle_key(). See the module comment for
-    /// what's skipped (IME marked-text underline touch-up).
+    /// Ported from Fl_Input::handle_key(). Marked text from an input
+    /// method (`fl.core.hasMarkedText()`) is left selected, so
+    /// `drawtext()` underlines it and the next keystroke replaces it.
     protected int handleKey()
     {
         char ascii = fl.core.eventText().length > 0 ? fl.core.eventText()[0] : '\0';
@@ -430,6 +429,8 @@ class Input : Input_
                 if (readonly()) fl.core.beep();
                 else replace(insertPosition(), del ? insertPosition() - del : mark(), fl.core.eventText());
             }
+            if (fl.core.markedTextActive())
+                mark(insertPosition() - fl.core.composeState());
             return 1;
         }
 
@@ -624,6 +625,14 @@ class Input : Input_
 
         switch (event)
         {
+        case Event.unfocus:
+            if (fl.core.markedTextActive())
+            {
+                mark(insertPosition());
+                resetSpot();
+            }
+            break;
+
         case Event.focus:
             switch (fl.core.eventKey())
             {

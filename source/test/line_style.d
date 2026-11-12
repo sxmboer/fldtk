@@ -150,6 +150,7 @@ void makeform(string)
     sliders[0].value(255); // R
     sliders[1].value(100); // G
     sliders[2].value(100); // B
+    sliders[3].value(4); // width: wide enough to show the named styles' patterns
     sliders[4].value(10); // move line coordinates
     drawLine.value(0);
     drawLine.callback((w) { doRedraw(w); });

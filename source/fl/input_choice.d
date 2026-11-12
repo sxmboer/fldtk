@@ -7,8 +7,7 @@
  * Deviations from FLTK, all deliberate:
  *  - `draw()`'s box/divider branches are real, same fix as
  *    `fl.choice`'s own `draw()` (see that module's doc comment for the
- *    full reasoning -- `fl.core.isScheme()` is real as of
- *    core-roadmap item 11 Phase A): `upBox`/`downBox` picked per
+ *    full reasoning): `upBox`/`downBox` picked per
  *    `fl.core.scheme()`, the contrast/lighten recolor gated behind
  *    `!scheme()`, and a 2px divider line drawn under gtk+/gleam/oxy
  *    (FLTK's own `Fl_Input_Choice::draw()` is, per its own comment,

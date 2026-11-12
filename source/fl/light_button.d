@@ -36,7 +36,7 @@ class LightButton : Button
     override void draw()
     {
         if (box() != Boxtype.noBox)
-            drawBox(this is fl.core.pushed() ? fl_down(box()) : box(), color());
+            drawButtonBox(this is fl.core.pushed() ? fl_down(box()) : box(), color());
 
         Color col = value() ? (activeR() ? selectionColor() : inactive(selectionColor())) : color();
 
@@ -171,5 +171,26 @@ unittest
     fl.core.eX_ = 0;
     fl.core.eY_ = 0;
     fl.core.focus(null);
+    FlGroup.current(null);
+}
+
+unittest
+{
+    // compact(): a LightButton draws its frame through Button.drawButtonBox()
+    // too, so it joins a bar of buttons. Headless: only checks that the
+    // compact drawing runs.
+    import fl.group : FlGroup;
+    import fl.button : Button;
+
+    FlGroup.current(null);
+    auto g = new FlGroup(0, 0, 150, 30);
+    auto a = new Button(0, 0, 50, 30, "A");
+    auto b = new LightButton(50, 0, 50, 30, "B");
+    auto c = new Button(100, 0, 50, 30, "C");
+    a.compact(true); b.compact(true); c.compact(true);
+    g.end();
+    g.draw();
+    assert(b.compact());
+    destroy(g);
     FlGroup.current(null);
 }

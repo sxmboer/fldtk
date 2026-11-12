@@ -1,0 +1,96 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+comment {The output window of File > Run.
+
+`runTerminal` shows what `dub build` and then the program print, as
+`gui_main.d`'s `runProject()` streams it in through `fluid.run_program`.
+Stop ends the build or the program (`runStop()`), and is active only
+while one of them runs. Close only hides the window: a running program
+keeps running.
+}
+  {
+    in_source
+    in_header
+  }
+decl {import fluid;}
+  {
+    private
+    local
+  }
+Function makeRunWindow()
+  {
+  }
+  {
+    Window runWindow
+      {
+        label {Run}
+        xywh {0 0 600 400}
+        resizable
+      }
+      {
+        Terminal runTerminal
+          {
+            xywh {10 10 580 345}
+            setup {o.ansi(true);
+o.historyLines(5000);}
+            resizable
+          }
+        Group {}
+          {
+            xywh {10 365 580 25}
+          }
+          {
+            Button {}
+              {
+                label {Clear}
+                callback {runTerminal.append("\x1b[2J\x1b[3J\x1b[H");}
+                xywh {10 365 90 25}
+              }
+            Button runStopButton
+              {
+                label {Stop}
+                callback {runStop();}
+                xywh {105 365 90 25}
+                tooltip {End the build or the program.}
+              }
+            Box {}
+              {
+                xywh {200 365 285 25}
+                hide
+                resizable
+              }
+            ReturnButton {}
+              {
+                label {Close}
+                callback {auto pos = new Preferences(appPrefs, "run_window_pos");
+pos.set("x", runWindow.x());
+pos.set("y", runWindow.y());
+pos.set("w", runWindow.w());
+pos.set("h", runWindow.h());
+runWindow.hide();}
+                xywh {490 365 100 25}
+              }
+          }
+      }
+  }
+Function showRunWindow()
+  {
+    return_type void
+  }
+  {
+    code {if (runWindow is null)
+{
+    makeRunWindow();
+    auto pos = new Preferences(appPrefs, "run_window_pos");
+    int x, y, w, h;
+    pos.get("x", x, -1);
+    pos.get("y", y, 0);
+    pos.get("w", w, 600);
+    pos.get("h", h, 400);
+    if (x != -1)
+        runWindow.resize(x, y, w, h);
+}
+runWindow.show();}
+      {
+      }
+  }

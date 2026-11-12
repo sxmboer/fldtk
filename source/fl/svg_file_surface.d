@@ -118,18 +118,26 @@ class SvgGraphicsDriver : GraphicsDriver
             x, y, w, h, r_, g_, b_);
     }
 
+    /// Coordinates name pixel edges, as for `rectf()` and clipping, so a
+    /// line of odd width is moved half a pixel to run through the middle
+    /// of the pixels it covers on screen. Without it, a 1-pixel line is
+    /// spread over two pixel columns, and a clip cuts it in half.
+    private double strokeOffset() const { return lineWidth_ % 2 ? 0.5 : 0.0; }
+
     override void rect(int x, int y, int w, int h)
     {
+        double o = strokeOffset();
         file_.writef(
-            "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"none\" stroke=\"rgb(%d,%d,%d)\" stroke-width=\"%d\" stroke-dasharray=\"%s\" stroke-linecap=\"%s\" stroke-linejoin=\"%s\" />\n",
-            x, y, w - 1, h - 1, r_, g_, b_, lineWidth_, dashArrayString(), linecap_, linejoin_);
+            "<rect x=\"%g\" y=\"%g\" width=\"%d\" height=\"%d\" fill=\"none\" stroke=\"rgb(%d,%d,%d)\" stroke-width=\"%d\" stroke-dasharray=\"%s\" stroke-linecap=\"%s\" stroke-linejoin=\"%s\" />\n",
+            x + o, y + o, w - 1, h - 1, r_, g_, b_, lineWidth_, dashArrayString(), linecap_, linejoin_);
     }
 
     override void line(int x, int y, int x1, int y1)
     {
+        double o = strokeOffset();
         file_.writef(
-            "<line x1=\"%d\" y1=\"%d\" x2=\"%d\" y2=\"%d\" style=\"stroke:rgb(%d,%d,%d);stroke-width:%d;stroke-linecap:%s;stroke-linejoin:%s;stroke-dasharray:%s\" />\n",
-            x, y, x1, y1, r_, g_, b_, lineWidth_, linecap_, linejoin_, dashArrayString());
+            "<line x1=\"%g\" y1=\"%g\" x2=\"%g\" y2=\"%g\" style=\"stroke:rgb(%d,%d,%d);stroke-width:%d;stroke-linecap:%s;stroke-linejoin:%s;stroke-dasharray:%s\" />\n",
+            x + o, y + o, x1 + o, y1 + o, r_, g_, b_, lineWidth_, linecap_, linejoin_, dashArrayString());
     }
 
     /// `fl.draw.fl_xyline(int,int,int)`'s dispatch target -- a plain
@@ -255,11 +263,11 @@ class SvgGraphicsDriver : GraphicsDriver
         double a1r = (-a1) / 180.0 * PI;
         double a2r = (-a2) / 180.0 * PI;
         double cx = x + 0.5 * w;
-        double cy = y + 0.5 * h - 0.5;
-        double r = (w != h) ? 0.5 : (w + h) * 0.25 - 0.5;
-        double sx, sy;
-        if (w != h) { sx = w - 1; sy = h - 1; }
-        else { sx = sy = 2 * r; }
+        double cy = y + 0.5 * h;
+        // An outline runs through the middle of the outermost pixels; a
+        // pie covers them.
+        double sx = AorP == 'A' ? w - 1 : w;
+        double sy = AorP == 'A' ? h - 1 : h;
         double scale = (sx + sy) / 2;
         double strokeWidth = scale != 0 ? lineWidth_ / scale : lineWidth_;
 
@@ -289,9 +297,11 @@ class SvgGraphicsDriver : GraphicsDriver
 
     override void endPoints(const(Point)[] pts)
     {
+        // One filled pixel per point: a zero-length stroke with flat
+        // caps draws nothing.
         foreach (p; pts)
-            file_.writef("<path d=\"M %d %d L %d %d\" fill=\"none\" stroke=\"rgb(%d,%d,%d)\" stroke-width=\"%d\" />\n",
-                p.x, p.y, p.x, p.y, r_, g_, b_, lineWidth_);
+            file_.writef("<rect x=\"%d\" y=\"%d\" width=\"1\" height=\"1\" fill=\"rgb(%d,%d,%d)\" />\n",
+                p.x, p.y, r_, g_, b_);
     }
 
     override void endLine(const(Point)[] pts)
@@ -299,7 +309,7 @@ class SvgGraphicsDriver : GraphicsDriver
         if (pts.length == 0) return;
         file_.writef(
             "<path d=\"%s\" fill=\"none\" stroke=\"rgb(%d,%d,%d)\" stroke-width=\"%d\" stroke-dasharray=\"%s\" stroke-linecap=\"%s\" stroke-linejoin=\"%s\" />\n",
-            pathData(pts), r_, g_, b_, lineWidth_, dashArrayString(), linecap_, linejoin_);
+            pathData(pts, strokeOffset()), r_, g_, b_, lineWidth_, dashArrayString(), linecap_, linejoin_);
     }
 
     /// **Not part of FLTK's own override list** -- see
@@ -336,11 +346,13 @@ class SvgGraphicsDriver : GraphicsDriver
 
     override bool resolutionIndependent() const { return true; }
 
-    private string pathData(const(Point)[] pts)
+    /// The `d` attribute through `pts`, each moved by `offset` (see
+    /// `strokeOffset()`).
+    private string pathData(const(Point)[] pts, double offset = 0.0)
     {
         auto app = appender!string;
-        formattedWrite(app, "M %d %d", pts[0].x, pts[0].y);
-        foreach (p; pts[1 .. $]) formattedWrite(app, " L %d %d", p.x, p.y);
+        formattedWrite(app, "M %g %g", pts[0].x + offset, pts[0].y + offset);
+        foreach (p; pts[1 .. $]) formattedWrite(app, " L %g %g", p.x + offset, p.y + offset);
         return app.data;
     }
 
@@ -483,18 +495,9 @@ class SvgGraphicsDriver : GraphicsDriver
     /**
      * Draws a 1-bit bitmap as an embedded base64-PNG `<image>` element,
      * the current `color()` showing through set bits, fully transparent
-     * elsewhere. Ported from `Fl_SVG_Graphics_Driver::draw_bitmap()`,
-     * including a real FLTK quirk: the synthesized RGBA image is
-     * always built and placed at the bitmap's own native `dataW`x`dataH`
-     * size -- `w`/`h` (the requested destination *size*) are genuinely
-     * never consulted at all (FLTK's own `rgb->w() == rgb->data_w()`
-     * by construction, so its own scale factor `f` always comes out
-     * `1`), only `(x-cx, y-cy)` (the destination *position*) is honored.
-     * This is a different FLTK function from `Fl_PostScript_
-     * Graphics_Driver::draw_bitmap()` (`fl.postscript.
-     * PostscriptGraphicsDriver.drawBitmap()`'s own quirk, which *does*
-     * scale to `w`/`h` but ignores `cx`/`cy` instead) -- the two drivers
-     * genuinely differ FLTK, not a port inconsistency.
+     * elsewhere. Ported from `Fl_SVG_Graphics_Driver::draw_bitmap()`:
+     * the whole bitmap at `(x - cx, y - cy)`, one unit per pixel,
+     * clipped to `(x, y, w, h)`, as on screen.
      *
      * Bit order matches `fl.bitmap.Bitmap.array` directly (bit 0 =
      * leftmost pixel, LSB-first) -- no reversal needed here, unlike
@@ -531,7 +534,11 @@ class SvgGraphicsDriver : GraphicsDriver
             }
         }
 
+        import fl.draw : pushClip, popClip;
+
+        pushClip(x, y, w, h);
         emitPngImage(rgba.ptr, x - cx, y - cy, dataW, dataH, 4, dataW * 4, dataW, dataH);
+        popClip();
     }
 
     /// `dataW` x `dataH` pixels in an `<image>` element sized to the
@@ -713,7 +720,8 @@ unittest
     assert(text.canFind("<svg"));
     assert(text.canFind("<rect x=\"10\" y=\"10\" width=\"60\" height=\"40\" fill=\"rgb(255,0,0)\""));
     assert(text.canFind("stroke=\"rgb(0,0,255)\""));
-    assert(text.canFind("<line x1=\"10\" y1=\"70\" x2=\"190\" y2=\"70\""));
+    assert(text.canFind("<rect x=\"80.5\" y=\"10.5\" width=\"59\" height=\"39\" fill=\"none\""));
+    assert(text.canFind("<line x1=\"10.5\" y1=\"70.5\" x2=\"190.5\" y2=\"70.5\""));
     assert(text.canFind("<path d=\"M 10 100"));
     assert(text.canFind("</svg>"));
 }
@@ -777,7 +785,8 @@ unittest
     assert(text.canFind("A 0.5,0.5 0")); // the outline arc() path
     assert(text.canFind("<circle cx=\"0\" cy=\"0\" r=\"0.5\"")); // the full-circle pie()
     assert(text.canFind("<path d=\"M 20 80 L 60 80 L 40 110 z\" fill=\"rgb(255,0,0)\""));
-    assert(text.canFind("<path d=\"M 0 150 L 50 150 L 50 190\""));
+    assert(text.canFind("<line x1=\"0\" y1=\"0\" x2=\"50\" y2=\"0\"")); // width 2: no half-pixel offset
+    assert(text.canFind("<path d=\"M 0.5 150.5 L 50.5 150.5 L 50.5 190.5\""));
     assert(text.canFind("<text x=\"100\" y=\"150\" font-family=\"Helvetica\""));
     assert(text.canFind(">Hi</text>"));
 }

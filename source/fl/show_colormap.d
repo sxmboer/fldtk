@@ -5,13 +5,10 @@
  * legacy colormap entries as an 8x32 grid of swatches; click, drag, or
  * arrow-key/Enter/Escape to pick one and return it as a `Color`.
  *
- * Faithful, complete port -- every branch of `ColorMenu::draw()`/
- * `handle()`/`run()` carries over directly onto this port's own
- * `Widget`/`Window`/`fl.core` primitives (`grab()` for exclusivity,
- * matching FLTK's own genuine single-widget-grab-owner use here --
- * same category as `fl.menu_popup`'s popup engine, not the `modal()`
- * mechanism `fl.ask`'s dialogs use instead; see `fl.core.grab()`'s own
- * doc comment for why the two are kept separate).
+ * `ColorMenu` holds `fl.core.grab()` while open: a single-widget grab
+ * owner, like `fl.menu_popup`'s popup engine, not the `modal()`
+ * mechanism `fl.ask`'s dialogs use (see `fl.core.grab()`'s doc comment
+ * for why the two are separate).
  */
 module fl.show_colormap;
 
@@ -132,19 +129,12 @@ private final class ColorMenu : Window
         return 1;
     }
 
-    // Ported verbatim, including a likely FLTK quirk: when
-    // `which_ > 255` (a true-color, non-palette-index Color), the
-    // vertical half of the initial position uses the *window's own*
-    // still-default `y()` (0, pre-`show()`) rather than `h()/2` the
-    // way the horizontal half uses `w()/2` -- see
-    // `FLTK_ISSUES_n.md`'s `fl_show_colormap.cxx` entry. Not
-    // exercised by any sample so far (every caller passes a plain
-    // palette index), so left exactly as FLTK has it rather than
-    // silently "fixed".
+    // Opens centred on the mouse for a true-color `Color` (`which_ > 255`),
+    // or with the initial swatch under the mouse for a palette index.
     Color run()
     {
         if (which_ > 255)
-            position(fl.core.eventXRoot() - w() / 2, fl.core.eventYRoot() - y() / 2);
+            position(fl.core.eventXRoot() - w() / 2, fl.core.eventYRoot() - h() / 2);
         else
             position(fl.core.eventXRoot() - (initial_ % 8) * boxsize - boxsize / 2 - border,
                 fl.core.eventYRoot() - (initial_ / 8) * boxsize - boxsize / 2 - border);

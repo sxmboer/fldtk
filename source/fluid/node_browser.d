@@ -86,7 +86,7 @@ private string truncatedComment(string s, size_t maxChars = 80)
 /// helvetica`, matching both `Node_Browser.cxx`'s static initializer
 /// and `settings_panel.fl`'s "Reset" button (FLTK `4cf6dd285` fixed
 /// that button, which used to assign `FL_DARK_GREEN`).
-Color labelColor = cast(Color) 72;
+Color labelColor = darkRed;
 Font labelFont = helvetica;
 Color classColor = foregroundColor;
 Font classFont = helveticaBold;
@@ -531,6 +531,29 @@ final class NodeBrowser : Tree
     /// membership" here, a real, different, already-established meaning
     /// that would conflict).
     void delegate(Node) onOpen;
+
+    /// Fired on a right-click on a row, after that row is selected (a
+    /// right-click on a row that is already part of the selection keeps
+    /// the whole selection). `gui_main.d` shows the tree's context menu.
+    void delegate(Node) onContextMenu;
+
+    override int handle(Event e)
+    {
+        import fl.core : eventButton;
+
+        if (e == Event.push && eventButton() == rightMouse)
+        {
+            auto item = findClicked(true); // anywhere on the row
+            if (item is null) return 1;
+            auto n = item in nodeOf;
+            if (n is null) return 1;
+            if (!item.isSelected())
+                selectOnly(item, true);
+            if (onContextMenu !is null) onContextMenu(*n);
+            return 1;
+        }
+        return super.handle(e);
+    }
 
     this(int x, int y, int w, int h)
     {

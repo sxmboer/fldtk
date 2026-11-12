@@ -2,50 +2,48 @@
 
 [All tutorials](TUTORIALS.md)
 
+> The figures in this tutorial were made just before the Run (F5)
+> button was added to the properties windows, so it is missing from
+> them, and the Command Prompt figure still shows the code going to
+> `source\app.d`. F5 should work on Windows as described.
+
 This tutorial makes a window with four buttons, each with a keyboard
 shortcut of its own, groups them into one bar, and turns them into
 radio buttons, of which only one can be down at a time. It then keeps
 the choice in a variable and shows it in a dialog, and finally asks the
-buttons themselves which one is down. It is done on Windows, as a dub
-project like the one in [Tutorial 2](TUTORIAL02.md); on Linux the steps
-are the same, with the commands of Tutorial 2. It assumes you have done
-[Tutorial 1](TUTORIAL01.md), so it says less about the basics of Fluid.
+buttons themselves which one is down. It is done on Windows; on Linux
+the steps are the same, except for the command that starts Fluid. It
+assumes you have done [Tutorial 1](TUTORIAL01.md) and
+[Tutorial 2](TUTORIAL02.md), so it says less about the basics of Fluid.
 
 The commands are typed in a Command Prompt window (`cmd`). This
 tutorial assumes the fldtk folder is `fldtk` in your user folder
-(`%USERPROFILE%\fldtk`, for instance `C:\Users\you\fldtk`), and creates
-the project next to it.
+(`%USERPROFILE%\fldtk`, for instance `C:\Users\you\fldtk`), and keeps
+the project in `%USERPROFILE%\fluidtutorials\tutorial03`.
 
-## 1. Prepare fldtk
+## 1. Preparing fldtk
 
     cd %USERPROFILE%\fldtk
     rdmd buildfluid.d
 
-This builds Fluid, `fluid.exe`.
+This builds the fldtk library and Fluid, `fluid.exe`.
 
-## 2. Create the project
+## 2. Starting Fluid
 
-    cd %USERPROFILE%
-    dub init -n -f sdl fourbuttons
-    cd fourbuttons
-    copy ..\fldtk\docs\tutorial03\dub.sdl dub.sdl
+    %USERPROFILE%\fldtk\fluid.exe
 
-This makes the project folder `fourbuttons` and replaces the `dub.sdl`
-that `dub init` wrote with the one for this tutorial. It is the same as
-Tutorial 2's, for a project called `fourbuttons`; Tutorial 2 explains
-it line by line. Its fldtk path, `../fldtk`, is the fldtk folder next
-to the project folder; if yours is somewhere else, change it in
-`dub.sdl`.
+Double-clicking `fluid.exe` in File Explorer starts it too. To keep it
+at hand, right-click `fluid.exe` and choose Pin to Start; from then on
+it is in the Start menu.
 
-## 3. The window and the first button
+Fluid opens with an empty design. The project folder doesn't exist
+yet: Fluid asks for it the first time you press F5, in step 6.
 
-Start Fluid from the project folder:
-
-    ..\fldtk\fluid.exe
+## 3. Creating the window and the first button
 
 1. **The function.** Choose New > Code > Function, or click
    ![Function](../source/fluid/pixmaps_svg/flFunction.svg) in the Widget
-   Bin, clear "Function Name and Args:" so that it becomes `main()`, and
+   Bin. Its "Function Name and Args:" is blank, so it is `main()`;
    click Close.
 2. **The window.** With `main()` selected, choose New > Group > Window,
    or click ![Window](../source/fluid/pixmaps_svg/flWindow.svg). In its
@@ -67,42 +65,64 @@ Start Fluid from the project folder:
    Click Close. Where the button sits does not matter: drag it to place
    it as you like.
 
-## 4. Four buttons
+## 4. Making four buttons
 
-1. **A copy.** With the first button selected, choose Edit > Duplicate
-   (Ctrl+U). The copy is placed exactly on top of the original, so the
-   window seems unchanged. The tree shows two buttons, and in the window
-   the button is hatched:
-
-   ![The copy lying on top of the first button](tutorial03/fig02.png)
-
-   Fluid hatches every part of a widget that overlaps another widget,
-   since widgets on top of each other are almost always a mistake: the
-   one on top hides the other, and takes its clicks. Here is what that
-   looks like for widgets that partly overlap:
-
-   ![Hatched overlaps](tutorial03/fig03.png)
-
-2. **Place the copy.** Drag the copy down with the mouse until it snaps
-   into place just below the original, with its top edge touching the
-   original's bottom edge: no gap between them and no overlap, so no
-   hatching. While you drag, guide lines show where it will snap. Keep
-   the copy straight below the original, at the same left edge. The
-   buttons have to touch like this for step 7, where they are joined
-   into one bar.
+1. **A copy.** With the first button selected, press Ctrl first and
+   keep it held, then press the mouse button on the button and drag it
+   down. The order matters: pressing Ctrl only after the mouse button
+   moves the original instead of copying it. Done in this order, the
+   original stays where it is and a copy follows the mouse; the tree now
+   shows two buttons. Drag until the copy
+   snaps into place just below the original, with its top edge touching
+   the original's bottom edge: no gap between them and no overlap. While
+   you drag, guide lines show where it will snap. Keep the copy straight
+   below the original, at the same left edge. The buttons have to touch
+   like this for step 7, where they are joined into one bar.
 
    The copy has the same label and shortcut as the original, so change
    them in its properties: Label `Button &2`, Shortcut 2. (Double-click
    a button, in the window or in the tree, to open its properties.)
-3. **Two more.** Do the same twice more, each time duplicating the
-   newest button and dragging the copy until it snaps against the
-   bottom of that one: the third gets `Button &3` and 3, the fourth
-   `Button &4` and 4. If the window is too small for the fourth button,
-   make it taller first.
+2. **Two more.** Do the same twice more, each time Ctrl-dragging the
+   newest button until its copy snaps against the bottom of that one:
+   the third gets `Button &3` and 3, the fourth `Button &4` and 4. If
+   the window is too small for the fourth button, make it taller first.
 
    ![The four buttons stacked](tutorial03/fig04.png)
 
-## 5. Callbacks
+The usual ways of copying work too: Edit > Copy (Ctrl+C) and Edit >
+Paste (Ctrl+V), or Edit > Duplicate (Ctrl+U), which copies the selection
+in one step. Both place the copy exactly on top of the original, so the
+window seems unchanged until you drag the copy away. Until then the tree
+shows two buttons, and in the window the button is hatched:
+
+![The copy lying on top of the first button](tutorial03/fig02.png)
+
+Fluid hatches every part of a widget that overlaps another widget, since
+widgets on top of each other are almost always a mistake: the one on top
+hides the other, and takes its clicks. Here is what that looks like for
+widgets that partly overlap:
+
+![Hatched overlaps](tutorial03/fig03.png)
+
+There is also a quicker way to make the stack, with a feature added
+after this tutorial was first written. Turn on New > Place New Widgets
+Below:
+
+![New > Place New Widgets Below](tutorial03/fig23.png)
+
+With this on, a widget made while another one is selected goes right
+below it, instead of to its right. Place the first button anywhere,
+keep it selected, and click
+![Button](../source/fluid/pixmaps_svg/flButton.svg) (Button) in the
+Widget Bin three times: each new button lands just below the one made
+before it, touching it, the same as the four stacked above. (If the
+window is too small for four, the next one starts a new column beside
+them instead; make the window taller first.) New buttons get the label
+`Button` and no shortcut, so give each its label and shortcut as in
+step 3. Fluid remembers the setting, so turn it off again for designs
+in which new widgets should go to the right.
+
+## 5. Adding callbacks
 
 A button does nothing when clicked until it has a callback: D code that
 runs on each click. Open the first button's properties, and on the D
@@ -123,48 +143,48 @@ behaves, not what the program does. Click Exit Live Resize to close it.
 
 ![Live Resize](tutorial03/fig06.png)
 
-## 6. Save and run
+## 6. Saving and running
 
-1. **Where the code goes.** Choose Edit > Settings..., open the Project
-   tab, and type `source/app.d` in "Code File:". From now on, Fluid
-   writes this design's D code to `source/app.d`, replacing the
-   placeholder `dub init` made. Close the settings window.
-2. **Save.** Choose File > Save and save the design as `fourbuttons.fl`
-   in the project folder (`%USERPROFILE%\fourbuttons\fourbuttons.fl`).
-   Typing `fourbuttons` is enough: Fluid adds `.fl` itself.
-3. **Write the code.** Choose File > Write Code (Ctrl+Shift+C). Fluid
-   writes `source/app.d` and says so:
+To quickly run the actual compiled program, press F5 in any of the
+Fluid windows. Building on Windows works the same as on Linux, as
+shown in Tutorials 1 and 2.
+For this tutorial, a single file project is sufficient, but either
+option will work.
 
-   ![Fluid has written source/app.d](tutorial03/fig07.png)
+The design has no file name yet, so Fluid first asks where to save
+it. Go to the folder where you keep your tutorials, here `%USERPROFILE%\fluidtutorials`, make a new folder
+`tutorial03` with the folder button at the top right, and save the
+design in it as `fourbuttons`. Typing `fourbuttons` is enough: Fluid
+adds `.fl` itself.
 
-   `dub run` below writes it too, through the `preGenerateCommands` in
-   `dub.sdl`, so this step is only needed to look at the code before
-   building. (Edit > Show Code View, Alt+C, shows it inside Fluid.)
-
-Then, in the Command Prompt, in the project folder:
-
-    dub run
-
-![The Command Prompt with dub run's output](tutorial03/fig08.png)
-
-The window appears:
+Then Fluid asks how to build the program. Click Single File, as in
+Tutorial 1, and Fluid writes the design's code to `fourbuttons.d`,
+next to `fourbuttons.fl`. Or click Set Up Project, as in Tutorial 2,
+and Fluid makes the folder `tutorial03` a dub project, with the
+design's code in `source\fourbuttons.d`; click Close when it has said
+what it did. Either way, Fluid builds the program, with dub's output
+in the Run window, and starts it. The window appears:
 
 ![The program's window](tutorial03/fig09.png)
 
-Click the buttons, and press 1 to 4: each prints a line in the Command
-Prompt:
+Click the buttons, and press 1 to 4: each prints a line in the Run
+window.
 
-![The Command Prompt after a few clicks and shortcuts](tutorial03/fig10.png)
+If the Run window shows error messages from the compiler instead,
+check the callbacks: Fluid copies each one into the D code exactly as
+typed, so each has to be correct D, exactly as above. Correct them in
+Fluid and press F5 again.
 
-If the output looks very different, with error messages from the
-compiler, check the callbacks: Fluid copies each one into
-`source/app.d` exactly as typed, so each has to be correct D, exactly
-as above. Correct them in Fluid, save, and run `dub run` again.
+From now on, F5 saves the design, builds the program and starts it
+without asking. To build in the Command Prompt instead, see
+[Building in the Command Prompt](#building-in-the-command-prompt) at
+the end of this tutorial.
 
 The finished design is the same as `fourbuttons_1.fl` in fldtk's
-`docs/tutorial03` folder.
+`docs/tutorial03` folder (apart from the Code File, if you chose
+Single File).
 
-## 7. A group
+## 7. Grouping the buttons
 
 The four buttons are separate widgets, each with its own border. Put
 into a group and made compact, they become one bar.
@@ -196,7 +216,7 @@ into a group and made compact, they become one bar.
 
 The buttons work as before; only their look changed.
 
-## 8. Radio buttons
+## 8. Making radio buttons
 
 A plain button springs back up when you let go of it. A radio button
 stays down, and only one radio button in a group can be down at a
@@ -231,7 +251,7 @@ sets of choices: give each set a group of its own.
 
    ![Value 1 for the first button](tutorial03/fig15.png)
 
-4. Save, and run `dub run` again. Click the buttons, or press 1 to 4:
+4. Press F5 again. Click the buttons, or press 1 to 4:
    the button you choose stays down and the one that was down comes
    back up. Each still prints a line, as before.
 
@@ -264,7 +284,9 @@ variable, and adds a button that shows it in a dialog.
 
 3. **A button that shows the choice.** Select the window and add a
    Return Button (New > Buttons > Return Button) outside the group, to
-   the right of it, with Label `Check`. A return button is pressed by
+   the right of it, with Label `Check`. With the window selected, the
+   new button lands near the window's top-left corner, on top of the
+   group, so drag it to the right of the group. A return button is pressed by
    the Enter key as well as by a click. Its callback:
 
        message(format("Button %s is selected", selected));
@@ -283,14 +305,15 @@ variable, and adds a button that shows it in a dialog.
 
    ![The Code View with the variable selected](tutorial03/fig18.png)
 
-4. Save, and run `dub run` again.
+4. Press F5 again.
 
 Choose a button, then press Enter or click Check:
 
 ![The dialog showing the selected button](tutorial03/fig19.png)
 
 The finished design is the same as `fourbuttons_2.fl` in fldtk's
-`docs/tutorial03` folder.
+`docs/tutorial03` folder (apart from the Code File, if you chose
+Single File).
 
 ## 10. Asking the buttons themselves
 
@@ -302,10 +325,15 @@ was put down by its Value setting, not by a click, so no callback ran.
 A D `int` starts at 0. The buttons always know their own state, so this
 step asks them instead, and the variable is no longer needed.
 
-1. **Name the buttons.** Select each button in turn, and on the D tab,
-   in the Name row, type `b1`, `b2`, `b3` and `b4`. A named widget
-   becomes a variable in the generated code, which any callback can
-   use.
+1. **Name the buttons.** So far, each button has had the automatic
+   variable name `o` by default: as
+   [Tutorial 2](TUTORIAL02.md) showed, Fluid makes each button in a
+   block of its own, in a variable called `o`, which only that button's
+   own code can use. But in this tutorial, the Check button's callback
+   has to reach the four buttons, so each needs a name of its own.
+   Select each button in turn, and on the D tab, in the Name row, type
+   `b1`, `b2`, `b3` and `b4`. A named widget becomes a variable in the
+   generated code, which any callback can use.
 
    ![The D tab with the name b1](tutorial03/fig20.png)
 
@@ -340,10 +368,68 @@ step asks them instead, and the variable is no longer needed.
 
    ![The Code View with the variables b1 to b4](tutorial03/fig22.png)
 
-4. Save, and run `dub run` again.
+   Declared there, at the level of the module, the names can be used by
+   every callback in the file, whichever block it is in. The buttons
+   themselves are still made inside `main()`, each in its own block,
+   with `b1 = new Button(...)` where an unnamed one has
+   `auto o = new Button(...)`. The choice next to the Name sets whether
+   other modules can use them too: with global, the default, any module
+   that imports this one can use `b1`. A function in such a module, like
+   the ones in Tutorial 2's `actions.d`, then doesn't need the button
+   passed to it as `o`: it can read the button's state directly with
+   `b1.value()`. With local, Fluid writes
+   `private Button b1;`, so other modules cannot see it. That keeps the
+   window's widgets shielded from the rest of the program.
+
+4. Press F5 again.
 
 Press Check right away: the dialog now says Button 1, the one that is
 down. Choose another button and press Check again: it names that one.
 
 The finished design is the same as `fourbuttons_3.fl` in fldtk's
-`docs/tutorial03` folder.
+`docs/tutorial03` folder (apart from the Code File, if you chose
+Single File).
+
+## Summary
+
+You have made a window with four buttons and given each a label with
+an underlined letter and a keyboard shortcut of its own. You have
+copied buttons by Ctrl-dragging them, and made the same stack with
+Place New Widgets Below. You have given the buttons callbacks, tried
+the design with Live Resize, and built and run the program with F5.
+You have grouped the buttons and made them compact, so they look like
+one bar, and made them radio buttons, of which only one can be down at
+a time. Finally, you have kept the chosen option in a variable declared
+in the window's setup code, and then asked the buttons themselves by
+giving them names, which makes them variables that every callback in
+the file, and, with global, other modules too, can use.
+
+This concludes Tutorial 3. Additional information is provided below.
+
+## Building in the Command Prompt
+
+The program builds without Fluid too. In the Command Prompt, go to the
+project folder:
+
+    cd %USERPROFILE%\fluidtutorials\tutorial03
+
+For a single file, write the code from the design, then build and run
+it, as in Tutorial 1's [Rebuilding and launching a project
+manually](TUTORIAL01.md#rebuilding-and-launching-a-project-manually):
+
+    %USERPROFILE%\fldtk\fluid.exe -c fourbuttons.fl
+    dub run --single fourbuttons.d
+
+For a dub project, one command does it all:
+
+    dub run
+
+dub then runs Fluid first, to write `source\fourbuttons.d` from the
+design (Tutorial 2's [What dub.sdl
+says](TUTORIAL02.md#what-dubsdl-says) explains how), so saving the
+design in Fluid is enough before building this way.
+
+Either way, the program's window appears, and the buttons print their
+lines in the Command Prompt:
+
+![The Command Prompt after a few clicks and shortcuts](tutorial03/fig10.png)

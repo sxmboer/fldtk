@@ -1,8 +1,8 @@
 /*
  * Sibling-reordering editor commands -- `&Edit/&Sort`/`&Earlier`/
  * `&Later`, ported from FLTK's `fluid/nodes/Widget_Node.cxx`'s free
- * `sort()` function and `fluid/nodes/Node.cxx`'s `earlier_cb()`/
- * `later_cb()`. Like `fluid.align_widget`, these are pure functions
+ * `sort()` function and `fluid/Project.cxx`'s
+ * `move_selected_earlier()`/`move_selected_later()`. Like `fluid.align_widget`, these are pure functions
  * over a `Node` subtree plus its `LiveTree` counterpart -- `gui_main.d`
  * owns checkpointing/UI refresh, this module only owns the actual
  * reorder math and keeps the live widget tree's own child order in
@@ -11,15 +11,14 @@
  * silently desync the canvas -- and the generated code -- from each
  * other).
  *
- * All three functions read straight off each `Node`'s own `selected_`
- * flag (kept in sync with `ProjectCanvas.selected()` by that module's
- * own selection methods -- see `fluid.canvas`'s `clearSelectedFlags()`)
- * rather than taking an explicit selection list, matching FLTK's own
- * reliance on `Node::selected` directly. Scoped to one subtree (`root`,
- * always `activeWindow_` at the one call site in `gui_main.d`) rather
- * than FLTK's whole-project flat list -- matches this port's own
- * established "Edit-menu commands operate on the active window"
- * convention (see `gui_main.d`'s `selectAll()`'s own doc comment).
+ * Earlier and Later work on the whole project, as FLTK's do: the
+ * nodes inside a function (windows, code), top-level functions and
+ * declarations, and widgets inside a window alike. They take the
+ * selection as an explicit set, since a selection outside any window
+ * exists only in the widget tree browser. Sort only reorders widgets,
+ * so it is scoped to one subtree (`root`, the active window at its one
+ * call site in `gui_main.d`) and reads each `Node`'s `selected_` flag,
+ * which `fluid.canvas` keeps in sync with the canvas selection.
  *
  * **Not ported**: FLTK's `Fluid.proj.tree.allow_layout` gate around
  * `layout_widget()`'s own `Fl_Flex`/`Fl_Grid` relayout call. That gate
@@ -71,21 +70,36 @@ private void relayoutIfNeeded(Node parentNode, LiveTree live)
     else if (auto grid = cast(Grid) w) grid.layout();
 }
 
-/// `&Edit/&Earlier` -- ported from `earlier_cb()` (`nodes/Node.cxx`):
-/// walks `root`'s descendants in document order, and for every selected
-/// node whose previous sibling exists and *isn't* itself selected,
-/// moves it before that sibling. The "not itself selected" guard is
-/// what makes a contiguous run of selected siblings move up together as
-/// a block instead of endlessly swapping past each other. Returns
-/// whether anything actually moved.
-bool moveSelectedEarlier(Node root, LiveTree live)
+/// `&Edit/&Earlier` -- ported from `Project::move_selected_earlier()`
+/// (`Project.cxx`): walks the whole project (`roots`, the top-level
+/// nodes, and everything under them) in document order, and for every
+/// node in `selected` whose previous sibling exists and *isn't* itself
+/// selected, moves it before that sibling. The "not itself selected"
+/// guard is what makes a contiguous run of selected siblings move up
+/// together as a block instead of endlessly swapping past each other.
+/// Top-level nodes are siblings of each other in `roots`. `liveOf`
+/// gives the live widget tree a node is shown in (`LiveTree.init` for
+/// one outside any window), so the canvas follows the new order.
+/// Returns whether anything actually moved.
+bool moveSelectedEarlier(ref Node[] roots, const bool[Node] selected,
+    scope LiveTree delegate(Node) liveOf)
 {
     bool moved = false;
-    foreach (f; descendantsInOrder(root))
+    foreach (f; descendantsInOrder(roots))
     {
-        if (!f.selected_) continue;
+        if (f !in selected) continue;
+        if (f.parent is null)
+        {
+            auto i = indexIn(roots, f);
+            if (i <= 0 || roots[i - 1] in selected) continue;
+            roots[i] = roots[i - 1];
+            roots[i - 1] = f;
+            moved = true;
+            continue;
+        }
         auto g = f.prevSibling();
-        if (g is null || g.selected_) continue;
+        if (g is null || g in selected) continue;
+        auto live = liveOf(f);
         auto before = f.parent.children.dup;
         moveLiveBefore(f, g, live);
         f.moveBefore(g);
@@ -96,20 +110,31 @@ bool moveSelectedEarlier(Node root, LiveTree live)
     return moved;
 }
 
-/// `&Edit/&Later` -- ported from `later_cb()`, the mirror image of
-/// `moveSelectedEarlier()` above: walks in *reverse* document order,
-/// and for every selected node whose next sibling exists and isn't
-/// itself selected, moves that sibling before it instead (equivalent to
-/// moving the selected node one slot later). Returns whether anything
-/// actually moved.
-bool moveSelectedLater(Node root, LiveTree live)
+/// `&Edit/&Later` -- ported from `Project::move_selected_later()`, the
+/// mirror image of `moveSelectedEarlier()` above: walks in *reverse*
+/// document order, and for every selected node whose next sibling
+/// exists and isn't itself selected, moves that sibling before it
+/// instead (equivalent to moving the selected node one slot later).
+/// Returns whether anything actually moved.
+bool moveSelectedLater(ref Node[] roots, const bool[Node] selected,
+    scope LiveTree delegate(Node) liveOf)
 {
     bool moved = false;
-    foreach_reverse (f; descendantsInOrder(root))
+    foreach_reverse (f; descendantsInOrder(roots))
     {
-        if (!f.selected_) continue;
+        if (f !in selected) continue;
+        if (f.parent is null)
+        {
+            auto i = indexIn(roots, f);
+            if (i < 0 || i + 1 >= roots.length || roots[i + 1] in selected) continue;
+            roots[i] = roots[i + 1];
+            roots[i + 1] = f;
+            moved = true;
+            continue;
+        }
         auto g = f.nextSibling();
-        if (g is null || g.selected_) continue;
+        if (g is null || g in selected) continue;
+        auto live = liveOf(f);
         auto before = f.parent.children.dup;
         moveLiveBefore(g, f, live);
         g.moveBefore(f);
@@ -118,6 +143,13 @@ bool moveSelectedLater(Node root, LiveTree live)
         moved = true;
     }
     return moved;
+}
+
+private ptrdiff_t indexIn(Node[] list, Node n)
+{
+    foreach (i, x; list)
+        if (x is n) return i;
+    return -1;
 }
 
 /// `&Edit/&Sort` -- ported from the free `sort(Node* parent)` function
@@ -173,25 +205,20 @@ bool sortSelected(Node root, LiveTree live)
     return moved;
 }
 
-/// Pre-order (document-order) walk of `root`'s descendants, excluding
-/// `root` itself -- matches FLTK's own flat-list traversal order
-/// (`Fluid.proj.tree.first`/`next`) closely enough for
-/// `moveSelectedEarlier()`/`moveSelectedLater()`'s purposes: both only
-/// ever compare a node against its own immediate sibling, so the exact
-/// order two unrelated subtrees are visited in relative to each other
-/// never matters.
-private Node[] descendantsInOrder(Node root)
+/// Pre-order (document-order) walk of every node in `roots` and below,
+/// the roots included -- FLTK's flat-list traversal order
+/// (`Fluid.proj.tree.first`/`next`).
+private Node[] descendantsInOrder(Node[] roots)
 {
     Node[] result;
     void walk(Node n)
     {
+        result ~= n;
         foreach (c; n.children)
-        {
-            result ~= c;
             walk(c);
-        }
     }
-    walk(root);
+    foreach (r; roots.dup)
+        walk(r);
     return result;
 }
 
@@ -213,18 +240,15 @@ unittest
 
     // [a b c d], select b and c (a contiguous run) -> Earlier moves
     // both up together: [b c a d].
-    b.selected_ = true;
-    c.selected_ = true;
-    LiveTree empty;
-    assert(moveSelectedEarlier(root, empty));
+    Node[] roots = [root];
+    LiveTree noLive(Node) { return LiveTree.init; }
+    bool[Node] sel = [b: true, c: true];
+    assert(moveSelectedEarlier(roots, sel, &noLive));
     assert(root.children == [b, c, a, d]);
 
     // Nothing left to move earlier (b is already first) -- no-op.
-    assert(!moveSelectedEarlier(root, empty));
+    assert(!moveSelectedEarlier(roots, sel, &noLive));
     assert(root.children == [b, c, a, d]);
-
-    b.selected_ = false;
-    c.selected_ = false;
 
     // [b c a d], select c and a (not contiguous) -> Later moves each
     // one slot later, walked in reverse document order: a swaps with
@@ -232,10 +256,38 @@ unittest
     // neighbor d too ([b d c a]) -- matches FLTK's own `later_cb()`
     // exactly (traced by hand against its real linked-list semantics,
     // not guessed).
-    c.selected_ = true;
-    a.selected_ = true;
-    assert(moveSelectedLater(root, empty));
+    sel = [c: true, a: true];
+    assert(moveSelectedLater(roots, sel, &noLive));
     assert(root.children == [b, d, c, a]);
+}
+
+unittest
+{
+    // Top-level nodes (functions, declarations) are siblings in the
+    // roots list, and a node inside one moves among its own siblings.
+    auto f1 = new Node(); f1.instanceName = "f1";
+    auto f2 = new Node(); f2.instanceName = "f2";
+    auto f3 = new Node(); f3.instanceName = "f3";
+    auto win1 = new Node(); win1.instanceName = "win1";
+    auto code = new Node(); code.instanceName = "code";
+    f1.addChild(win1);
+    f1.addChild(code);
+    Node[] roots = [f1, f2, f3];
+    LiveTree noLive(Node) { return LiveTree.init; }
+
+    bool[Node] sel = [f3: true];
+    assert(moveSelectedEarlier(roots, sel, &noLive));
+    assert(roots == [f1, f3, f2]);
+    assert(moveSelectedEarlier(roots, sel, &noLive));
+    assert(roots == [f3, f1, f2]);
+    assert(!moveSelectedEarlier(roots, sel, &noLive));
+    assert(moveSelectedLater(roots, sel, &noLive));
+    assert(roots == [f1, f3, f2]);
+
+    sel = [code: true];
+    assert(moveSelectedEarlier(roots, sel, &noLive));
+    assert(f1.children == [code, win1]);
+    assert(roots == [f1, f3, f2]);
 }
 
 unittest

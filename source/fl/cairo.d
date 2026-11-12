@@ -11,11 +11,10 @@
  *
  * Only compiled into a Cairo-enabled build (`version (FLDTK_HAVE_CAIRO)`,
  * on by default on Linux, off with dub configuration `linux-no-cairo`; on Windows only with `windows-cairo`),
- * the equivalent of FLTK's CMake option
- * FLTK_OPTION_CAIRO_WINDOW. FLTK_OPTION_CAIRO_EXT (FLTK_HAVE_CAIROEXT: a
- * Cairo context attached automatically to every window as it is made
- * current) is not ported, so `cairoAutolinkContext(true)` is a fatal
- * error, exactly as in an FLTK library built without that option.
+ * the equivalent of FLTK's CMake options FLTK_OPTION_CAIRO_WINDOW and
+ * FLTK_OPTION_CAIRO_EXT: after `cairoAutolinkContext(true)`, every window
+ * gets a Cairo context as it is drawn or made current
+ * (`cairoAutolinkWindow()`), and `cairoCc()` returns it inside `draw()`.
  *
  * The X11, Wayland and Windows branches of src/Fl_Cairo.cxx are ported.
  * On X11 the Cairo surface wraps the drawable drawing currently targets
@@ -23,6 +22,12 @@
  * Wayland the context is the one the window's draw buffer is drawn with;
  * on Windows it wraps the current device context (`cairo-win32.h`). The
  * macOS branch is not ported.
+ *
+ * On X11 the program's context is a surface of its own on the drawable,
+ * also when the Cairo graphics driver draws the window. The driver's
+ * pending drawing is sent to the X server before the context is handed
+ * out, and `cairoFlush()` tells the driver its drawable changed, so the
+ * two draw in the order the program called them.
  */
 module fl.cairo;
 
@@ -77,6 +82,8 @@ final class CairoState
     private bool ownCc_;         // whether we must delete the cc
     private bool autolink_;      // false by default, prevents automatic Cairo mapping on FLTK windows
     private void* window_, gc_;  // the last window+gc a cc was made for
+    private int w_, h_;          // the size and scale it was made for
+    private float scale_ = 0;
 
     /// Gets the current Cairo context.
     cairo_t* cc() { return cc_; }
@@ -96,20 +103,14 @@ final class CairoState
         if (cc_ !is null && ownCc_)
             cairo_destroy(cc_);
         cc_ = c;
+        scale_ = 0; // cairoMakeCurrent(Window) doesn't reuse a context set here
         if (cc_ is null)
             window_ = null;
         ownCc_ = own;
     }
 
-    /// Sets the autolink option. Only available in FLTK with
-    /// FLTK_OPTION_CAIRO_EXT, which is not ported: always fatal.
-    void autolink(bool b)
-    {
-        import fl.core : fatal;
-        fatal("In Fl::autolink(bool): Cairo autolink() feature is only "
-            ~ "available with CMake FLTK_OPTION_CAIRO_EXT.\n"
-            ~ "Quitting now.");
-    }
+    /// Sets the autolink option. See `cairoAutolinkContext(bool)`.
+    void autolink(bool b) { autolink_ = b; }
 
     /// Sets the window `w` to keep track of.
     void window(void* w) { window_ = w; }
@@ -137,7 +138,17 @@ private CairoState cairoState()
  * associate a Cairo context in this mode, call `cairoMakeCurrent(Window)`
  * explicitly in your overridden `draw()` method.
  *
- * Needs FLTK_OPTION_CAIRO_EXT, which is not ported: always fatal.
+ * With autolink on, a window's `draw()` can use `cairoCc()` directly:
+ * ---
+ * override void draw()
+ * {
+ *     super.draw();
+ *     cairo_t* cc = cairoCc(); // the context for this window
+ *     // ... your Cairo drawing ...
+ *     cairoFlush(cc);
+ * }
+ * ---
+ * GL windows get no context.
  */
 void cairoAutolinkContext(bool alink)
 {
@@ -146,11 +157,19 @@ void cairoAutolinkContext(bool alink)
 
 /**
  * Gets the current autolink mode for Cairo support: false if no Cairo
- * context autolink is made for each window (always the case here).
+ * context autolink is made for each window (the default).
  */
 bool cairoAutolinkContext()
 {
     return cairoState().autolink();
+}
+
+/// Makes a Cairo context for `w` when autolink is on: called as each
+/// window is drawn and from `Window.makeCurrent()`.
+package(fl) void cairoAutolinkWindow(Window w)
+{
+    if (cairoState_ !is null && cairoState_.autolink())
+        cairoMakeCurrent(w);
 }
 
 /// Gets the current Cairo context linked with an FLTK window.
@@ -173,9 +192,10 @@ void cairoCc(cairo_t* c, bool own = false)
  * returns false, which is the default. The context does not need to be
  * freed, as it is freed every time a new Cairo context is created.
  *
- * A new Cairo context is not always re-created: if the current graphics
- * context and the current window didn't change between two calls, the
- * previous one is kept. After this call, `cairoCc()` returns this context.
+ * The context is kept while the drawing target, size and screen scale
+ * stay the same; each call then returns it in the state it was made in
+ * (scaled to the screen, nothing else set). After this call,
+ * `cairoCc()` returns this context.
  *
  * Returns: the Cairo context for this window, or `null` if `wi` is `null`.
  */
@@ -207,22 +227,37 @@ cairo_t* cairoMakeCurrent(Window wi)
         return null;
     }
 
-    // don't re-create a context if it's the same gc/window combination
-    if (gc == cairoState().gc() && cast(void*) wi.xid() == cairoState().window())
-        return cairoCc();
+    version (linux) fldraw.flushDrawable(); // the driver's own drawing goes first
 
-    // Scale the Cairo context appropriately.
     import fl.core : screenScale;
     float scale = screenScale(wi.screenNum()); // get the screen scaling factor
-
+    int w = wi.w(), h = wi.h();
     version (linux)
-        cairoCtxt = cairoMakeCurrent(null, cast(int)(wi.w() * scale), cast(int)(wi.h() * scale));
-    else // on Windows, the size is not used
-        cairoCtxt = cairoMakeCurrent(gc, wi.w(), wi.h());
+    {
+        w = cast(int)(w * scale);
+        h = cast(int)(h * scale);
+    }
 
-    cairoState().window(cast(void*) wi.xid());
+    // The same target, size and scale: reuse the context, back in the
+    // fresh state saved when it was made, so neither the scale nor the
+    // program's own drawing state carries over from an earlier draw.
+    auto st = cairoState();
+    void* target = currentWindow();
+    if (st.cc() !is null && gc == st.gc() && target == st.window()
+        && w == st.w_ && h == st.h_ && scale == st.scale_)
+    {
+        cairo_restore(st.cc());
+        cairo_save(st.cc());
+        return st.cc();
+    }
 
+    cairoCtxt = cairoMakeCurrent(gc, w, h);
+    st.window(target);
+    st.w_ = w;
+    st.h_ = h;
+    st.scale_ = scale;
     cairo_scale(cairoCtxt, scale, scale);
+    cairo_save(cairoCtxt);
     return cairoCtxt;
 }
 
@@ -239,16 +274,10 @@ private cairo_surface_t* cairoCreateSurface(void* gc, int w, int h)
         return cairo_win32_surface_create(cast(HDC) gc);
 }
 
-/// Creates a Cairo context from a `gc` and the given size
-/// (`Fl::Private::cairo_make_current()`).
+/// Creates a fresh Cairo context from a `gc` and the given size
+/// (`Fl::Private::cairo_make_current()`), replacing the current one.
 package(fl) cairo_t* cairoMakeCurrent(void* gc, int w, int h)
 {
-    if (gc == cairoState().gc()
-        && currentWindow() == cairoState().window()
-        && cairoState().cc() !is null) // no need to create a cc, just return that one
-        return cairoState().cc();
-
-    // we need to (re-)create a fresh cc ...
     cairoState().gc(gc); // keep track for next time
     cairo_surface_t* s = cairoCreateSurface(gc, w, h);
 
@@ -276,4 +305,5 @@ void cairoFlush(cairo_t* c)
     // flush Cairo drawings: necessary at least for Windows
     cairo_surface_t* s = cairo_get_target(c);
     cairo_surface_flush(s);
+    version (linux) fldraw.markDrawableDirty();
 }

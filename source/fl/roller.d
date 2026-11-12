@@ -2,9 +2,8 @@
  * Ported from FL/Fl_Roller.H + src/Fl_Roller.cxx (FLTK 1.5.0).
  *
  * Faithful, complete port. handle()'s drag/keyboard math is a direct
- * translation, including the `static int ipos` -- like
- * fl.slider's `offcenter`, a genuine FLTK function-local static
- * shared across every Roller instance, not a bug in this port.
+ * translation; the drag's starting position (`ipos_`) belongs to each
+ * roller.
  *
  * draw() is structurally ported (identical branching/pixel math to
  * FLTK) and draws real pixels now -- every fl.draw call it makes
@@ -40,6 +39,9 @@ class Roller : Valuator
     /// steps) they were last drawn for.
     private double turn_ = double.nan, drawnSteps_ = double.nan;
 
+    /// Mouse position where the current drag started.
+    private int ipos_;
+
     /// The default boxtype is upBox.
     this(int x, int y, int w, int h, string label = null)
     {
@@ -50,9 +52,6 @@ class Roller : Valuator
 
     override int handle(Event event)
     {
-        // Shared across every Roller instance -- see the module note.
-        static int ipos;
-
         int newpos = horizontal() ? fl.core.eventX() : fl.core.eventY();
 
         switch (event)
@@ -64,13 +63,13 @@ class Roller : Valuator
                 redraw();
             }
             handlePush();
-            ipos = newpos;
+            ipos_ = newpos;
             return 1;
 
         case Event.drag:
             // Up and right add.
             handleDrag(clamp(round(increment(previousValue(),
-                horizontal() ? newpos - ipos : ipos - newpos))));
+                horizontal() ? newpos - ipos_ : ipos_ - newpos))));
             return 1;
 
         case Event.release:

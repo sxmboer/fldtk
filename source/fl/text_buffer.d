@@ -20,22 +20,13 @@
  * Deliberate deviations from a byte-for-byte port, each also called out
  * at its point of use:
  *
- * - **Emoji/composed-character clustering is ported**:
- *   `nextChar()`/`prevChar()` step over a whole emoji sequence --
- *   regional-indicator flag pairs, ZWJ-joined sequences, skin-tone
- *   modifiers, keycaps, subdivision-flag tag sequences -- as a single
- *   "character", matching FLTK's `next_char()`/`prev_char()` ->
- *   `fl_utf8_next_composed_char()`/`fl_utf8_previous_composed_char()`
- *   exactly (see `utf8NextComposedCharLen()`/
- *   `utf8PreviousComposedCharIndex()`'s own doc comments for the two
- *   small, deliberate bounds-checking deviations D's memory safety
- *   needs that FLTK's raw pointers don't). This is FLTK's own
- *   curated emoji-sequence heuristic, not a general Unicode
- *   grapheme-cluster algorithm (it doesn't, for example, cluster an
- *   arbitrary base character plus combining diacritics the way a full
- *   UAX #29 implementation would) -- ported faithfully at that same
- *   scope rather than widened, since widening it would be a behavior
- *   change from FLTK, not a bug fix.
+ * - **Characters are Unicode grapheme clusters.** `nextChar()`/
+ *   `prevChar()` step over one user-perceived character (UAX #29, through
+ *   `std.uni.graphemeStride()`): a whole emoji sequence (flags, ZWJ joins,
+ *   skin tones, keycaps, subdivision flags), a letter with its combining
+ *   accents, a Hangul syllable written as jamo, CR LF. `fl.input_` and
+ *   `fl.text_display` use the same helpers (`graphemeLen()`,
+ *   `nextGrapheme()`, `prevGrapheme()`).
  * - **`fl_tolower()`'s hand-rolled Unicode case table is not ported.**
  *   Case-insensitive comparison (`searchForward`/`searchBackward` with
  *   `matchCase == false`) uses `std.uni.toLower()` on the decoded
@@ -210,165 +201,121 @@ int utf8Encode(uint ucs, char[] buf)
     return 3;
 }
 
-/// Ported from fl_utf8back(): steps `p` backward to the start of the
-/// UTF-8 sequence it falls within, scoped to a local `window` slice
-/// (index 0 is the lower bound) instead of FLTK's pointer pair --
-/// the same "begin"-bounded backward alignment TextBuffer.utf8Align()
-/// already does over the full gap buffer, reused here at window scope.
-/// Simplification vs. FLTK's own `fl_utf8back()`: no
-/// decoded-length cross-check against the original position -- fine
-/// for the well-formed UTF-8 this module always stores (the cross-check
-/// exists FLTK purely to characterize *malformed* input).
-private size_t utf8BackInWindow(const(char)[] window, size_t p)
+/// The byte length of the user-perceived character (a Unicode extended
+/// grapheme cluster, UAX #29) at the start of `s`; 0 for an empty `s`.
+/// Text that isn't valid UTF-8 there steps one code point (or one byte)
+/// at a time.
+package(fl) size_t graphemeLen(const(char)[] s)
 {
-    while (p > 0 && (cast(ubyte) window[p] & 0xc0) == 0x80)
-        p--;
-    return p;
+    import std.uni : graphemeStride;
+
+    if (s.length == 0) return 0;
+    try
+        return graphemeStride(s, 0);
+    catch (Exception)
+    {
+        size_t n = utf8Len1(s[0]);
+        return n > s.length ? s.length : n;
+    }
 }
 
-/**
- * Ported from `fl_utf8_next_composed_char()` (`src/fl_utf8.cxx`):
- * given a short buffer starting exactly on a codepoint boundary,
- * returns the byte length of the first "composed character" there --
- * either one ordinary codepoint, or a whole flag (regional-indicator
- * pair)/subdivision-flag (waving-flag + tag-sequence)/ZWJ-joined/
- * variation-selected/skin-toned/keycap emoji sequence, matching
- * FLTK's own curated heuristic exactly (not a general Unicode
- * grapheme-cluster algorithm -- see this module's own top comment).
- * Backs `TextBuffer.nextChar()`.
- *
- * Deviation from FLTK: each step re-validates the buffer isn't
- * exhausted before decoding (FLTK's raw-pointer `end` bound
- * tolerates reading exactly one byte at `end` since its caller's
- * stack buffer always has a trailing NUL there; a bounds-checked D
- * slice has no such byte to read).
- */
-private int utf8NextComposedCharLen(const(char)[] buf)
+/// How far `nextGrapheme()` and `prevGrapheme()` read: no character is
+/// longer than this in practice (the longest emoji sequences are under
+/// 40 bytes), and it bounds the work per step in very long lines.
+private enum graphemeWindow = 1024;
+
+/// The position after the character that starts at `pos`, in text of
+/// `length` bytes read one byte at a time through `at`. `pos` must be on
+/// a character boundary.
+package(fl) int nextGrapheme(scope char delegate(int) at, int pos, int length)
 {
-    int skip = utf8Len(buf[0]);
-    if (skip == -1) return 1;
+    if (pos >= length) return length;
+    char c = at(pos);
+    // Two ASCII bytes other than CR LF always have a boundary between them.
+    if (pos + 1 == length) return length;
+    char d = at(pos + 1);
+    if (cast(ubyte) c < 0x80 && cast(ubyte) d < 0x80 && !(c == '\r' && d == '\n'))
+        return pos + 1;
 
-    if (skip >= 4)
+    char[graphemeWindow] buf;
+    int n = 0;
+    int want = 32;
+    while (true)
     {
-        int dlen;
-        uint u = utf8DecodeAt(buf, 0, dlen);
-        if (u >= 0x1F1E6 && u <= 0x1F1FF) // 1st regional indicator: maybe a flag
-        {
-            if (cast(size_t) skip < buf.length)
-            {
-                int dlen2;
-                uint u2 = utf8DecodeAt(buf, skip, dlen2);
-                if (u2 >= 0x1F1E6 && u2 <= 0x1F1FF) // 2nd regional indicator: it's a flag
-                    return 2 * skip;
-            }
-        }
-        else if (u == 0x1F3F4) // waving black flag: maybe subdivision flags
-        {
-            size_t next = skip;
-            while (next < buf.length)
-            {
-                int dlen2;
-                uint u2 = utf8DecodeAt(buf, next, dlen2);
-                next += utf8Len1(buf[next]);
-                if (u2 == 0xE007F) return cast(int) next; // ends with "cancel tag"
-                if (!(u2 >= 0xE0020 && u2 <= 0xE007E)) break; // not a "tag component"
-            }
-        }
+        int limit = min(length - pos, want);
+        while (n < limit) { buf[n] = at(pos + n); n++; }
+        size_t len = graphemeLen(buf[0 .. n]);
+        // A character that fills the window may go on past it.
+        if (len < n || pos + n == length || n == graphemeWindow)
+            return pos + cast(int) len;
+        want *= 2;
     }
-
-    size_t from = skip; // skip 1st codepoint
-    while (from < buf.length)
-    {
-        int dlen;
-        uint u = utf8DecodeAt(buf, from, dlen);
-        if (u == 0x200D) // zero-width joiner
-        {
-            from += utf8Len1(buf[from]); // skip joiner
-            if (from >= buf.length) break;
-            int skip2 = utf8Len(buf[from]);
-            if (skip2 < 1) break;
-            from += (skip2 < cast(int)(buf.length - from)) ? skip2 : cast(int)(buf.length - from); // skip joined codepoint
-        }
-        else if (u >= 0xFE00 && u <= 0xFE0F) from += utf8Len1(buf[from]); // variation selector
-        else if (u >= 0x1F3FB && u <= 0x1F3FF) from += utf8Len1(buf[from]); // EMOJI MODIFIER FITZPATRICK
-        else if (u == 0x20E3) from += utf8Len1(buf[from]); // combining enclosing keycap
-        else break;
-    }
-    return cast(int) from;
 }
 
-/**
- * Ported from `fl_utf8_previous_composed_char()`, specialized for this
- * module's one caller (`TextBuffer.prevCharClipped()`): `window` is the
- * captured lookback bytes ending exactly at the position being stepped
- * back from -- matching that call shape exactly (FLTK's own `from`
- * there always points at its stack buffer's trailing NUL, so its
- * `if (*from)` branch never fires for this caller and isn't ported).
- * Returns the index within `window` of the start of the previous
- * composed character.
- *
- * Deviation from FLTK: every decode uses the *whole* window as its
- * upper bound rather than FLTK's tighter, per-call `end`/`keep`
- * pointer -- harmless for the well-formed UTF-8 this module always
- * stores (a valid lead byte's decoded length never overruns its own
- * codepoint regardless of how much further the bound extends; the
- * tighter bound FLTK uses exists to characterize malformed input,
- * which can't occur here).
- */
-private size_t utf8PreviousComposedCharIndex(const(char)[] window)
+/// The start of the character that ends at `pos` (or contains the byte
+/// before it), in text read through `at`. Reading starts at the last
+/// ASCII byte before `pos`, where a character always starts (unless it
+/// is the LF of a CR LF), at most `graphemeWindow` bytes back.
+package(fl) int prevGrapheme(scope char delegate(int) at, int pos)
 {
-    if (window.length == 0) return 0;
-    size_t from = utf8BackInWindow(window, window.length - 1);
-    int len;
-    uint u = utf8DecodeAt(window, from, len);
-
-    if (u >= 0x1F1E6 && u <= 0x1F1FF) // a 1st regional indicator symbol can be a flag
+    if (pos <= 0) return 0;
+    char c = at(pos - 1);
+    if (cast(ubyte) c < 0x80)
     {
-        if (from > 0)
-        {
-            size_t previous = utf8BackInWindow(window, from - 1);
-            int len2;
-            uint u2 = utf8DecodeAt(window, previous, len2);
-            if (u2 >= 0x1F1E6 && u2 <= 0x1F1FF) // a 2nd regional indicator symbol gives a flag
-                return previous;
-        }
-    }
-    else if (u == 0xE007F) // ends with "cancel tag"
-    {
-        size_t previous = from;
-        while (true)
-        {
-            if (previous == 0) return 0;
-            previous = utf8BackInWindow(window, previous - 1);
-            u = utf8DecodeAt(window, previous, len);
-            if (u == 0x1F3F4) return previous; // "waving black flag" starts subdivision flags
-            if (!(u >= 0xE0020 && u <= 0xE007E)) break; // any series of "tag components"
-        }
+        if (pos == 1) return 0;
+        char b = at(pos - 2);
+        if (cast(ubyte) b < 0x80)
+            return (b == '\r' && c == '\n') ? pos - 2 : pos - 1;
     }
 
-    while (from > 0)
+    int lo = pos > graphemeWindow ? pos - graphemeWindow : 0;
+    int start = lo;
+    for (int k = pos - 1; k >= lo; k--)
     {
-        u = utf8DecodeAt(window, from, len);
-        if (u >= 0xFE00 && u <= 0xFE0F) // a variation selector
-            from = utf8BackInWindow(window, from - 1);
-        else if (u >= 0x1F3FB && u <= 0x1F3FF) // EMOJI MODIFIER FITZPATRICK
-            from = utf8BackInWindow(window, from - 1);
-        else if (u == 0x20E3) // combining enclosing keycap
-            from = utf8BackInWindow(window, from - 1);
-        else
+        char ch = at(k);
+        if (cast(ubyte) ch < 0x80)
         {
-            size_t prevStart = utf8BackInWindow(window, from - 1);
-            int lenPrev;
-            uint uPrev = utf8DecodeAt(window, prevStart, lenPrev);
-            if (uPrev == 0x200D) // zero-width joiner
-            {
-                from = prevStart == 0 ? 0 : utf8BackInWindow(window, prevStart - 1);
-                continue;
-            }
-            return from;
+            start = (ch == '\n' && k > lo && at(k - 1) == '\r') ? k - 1 : k;
+            break;
         }
     }
-    return from;
+    while (start < pos && (cast(ubyte) at(start) & 0xc0) == 0x80) start++;
+    if (start >= pos) return pos - 1;
+
+    char[graphemeWindow] buf;
+    int n = pos - start;
+    foreach (i; 0 .. n) buf[i] = at(start + i);
+    size_t i = 0;
+    while (true)
+    {
+        size_t len = graphemeLen(buf[i .. n]);
+        if (len == 0 || i + len >= n) break;
+        i += len;
+    }
+    return start + cast(int) i;
+}
+
+unittest
+{
+    int next(string s, int pos) { return nextGrapheme((int i) => s[i], pos, cast(int) s.length); }
+    int prev(string s, int pos) { return prevGrapheme((int i) => s[i], pos); }
+
+    // Plain ASCII and CR LF.
+    assert(next("abc", 0) == 1 && prev("abc", 2) == 1);
+    assert(next("a\r\nb", 1) == 3 && prev("a\r\nb", 3) == 1);
+    // A letter with a combining accent is one character.
+    string acc = "xe\u0301y";
+    assert(next(acc, 1) == 4 && prev(acc, 4) == 1);
+    // A run of flags pairs up from the start of the run.
+    string flags = "a\U0001F1F3\U0001F1F1\U0001F1E9\U0001F1EA";
+    assert(next(flags, 1) == 9 && prev(flags, 17) == 9 && prev(flags, 9) == 1);
+    // Hangul jamo L V T make one syllable.
+    string jamo = "\u1100\u1161\u11A8";
+    assert(next(jamo, 0) == 9 && prev(jamo, 9) == 0);
+    // Invalid UTF-8 still steps forward and back.
+    string bad = "a\xffb";
+    assert(next(bad, 1) == 2 && prev(bad, 2) == 1);
+    assert(graphemeLen("") == 0);
 }
 
 // ---------------------------------------------------------------------
@@ -1415,46 +1362,14 @@ class TextBuffer
     // -- Character stepping / UTF-8 alignment -----------------------------
 
     /// Returns the byte offset of the character after pos, clipped to
-    /// length() at the end of the buffer. **Emoji-sequence-aware**:
-    /// steps over a whole flag/ZWJ-joined/skin-toned/keycap/
-    /// subdivision-flag emoji sequence as one "character", matching
-    /// FLTK's `next_char()` -> `fl_utf8_next_composed_char()`
-    /// exactly (not a general Unicode grapheme-cluster algorithm --
-    /// FLTK's own curated heuristic, ported verbatim, see
-    /// `utf8NextComposedCharLen()` below).
+    /// length() at the end of the buffer. A character is a grapheme
+    /// cluster (`nextGrapheme()`): a whole emoji sequence, or a letter
+    /// with its combining accents, counts as one.
     int nextChar(int pos) const
     {
         if (pos >= length_) return length_;
-
-        int len = utf8Len(byteAt(pos));
-        if (len > 0) // possible start of an emoji sequence
-        {
-            // Ported from Fl_Text_Buffer::next_char()'s own 40-byte
-            // lookahead window -- "longest emoji sequences I know use
-            // 28 bytes in UTF8 (e.g. the Wales flag)", FLTK's own
-            // comment.
-            char[40] t;
-            int tlen;
-            int p = pos;
-            int countPoints;
-            while (p < length_ && tlen < t.length)
-            {
-                char b = byteAt(p++);
-                t[tlen++] = b;
-                int ll = utf8Len1(b);
-                countPoints++;
-                for (int i = 1; i < ll && tlen < t.length; i++)
-                    t[tlen++] = byteAt(p++);
-                if (countPoints > 1 && (ll == 1 || ll == 2))
-                    break; // short codepoint, but not the 1st -- stop
-            }
-            len = tlen > 0 ? utf8NextComposedCharLen(t[0 .. tlen]) : 0;
-        }
-        else if (len == -1)
-            len = 1;
-
-        pos += len;
-        return pos >= length_ ? length_ : pos;
+        if (utf8Len(byteAt(pos)) == -1) return pos + 1;
+        return nextGrapheme((int i) => byteAt(i), pos, length_);
     }
 
     /// Same as nextChar() -- FLTK's next_char_clipped() is a plain
@@ -1463,29 +1378,12 @@ class TextBuffer
     int nextCharClipped(int pos) const { return nextChar(pos); }
 
     /// Returns the byte offset of the character before pos, clipped to
-    /// 0 at the start of the buffer. **Emoji-sequence-aware**
-    /// (see nextChar()'s doc comment): the backward twin,
-    /// ported from `prev_char_clipped()` -> `fl_utf8_previous_composed_
-    /// char()`.
+    /// 0 at the start of the buffer: the backward twin of nextChar()
+    /// (`prevGrapheme()`).
     int prevCharClipped(int pos) const
     {
         if (pos <= 0) return 0;
-
-        // Ported from Fl_Text_Buffer::prev_char_clipped()'s own
-        // 40-byte lookback window.
-        enum lt = 40;
-        char[lt] t;
-        int len = lt;
-        int p = pos;
-        for (int i = lt; i > 0 && p > 0; i--)
-        {
-            t[--len] = byteAt(--p);
-            int ll = utf8Len(t[len]); // -1 (not 1) for a continuation byte -- see nextChar()'s sibling window-fill loop, which uses utf8Len1() instead because FLTK does too
-            if (ll == 1 || ll == 2) break;
-        }
-        auto window = t[len .. lt];
-        size_t previous = utf8PreviousComposedCharIndex(window);
-        return pos - cast(int) window.length + cast(int) previous;
+        return prevGrapheme((int i) => byteAt(i), pos);
     }
 
     /// Returns the byte offset of the character before pos, or -1 if pos
@@ -1993,10 +1891,9 @@ unittest
 
 unittest
 {
-    // nextChar()/prevChar() step over a whole emoji sequence as one
-    // "character", matching FLTK's fl_utf8_next_composed_char()/
-    // fl_utf8_previous_composed_char() -- see this module's top
-    // comment and nextChar()'s own doc comment. Each sequence is
+    // nextChar()/prevChar() step over a whole emoji sequence, or a
+    // letter with its accents, as one character (a grapheme cluster,
+    // see nextChar()'s doc comment). Each sequence is
     // embedded between two ASCII marker letters so nextChar()/
     // prevChar() land on real boundaries on both sides, not just at
     // the buffer's own start/end (where the lookahead/lookback window
@@ -2026,11 +1923,12 @@ unittest
         ~ "\U0001F467\U0000200D\U0001F466", 25);
 
     // Subdivision flag (Wales): waving black flag + 6 tag characters
-    // (g,b,w,l,s,cancel) -- FLTK's own "28 bytes, longest I know"
-    // example, and the one that sizes the 40-byte lookahead/lookback
-    // window in the first place.
+    // (g,b,w,l,s,cancel), 28 bytes.
     checkComposed("\U0001F3F4\U000E0067\U000E0062\U000E0077"
         ~ "\U000E006C\U000E0073\U000E007F", 28);
+
+    // A letter with two combining accents (e + acute + dot below).
+    checkComposed("e\u0301\u0323", 5);
 
     // A lone emoji with nothing to join to steps as a single ordinary
     // codepoint, not merged with unrelated neighboring text (already

@@ -39,23 +39,6 @@
  *    `fl.core`'s and `fl.draw`'s own notes on the same gap); none of
  *    them affect `fail()`/`ld()`, which still report failure
  *    correctly.
- *
- * Faithfully ported, not fixed, despite looking questionable on a
- * close read (matching CONVENTIONS.md's "port faithfully, note the
- * quirk, don't silently correct it" policy):
- *  - `onFrameData()`'s `transparentColorIndex` uses a *truthy* check on
- *    the raw transparent-pixel index (`gf.trans != 0 && ...`), not
- *    `gf.trans >= 0` -- when the transparent color is index 0, this
- *    frame's `transparentColorIndex` silently becomes -1 (only affects
- *    `disposeFrame()`'s background-color choice; the actual per-pixel
- *    transparency check during compositing, `c == gf.trans`, is
- *    unaffected and stays correct even for index 0).
- *  - `disposeFrame()`'s `previous`-disposal copy uses the *previous*
- *    frame's own encoded width as its source stride even when frames
- *    are stored full-canvas-sized (`optimizeMemory` off) -- correct
- *    only when that previous frame happened to cover the whole canvas;
- *    a real, if narrow (disposal chain + a genuinely partial ancestor
- *    frame), latent bug inherited from FLTK.
  */
 module fl.anim_gif_image;
 
@@ -623,9 +606,7 @@ class AnimGifImage : GifImage
         frame.w = gf.w;
         frame.h = gf.h;
         frame.delay = convertDelay(delayRaw);
-        // Faithful truthy check, not `gf.trans >= 0` -- see this
-        // module's top comment.
-        frame.transparentColorIndex = (gf.trans != 0 && gf.trans < gf.clrs) ? gf.trans : -1;
+        frame.transparentColorIndex = (gf.trans >= 0 && gf.trans < gf.clrs) ? gf.trans : -1;
         frame.dispose = cast(Dispose) gf.dispose;
         if (frame.transparentColorIndex >= 0)
         {
@@ -721,7 +702,10 @@ class AnimGifImage : GifImage
                     foreach (y; 0 .. ph)
                     {
                         size_t dstOff = cast(size_t)(y + py) * canvasW_ * 4 + cast(size_t) px * 4;
-                        size_t srcOff = cast(size_t) y * frames_[prev].w * 4;
+                        // A frame-sized buffer (optimizeMem_) or the whole canvas.
+                        size_t srcOff = optimizeMem_
+                            ? cast(size_t) y * frames_[prev].w * 4
+                            : (cast(size_t)(y + py) * canvasW_ + px) * 4;
                         if (dstOff + pw * 4 <= offscreen_.length && srcOff + pw * 4 <= src.length)
                             offscreen_[dstOff .. dstOff + pw * 4] = src[srcOff .. srcOff + pw * 4];
                     }
@@ -891,6 +875,86 @@ unittest
     assert(f1.array[4 .. 8] == [0, 255, 0, 255]); // frame 1's own green, opaque
     assert(f1.array[8 .. 12] == [255, 0, 0, 255]); // frame 1's own red, opaque
     assert(f1.array[12 .. 16] == [255, 0, 0, 0]); // background fill, transparent
+}
+
+version (unittest)
+{
+    // Builds a GIF with a 4-color global palette (red, green, blue,
+    // white). Each frame is [x, y, w, h, dispose, transparentIndex or -1]
+    // plus one palette index per pixel. The LZW data sends a clear code
+    // before every pixel, so the code width stays at 3 bits.
+    private ubyte[] testGif(int canvasW, int canvasH, int background,
+        const int[6][] frames, const ubyte[][] pixels)
+    {
+        ubyte[] g = ['G', 'I', 'F', '8', '9', 'a',
+            cast(ubyte) canvasW, 0, cast(ubyte) canvasH, 0, 0x81, cast(ubyte) background, 0,
+            255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255];
+        foreach (i, f; frames)
+        {
+            bool hasTrans = f[5] >= 0;
+            g ~= [0x21, 0xF9, 4, cast(ubyte)((f[4] << 2) | (hasTrans ? 1 : 0)), 0, 0,
+                cast(ubyte)(hasTrans ? f[5] : 0), 0];
+            g ~= [0x2c, cast(ubyte) f[0], 0, cast(ubyte) f[1], 0, cast(ubyte) f[2], 0,
+                cast(ubyte) f[3], 0, 0, 2];
+            ubyte[] data;
+            uint acc;
+            int bits;
+            void put(int code)
+            {
+                acc |= code << bits;
+                bits += 3;
+                while (bits >= 8)
+                {
+                    data ~= cast(ubyte) acc;
+                    acc >>= 8;
+                    bits -= 8;
+                }
+            }
+            foreach (p; pixels[i])
+            {
+                put(4);
+                put(p);
+            }
+            put(5);
+            if (bits > 0) data ~= cast(ubyte) acc;
+            g ~= cast(ubyte) data.length;
+            g ~= data;
+            g ~= 0;
+        }
+        g ~= 0x3b;
+        return g;
+    }
+}
+
+unittest
+{
+    // A transparent color index of 0 is a transparent color.
+    auto gif = testGif(2, 1, 1, [[0, 0, 2, 1, 2, 0], [0, 0, 2, 1, 1, -1]],
+        [[0, 1], [2, 2]]);
+    auto anim = new AnimGifImage("mem", gif, gif.length);
+    assert(anim.valid() && anim.frames() == 2);
+    assert(anim.frames_[0].transparentColorIndex == 0);
+    assert(anim.frames_[1].transparentColorIndex == -1);
+}
+
+unittest
+{
+    // Disposing to "previous" restores the ancestor frame's rectangle
+    // from that frame's whole-canvas copy. Frame 1 turns the middle of
+    // row 1 green, frame 2 (dispose previous) paints everything blue,
+    // and frame 3 then starts from frame 1's green rectangle.
+    auto gif = testGif(4, 2, 0,
+        [[0, 0, 4, 2, 1, -1], [1, 1, 2, 1, 1, -1], [0, 0, 4, 2, 3, -1], [0, 0, 1, 1, 1, -1]],
+        [[0, 0, 0, 0, 0, 0, 0, 0], [1, 1], [2, 2, 2, 2, 2, 2, 2, 2], [3]]);
+    auto anim = new AnimGifImage("mem", gif, gif.length);
+    assert(anim.valid() && anim.frames() == 4);
+
+    auto f3 = cast(RGBImage) anim.image(3);
+    assert(f3.w() == 4 && f3.h() == 2);
+    size_t at(int x, int y) { return (y * 4 + x) * 4; }
+    assert(f3.array[at(0, 0) .. at(0, 0) + 3] == [255, 255, 255]);
+    assert(f3.array[at(1, 1) .. at(1, 1) + 3] == [0, 255, 0]);
+    assert(f3.array[at(2, 1) .. at(2, 1) + 3] == [0, 255, 0]);
 }
 
 unittest

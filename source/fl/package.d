@@ -171,8 +171,7 @@ public import fl.glew;
 // NOT re-exported here either, same category of problem as
 // fl.platform_x11 just below: its module name is literally `scheme`,
 // which collides with fl.core's own `scheme()`/`scheme(string)`
-// functions (the real Fl::scheme() reactivity, ported for
-// core-roadmap item 11) once both are visible under a single
+// functions (the real Fl::scheme() reactivity) once both are visible under a single
 // `import fl;` -- a bare `scheme(...)` call resolved to the *module*
 // instead of the function, breaking every caller of fl.core.scheme()
 // (e.g. tabs-simple/message/tree-custom-sort, all `scheme(...)`

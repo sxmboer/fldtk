@@ -35,11 +35,6 @@
  *    mutable copy -- slicing value() directly is enough -- so there's
  *    no FL_PATH_MAX-length cap here either; not a meaningful behavior
  *    difference for any realistic path.
- *  - `inButtonBar` (FLTK: `static char inButtonBar` local to
- *    Fl_File_Input::handle(), genuinely shared across every
- *    Fl_File_Input instance process-wide): module-level D global here,
- *    matching the fl.slider `offcenter`/fl.roller `ipos` precedent
- *    CONVENTIONS.md documents.
  *
  * handle()'s default case now uses fl.widget_tracker.WidgetTracker to
  * guard against Input::handle(event) having destroyed this widget
@@ -58,10 +53,6 @@ import fldraw = fl.draw;
 private enum int dirHeight = 10;
 private enum Damage damageBar = 0x10;
 
-/// See the module comment: genuinely shared across every FileInput,
-/// matching FLTK's function-local `static char inButtonBar`.
-private bool inButtonBar_ = false;
-
 class FileInput : Input
 {
     private
@@ -69,6 +60,7 @@ class FileInput : Input
         Boxtype downBox_;
         short[200] buttons_;
         short pressed_ = -1;
+        bool inButtonBar_; // the current mouse press started in the path buttons
     }
 
     this(int x, int y, int w, int h, string label = null)

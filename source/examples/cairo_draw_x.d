@@ -56,7 +56,7 @@ else
 {
     void main(string[] args)
     {
-        messageTitle("This program needs a Cairo enabled FLTK library");
+        messageTitle("This program needs a Cairo enabled fldtk library");
         message("Please build fldtk with Cairo enabled: the default on Linux\n"
             ~ "(not dub configuration linux-no-cairo), and\n"
             ~ "rdmd buildsamples.d --cairo on Windows (see BUILDING.md).");

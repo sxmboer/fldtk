@@ -3,11 +3,8 @@
  *
  * Faithful, complete port of the numeric logic: handle()'s drag/keyboard
  * math (value_to_position()/position_to_value(), the linear and
- * logarithmic scales, scrollvalue()) is a direct translation, including
- * the `static int offcenter` in the drag handler, which is genuinely
- * shared across *every* Slider instance FLTK too (a plain
- * function-local static in a non-template C++ method) -- not a bug in
- * this port, a faithful copy of an unusual but real FLTK design.
+ * logarithmic scales, scrollvalue()) is a direct translation. Where in
+ * the knob a drag grabbed it (`offcenter_`) belongs to each slider.
  *
  * draw()/drawBg()/drawTicks() are a complete, faithful port (same box/
  * color/gripper logic as FLTK) and draw real pixels now via
@@ -72,6 +69,7 @@ class Slider : Valuator
         ScaleType scaleType_ = ScaleType.linearScale;
         TickPosition ticks_ = ticksNone;
         ubyte numTicks_ = 11;
+        int offcenter_; // where in the knob the current drag grabbed it
     }
 
     /// The default boxtype is downBox.
@@ -536,17 +534,14 @@ class Slider : Valuator
             int mx = horizontal() ? fl.core.eventX() - x : fl.core.eventY() - y;
             int s;
 
-            // Shared across every Slider instance -- see the module note.
-            static int offcenter;
-
             if (type() == horFillSlider || type() == vertFillSlider)
             {
                 s = 0;
                 if (event == Event.push)
                 {
                     int xx = cast(int)(val * ww + .5);
-                    offcenter = mx - xx;
-                    if (offcenter < -10 || offcenter > 10) offcenter = 0;
+                    offcenter_ = mx - xx;
+                    if (offcenter_ < -10 || offcenter_ > 10) offcenter_ = 0;
                     else return 1;
                 }
             }
@@ -560,14 +555,14 @@ class Slider : Valuator
                 if (event == Event.push)
                 {
                     int xx = cast(int)(val * (ww - s) + .5);
-                    offcenter = mx - xx;
-                    if (offcenter < 0) offcenter = 0;
-                    else if (offcenter > s) offcenter = s;
+                    offcenter_ = mx - xx;
+                    if (offcenter_ < 0) offcenter_ = 0;
+                    else if (offcenter_ > s) offcenter_ = s;
                     else return 1;
                 }
             }
 
-            int xx = mx - offcenter;
+            int xx = mx - offcenter_;
             double v = 0;
             bool tryAgain = true;
             while (tryAgain)
@@ -576,21 +571,21 @@ class Slider : Valuator
                 if (xx < 0)
                 {
                     xx = 0;
-                    offcenter = mx;
-                    if (offcenter < 0) offcenter = 0;
+                    offcenter_ = mx;
+                    if (offcenter_ < 0) offcenter_ = 0;
                 }
                 else if (xx > (ww - s))
                 {
                     xx = ww - s;
-                    offcenter = mx - xx;
-                    if (offcenter > s) offcenter = s;
+                    offcenter_ = mx - xx;
+                    if (offcenter_ > s) offcenter_ = s;
                 }
                 double pos = (ww - s) > 0 ? cast(double) xx / cast(double)(ww - s) : 0.0;
                 v = round(axisValue(pos));
                 // Make sure a click outside the slider bar moves it.
                 if (event == Event.push && v == value())
                 {
-                    offcenter = s / 2;
+                    offcenter_ = s / 2;
                     event = Event.drag;
                     tryAgain = true;
                 }

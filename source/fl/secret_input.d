@@ -6,21 +6,17 @@
  * body is ported from Fl_Secret_Input::Fl_Secret_Input()
  * (src/Fl_Input.cxx), not the (empty) header.
  *
- * Fl_Secret_Input::handle(int) is NOT ported: its only job FLTK is
- * `if (event == FL_KEYBOARD && has_marked_text() && compose_state)
- * mark(insert_position());` -- suppressing the marked-text underline
- * IME draws under provisionally-composed characters, so a secret field
- * doesn't visually leak how many characters are being composed. No IME
- * support exists anywhere in this port (see fl.input_'s module
- * comment), so that condition is always false and the override would
- * be a pure pass-through to Fl_Input::handle() -- identical to not
- * overriding handle() at all.
+ * handle() is ported from Fl_Secret_Input::handle(): marked text from
+ * an input method (`fl.core.hasMarkedText()`) is not left selected, so
+ * it isn't underlined and the field doesn't show how many characters
+ * are being composed.
  */
 module fl.secret_input;
 
 import fl.input : Input;
 import fl.widget : Widget;
-import fl.enumerations : inputSecret;
+import fl.enumerations : inputSecret, Event;
+import fl.core : markedTextActive;
 
 class SecretInput : Input
 {
@@ -29,6 +25,14 @@ class SecretInput : Input
         super(x, y, w, h, label);
         type(inputSecret);
         clearFlag(Widget.Flag.macUseAccentsMenu);
+    }
+
+    override int handle(Event event)
+    {
+        int retval = super.handle(event);
+        if (event == Event.keyDown && markedTextActive())
+            mark(insertPosition()); // don't underline marked text
+        return retval;
     }
 }
 

@@ -595,8 +595,8 @@ class Grid : FlGroup
     {
         int idx = find(wi);
         if (idx >= children()) return null;
-        if (row < 0 || row > rowCount_) return null;
-        if (col < 0 || col > colCount_) return null;
+        if (row < 0 || row >= rowCount_) return null;
+        if (col < 0 || col >= colCount_) return null;
 
         Cell c = cell(row, col);
         if (c is null)
@@ -815,6 +815,11 @@ unittest
     assert(b.x() == a.x() + g.computedColWidth(0));
     assert(c.x() == b.x() + g.computedColWidth(1));
     assert(c.x() + g.computedColWidth(2) == 300);
+
+    // A row or column one past the end is refused.
+    assert(g.widget(a, 1, 0) is null);
+    assert(g.widget(a, 0, 3) is null);
+    assert(g.cell(a).col_ == 0);
 
     FlGroup.current(null);
 }

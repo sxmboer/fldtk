@@ -3,23 +3,7 @@
  * 1.5.0): a Choice pre-populated with every known scheme name (see
  * fl.scheme.names()) that switches fl.core.scheme() when the user
  * picks a different one.
- *
- * Deviation from FLTK, documented rather than silently dropped:
- * FLTK's scheme_cb_() callback does nothing but call
- * `Fl::scheme(new_scheme)` and relies entirely on `Fl::reload_scheme()`'s
- * own `first_window()`/`next_window()` walk (src/Fl_get_system_colors.cxx,
- * the last few lines of that function) to redraw *every* open window.
- * This port's `fl.core.reloadScheme()` doesn't do that walk -- there is
- * no ported window-list/`first_window()`/`next_window()` mechanism at
- * all (the same gap `fl.core.getSystemScheme()`'s skipped X-resource-
- * database fallback already documents). Rather than build a whole
- * window registry to support one call site, `schemeCb_()` here redraws
- * only *this* widget's own `window()` -- narrower than FLTK (a
- * second, separate open window showing scheme-dependent boxtypes won't
- * repaint until its own next `Expose`), but correct for the common
- * single-window case, which is every consumer of this widget in this
- * repo so far (calling `fl.core.scheme()` directly needs a manual
- * `win.redraw()`; a `SchemeChoice` does not).
+ * fl.core.scheme() redraws every open window (fl.core.reloadScheme()).
  */
 module fl.scheme_choice;
 
@@ -99,8 +83,5 @@ class SchemeChoice : Choice
         string newScheme = text(value());
         if (!fl.core.isScheme(newScheme))
             fl.core.scheme(newScheme);
-
-        auto win = window();
-        if (win !is null) win.redraw();
     }
 }

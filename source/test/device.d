@@ -685,7 +685,7 @@ void copy(Widget, Object)
         else if (operation == "PdfFileSurface")
         {
             auto pdf = new PdfFileSurface();
-            err = pdf.beginJob("FLTK.pdf", errMessage);
+            err = pdf.beginJob("fldtk.pdf", errMessage);
             p = pdf;
         }
         else
@@ -803,8 +803,8 @@ void copy(Widget, Object)
             fl_color(white);
             fl_font(timesBold, 120);
             int dx, dy, l, h;
-            textExtents("FLTK", dx, dy, l, h);
-            fl_draw("FLTK", target.w() / 2 - l / 2, target.h() / 2 + h / 2);
+            textExtents("fldtk", dx, dy, l, h);
+            fl_draw("fldtk", target.w() / 2 - l / 2, target.h() / 2 + h / 2);
         }
         RGBImage mask = surf.image();
         fl_color(yellow);

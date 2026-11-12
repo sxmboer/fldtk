@@ -224,7 +224,7 @@ class PdfFileSurface : PdfBase
             import fl.preferences : Preferences, rootCoreUser;
             import fl.native_file_chooser : NativeFileChooser, BrowseType, saveasConfirm;
 
-            auto prefs = new Preferences(rootCoreUser, "fltk.org", "printers");
+            auto prefs = new Preferences(rootCoreUser, "fldtk", "printers");
             string prefFormat;
             prefs.get("PDF/page_size", prefFormat, "A4");
             int rank = 1; // A4
@@ -339,7 +339,7 @@ class PdfFileSurface : PdfBase
             }
             DOCINFOW di;
             di.cbSize = DOCINFOW.sizeof;
-            di.lpszDocName = "FLTK";
+            di.lpszDocName = "fldtk";
             di.lpszOutput = toUTF16z(path);
             if (StartDocW(dc, &di) <= 0)
             {

@@ -312,7 +312,7 @@ class FileChooser
     this(string pathname, string pattern, int typeVal, string title)
     {
         if (prefs_ is null)
-            prefs_ = new Preferences(rootUser | rootCore, "fltk.org", "filechooser");
+            prefs_ = new Preferences(rootUser | rootCore, "fldtk", "filechooser");
 
         auto prevCurrent = FlGroup.current();
         FlGroup.current(null);
@@ -1367,14 +1367,9 @@ class FileChooser
                 }
                 else
                 {
-                    // Try loading as an image. XBM/XPM/PNM are always
-                    // recognized; PNG/JPEG/GIF/BMP/ICO/SVG only once the
-                    // program has called `registerImages()` (see
-                    // SharedImage's own module comment); anything else falls through to the
-                    // text-preview path below, matching exactly what
-                    // FLTK itself does when Fl_Shared_Image::get()
-                    // returns null for any reason (an unregistered
-                    // format included).
+                    // Try loading as an image (any format SharedImage
+                    // reads); anything else falls through to the
+                    // text-preview path below.
                     if (window !is null) window.cursor(Cursor.wait);
                     check();
                     image = SharedImage.get(filename);

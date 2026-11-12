@@ -2,10 +2,10 @@
  * Launches and tracks an external text editor for a code block,
  * reloading the block's own text once the editor's own save touches
  * the temp file on disk -- ported from FLTK's
- * `fluid/tools/ExternalCodeEditor_UNIX.h`/`.cxx` (Unix only FLTK
- * too; `ExternalCodeEditor_WIN32.h`/`.cxx` is Windows-specific and out
- * of scope, matching this project's Linux/Wayland-primary platform
- * scope).
+ * `fluid/tools/ExternalCodeEditor_UNIX.h`/`.cxx`. Built on `std.process`
+ * and `std.file`, the same code runs on Windows (FLTK has a separate
+ * `ExternalCodeEditor_WIN32.cxx` for that); the temp files go under
+ * `std.file.tempDir()`.
  *
  * **`std.process`/`std.file` replace FLTK's raw `fork()`/
  * `execvp()`/`waitpid()`/`pipe()`/`stat()`/`mkdir()` entirely** (per
@@ -394,9 +394,10 @@ class ExternalCodeEditor
     /// This process's own temp directory for external-editor files.
     static string tmpdirName()
     {
+        import std.file : tempDir;
         import std.process : thisProcessID;
 
-        return format("/tmp/.fluid-%d", thisProcessID);
+        return buildPath(tempDir(), format(".fluid-%d", thisProcessID));
     }
 
     /// Removes the temp directory (called on app exit to clean up).
@@ -449,5 +450,5 @@ unittest
     assert(editor.filename() is null); // reapEditor() removes the tmpfile as a side effect
 
     destroy(editor);
-    ExternalCodeEditor.tmpdirClear(); // leave no residue under /tmp from this test run
+    ExternalCodeEditor.tmpdirClear(); // leave no residue in the temp directory
 }

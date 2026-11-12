@@ -827,7 +827,7 @@ bool glVisual(int mode, const(int)* alist = null)
  * e.g. from a plain `Box` subclass's `draw()` override. Bracket such a
  * `draw()` override entirely between `gl_start()` and `gl_finish()`.
  *
- * Two real FLTK limitations, ported faithfully, not narrowed:
+ * Two limitations:
  * `glVisual()` must already have selected a GL-capable visual before the
  * target window was first shown (this lazily picks the plain default,
  * mode `0`, the first time `gl_start()` ever runs if the caller never

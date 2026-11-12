@@ -4,10 +4,11 @@
  * Faithful port of value()/setonly()/shortcut()/downBox()/compact() and
  * the handle()/draw() logic, except:
  *
- *  - draw(): a complete, faithful port now, including compact() mode's
- *    own drawing branch (box drawn across the parent's bounds, clipped
- *    back to this button's own area via fl.draw's real pushClip()/
- *    popClip(), plus the divider line via fl_yxline()/fl_xyline()).
+ *  - draw(): a complete port, including compact() mode
+ *    (drawButtonBox(): the box drawn across the parent's bounds, clipped
+ *    back to this button's own area, plus the divider lines).
+ *    LightButton and ReturnButton draw their frame through
+ *    drawButtonBox() too.
  *
  *  - simulateKeyAction()/keyReleaseTimeout(): a faithful, complete
  *    port -- flashes the button (value(true), then 0.15s later via
@@ -129,42 +130,7 @@ class Button : Widget
         Color col = value_ ? selectionColor() : color();
         Boxtype bt = value_ ? (downBox_ != Boxtype.noBox ? downBox_ : fl_down(box())) : box();
 
-        if (compact_ && parent() !is null)
-        {
-            // Draws the box across the *parent's* full bounds (clipped
-            // back to this button's own area), so adjacent compact
-            // buttons in the same group appear to share one continuous
-            // border -- then a short divider line on whichever edge(s)
-            // don't reach the parent's own edge, signalling where this
-            // button ends and the next one begins.
-            auto p = parent();
-            int px, py;
-            int pw = p.w(), ph = p.h();
-            if (p.asWindow() !is null) { px = 0; py = 0; }
-            else { px = p.x(); py = p.y(); }
-
-            fldraw.pushClip(x(), y(), w(), h());
-            drawBox(bt, px, py, pw, ph, col);
-            fldraw.popClip();
-
-            enum hh = 5, ww = 5;
-            Color dividerColor = fl_gray_ramp(numGray / 3);
-            if (!activeR()) dividerColor = fldraw.inactive(dividerColor);
-            if (x() + w() != px + pw)
-            {
-                fldraw.fl_color(dividerColor);
-                fldraw.fl_yxline(x() + w() - 1, y() + hh, y() + h() - 1 - hh);
-            }
-            if (y() + h() != py + ph)
-            {
-                fldraw.fl_color(dividerColor);
-                fldraw.fl_xyline(x() + ww, y() + h() - 1, x() + w() - 1 - ww);
-            }
-        }
-        else
-        {
-            drawBox(bt, col);
-        }
+        drawButtonBox(bt, col);
         drawBackdrop();
 
         if (labeltype() == Labeltype.normalLabel && value_)
@@ -349,6 +315,44 @@ class Button : Widget
 
     void compact(bool v) { compact_ = v; }
     bool compact() const { return compact_; }
+
+    /// Draws this button's box `bt` in `col`: the ordinary box, or with
+    /// compact() set, the part of one box spanning the whole parent group
+    /// that this button covers, plus a short divider where it meets the
+    /// next button, so the buttons of a group join into one bar. A light
+    /// button and a return button draw their frame through here too, so
+    /// they join the bar, their light or arrow inside their own part.
+    protected void drawButtonBox(Boxtype bt, Color col)
+    {
+        if (!compact_ || parent() is null)
+        {
+            drawBox(bt, col);
+            return;
+        }
+        auto p = parent();
+        int px, py;
+        int pw = p.w(), ph = p.h();
+        if (p.asWindow() !is null) { px = 0; py = 0; }
+        else { px = p.x(); py = p.y(); }
+
+        fldraw.pushClip(x(), y(), w(), h());
+        drawBox(bt, px, py, pw, ph, col);
+        fldraw.popClip();
+
+        enum hh = 5, ww = 5;
+        Color dividerColor = fl_gray_ramp(numGray / 3);
+        if (!activeR()) dividerColor = fldraw.inactive(dividerColor);
+        if (x() + w() != px + pw)
+        {
+            fldraw.fl_color(dividerColor);
+            fldraw.fl_yxline(x() + w() - 1, y() + hh, y() + h() - 1 - hh);
+        }
+        if (y() + h() != py + ph)
+        {
+            fldraw.fl_color(dividerColor);
+            fldraw.fl_xyline(x() + ww, y() + h() - 1, x() + w() - 1 - ww);
+        }
+    }
 
     private int triggeredByKeyboard()
     {

@@ -40,10 +40,13 @@ and `FLTK_USE_PANGO=OFF` for a same-driver comparison.
 
 ## Where this port intentionally exceeds FLTK
 
-By default fldtk ports faithfully: it matches FLTK's behavior, structure and
-API shape unless there is a specific, reasoned deviation (the conventions
-below are the established examples). In a few areas going beyond FLTK is the
-agreed direction:
+Most of fldtk follows FLTK's behavior, structure and API shape, and FLTK
+remains the reference for how things work. Where FLTK's way and a simpler,
+clearer one differ, the simpler one wins: fldtk is aimed at D programmers new
+to GUI programming, and a program written with it builds from the same
+source on every supported platform. Bugs inherited from FLTK are fixed, not
+copied. The conventions below are the established deviations. In a few areas
+going beyond FLTK is the agreed direction:
 
 - **Pen/touch input beyond X11.** FLTK's `Fl::Pen` namespace
   (`FL/core/pen_events.H`) has real driver implementations for Wayland and
@@ -55,13 +58,12 @@ agreed direction:
   every platform, two make zoom, rotate and scroll gestures, touchpads
   add swipes, and subscribed widgets can take raw contacts; FLTK has only
   a macOS zoom gesture. See `PORTING.md`'s `FL/core/events.H` row.
-- **Pango for text instead of Xft.** `fl.draw`'s text primitives are backed
-  by `fl.xft`, matching FLTK's own X11 approach (simple name-string font
-  matching via `XftFontOpenName()`, no complex-script shaping). Replacing
-  that layer with Pango, for real shaping and internationalization, is
-  sanctioned. It is a rewrite of a layer every labelled widget depends on,
-  not an incremental patch. The Pango bindings it needs exist
-  (`fl.pango_c`, see the next section); the text layer itself does not.
+- **Pango for text instead of Xft.** Wherever the Cairo graphics driver
+  draws (always on Wayland, on X11 with `FLDTK_GRAPHICS=cairo`), text goes
+  through Pango, with real shaping. X11's default is still the Xlib/Xft
+  path (`fl.xft`: simple name-string font matching via `XftFontOpenName()`,
+  no complex-script shaping). Making Cairo and Pango the X11 default and
+  retiring `fl.xft` is sanctioned, as a decision of its own.
 - **Native image codecs instead of FLTK's bundled libraries.** XBM, XPM, PNM,
   BMP, ICO, GIF (including animated), SVG, PNG and JPEG are all decoded by D
   code in this repository (see the next section).
@@ -131,7 +133,8 @@ The **Cairo graphics driver** (`fl.cairo_graphics_driver`, FLTK's
 `FLTK_GRAPHICS_CAIRO`: all drawing done through Cairo, text through
 Pango) is built on these bindings. It is the Wayland driver's drawing,
 and on X11 it replaces the Xlib/Xft path when the environment variable
-`FLDTK_GRAPHICS=cairo` is set.
+`FLDTK_GRAPHICS=cairo` is set or the Graphics setting in `fldtk-options`
+is Cairo.
 
 ## Out of scope: XForms/Forms Library compatibility
 

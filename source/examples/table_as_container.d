@@ -112,7 +112,7 @@ public:
 void main()
 {
     auto win = new DoubleWindow(940, 500, "Table As Container");
-    auto table = new WidgetTable(20, 20, win.w() - 40, win.h() - 40, "FLTK widget table");
+    auto table = new WidgetTable(20, 20, win.w() - 40, win.h() - 40, "fldtk widget table");
     table.setSize(50, 50);
     win.end();
     win.resizable(table);

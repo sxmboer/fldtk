@@ -319,11 +319,10 @@ abstract class GraphicsDriver
      * Draws a 1-bit bitmap (a `Fl_Bitmap`'s stencil pattern, the
      * current `color()` showing through set bits) -- see
      * `fl.draw.drawBitmapFixed()`. `bits` is `dataH` rows of
-     * `(dataW+7)/8` bytes each (the bitmap's *full* data, regardless of
-     * any `cx`/`cy` crop -- matching a real, faithfully-ported FLTK
-     * quirk, see `PostscriptGraphicsDriver.drawBitmap()`'s own doc
-     * comment for why); `(x,y,w,h)` is the destination rectangle,
-     * `(cx,cy)` the crop offset a concrete driver may honor or ignore.
+     * `(dataW+7)/8` bytes each, the bitmap's full data; `(x,y,w,h)` is
+     * the visible rectangle and `(cx,cy)` the offset of that rectangle
+     * into the bitmap, so a driver draws the bitmap at `(x-cx, y-cy)`,
+     * clipped to `(x,y,w,h)`.
      * Ported from `Fl_Graphics_Driver::draw_bitmap(Fl_Bitmap*,...)`
      * (FLTK takes the whole `Fl_Bitmap*` object; this port only
      * ever has the raw bits by the point `drawBitmapFixed()` calls this,

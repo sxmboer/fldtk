@@ -51,7 +51,7 @@ DoubleWindow appWindow;
 
 void tut1BuildAppWindow()
 {
-    appWindow = new DoubleWindow(640, 480, "FLTK Editor");
+    appWindow = new DoubleWindow(640, 480, "fldtk Editor");
     appWindow.xclass("fl_editor");
 }
 
@@ -70,7 +70,7 @@ void updateTitle()
     }
     else
     {
-        appWindow.label("FLTK Editor");
+        appWindow.label("fldtk Editor");
     }
 }
 

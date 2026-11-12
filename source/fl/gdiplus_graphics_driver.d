@@ -21,7 +21,7 @@
  * `loop()` (both overloads) is a driver method here as in FLTK, drawn
  * as one closed antialiased path. `circle()` and `vertex()`/
  * `transformed_vertex()` are not driver methods in this port:
- * `fl.draw.circle()` adds a 32-gon of points (see its doc comment) and
+ * `fl.draw.circle()` adds a polygon of points (see its doc comment) and
  * `vertex()` adds transformed points to `fl.draw`'s own buffer, and
  * both reach this driver through `endLine()`/`endLoop()`/
  * `endPolygon()`, which are antialiased GDI+ paths. The result

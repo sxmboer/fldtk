@@ -11,13 +11,10 @@
  * bookkeeping purely to amortize growth -- a D dynamic array
  * (`ChartEntry[]`) already does that for free, so `sizenumb` (capacity
  * tracking) isn't ported at all; `numb` collapses to `entries_.length`.
- * `maxnumb` *is* ported faithfully -- it's a real, user-visible
- * behavior (a sliding-window cap on displayed entries), not a memory
- * detail: add() past the cap drops the *oldest* entry (a memmove
- * shift), while insert() past the cap silently drops the *newest*
- * (FLTK's insert() only grows numb "if (numb<maxnumb ||
- * maxnumb==0)", so the shift's last write lands one slot past what's
- * ever displayed) -- both asymmetries are preserved here.
+ * `maxnumb` (maxsize()) caps the number of entries: on a full chart,
+ * add() drops the first entry to make room at the end, and insert()
+ * drops the last entry to make room at its position. An insert() just
+ * past the end of a full chart does nothing.
  *
  * Needed one new fl.draw primitive: the vertex-path
  * fl_arc(double,double,double,double,double), for the pie/special-pie
@@ -36,6 +33,8 @@ import fl.widget : Widget;
 import fldraw = fl.draw;
 
 import std.math : rint, PI, cos, sin;
+
+version (unittest) import std.algorithm : equal, map;
 
 /// Values for type(); mirrors Fl_Chart.H's #defines.
 enum ubyte barChart = 0;
@@ -109,27 +108,27 @@ class Chart : Widget
         redraw();
     }
 
-    /// Inserts a data value at 1-based position ind. Past maxsize(),
-    /// silently drops what would otherwise be the *newest* entry
-    /// (matching FLTK's asymmetry with add() above -- see the
-    /// module comment).
+    /// Inserts a data value at index ind, counting from 0 (size()
+    /// appends). On a chart already holding maxsize() entries, the last
+    /// entry is dropped to make room, and inserting at size() does
+    /// nothing. Any other ind outside 0 .. size() does nothing.
     void insert(int ind, double val, string str = null, Color col = 0)
     {
-        if (ind < 1 || ind > cast(int) entries_.length + 1) return;
+        if (ind < 0 || ind > cast(int) entries_.length) return;
+        bool full = maxnumb_ > 0 && entries_.length >= maxnumb_;
+        if (full && ind == cast(int) entries_.length) return;
 
         auto e = ChartEntry(val, col, truncateLabel(str));
-        if (entries_.length < maxnumb_ || maxnumb_ == 0)
-            entries_ = entries_[0 .. ind - 1] ~ e ~ entries_[ind - 1 .. $];
-        else
-            entries_ = entries_[0 .. ind - 1] ~ e ~ entries_[ind - 1 .. $ - 1];
+        entries_ = entries_[0 .. ind] ~ e ~ entries_[ind .. full ? $ - 1 : $];
         redraw();
     }
 
-    /// Replaces the data value at 1-based position ind.
+    /// Replaces the data value at index ind, counting from 0. An ind
+    /// outside 0 .. size() - 1 does nothing.
     void replace(int ind, double val, string str = null, Color col = 0)
     {
-        if (ind < 1 || ind > cast(int) entries_.length) return;
-        entries_[ind - 1] = ChartEntry(val, col, truncateLabel(str));
+        if (ind < 0 || ind >= cast(int) entries_.length) return;
+        entries_[ind] = ChartEntry(val, col, truncateLabel(str));
         redraw();
     }
 
@@ -457,27 +456,36 @@ unittest
     c.add(4); // past cap: drops the oldest (1)
     assert(c.size() == 3);
 
+    // [2, 3, 4]: insert() on a full chart drops the last entry; at
+    // size(), it does nothing.
+    c.insert(1, 9);
+    assert(c.entries_.map!(e => e.val).equal([2, 9, 3]));
+    c.insert(3, 7);
+    assert(c.entries_.map!(e => e.val).equal([2, 9, 3]));
+
     FlGroup.current(null);
 }
 
 unittest
 {
-    // insert()/replace() with 1-based indices; out-of-range is a no-op.
+    // insert()/replace() count from 0; out of range does nothing.
     import fl.group : FlGroup;
     FlGroup.current(null);
 
     auto c = new Chart(0, 0, 200, 100);
     c.add(1);
     c.add(3);
-    c.insert(2, 2); // between the two existing entries
-    assert(c.size() == 3);
+    c.insert(1, 2); // between the two existing entries
+    c.insert(3, 4); // at size(): appends
+    assert(c.entries_.map!(e => e.val).equal([1, 2, 3, 4]));
 
-    c.replace(2, 99);
-    assert(c.size() == 3); // replace never changes the count
+    c.replace(0, 99);
+    assert(c.entries_.map!(e => e.val).equal([99, 2, 3, 4]));
 
-    c.insert(0, 5); // out of range: no-op
-    c.insert(100, 5); // out of range: no-op
-    assert(c.size() == 3);
+    c.insert(-1, 5);
+    c.insert(100, 5);
+    c.replace(4, 5);
+    assert(c.entries_.map!(e => e.val).equal([99, 2, 3, 4]));
 
     FlGroup.current(null);
 }

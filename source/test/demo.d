@@ -64,7 +64,7 @@ Button exitButton;
 // Global path variables.
 string appPath;     // directory of all demo binaries
 string fluidPath;   // binary directory of fluid
-string optionsPath; // binary directory of fltk-options
+string optionsPath; // binary directory of fldtk-options
 string dataPath;    // working directory of all demos
 
 version (Windows)
@@ -108,13 +108,13 @@ void popupMenuCb(bool show)
 
 void createTheForms()
 {
-    form = new DoubleWindow(FORM_W, FORM_H, "FLTK Demonstration");
+    form = new DoubleWindow(FORM_W, FORM_H, "fldtk Demonstration");
 
     // Parent group for demo
     demogrp = new FlGroup(0, 0, FORM_W, FORM_H - 1);
 
     // Top demo button
-    Widget obj = new Box(Boxtype.engravedBox, 10, 15, 330, 40, "FLTK Demonstration");
+    Widget obj = new Box(Boxtype.engravedBox, 10, 15, 330, 40, "fldtk Demonstration");
     obj.color(gray - 4);
     obj.labelsize(24);
     obj.labelfont(bold);
@@ -354,7 +354,7 @@ void dobut(int arg)
     string path = appPath;
     if (cmdbuf.startsWith("fluid"))
         path = fluidPath;
-    else if (cmdbuf.startsWith("fltk-options"))
+    else if (cmdbuf.startsWith("fldtk-options"))
         path = optionsPath;
 
     // format commandline with optional parameters
@@ -455,7 +455,7 @@ void main(string[] args)
     // construct app_path for all executable files
     appPath = fixPath(filenameAbsolute(args[0]));
 
-    // fluid's/fltk-options' paths are relative to app_path -- just the
+    // fluid's/fldtk-options' paths are relative to app_path -- just the
     // parent directory (no CMAKE_INTDIR build-type subdirectory to strip,
     // see the file header note)
     fluidPath = fixPath(appPath);   // remove folder name ("test")

@@ -26,9 +26,8 @@
  * `writeToPrefs()`/`readFromPrefs()` persist *every* storage-filtered
  * suite (not just the current selection) into a given `Preferences`
  * root, and `load()`/`save()` back a standalone `.fll` file the same
- * way (a `Preferences` opened directly against a file path, matching
- * FLTK's own `Fl_Preferences(filename, "layout.fluid.fltk.org",
- * nullptr, C_LOCALE)` call). One deliberate simplification, shared
+ * way (a `Preferences` opened directly against a file path, vendor
+ * `layout.fluid.fldtk`). One deliberate simplification, shared
  * with the Settings dialog's User tab: `menuLabel()` is FLTK's
  * `menu_label`, the name prefixed with the `@fd_beaker`/`@fd_user`/
  * `@fd_project`/`@fd_file` symbol for its storage location.
@@ -575,9 +574,8 @@ final class LayoutList
     }
 
     /// Ported from `Layout_List::load()` -- opens `filename` directly
-    /// as its own standalone `Preferences` root (matching FLTK's
-    /// own `Fl_Preferences(filename.c_str(), "layout.fluid.fltk.org",
-    /// nullptr, C_LOCALE)` -- an empty `application` name means "treat
+    /// as its own standalone `Preferences` root (vendor
+    /// `layout.fluid.fldtk`, C locale -- an empty `application` name means "treat
     /// `path` as the literal file", see `fl.preferences.Preferences`'s
     /// own doc comment on that constructor), replacing every existing
     /// `ToolStore.file` suite with whatever that file contains.
@@ -587,7 +585,7 @@ final class LayoutList
 
         filename = filename_;
         removeAll(ToolStore.file);
-        auto prefs = new Preferences(filename, "layout.fluid.fltk.org", "", rootCLocale);
+        auto prefs = new Preferences(filename, "layout.fluid.fldtk", "", rootCLocale);
         readFromPrefs(prefs, ToolStore.file);
     }
 
@@ -597,7 +595,7 @@ final class LayoutList
         import fl.preferences : Root, rootCLocale, rootClear;
 
         filename = filename_;
-        auto prefs = new Preferences(filename, "layout.fluid.fltk.org", "",
+        auto prefs = new Preferences(filename, "layout.fluid.fldtk", "",
             cast(Root)(rootCLocale | rootClear));
         writeToPrefs(prefs, ToolStore.file); // flushes internally, see its own doc comment
     }
@@ -853,10 +851,8 @@ unittest
 
 unittest
 {
-    // load()/save(): a real `.fll` file round trip, matching FLTK's
-    // own `Fl_Preferences(filename, "layout.fluid.fltk.org", nullptr,
-    // C_LOCALE)` (an empty `application` name = "treat `path` as the
-    // literal file").
+    // load()/save(): a real `.fll` file round trip (an empty
+    // `application` name = "treat `path` as the literal file").
     import std.file : tempDir, remove, exists;
     import std.path : buildPath;
     import std.uuid : randomUUID;

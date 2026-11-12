@@ -1288,7 +1288,7 @@ class BlockWindow : DoubleWindow
 
     static this()
     {
-        prefs_ = new Preferences(rootUserL, "fltk.org", "blocks");
+        prefs_ = new Preferences(rootUserL, "fldtk", "blocks");
     }
 
     this(int X, int Y, int W, int H, string L = null)

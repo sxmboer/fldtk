@@ -12,14 +12,9 @@
  * manually malloc/realloc'd `const char**` -- the D container already
  * handles growth, no reason to hand-roll it.
  *
- * NOT ported here: `Fl_Scheme::plastic_color_average(int)`. Despite
- * being declared on `Fl_Scheme`, FLTK itself actually *defines* it
- * in src/fl_plastic.cxx, not Fl_Scheme.cxx -- it's really
- * plastic-scheme-specific static state (a color-averaging tuning
- * parameter for that scheme's gradients) smuggled onto this class's
- * namespace for lack of a real per-scheme-class home. Port it
- * alongside plastic's own boxtype family (core-roadmap item 11
- * Phase B), not here.
+ * `Fl_Scheme::plastic_color_average(int)` (which FLTK defines in
+ * src/fl_plastic.cxx) is `fl.draw.plasticColorAverage()`, next to the
+ * plastic boxtypes it tunes.
  */
 module fl.scheme;
 

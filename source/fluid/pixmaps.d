@@ -2,11 +2,9 @@
  * Fluid's own per-node-type icon table -- ported from FLTK's
  * `fluid/rsrcs/pixmaps.h`/`.cxx`. `pixmapFor(type_name)` looks up the
  * small 16x16 icon for a given `Node.typeName` (e.g. "Fl_Button"),
- * used by both the widget palette (`function_panel.fl`'s buttons, via
- * `o.image(pixmapFor("Fl_Button"))`, matching FLTK's own
- * `o->image(pixmap_for("Fl_Button"))` one-for-one) and the node
- * browser's own per-row icon (`node_browser.d`, via `fl.tree_item.
- * TreeItem.usericon()`, already real).
+ * the node browser's per-row icon (`node_browser.d`, via `fl.tree_item.
+ * TreeItem.usericon()`). The widget palette (`panels/function_panel.fl`)
+ * sets the same SVG files on its buttons with `image` properties.
  *
  * The icons are SVG files in `source/fluid/pixmaps_svg/` (one per
  * FLTK `fluid/pixmaps/*.xpm`, same name, same 32x32 design), embedded

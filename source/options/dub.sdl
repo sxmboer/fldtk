@@ -1,0 +1,16 @@
+name "options"
+authors "Steef Boerrigter"
+copyright "Copyright 2026 Steef Boerrigter"
+license "BSL-1.0"
+description "fldtk-options: shows and changes the options every fldtk program reads"
+dependency "fldtk" version="*" path="../../"
+
+// `dub build fldtk:options` puts the fldtk-options binary in the repo
+// root, next to libfldtk.so and fluid, where the demo program's
+// "Runtime Options" button looks for it.
+targetType "executable"
+targetName "fldtk-options"
+targetPath "../.."
+sourcePaths "."
+importPaths "."
+lflags "-rpath=$$ORIGIN" platform="linux"

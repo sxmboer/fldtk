@@ -149,7 +149,6 @@ void main(string[] args)
 {
     int i = 1;
 
-    registerImages();
     loadSystemIcons();
 
     fl.argsToUtf8(args);

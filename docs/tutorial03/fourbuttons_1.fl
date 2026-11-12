@@ -1,6 +1,6 @@
 # data file for fldtk fluid (Fast Light User Interface Designer)
 version 1.0000
-code_name source/app.d
+code_name source/fourbuttons.d
 Function {}
   {
   }

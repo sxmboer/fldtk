@@ -7,15 +7,21 @@ Function {}
   {
     Window {}
       {
-        xywh {720 380 480 320}
+        xywh {400 200 480 320}
+        selected
       }
       {
         Button {}
           {
-            label {Button}
+            label {Hi}
             callback {writeln("Hello, World!");}
             xywh {25 25 64 22}
-            selected
+          }
+        Button {}
+          {
+            label {Bye}
+            callback {message("Goodbye to you as well");}
+            xywh {89 25 64 22}
           }
       }
   }

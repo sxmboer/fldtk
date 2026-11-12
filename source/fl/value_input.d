@@ -84,11 +84,7 @@ class ValueInput : Valuator
 
     /// If "soft" is turned on, the mouse wheel can take the value
     /// outside the range: a turn stops at the end of the range, and the
-    /// next turn from there goes past it. Default is off (FLTK's own default is on, but
-    /// only because it never initializes soft_ in its constructor --
-    /// see the "Bug fix" note in fl.value_output's history for the
-    /// same FLTK quirk elsewhere; here it's simply given an
-    /// explicit, sane default instead of leaving it undefined).
+    /// next turn from there goes past it. Default is off.
     void soft(bool s) { soft_ = s; }
     bool soft() const { return soft_; }
 

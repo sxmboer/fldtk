@@ -25,14 +25,15 @@ version (FLDTK_HAVE_CAIRO)
     //    This is achieved setting USE_FL_CAIRO_WINDOW = false below
     // or
     // 3) showing how to use "cairo extended use".
-    //    This needs FLTK's CMake option FLTK_OPTION_CAIRO_EXT
-    //    (FLTK_HAVE_CAIROEXT), which fldtk doesn't port.
-    //    If cairoAutolinkContext(true) is called at the beginning
-    //    of main(), any overridden draw() function gets access to an adequate
-    //    Cairo context with cairoCc() without having to call
+    //    cairoAutolinkContext(true) is called at the beginning
+    //    of main(), so any overridden draw() function gets access to an
+    //    adequate Cairo context with cairoCc() without having to call
     //    cairoMakeCurrent(Window).
+    //    This is achieved setting USE_CAIRO_AUTOLINK = true below
+    //    (USE_FL_CAIRO_WINDOW is then ignored).
 
     enum USE_FL_CAIRO_WINDOW = true;
+    enum USE_CAIRO_AUTOLINK = false;
 
     // draw centered text
 
@@ -142,7 +143,7 @@ version (FLDTK_HAVE_CAIRO)
         roundButton(cr, 0.1, 0.7, 0.8, 0.2, 0.4, 0, 0, 1);
     } // drawImage()
 
-    static if (USE_FL_CAIRO_WINDOW)
+    static if (USE_FL_CAIRO_WINDOW && !USE_CAIRO_AUTOLINK)
     {
         alias CairoUsingWindow = CairoWindow;
     }
@@ -165,7 +166,8 @@ version (FLDTK_HAVE_CAIRO)
             override void draw()
             {
                 Window.draw(); // perform drawings with the fldtk API
-                cairoMakeCurrent(this);  // announce Cairo will be used in this window
+                static if (!USE_CAIRO_AUTOLINK)
+                    cairoMakeCurrent(this);  // announce Cairo will be used in this window
                 cairo_t* cc = cairoCc(); // get the adequate Cairo context
                 drawWithCairo_(this, cc); // draw in this window using Cairo
 
@@ -189,6 +191,8 @@ version (FLDTK_HAVE_CAIRO)
 
     void main(string[] args)
     {
+        static if (USE_CAIRO_AUTOLINK)
+            cairoAutolinkContext(true);
         auto window = new CairoUsingWindow(350, 350, "Fldtk loves Cairo");
 
         window.resizable(window);

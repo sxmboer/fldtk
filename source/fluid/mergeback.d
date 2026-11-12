@@ -44,20 +44,19 @@
  *    line that closes it (FLTK's `block_end` keeps a stale value
  *    when a block has no lines).
  *  - The "last code file written for this project" record lives in the
- *    `fldtk`/`fluid-build` preferences, not FLTK's `fltk.org`/
- *    `fluid-build`.
+ *    `fldtk`/`fluid-build` preferences.
  */
 module fluid.mergeback;
 
 import std.file : exists, read;
 import std.format : format;
-import std.regex : regex, replaceAll;
 import std.string : indexOf, startsWith;
 import std.zlib : zlibCrc32 = crc32;
 
 import fl.ask : choice, message;
 import fl.preferences : Preferences, rootUserL;
 
+import fluid.code_highlight : renameIdentifier;
 import fluid.code_node : CodeNode;
 import fluid.group_node : GroupNode;
 import fluid.node : Node;
@@ -351,14 +350,14 @@ private string generatedName(WidgetNode n)
 private string setupToGenerated(WidgetNode n, string setup)
 {
     string name = generatedName(n);
-    return name == "o" ? setup : replaceAll(setup, regex(`\bo\b`), name);
+    return name == "o" ? setup : renameIdentifier(setup, "o", name);
 }
 
 /// The reverse of `setupToGenerated()`, for text read back from the file.
 private string setupFromGenerated(WidgetNode n, string generated)
 {
     string name = generatedName(n);
-    return name == "o" ? generated : replaceAll(generated, regex(`\b` ~ name ~ `\b`), "o");
+    return name == "o" ? generated : renameIdentifier(generated, name, "o");
 }
 
 /// Compares a generated code file against a project and merges edits
@@ -615,8 +614,8 @@ class Mergeback
 }
 
 /// Preferences holding, per project file, the path of the code file
-/// most recently written for it. FLTK's `fltk.org`/`fluid-build`
-/// records, under this port's own vendor name.
+/// most recently written for it, in the `fldtk`/`fluid-build`
+/// preferences.
 private Preferences buildRecords()
 {
     return new Preferences(rootUserL, "fldtk", "fluid-build");

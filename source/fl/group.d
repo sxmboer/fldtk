@@ -711,7 +711,7 @@ class FlGroup : Widget
     protected void updateChild(Widget widget) const
     {
         if (widget.damage() && widget.visible() && widget.type() < windowTypeTag
-            && notClipped(widget.x, widget.y, widget.w, widget.h))
+            && paintsInClip(widget))
         {
             widget.draw();
             widget.clearDamage();
@@ -722,7 +722,7 @@ class FlGroup : Widget
     protected void drawChild(Widget widget) const
     {
         if (widget.visible() && widget.type() < windowTypeTag
-            && notClipped(widget.x, widget.y, widget.w, widget.h))
+            && paintsInClip(widget))
         {
             widget.clearDamage(damageAll);
             widget.draw();
@@ -733,15 +733,72 @@ class FlGroup : Widget
     /// Draws widget's label if it's positioned outside of widget itself.
     protected void drawOutsideLabel(const(Widget) widget) const
     {
-        if (!widget.visible()) return;
-        // Skip labels that are drawn inside the widget.
-        if (!(widget.alignment & alignPositionMask) || (widget.alignment & alignInside)) return;
+        int labelX, labelY, labelW, labelH;
+        Align a;
+        if (outsideLabelSpace(widget, labelX, labelY, labelW, labelH, a))
+            widget.drawLabel(labelX, labelY, labelW, labelH, a);
+    }
 
-        Align a = widget.alignment;
-        int labelX = widget.x;
-        int labelY = widget.y;
-        int labelW = widget.w;
-        int labelH = widget.h;
+    /**
+     * Whether drawing `widget` can paint inside the current clip. That is
+     * its box, and for a group that doesn't clip its children, also what
+     * its children and their outside labels paint beyond its box: a
+     * label's text can be wider or taller than the space left for it next
+     * to the widget, and then reaches past the group's edge. A repaint of
+     * only that part of the window still draws the group.
+     */
+    private static bool paintsInClip(const(Widget) widget)
+    {
+        if (notClipped(widget.x, widget.y, widget.w, widget.h)) return true;
+        auto g = widget.asGroup();
+        return g !is null && !g.clipChildren() && g.childrenPaintInClip();
+    }
+
+    /// Whether one of this group's children, or its outside label, paints
+    /// inside the current clip (see paintsInClip()).
+    private bool childrenPaintInClip() const
+    {
+        // Far enough to cover any window, for a wrapped label whose height
+        // isn't measured.
+        enum unbounded = 1_000_000;
+        foreach (c; rawArray())
+        {
+            if (!c.visible() || c.type() >= windowTypeTag) continue;
+            if (paintsInClip(c)) return true;
+
+            int lx, ly, lw, lh;
+            Align a;
+            if (!outsideLabelSpace(c, lx, ly, lw, lh, a)) continue;
+            // The text is aligned within the space and may overflow it on
+            // either side by as much as it is larger.
+            int mw, mh;
+            c.measureLabel(mw, mh);
+            int dx = mw > lw ? mw - lw : 0;
+            int dy = mh > lh ? mh - lh : 0;
+            if (a & alignWrap) { ly = -unbounded; lh = 2 * unbounded; dy = 0; }
+            if (notClipped(lx - dx, ly - dy, lw + 2 * dx, lh + 2 * dy)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * The space this group gives `widget`'s outside label, between the
+     * widget and the group's edge, and the alignment the label is drawn
+     * with in it. False when the widget is hidden or its label is drawn
+     * inside it.
+     */
+    private bool outsideLabelSpace(const(Widget) widget, out int labelX, out int labelY,
+                                   out int labelW, out int labelH, out Align a) const
+    {
+        if (!widget.visible()) return false;
+        // Skip labels that are drawn inside the widget.
+        if (!(widget.alignment & alignPositionMask) || (widget.alignment & alignInside)) return false;
+
+        a = widget.alignment;
+        labelX = widget.x;
+        labelY = widget.y;
+        labelW = widget.w;
+        labelH = widget.h;
         int wx, wy;
         if (asWindow() !is null)
         {
@@ -803,7 +860,7 @@ class FlGroup : Widget
             labelW = wx + w - labelX;
         }
 
-        widget.drawLabel(labelX, labelY, labelW, labelH, a);
+        return true;
     }
 
     /**
@@ -1218,5 +1275,50 @@ unittest
     fl.core.eX_ = 0;
     fl.core.eY_ = 0;
     resetCoreEventState();
+    FlGroup.current(null);
+}
+
+unittest
+{
+    // A child group whose box is outside the clip is still drawn when a
+    // grandchild's outside label overflows the group into the clip.
+    import fl.image : RGBImage;
+    FlGroup.current(null);
+
+    static class Leaf : Widget
+    {
+        this(int X, int Y, int W, int H) { super(X, Y, W, H); }
+        override void draw() {}
+    }
+
+    auto inner = new FlGroup(100, 0, 200, 100);
+    auto leaf = new Leaf(110, 10, 80, 20);
+    inner.end();
+    // An 80-pixel label on the left gets 7 pixels (100..107) and so
+    // reaches to x = 30.
+    leaf.image(new RGBImage(new ubyte[80 * 10 * 3], 80, 10));
+    leaf.alignment = alignLeft;
+
+    pushNoClip();
+    scope (exit) popClip();
+
+    pushClip(40, 10, 20, 20);
+    assert(FlGroup.paintsInClip(inner));
+    inner.clipChildren(true);
+    assert(!FlGroup.paintsInClip(inner));
+    inner.clipChildren(false);
+    popClip();
+
+    // Above the label: nothing of the group reaches there.
+    pushClip(40, 60, 20, 20);
+    assert(!FlGroup.paintsInClip(inner));
+    popClip();
+
+    // A label inside the widget adds nothing.
+    leaf.alignment = alignCenter;
+    pushClip(40, 10, 20, 20);
+    assert(!FlGroup.paintsInClip(inner));
+    popClip();
+
     FlGroup.current(null);
 }

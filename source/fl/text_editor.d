@@ -37,13 +37,11 @@
  *
  * Parity notes against FLTK:
  *
- * - **IME/marked-text composition** (`Fl::compose()`): `fl.core.compose()` is
- *   real and `handleKey()` calls it first, matching FLTK's own
- *   `Fl_Text_Editor::handle_key()` structure. Still not ported: the
- *   `has_marked_text() && Fl::compose_state`-gated re-selection inside
- *   that same FLTK branch, since `Fl::compose_state` never becomes
- *   non-zero on X11 even in real FLTK -- genuinely dead code,
- *   not a gap.
+ * - **IME/marked-text composition** (`Fl::compose()`): `handleKey()`
+ *   calls `fl.core.compose()` first, as `Fl_Text_Editor::handle_key()`
+ *   does. Where the input method's provisional text arrives as marked
+ *   text (`fl.core.hasMarkedText()`, Wayland), it is left selected,
+ *   `TextDisplay` underlines it, and the next keystroke replaces it.
  * - **Drag-and-drop** (`FL_DND_*` handling here mirrors FLTK) is
  *   real and reachable, via real
  *   XDND (see `fl.core.dnd()`/`fl.platform_x11.dnd()`'s
@@ -241,9 +239,12 @@ class TextEditor : TextDisplay
 
         case Event.unfocus:
             showCursor(cursorOn()); // redraws the cursor
-            // TODO: IME/marked-text unfocus handling
-            // (Fl::screen_driver()->has_marked_text()/resetSpot())
-            // isn't ported -- see module comment.
+            if (fl.core.markedTextActive() && buffer().selected())
+            {
+                int pos = insertPosition();
+                buffer().select(pos, pos);
+                fl.core.resetSpot();
+            }
             if (buffer().selected()) redraw(); // Redraw selections...
             goto case Event.hide;
 
@@ -387,12 +388,8 @@ class TextEditor : TextDisplay
     /// inserted. See FLTK's own `Fl_Text_Editor::
     /// handle_key()` (`src/Fl_Text_Editor.cxx:633-665`) and this file's
     /// own default key-binding table (only Shift+navigation/cut/paste
-    /// are bound, never Shift+printable). Not ported: the
-    /// `has_marked_text() && Fl::compose_state`-gated re-selection
-    /// FLTK's own compose() branch also does -- genuinely dead code
-    /// even in real FLTK on X11, since `Fl::compose_state`
-    /// never becomes non-zero there
-    /// (see `fl.core.compose()`'s own doc comment).
+    /// are bound, never Shift+printable). Marked text from an input
+    /// method is left selected (see the module comment).
     int handleKey()
     {
         int del;
@@ -410,6 +407,11 @@ class TextEditor : TextDisplay
                 string text = fl.core.eventText();
                 if (insertMode()) insert(text);
                 else overstrike(text);
+            }
+            if (fl.core.markedTextActive())
+            {
+                int pos = insertPosition();
+                buffer().select(pos - fl.core.composeState(), pos);
             }
             showInsertPosition();
             setChanged();

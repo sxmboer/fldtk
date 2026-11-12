@@ -177,6 +177,12 @@ static this()
     registry["InputChoice"] = () => cast(Node) new MenuOwnerNode();
 }
 
+/// Whether `typeName` names a node type `createNode()` can make.
+bool isNodeType(string typeName)
+{
+    return (typeName in registry) !is null;
+}
+
 Node createNode(string typeName)
 {
     auto ctor = typeName in registry;

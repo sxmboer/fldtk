@@ -213,15 +213,9 @@ void saveDirCb(Widget)
 
 void main(string[] args)
 {
-    /* For a nicer looking browser under linux/unix, call fl_register_images()
-      (If you do this, you'll need to link with fltk_images).
-      That's required for the preview option of the GTK filechooser.
-      In the unlikely situation where no native filechooser is found on
-      the active Linux system, FLTK reverts to using its own file chooser
-      (Fl_File_Chooser) which looks best if you also call
-      Fl_File_Icon::load_system_icons().
-
-      None of that is useful for the native file chooser under macOS or Windows.
+    /* When no native file chooser is found on Linux, fldtk falls back to
+      its own (FileChooser), which looks best with the system's file
+      icons loaded. None of that matters for the native chooser on Windows.
      */
     version (linux)
     {

@@ -62,7 +62,9 @@ class WindowNode : WidgetNode
                     sizeRangeMinH = to!int(parts[1]);
                     sizeRangeMaxW = to!int(parts[2]);
                     sizeRangeMaxH = to!int(parts[3]);
-                    hasSizeRange = true;
+                    // All four 0 means no size range.
+                    hasSizeRange = sizeRangeMinW || sizeRangeMinH
+                        || sizeRangeMaxW || sizeRangeMaxH;
                 }
                 catch (ConvException)
                 {

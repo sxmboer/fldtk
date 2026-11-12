@@ -754,8 +754,7 @@ enum : Damage
 /// Open bitmask set (combines via `|`, e.g. `fdRead | fdWrite`) --
 /// alias + manifest constants, matching Align/Color/Font/When/Damage's
 /// treatment elsewhere in this module. Passed to
-/// `fl.core.addFd()`/`removeFd()` (`Fl::add_fd()`/`remove_fd()`,
-/// core-roadmap item 6).
+/// `fl.core.addFd()`/`removeFd()` (`Fl::add_fd()`/`remove_fd()`).
 alias FdWhen = int;
 
 enum : FdWhen
@@ -799,8 +798,7 @@ enum : InputType
 /// Open bitmask set (combines via `|`, e.g. `lineDash | capRound |
 /// joinRound`) -- alias + manifest constants, matching Align/Color/
 /// Font/When/Damage/FdWhen/InputType's treatment elsewhere in this
-/// module. Passed to `fl.draw.lineStyle()` (core-roadmap item
-/// 10). `FL_UNIFORM_WIDTH` (a scaled-display-only line-width-adjustment
+/// module. Passed to `fl.draw.lineStyle()`. `FL_UNIFORM_WIDTH` (a scaled-display-only line-width-adjustment
 /// flag, `Fl_Scalable_Graphics_Driver`'s own concern) is deliberately
 /// not ported -- this port has no scaling subsystem at all, so it would
 /// have no effect anywhere, matching every other "assumes scale=1"

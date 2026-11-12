@@ -32,35 +32,13 @@
  * `fl.terminal`'s feature set against FLTK's own public API --
  * nothing else is deliberately deferred.
  *
- * **Known, deliberately deferred gap:** `source/test/contrast.d`'s
- * embedded terminal shows 9 display rows where real FLTK shows 10, when
- * constructed via the 4-arg constructor (`fontsize_defer_ = false`,
- * used by `contrast.d` and its own FLTK `.cxx`) *before* any window has
- * been `show()`n (as `contrast.d` does -- `Terminal` before
- * `window.show()`, matching FLTK's own construction order exactly): no
- * X display exists yet at that point in this port, so `height()`'s
- * immediate `CharStyle.update()` call silently falls back to a
- * placeholder value (`size + 4`) instead of the font's real
- * ascent+descent, and that wrong value is never recomputed once a
- * display does exist. `height()`'s own formula matches FLTK's
- * `ascent+descent` exactly once a display exists (a same-size
- * standalone `Terminal` built *after* a window is shown computes the
- * same 10 rows real FLTK does) -- this is a *timing* bug, not a formula
- * bug. Root cause:
- * FLTK's `fontopen()` (`Fl_Xlib_Graphics_Driver_font_xft.cxx`)
- * calls `fl_open_display()` **unconditionally** on every font lookup,
- * so FLTK's very first `fl_font()` call anywhere always has a real
- * display to measure against, window-shown or not. This port's
- * `fl.draw.xftFontFor()` deliberately does *not* do that (returns
- * `null` and lets the caller retry later) specifically so `dub test`'s
- * ~114 headless unittest modules -- which call `fl_font()`/`height()`
- * freely -- don't need a real X server at all; matching FLTK's
- * unconditional-open behavior here would need to fail gracefully
- * rather than throwing when no display is reachable, to preserve that.
- * Left as a known limitation rather than changing `fl.draw`'s
- * font-opening behavior project-wide -- revisit if this
- * construct-before-`show()` pattern turns out to affect more than just
- * `Terminal`.
+ * A `Terminal` built with the 4-arg constructor before any window is
+ * shown (as `source/test/contrast.d` does) measures its font while no
+ * display is open, so `fl.draw` hands back its headless placeholder
+ * metrics (`size + 4` for the height). `fl.draw` keeps it that way so
+ * `dub test` runs without a display. The first `draw()` measures the
+ * font again and refits the display rows and columns when the metrics
+ * changed (`fontMeasuredAtDraw_`).
  *
  * Deliberate deviations:
  *
@@ -1103,6 +1081,7 @@ class Terminal : FlGroup
     private bool redrawModified_;
     private bool redrawTimer_;
     private PartialUtf8Buf pub_;
+    private bool fontMeasuredAtDraw_; // the first draw() has re-measured the font
 
     /// Default constructor: rows/cols are computed from (W,H) and the
     /// current default font.
@@ -2642,6 +2621,20 @@ class Terminal : FlGroup
             currentStyle_.update();
             updateScreen(true);
         }
+        else if (!fontMeasuredAtDraw_)
+        {
+            // Built before the display was open, the font was measured
+            // with placeholder metrics; measure it again and fit the
+            // display rows and columns to the real ones.
+            int oldH = currentStyle_.fontheight(), oldW = currentStyle_.charwidth();
+            currentStyle_.update();
+            if (currentStyle_.fontheight() != oldH || currentStyle_.charwidth() != oldW)
+            {
+                updateScreen(true);
+                refitDispToScreen();
+            }
+        }
+        fontMeasuredAtDraw_ = true;
         if (scrollbarSize_ == 0
             && ((scrollbar.visible() && scrollbar.w() != fl.core.scrollbarSize())
                 || (hscrollbar.visible() && hscrollbar.h() != fl.core.scrollbarSize())))

@@ -111,13 +111,11 @@ class FormulaInput : Input
         return evalExpr(cast(string) cleaned, i, 0);
     }
 
-    /// Ported from `Formula_Input::eval_var(uchar*&)` -- collects a run
-    /// of ASCII letters as a variable name and looks it up in `vars_`
-    /// (unknown name, or no variables set at all: 0, matching FLTK's own
-    /// "no error checking" stance).
+    /// Ported from `Formula_Input::eval_var(uchar*&)` -- reads a run of
+    /// ASCII letters as a variable name and looks it up in `vars_` (an
+    /// unknown name, or no variables at all, is 0).
     private int evalVar(string s, ref size_t i) const
     {
-        if (vars_.length == 0) return 0;
         size_t start = i;
         while (i < s.length && isAlpha(s[i])) i++;
         string name = s[start .. i];
@@ -209,6 +207,7 @@ unittest
     assert(eval("10 - 2 - 3") == 5);
     assert(eval("8/0") == 8); // division by zero is skipped
     assert(eval("2 + 3 * 4") == 14);
+    assert(eval("x+1") == 1); // no variables: x is 0
 
     FlGroup.current(null);
 }

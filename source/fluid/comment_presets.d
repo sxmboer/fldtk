@@ -6,10 +6,8 @@
  * separate preference databases, matching FLTK's own split
  * exactly: "fluid_comments_menu" holds the ordered index of saved
  * names (so the menu can be rebuilt on demand), "fluid_comments"
- * holds the actual text keyed by name. Vendor is "fldtk", not
- * FLTK's "fltk.org" -- same deliberate divergence
- * `fluid.app_prefs` documents, so this never collides with a real
- * installed FLTK Fluid's own comment library on the same machine.
+ * holds the actual text keyed by name. Vendor is "fldtk", like
+ * `fluid.app_prefs`.
  *
  * Not ported: FLTK's one-time `load_comments_preset()` migration
  * that seeds a few built-in defaults when upgrading a pre-1.4.0 prefs

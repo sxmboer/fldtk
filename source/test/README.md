@@ -51,6 +51,12 @@ Windows, `list_visuals` (it lists X11 visuals) is skipped too.
 - `value_wheel`: every value widget, changed with the mouse wheel (10
   steps a notch, 1 with Shift, 100 with Ctrl), with a readout of the
   last change.
+- `compact_buttons`: a bar of `compact()` buttons for each button kind
+  with a frame (plain, radio, light, return) and one mixing kinds, with
+  a scheme choice to see them in every box style.
+- `arc_width`: `fl_rect()`, `fl_arc()` and `fl_pie()` at line widths
+  from the default to 8, each on a grey square the size of its box, to
+  show where a wide line falls and that a pie's size doesn't change.
 
 ## The `unittests` program
 

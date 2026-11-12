@@ -186,7 +186,7 @@ class SimpleGl3Window : GlWindow
             if (glVersionMajor < 3)
             {
                 addOutput("\nThis platform does not support OpenGL V3 :\n"
-                        ~ "FLTK widgets will appear but the programmed "
+                        ~ "fldtk widgets will appear but the programmed "
                         ~ "rendering pipeline will not run.\n");
                 mode(mode() & ~modeOpengl3);
             }

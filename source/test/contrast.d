@@ -450,7 +450,7 @@ void main(string[] args)
     term.textfgcolor(black);
     term.textsize(13);
 
-    term.printf("FLTK %d.%d.%d contrast() test program with different contrast algorithms, version %s\n",
+    term.printf("fldtk %d.%d.%d contrast() test program with different contrast algorithms, version %s\n",
         FL_MAJOR_VERSION, FL_MINOR_VERSION, FL_PATCH_VERSION, versionStr);
     term.printf(" - Select a foreground (text) color with the gray or red/green/blue sliders (displayed inside each field).\n");
     term.printf(" - Select an arbitrary background color for field #255 with the color chooser.\n");

@@ -19,17 +19,6 @@
  *    `damage() == FL_DAMAGE_EXPOSE` optimization, clipping a plain
  *    re-expose repaint to just the crosshair-sized region instead of
  *    regenerating the whole gradient.
- *  - **`Flcc_HueBox::handle()`'s function-local `static double ih,
- *    is;`** (and `Flcc_ValueBox::handle()`'s `static double iv;`) are
- *    ported as private *module*-level globals (`hueboxIh_`/
- *    `hueboxIs_`/`valueboxIv_`), not per-instance fields -- matching
- *    the established "genuinely shared C++ function-local static"
- *    precedent already documented for `fl.slider`'s `offcenter` and
- *    `fl.roller`'s `ipos` (`CONVENTIONS.md`'s porting-conventions section):
- *    faithfully reproduce the sharing rather than silently making it
- *    per-instance, even though in practice a single `ColorChooser`
- *    (and therefore a single live `HueBox`/`ValueBox` pair) is the
- *    overwhelmingly common case.
  *  - `hsv2rgb()` takes its outputs as `out double` parameters (every
  *    branch fully assigns them, so no behavior change from FLTK's
  *    `double&`). `rgb2hsv()` uses `ref double` instead -- see that
@@ -84,13 +73,11 @@ private void tohs(double x, double y, out double h, out double s)
     if (h < 0) h += 6.0;
 }
 
-private double hueboxIh_, hueboxIs_; // see this module's own top comment
-private double valueboxIv_;
-
 /// For internal use only.
 private final class HueBox : Widget
 {
     private int px, py;
+    private double ih_, is_; // hue and saturation when the drag started
 
     this(int X, int Y, int W, int H) { super(X, Y, W, H); }
 
@@ -182,8 +169,8 @@ private final class HueBox : Widget
                 fl.core.focus(this);
                 redraw();
             }
-            hueboxIh_ = c.hue();
-            hueboxIs_ = c.saturation();
+            ih_ = c.hue();
+            is_ = c.saturation();
             goto case Event.drag;
         case Event.drag:
         {
@@ -193,9 +180,9 @@ private final class HueBox : Widget
             tohs(Xf, Yf, H, S);
             import std.math : fabs;
 
-            if (fabs(H - hueboxIh_) < 3 * 6.0 / w()) H = hueboxIh_;
-            if (fabs(S - hueboxIs_) < 3 * 1.0 / h()) S = hueboxIs_;
-            if ((fl.core.eventState() & stateCtrl) != 0) H = hueboxIh_;
+            if (fabs(H - ih_) < 3 * 6.0 / w()) H = ih_;
+            if (fabs(S - is_) < 3 * 1.0 / h()) S = is_;
+            if ((fl.core.eventState() & stateCtrl) != 0) H = ih_;
             if (c.hsv(H, S, c.value())) c.doCallback(CallbackReason.dragged);
             return 1;
         }
@@ -218,6 +205,7 @@ private final class HueBox : Widget
 private final class ValueBox : Widget
 {
     private int py;
+    private double iv_; // value when the drag started
 
     this(int X, int Y, int W, int H) { super(X, Y, W, H); }
 
@@ -293,14 +281,14 @@ private final class ValueBox : Widget
                 fl.core.focus(this);
                 redraw();
             }
-            valueboxIv_ = c.value();
+            iv_ = c.value();
             goto case Event.drag;
         case Event.drag:
         {
             double Yf = 1 - (fl.core.eventY() - y() - fl.core.boxDy(box())) / cast(double)(h() - fl.core.boxDh(box()));
             import std.math : fabs;
 
-            if (fabs(Yf - valueboxIv_) < 3 * 1.0 / h()) Yf = valueboxIv_;
+            if (fabs(Yf - iv_) < 3 * 1.0 / h()) Yf = iv_;
             if (c.hsv(c.hue(), c.saturation(), Yf)) c.doCallback(CallbackReason.dragged);
             return 1;
         }

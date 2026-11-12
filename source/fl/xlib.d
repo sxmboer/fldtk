@@ -54,7 +54,7 @@ struct Screen;
 struct _XGC;
 alias GC = _XGC*;
 
-// Opaque input-method/input-context handles (core-roadmap item 9) --
+// Opaque input-method/input-context handles --
 // only ever created/destroyed/passed to the functions below, never
 // inspected field-by-field, same treatment as GC above.
 struct _XIM;
@@ -760,6 +760,7 @@ int XSelectInput(Display* display, Window w, c_long eventMask);
 
 int XChangeProperty(Display* display, Window w, Atom property, Atom type,
     int format, int mode, const(ubyte)* data, int numElements);
+int XDeleteProperty(Display* display, Window w, Atom property);
 int XStoreName(Display* display, Window w, const(char)* windowName);
 /// Sets WM_TRANSIENT_FOR, telling the window manager that `w` is a
 /// transient (dialog-like) window logically owned by `propWindow` --
@@ -902,6 +903,9 @@ int XResizeWindow(Display* display, Window w, uint width, uint height);
 int XMoveResizeWindow(Display* display, Window w, int x, int y, uint width, uint height);
 
 int XNextEvent(Display* display, XEvent* eventReturn);
+/// Puts `event` back at the head of the queue, so `XNextEvent()` returns
+/// it next.
+int XPutBackEvent(Display* display, XEvent* event);
 int XPending(Display* display);
 /// The function form of the `XQLength()` macro is
 /// `XEventsQueued(display, QueuedAlready)`: events already read from
@@ -969,7 +973,7 @@ int XDrawLine(Display* display, Drawable d, GC gc, int x1, int y1, int x2, int y
 
 /// `line_style`/`cap_style`/`join_style` values for XSetLineAttributes().
 /// The full set now, backing fl.draw's real, general-purpose
-/// `lineStyle()` (core-roadmap item 10) -- these are raw X11
+/// `lineStyle()` -- these are raw X11
 /// values (e.g. `CapRound = 2`), distinct from fl.enumerations'
 /// FLTK-level `capRound = 0x200` bitmask constant that `lineStyle()`
 /// decodes into a choice among these.
@@ -1027,8 +1031,7 @@ int XFillPolygon(Display* display, Drawable d, GC gc, XPoint* points, int npoint
 int XDrawLines(Display* display, Drawable d, GC gc, XPoint* points, int npoints, int mode);
 
 /// Draws npoints disconnected pixels -- backs fl.draw's endPoints()
-/// (core-roadmap item 10, the beginPoints()/vertex()/
-/// endPoints() path). Same `mode` convention as XDrawLines()/
+/// (the beginPoints()/vertex()/endPoints() path). Same `mode` convention as XDrawLines()/
 /// XFillPolygon() above.
 int XDrawPoints(Display* display, Drawable d, GC gc, XPoint* points, int npoints, int mode);
 
@@ -1112,7 +1115,7 @@ Bool XQueryPointer(Display* display, Window w, Window* rootReturn, Window* child
     int* rootXReturn, int* rootYReturn, int* winXReturn, int* winYReturn, uint* maskReturn);
 
 // ---------------------------------------------------------------------
-// XIM / XIC -- real input-method support (core-roadmap item 9)
+// XIM / XIC -- real input-method support
 // ---------------------------------------------------------------------
 
 /// Tells Xlib to use the system's default locale-dependent input
@@ -1147,7 +1150,7 @@ Status XCloseIM(XIM im);
 /// widget to report a text-cursor "spot" via `XNSpotLocation`
 /// (FLTK's `fl_set_spot()`, called from individual text-editing
 /// widgets) for positioning; no widget in this port calls that yet
-/// (out of scope for this core-layer pass, core-roadmap item 9),
+/// (on-screen preedit positioning isn't implemented),
 /// so there'd be nothing to correctly position an inline preedit
 /// against anyway. `name1`/`style`/`term` matches the exact 1-pair
 /// variadic call shape this port actually makes
