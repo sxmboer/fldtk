@@ -69,23 +69,58 @@ changed.
 
 ### `fl_wayland_clipboard_dnd.cxx`: a drag that another program accepts never ends, and later drops from other programs paste FLTK's own text
 
-**FLTK status:** Open at `3a049d826`. Found by reading the source, not
-reproduced. fltk/fltk's GitHub issues and pull requests have not been
-searched for an existing report yet.
+**FLTK status:** Open at `17b5466d8`; discussed in sxmboer/fldtk#1.
+Mutter, and per that discussion KWin, send `wl_data_source.cancelled`
+after `dnd_finished`, which hides the bug there.
+**Reproduced in FLTK:** Yes, at `17b5466d8`, under KWin 5.27 on Wayland,
+with `test/input` and KWrite: after each of three drags from FLTK into
+KWrite, `dnd_finished` arrived 2 to 5 ms after `dnd_drop_performed` and
+no `cancelled` followed; `doing_dnd` stayed true until the next action
+(6 to 29 seconds later), and each of three drops from KWrite into
+`test/input` took the `doing_dnd` branch and handed the input field
+FLTK's own earlier text: after dragging "apple" from `test/input` into
+KWrite, dragging "pear" from KWrite into `test/input` shows no "pear".
+A new drag from FLTK then called `dnd()` again on every mouse motion (187 times, with a new
+`wl_data_source` each, before the compositor took one 21 seconds later),
+and the dragged-text icon stayed on screen long after the drop. After
+the first drag out of `test/input`, no text dropped from another program
+arrives any more until the program is restarted.
 
 `doing_dnd` is set by `Fl_Wayland_Screen_Driver::dnd()` and cleared only
 by `data_source_handle_cancelled()`. FLTK binds `wl_data_device_manager`
 at version 3 (`Fl_Wayland_Screen_Driver.cxx`), and from version 3 on a
-drop that the target accepts ends with `wl_data_source.dnd_finished`, not
-`cancelled`; `data_source_handle_dnd_finished()` only looks at the last
-action. After dragging text into another program, `doing_dnd` therefore
-stays true, the `wl_data_source` is never destroyed, and the target
-window never gets its `FL_RELEASE`. The next drop *from* another program
-onto an FLTK widget then takes `data_device_handle_drop()`'s `doing_dnd`
-branch and pastes `selection_string[0]`, FLTK's own earlier text,
-instead of the dropped data. A fix is to do what the `cancelled` handler
-does (destroy the source, clear `doing_dnd`, send `FL_RELEASE`) in the
-`dnd_finished` handler too.
+drop that the target accepts ends with `wl_data_source.dnd_finished`;
+the protocol's list of reasons for `cancelled` (`wayland.xml`) doesn't
+include a completed drop, and `dnd_finished` says "the client is now
+free to destroy this data source". Some compositors send `cancelled`
+after `dnd_finished` anyway; where one doesn't,
+`data_source_handle_dnd_finished()`, which only looks at the last
+action, leaves the drag running: `doing_dnd` stays true, the
+`wl_data_source` is never destroyed, and the target window never gets
+its `FL_RELEASE`. The next drop *from* another program onto an FLTK
+widget then takes `data_device_handle_drop()`'s `doing_dnd` branch and
+pastes `selection_string[0]`, FLTK's own earlier text, instead of the
+dropped data. A fix is to do what the `cancelled` handler does (destroy
+the source, clear `doing_dnd`, send `FL_RELEASE`) in the `dnd_finished`
+handler too; a later `cancelled` for the destroyed source is then never
+delivered.
+
+To reproduce, apply `dnd-end-diag.patch` (timestamped logging of each
+`wl_data_source` event, of FLTK calling its own cancelled handler from
+`data_source_handle_target()`, and of the branch `data_device_handle_drop()`
+takes) and run `test/input` in a Wayland session under a compositor that
+doesn't send `cancelled` after `dnd_finished` (KWin 5.27):
+
+```
+git apply dnd-end-diag.patch
+cmake --build build --target input
+build/bin/test/input 2>&1 | tee dnd-output
+```
+
+Drag selected text from an input field into a text editor, then drag a
+word from the editor back into an input field. The log shows
+`dnd_finished` with no `cancelled` after it, then "drop received: pasting
+FLTK's own selection_string[0]".
 
 **Deviated from in the port**: `fl.platform_wayland`'s `dnd()` ends the
 drag on `dnd_finished` as well as on `cancelled`, and also gives up when
@@ -206,18 +241,53 @@ xdg-toplevel-icon when the compositor offers it.
 
 ### Wayland GL driver: a postponed buffer swap runs with whatever context is current
 
-**FLTK status:** Open at `3a049d826`. Found by reading the source; not
-reproduced against FLTK.
+**FLTK status:** Open at `17b5466d8`; discussed in sxmboer/fldtk#1.
+**Reproduced in FLTK:** Yes, at `17b5466d8`, with Mesa 24.3.4 (Intel HD
+Graphics 620) under KWin 5.27 on Wayland: in `test/cube`, every postponed
+swap that ran with the other cube's surface current failed with
+`EGL_BAD_SURFACE`; every one that ran with its own surface current
+succeeded. A driver that doesn't enforce the rule returns `EGL_TRUE`
+there, so the bug shows only on some drivers.
 
 `Fl_Wayland_Gl_Window_Driver::swap_buffers()` postpones the swap while
 the window's frame callback is pending (`need_swap`), and
 `surface_frame_done()` then calls `eglSwapBuffers()` on the window's EGL
-surface without making its context current. EGL requires the surface to
-be the current context's draw surface (Mesa returns `EGL_BAD_SURFACE`
-otherwise), so with two GL windows the postponed swap fails whenever the
-other window's context is current, and the frame stays unshown until
-the window is drawn again. Making the window's context current around
-the swap, and restoring the previous one, fixes it.
+surface without making its context current. The EGL 1.5 specification,
+section 3.10.4 "Posting Errors", requires the surface to be the current
+context's draw surface: "If *surface* is not bound to the draw surface of
+the calling thread's current context, an EGL_BAD_SURFACE error is
+generated." (The `eglSwapBuffers` man page lists only the "not an EGL
+drawing surface" case.) So with two GL windows the postponed swap fails
+whenever the other window's context is current, and the frame stays
+unshown until the window is drawn again; the return value is not checked,
+so nothing reports it. Making the window's context current around the
+swap, and restoring the previous one, fixes it.
+
+To reproduce, add this to `surface_frame_done()` in
+`src/drivers/Wayland/Fl_Wayland_Gl_Window_Driver.cxx` in place of the
+`eglSwapBuffers()` call (with `#include <stdio.h>`):
+
+```cpp
+EGLSurface cur = eglGetCurrentSurface(EGL_DRAW);
+EGLBoolean ok = eglSwapBuffers(Fl_Wayland_Gl_Window_Driver::egl_display, gl_dr->egl_surface);
+EGLint err = eglGetError();
+fprintf(stderr, "postponed swap of %p: %s surface current, eglSwapBuffers=%s, eglGetError=0x%x\n",
+        (void *)gl_dr->pWindow,
+        cur == gl_dr->egl_surface ? "own" : (cur == EGL_NO_SURFACE ? "NO" : "OTHER"),
+        ok ? "EGL_TRUE" : "EGL_FALSE", err);
+```
+
+then build and run `test/cube` in a Wayland session and resize its
+window while both cubes spin (minimizing and restoring also postpones
+swaps):
+
+```
+cmake --build build --target cube
+build/bin/test/cube 2>&1 | grep "postponed swap"
+```
+
+With Mesa, the `OTHER` lines read `eglSwapBuffers=EGL_FALSE,
+eglGetError=0x300d` (`EGL_BAD_SURFACE`).
 
 **Deviated from in the port**: `fl.wayland_gl_window_driver`'s
 `glFrameDone()` makes the window's own context current for the
