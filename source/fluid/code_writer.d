@@ -28,8 +28,7 @@
  *     own property list): `o` means "this widget's own variable",
  *     which already has a real, distinct name (`v` below) --
  *     substituted via `translateOwnSlot()`.
- *   - Inside a `callback { ... }` property or a named-Function body
- *     wrapping a widget callback: `o` means "the freshly cast closure
+ *   - Inside a `callback { ... }` property: `o` means "the freshly cast closure
  *     local" that this writer itself introduces (`auto o = cast(X)
  *     raw;`) -- already correct verbatim, since the cast variable is
  *     deliberately *named* `o` to match what the `.fl` author wrote, no
@@ -37,10 +36,10 @@
  *     parameter is named `raw` specifically so it doesn't collide with
  *     that inner `o` (D forbids a nested declaration shadowing its own
  *     enclosing lambda parameter).
- * A named Function that takes a differently-named parameter (e.g.
- * radio.fl's `buttonCB(Button b)`) follows the same rule with that
- * parameter's own name instead of `o` -- the cast variable is named
- * `b`, matching the body text exactly, again with no substitution.
+   - Inside a `callback { ... }` property, a named Function is called
+ *     like any other function: `buttonCB(o);`. A callback field always
+ *     holds code; a file whose callback field still holds just a name is
+ *     converted when it is read (see `fluid.node`'s `callbackFromName()`).
  *
  * Property translation (`translateBoxtype()`/`translateColor()`/etc.)
  * is intentionally small and conservative -- every numeric constant
@@ -391,8 +390,7 @@ class Writer
         collectNames(roots);
 
         FunctionNode mainFn;
-        FunctionNode[] callbackFns;   // "shape 1": IS a callback (delegate var)
-        FunctionNode[] plainFns;      // "shape 2": ordinary top-level function
+        FunctionNode[] plainFns;
         ClassNode[] classNodes;
         WidgetClassNode[] widgetClassNodes;
         DeclNode[] declNodes;
@@ -494,10 +492,7 @@ class Writer
                 mainFn = fn;
                 continue;
             }
-            if (isCallbackShape(fn) && referencedAnywhereInText(roots, parseFunctionSignature(fn.instanceName).name))
-                callbackFns ~= fn;
-            else
-                plainFns ~= fn;
+            plainFns ~= fn;
         }
 
         // The dub header goes first of all: dub only reads it as the
@@ -609,8 +604,7 @@ class Writer
         foreach (dbn; declBlockNodes)
             writeDeclBlockNode(dbn);
         writeDecls(roots);
-        writeFunctionDecls(callbackFns);
-        if (nameMap.length || callbackFns.length)
+        if (nameMap.length)
             buf.put("\n");
 
         foreach (cn; classNodes)
@@ -623,9 +617,7 @@ class Writer
             writePlainFunction(fn);
 
         if (mainFn !is null)
-            writeFunctionBody(mainFn, callbackFns);
-        else if (callbackFns.length)
-            writeCallbackModuleConstructor(callbackFns);
+            writeFunctionBody(mainFn);
 
         return buf.data;
     }
@@ -674,10 +666,7 @@ class Writer
     }
 
     /// Only widget-tree nodes get a "TypeName varname;" module-level
-    /// decl -- a named callback-shaped Function (e.g. button_cb) also
-    /// has a non-empty `instanceName`, but gets its own `void
-    /// delegate(Widget)` decl via `writeFunctionDecls()` instead, not
-    /// this generic path. Verbatim naming: the .fl instance name IS the
+    /// decl. Verbatim naming: the .fl instance name IS the
     /// D identifier, no transformation -- the author writes exactly
     /// what they want the D variable to be called (e.g. "cbInfo"). A
     /// `ClassNode`'s own subtree is skipped entirely here -- a named
@@ -724,24 +713,6 @@ class Writer
                     line(format("%s%s %s;", wn.access == Access.private_ ? "private " : "",
                         className(n), n.instanceName));
             writeDecls(n.children);
-        }
-    }
-
-    /// Module-level `void delegate(Widget) name;` for every named,
-    /// callback-shaped Function (e.g. radio.fl's `buttonCB`) -- these
-    /// are assigned a delegate literal inside `main()`, or inside a
-    /// module constructor in a file without one
-    /// (`writeCallbackModuleConstructor()`)
-    /// (`writeNamedFunctionAssignment()`), not declared with `auto`,
-    /// since they need to exist (even if not yet assigned) the moment
-    /// `main()`'s body starts, matching how a plain widget's own
-    /// module-level decl works.
-    private void writeFunctionDecls(FunctionNode[] callbackFns)
-    {
-        foreach (fn; callbackFns)
-        {
-            auto sig = parseFunctionSignature(fn.instanceName);
-            line(format("void delegate(Widget) %s;", sig.name));
         }
     }
 
@@ -962,7 +933,7 @@ class Writer
     /// widget-tree children, e.g. wrapping a conditionally-constructed
     /// widget; `writeWidgetTree()`'s own top already writes the comment
     /// for every node kind it dispatches, once, generically) or via
-    /// `writeBodyChild()`/`writeNamedFunctionAssignment()` (a top-level
+    /// `writeBodyChild()` (a top-level
     /// function/method-body child, which write it explicitly
     /// themselves) -- either way, exactly once, never here.
     private void writeCodeBlockNode(CodeBlockNode cb)
@@ -1377,7 +1348,7 @@ class Writer
         return s;
     }
 
-    private void writeFunctionBody(FunctionNode fn, FunctionNode[] callbackFns)
+    private void writeFunctionBody(FunctionNode fn)
     {
         immutable start = pos();
         writeNodeComment(fn);
@@ -1385,8 +1356,6 @@ class Writer
         line("{");
         spanOpen(fn, start);
         indent_++;
-        foreach (nf; callbackFns)
-            writeNamedFunctionAssignment(nf);
         inMainFunction_ = true;
         // A Function's children are usually a widget tree (every
         // widget-based .fl file), but a Function that just wraps
@@ -1405,25 +1374,6 @@ class Writer
         spanClose(fn, closeStart);
     }
 
-    /// A file without an anonymous root Function (a module of
-    /// widget-building functions called from elsewhere) has no `main()`
-    /// to assign its callback-shaped Functions in, so they are assigned
-    /// in a module constructor instead. It runs before any code of the
-    /// module can construct a widget, so `o.callback(name)` always
-    /// picks up the delegate. Code elsewhere may still assign the
-    /// variable a different delegate before building the widgets.
-    private void writeCallbackModuleConstructor(FunctionNode[] callbackFns)
-    {
-        line("static this()");
-        line("{");
-        indent_++;
-        foreach (nf; callbackFns)
-            writeNamedFunctionAssignment(nf);
-        indent_--;
-        line("}");
-        blank();
-    }
-
     /// Whether the widget tree currently being written is the
     /// top-level main Function's own (which has an `args` parameter in
     /// scope) as opposed to a class method's (e.g. mandelbrot_ui.fl's
@@ -1434,38 +1384,11 @@ class Writer
     /// emitting `.show(args)` even makes sense.
     private bool inMainFunction_;
 
-    /// Assigns a callback-shaped named Function's D delegate variable
-    /// at the top of `main()` (or in `writeCallbackModuleConstructor()`)
-    /// -- e.g. radio.fl's `buttonCB(Button b)`
-    /// becomes `buttonCB = (raw) { auto b = cast(Button) raw; ... };`.
-    /// The body is emitted verbatim: it already refers to its own
-    /// declared parameter name ("b"), which is exactly what the cast
-    /// variable is named, so no substitution is needed -- see this
-    /// module's own doc comment on the "o" convention.
-    private void writeNamedFunctionAssignment(FunctionNode fn)
-    {
-        immutable start = pos();
-        writeNodeComment(fn);
-        auto sig = parseFunctionSignature(fn.instanceName);
-        string castType = sig.firstParamType.length ? stripFlPrefix(sig.firstParamType) : "Widget";
-        line(format("%s = (raw) {", sig.name));
-        indent_++;
-        line(format("auto %s = cast(%s) raw;", sig.firstParamName, castType));
-        spanOpen(fn, start);
-        foreach (c; fn.children)
-            writeBodyChild(c);
-        indent_--;
-        immutable closeStart = pos();
-        line("};");
-        spanClose(fn, closeStart);
-        blank();
-    }
-
-    /// An ordinary top-level D function ("shape 2" -- e.g. valuators.fl's
+    /// A named Function, written as an ordinary top-level D function
+    /// (e.g. radio.fl's `buttonCB(Button b)`, valuators.fl's
     /// `valCb(string name)` returning `void delegate(Widget)`, or
     /// CubeViewUI.fl's `makeWindow()`): signature and body emitted
-    /// verbatim, no cast/wrapper machinery at all, since it isn't itself
-    /// callback-shaped -- see `isCallbackShape()`.
+    /// verbatim.
     ///
     /// Return-type auto-inference: when `fn.returnType`
     /// is empty, ported from FLTK's `Function_Node::write_code1()`/
@@ -1503,7 +1426,7 @@ class Writer
         // with a `Window` child) is *correct*, faithful behavior -- but
         // it's also a real source of user confusion (expecting `void
         // main()`/`int main()`), so this flags it rather than staying silent.
-        if (parseFunctionSignature(fn.instanceName).name == "main")
+        if (functionName(fn.instanceName) == "main")
         {
             line("// Note: this Function is named \"main\", but Fluid only treats the");
             line("// *anonymous* root Function (leave its Name field blank) as the");
@@ -2583,21 +2506,6 @@ class Writer
 
     private void writeCallback(WidgetNode n, string v)
     {
-        // "callback closeWindowCB" -- a bare identifier value (no
-        // braces in the .fl source, so no statements/operators either)
-        // means "assign this existing named delegate directly", the
-        // same shape radio.fl's `setup {o.callback(buttonCB);}` already
-        // covers but written as the widget's own `callback` property
-        // instead -- confirmed needed by preferences.fl's Cancel/OK
-        // buttons. Distinguished from real inline callback code by a
-        // simple, bounded heuristic: does the whole value already look
-        // like a single valid D identifier? A real code snippet always
-        // has at least a `;`/`(`/space in it, so this can't misfire.
-        if (isBareIdentifier(n.callback))
-        {
-            line(format("%s.callback(%s);", v, n.callback));
-            return;
-        }
         // If this widget's own construction-time variable already IS
         // "o" (an anonymous leaf, per selfRef()'s naming scheme), the
         // closure must NOT redeclare "o" -- it's still lexically open
@@ -2641,8 +2549,8 @@ class Writer
     /// does: `writeWidgetTree()` (every `WidgetNode`-family node),
     /// `writeClassNode()`, the module- and class-level `DeclNode` loops
     /// (`generate()`/`writeClassNode()`), `writeDataNode()`, and all
-    /// four `FunctionNode`-writing shapes (`writePlainFunction()`,
-    /// `writeNamedFunctionAssignment()`, `writeFunctionBody()` for the
+    /// three `FunctionNode`-writing shapes (`writePlainFunction()`,
+    /// `writeFunctionBody()` for the
     /// anonymous main Function, `writeClassMethod()`). Deliberately not
     /// wired: a bare `CodeNode`'s own `.comment` (always a child inside
     /// an already-commented Function/method body, so its own comment
@@ -3014,134 +2922,12 @@ private string dByteStringLiteral(const(ubyte)[] bytes)
     return a.data;
 }
 
-/// A named Function's `instanceName` is its full, already-D signature
-/// text (e.g. "buttonCB(Button b)", "valCb(string name)",
-/// "makeWindow()") -- pulls out the bare function name, its parameter
-/// count, and (when present) the first parameter's type/name, needed
-/// for `isCallbackShape()`'s decision and for naming a callback-shaped
-/// function's own cast variable. Bounded parsing of a fixed "Name(p1,
-/// p2, ...)" shape -- not a general D declarator parser, just enough
-/// to split on the outermost parens/commas/last-space-before-a-name,
-/// which is all real D parameter syntax ever needs here.
-private struct FnSig
-{
-    string name;
-    int paramCount;
-    string firstParamType;
-    string firstParamName;
-}
-
-private FnSig parseFunctionSignature(string sig)
+/// The bare name of a named Function, from its `instanceName`, the
+/// full D signature text (e.g. "buttonCB(Button b)" -> "buttonCB").
+private string functionName(string sig)
 {
     auto parenIdx = sig.indexOf('(');
-    if (parenIdx < 0)
-        return FnSig(sig.strip(), 0, "", "");
-
-    string name = sig[0 .. parenIdx].strip();
-    auto closeIdx = sig.lastIndexOf(')');
-    string inner = sig[parenIdx + 1 .. (closeIdx >= 0 ? closeIdx : $)].strip();
-
-    if (inner.length == 0)
-        return FnSig(name, 0, "", "");
-
-    auto parts = inner.split(",");
-    string firstParamType, firstParamName;
-    string first = parts[0].strip();
-    auto spaceIdx = first.lastIndexOf(' ');
-    if (spaceIdx >= 0)
-    {
-        firstParamType = first[0 .. spaceIdx].strip();
-        firstParamName = first[spaceIdx + 1 .. $].strip();
-    }
-    return FnSig(name, cast(int) parts.length, firstParamType, firstParamName);
-}
-
-/// A named Function is "callback-shaped" -- meant to be used bare as a
-/// `.callback(name)` value (needing module-level-delegate-variable
-/// codegen, see `writeNamedFunctionAssignment()`) -- exactly when it
-/// returns `void` (or leaves `return_type` unset, defaulting to void)
-/// AND takes exactly one parameter, matching `Fl_Callback`'s own
-/// `void(Widget)` shape. Anything else (a different return type like
-/// valuators.fl's `valCb`'s `void delegate(Widget)`, or a different
-/// parameter count like CubeViewUI.fl's zero-parameter `makeWindow()`)
-/// is instead an ordinary top-level function, *called* to produce a
-/// value or just invoked directly -- see `writePlainFunction()`.
-///
-/// **Shape alone is ambiguous, though**, e.g.
-/// `fluid_icon.fl`'s own `makeFluidIcon(Window win)`: void return, one
-/// param, exactly matching this shape, but meant to be called directly
-/// from hand-written D (`gui_main.d`'s `makeFluidIcon(shelf_)`), never
-/// assigned as any widget's `.callback`. `Window` being Widget-castable
-/// (same as `radio.fl`'s legitimately-callback-shaped `buttonCB(Button
-/// b)`) means a parameter-type check can't distinguish the two cases
-/// either. The real difference is *reference*, not shape: `generate()`'s
-/// own caller pairs this shape check with `referencedAnywhereInText()`
-/// (below) -- only a shape match that's *also* actually named somewhere
-/// in this `.fl` file's own text gets treated as callback-shaped.
-private bool isCallbackShape(FunctionNode fn)
-{
-    bool voidReturn = fn.returnType.length == 0 || fn.returnType == "void";
-    auto sig = parseFunctionSignature(fn.instanceName);
-    return voidReturn && sig.paramCount == 1;
-}
-
-/// Whether `fnName` (a Function's own bare name) appears anywhere in
-/// this project's raw/opaque code text *as a bare value, not a function
-/// call* -- widget `callback`/`setup` properties, `code`/`decl` node
-/// text, `MenuItem` callbacks, and every *other* named Function's own
-/// body. Needed because `isCallbackShape()` alone can't tell "meant to
-/// be assigned as a bare `.callback` value" (e.g. `radio.fl`'s
-/// `buttonCB`, referenced from `setup {o.callback(buttonCB);}` -- opaque
-/// text, not a structured field, so even checking every `WidgetNode.
-/// callback` property directly would miss it) apart from "meant to be
-/// called directly by hand-written code entirely outside this file"
-/// (`fluid_icon.fl`'s `makeFluidIcon`, called from `gui_main.d`, never
-/// appearing anywhere in `fluid_icon.fl`'s own text at all) -- both have
-/// the identical void/one-param shape.
-///
-/// **The "as a bare value, not a call" qualifier is load-bearing**:
-/// `codeview_panel.fl`'s own `codeviewRefresh
-/// (Node[] roots)` is genuinely called from elsewhere in the *same*
-/// file's text (`callback {codeviewRefresh(cvRoots_);}`, and again from
-/// `codeviewToggleVisibility()`'s own body) -- a real, ordinary function
-/// call, not a callback assignment. A plain `\bfnName\b` search
-/// couldn't tell the two apart, misclassifying it as callback-shaped
-/// and generating a `void
-/// delegate(Widget) codeviewRefresh;` that every one of its own
-/// `Node[]`-argument call sites would then fail to compile against.
-/// A negative lookahead, `(?!\s*\()`, avoids this: a bare reference used as a
-/// *value* (`.callback(buttonCB)` -- `buttonCB` followed by `)`) matches;
-/// an invocation (`codeviewRefresh(cvRoots_)` -- `codeviewRefresh`
-/// followed by `(`) doesn't.
-private bool referencedAnywhereInText(Node[] roots, string fnName)
-{
-    import std.regex : regex, matchFirst;
-
-    auto re = regex(`\b` ~ fnName ~ `\b(?!\s*\()`);
-    bool found;
-
-    void scan(string s)
-    {
-        if (!found && s.length && !matchFirst(s, re).empty)
-            found = true;
-    }
-
-    void walk(Node[] nodes)
-    {
-        foreach (n; nodes)
-        {
-            if (found) return;
-            scan(n.callback);
-            if (auto wn = cast(WidgetNode) n) { scan(wn.setupCode); scan(wn.finalizeCode); }
-            if (auto cn = cast(CodeNode) n) scan(cn.instanceName);
-            if (auto dn = cast(DeclNode) n) scan(dn.instanceName);
-            if (auto mi = cast(MenuItemNode) n) scan(mi.callback);
-            walk(n.children);
-        }
-    }
-
-    walk(roots);
-    return found;
+    return (parenIdx < 0 ? sig : sig[0 .. parenIdx]).strip();
 }
 
 /// `class Foo` overrides that are already real fldtk classes reachable
@@ -3316,16 +3102,6 @@ private string[] collectClassOverrideImports(Node[] nodes, ClassNode[] localClas
 private string translateOwnSlot(string code, string v)
 {
     return renameIdentifier(code, "o", v);
-}
-
-/// Whether `s` is, in its entirety, a single valid D identifier --
-/// used by `writeCallback()` to tell "callback closeWindowCB" (assign
-/// this existing delegate directly) apart from real inline callback
-/// code (which always has at least a `;`/`(`/space in it).
-private bool isBareIdentifier(string s)
-{
-    import std.regex : matchAll;
-    return !s.matchAll(regex(`^[A-Za-z_]\w*$`)).empty;
 }
 
 unittest
@@ -4494,31 +4270,25 @@ unittest
 
 unittest
 {
-    // A callback-shaped Function in a file without an anonymous root
-    // Function is assigned in a module constructor, body included; with
-    // a root Function it is assigned at the top of `main()`.
+    // A named Function is a plain D function, and a callback field
+    // holding only a name (an older `.fl` file) is read as a call to it.
     import std.algorithm : canFind;
-    import std.string : indexOf;
     import fluid.project_reader : Reader;
 
-    string fns = "Function {quitCb(Widget w)} {open return_type void\n} {\n"
-        ~ "  code {quitBody();} {}\n}\n";
-    string win = "  Fl_Window win {open\n    xywh {0 0 100 100}\n  } {\n"
-        ~ "    Fl_Button {} {\n      callback quitCb\n      xywh {0 0 50 20}\n    }\n  }\n";
-
-    string d = new Writer().generate(new Reader("version 1.0000\n" ~ fns
-        ~ "Function {make()} {open\n} {\n" ~ win ~ "}\n").readProject());
-    assert(d.canFind("void delegate(Widget) quitCb;"));
-    auto ctor = d.indexOf("static this()");
-    assert(ctor >= 0);
-    assert(d.indexOf("quitCb = (raw) {", ctor) > ctor);
-    assert(d.indexOf("quitBody();", ctor) > ctor);
-    assert(!d.canFind("void main("));
-
-    string m = new Writer().generate(new Reader("version 1.0000\n" ~ fns
-        ~ "Function {} {open\n} {\n" ~ win ~ "}\n").readProject());
-    assert(!m.canFind("static this()"));
-    assert(m.indexOf("quitBody();") > m.indexOf("void main("));
+    string src = "version 1.0000\n"
+        ~ "Function {quitCb(Widget w)} {open return_type void\n} {\n"
+        ~ "  code {quitBody();} {}\n}\n"
+        ~ "Function {} {open\n} {\n"
+        ~ "  Fl_Window win {open\n    xywh {0 0 100 100}\n  } {\n"
+        ~ "    Fl_Button {} {\n      callback quitCb\n      xywh {0 0 50 20}\n    }\n"
+        ~ "    Fl_Button {} {\n      callback {quitCb}\n      xywh {0 20 50 20}\n    }\n  }\n}\n";
+    auto roots = new Reader(src).readProject();
+    assert(roots[1].children[0].children[0].callback == "quitCb(o);");
+    assert(roots[1].children[0].children[1].callback == "quitCb(o);");
+    string d = new Writer().generate(roots);
+    assert(d.canFind("void quitCb(Widget w)"));
+    assert(!d.canFind("delegate(Widget) quitCb"));
+    assert(!d.canFind("static this()"));
 }
 
 unittest
@@ -4609,7 +4379,7 @@ unittest
             auto m = mk!FunctionNode("Function", "");
             auto w = win("");
             auto b = box("button");
-            b.callback = "cbf";
+            b.callback = "cbf(o);";
             w.addChild(b);
             m.addChild(w);
             return [cast(Node) f, m];

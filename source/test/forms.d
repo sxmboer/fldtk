@@ -1,177 +1,221 @@
-// D transliteration of FLTK's test/forms.cxx.
+// Based on FLTK's test/forms.cxx, an XForms program, written here with
+// fldtk's own widgets: one of each kind of widget, and a choice at the
+// top that gives all of them a different box type.
 // Build: rdmd buildsamples.d test forms
-//
-// Another forms demo -- this is an XForms compatibility-layer program
-// (FL/forms.H's fl_bgn_form()/fl_add_box()/... free-function API, a
-// straight port of the old XForms library's API onto FLTK widgets).
-// Kept as the legacy free-function API here rather than rewritten into
-// modern widget construction -- see source/test/README.md.
 import fl;
+import std.format : format;
 
-int border = 1; // changed from FL_TRANSIENT for FLTK
-// (this is so the close box and Esc work to close the window)
-
-struct VNStruct
+struct NamedBox
 {
-    Boxtype val;
     string name;
+    Boxtype box;
 }
 
-VNStruct[] btypes = [
-    VNStruct(Boxtype.noBox, "no box"),
-    VNStruct(Boxtype.upBox, "up box"),
-    VNStruct(Boxtype.downBox, "down box"),
-    VNStruct(Boxtype.borderBox, "border box"),
-    VNStruct(Boxtype.shadowBox, "shadow box"),
-    VNStruct(Boxtype.flatBox, "flat box"),
-    VNStruct(Boxtype.engravedBox, "frame box"),
-    VNStruct(Boxtype.embossedBox, "embossed box"),
-    VNStruct(Boxtype.roundedBox, "rounded box"),
-    VNStruct(Boxtype.rflatBox, "rflat box"),
-    VNStruct(Boxtype.rshadowBox, "rshadow box"), // renamed for FLTK
-    VNStruct(Boxtype.ovalBox, "oval box"),
-    VNStruct(Boxtype.roundUpBox, "rounded3d upbox"),
-    VNStruct(Boxtype.roundDownBox, "rounded3d downbox"),
-    VNStruct(Boxtype.ovalBox, "oval3d upbox"),
-    VNStruct(Boxtype.ovalBox, "oval3d downbox"),
-    VNStruct(Boxtype.plasticUpBox, "plastic upbox"),
-    VNStruct(Boxtype.plasticDownBox, "plastic downbox"),
-    VNStruct(Boxtype.gtkUpBox, "GTK up box"),
-    VNStruct(Boxtype.gtkRoundUpBox, "GTK round up box"),
-    VNStruct(Boxtype.gleamUpBox, "Gleam up box"),
-    /* sentinel */
-    VNStruct(cast(Boxtype)(-1), null),
+immutable NamedBox[] boxTypes = [
+    NamedBox("no box", Boxtype.noBox),
+    NamedBox("up box", Boxtype.upBox),
+    NamedBox("down box", Boxtype.downBox),
+    NamedBox("border box", Boxtype.borderBox),
+    NamedBox("shadow box", Boxtype.shadowBox),
+    NamedBox("flat box", Boxtype.flatBox),
+    NamedBox("engraved box", Boxtype.engravedBox),
+    NamedBox("embossed box", Boxtype.embossedBox),
+    NamedBox("rounded box", Boxtype.roundedBox),
+    NamedBox("rflat box", Boxtype.rflatBox),
+    NamedBox("rshadow box", Boxtype.rshadowBox),
+    NamedBox("oval box", Boxtype.ovalBox),
+    NamedBox("round up box", Boxtype.roundUpBox),
+    NamedBox("round down box", Boxtype.roundDownBox),
+    NamedBox("plastic up box", Boxtype.plasticUpBox),
+    NamedBox("plastic down box", Boxtype.plasticDownBox),
+    NamedBox("GTK up box", Boxtype.gtkUpBox),
+    NamedBox("GTK round up box", Boxtype.gtkRoundUpBox),
+    NamedBox("Gleam up box", Boxtype.gleamUpBox),
 ];
 
-// pixmaps/sorceress.xbm data -- FLTK #includes a generated bitmap;
-// not transliterated (binary asset, not FLTK API surface).
-extern (C) int sorceressWidth, sorceressHeight;
-extern (C) ubyte[] sorceressBits;
+// pixmaps/sorceress.xbm, transcribed verbatim from the FLTK .xbm file.
+enum sorceressWidth = 75;
+enum sorceressHeight = 75;
+immutable ubyte[] sorceressBits = [
+  0xfc, 0x7e, 0x40, 0x20, 0x90, 0x00, 0x07, 0x80, 0x23, 0x00, 0x00, 0xc6,
+  0xc1, 0x41, 0x98, 0xb8, 0x01, 0x07, 0x66, 0x00, 0x15, 0x9f, 0x03, 0x47,
+  0x8c, 0xc6, 0xdc, 0x7b, 0xcc, 0x00, 0xb0, 0x71, 0x0e, 0x4d, 0x06, 0x66,
+  0x73, 0x8e, 0x8f, 0x01, 0x18, 0xc4, 0x39, 0x4b, 0x02, 0x23, 0x0c, 0x04,
+  0x1e, 0x03, 0x0c, 0x08, 0xc7, 0xef, 0x08, 0x30, 0x06, 0x07, 0x1c, 0x02,
+  0x06, 0x30, 0x18, 0xae, 0xc8, 0x98, 0x3f, 0x78, 0x20, 0x06, 0x02, 0x20,
+  0x60, 0xa0, 0xc4, 0x1d, 0xc0, 0xff, 0x41, 0x04, 0xfa, 0x63, 0x80, 0xa1,
+  0xa4, 0x3d, 0x00, 0x84, 0xbf, 0x04, 0x0f, 0x06, 0xfc, 0xa1, 0x34, 0x6b,
+  0x01, 0x1c, 0xc9, 0x05, 0x06, 0xc7, 0x06, 0xbe, 0x11, 0x1e, 0x43, 0x30,
+  0x91, 0x05, 0xc3, 0x61, 0x02, 0x30, 0x1b, 0x30, 0xcc, 0x20, 0x11, 0x00,
+  0xc1, 0x3c, 0x03, 0x20, 0x0a, 0x00, 0xe8, 0x60, 0x21, 0x00, 0x61, 0x1b,
+  0xc1, 0x63, 0x08, 0xf0, 0xc6, 0xc7, 0x21, 0x03, 0xf8, 0x08, 0xe1, 0xcf,
+  0x0a, 0xfc, 0x4d, 0x99, 0x43, 0x07, 0x3c, 0x0c, 0xf1, 0x9f, 0x0b, 0xfc,
+  0x5b, 0x81, 0x47, 0x02, 0x16, 0x04, 0x31, 0x1c, 0x0b, 0x1f, 0x17, 0x89,
+  0x4d, 0x06, 0x1a, 0x04, 0x31, 0x38, 0x02, 0x07, 0x56, 0x89, 0x49, 0x04,
+  0x0b, 0x04, 0xb1, 0x72, 0x82, 0xa1, 0x54, 0x9a, 0x49, 0x04, 0x1d, 0x66,
+  0x50, 0xe7, 0xc2, 0xf0, 0x54, 0x9a, 0x58, 0x04, 0x0d, 0x62, 0xc1, 0x1f,
+  0x44, 0xfc, 0x51, 0x90, 0x90, 0x04, 0x86, 0x63, 0xe0, 0x74, 0x04, 0xef,
+  0x31, 0x1a, 0x91, 0x00, 0x02, 0xe2, 0xc1, 0xfd, 0x84, 0xf9, 0x30, 0x0a,
+  0x91, 0x00, 0x82, 0xa9, 0xc0, 0xb9, 0x84, 0xf9, 0x31, 0x16, 0x81, 0x00,
+  0x42, 0xa9, 0xdb, 0x7f, 0x0c, 0xff, 0x1c, 0x16, 0x11, 0x00, 0x02, 0x28,
+  0x0b, 0x07, 0x08, 0x60, 0x1c, 0x02, 0x91, 0x00, 0x46, 0x29, 0x0e, 0x00,
+  0x00, 0x00, 0x10, 0x16, 0x11, 0x02, 0x06, 0x29, 0x04, 0x00, 0x00, 0x00,
+  0x10, 0x16, 0x91, 0x06, 0xa6, 0x2a, 0x04, 0x00, 0x00, 0x00, 0x18, 0x24,
+  0x91, 0x04, 0x86, 0x2a, 0x04, 0x00, 0x00, 0x00, 0x18, 0x27, 0x93, 0x04,
+  0x96, 0x4a, 0x04, 0x00, 0x00, 0x00, 0x04, 0x02, 0x91, 0x04, 0x86, 0x4a,
+  0x0c, 0x00, 0x00, 0x00, 0x1e, 0x23, 0x93, 0x04, 0x56, 0x88, 0x08, 0x00,
+  0x00, 0x00, 0x90, 0x21, 0x93, 0x04, 0x52, 0x0a, 0x09, 0x80, 0x01, 0x00,
+  0xd0, 0x21, 0x95, 0x04, 0x57, 0x0a, 0x0f, 0x80, 0x27, 0x00, 0xd8, 0x20,
+  0x9d, 0x04, 0x5d, 0x08, 0x1c, 0x80, 0x67, 0x00, 0xe4, 0x01, 0x85, 0x04,
+  0x79, 0x8a, 0x3f, 0x00, 0x00, 0x00, 0xf4, 0x11, 0x85, 0x06, 0x39, 0x08,
+  0x7d, 0x00, 0x00, 0x18, 0xb7, 0x10, 0x81, 0x03, 0x29, 0x12, 0xcb, 0x00,
+  0x7e, 0x30, 0x28, 0x00, 0x85, 0x03, 0x29, 0x10, 0xbe, 0x81, 0xff, 0x27,
+  0x0c, 0x10, 0x85, 0x03, 0x29, 0x32, 0xfa, 0xc1, 0xff, 0x27, 0x94, 0x11,
+  0x85, 0x03, 0x28, 0x20, 0x6c, 0xe1, 0xff, 0x07, 0x0c, 0x01, 0x85, 0x01,
+  0x28, 0x62, 0x5c, 0xe3, 0x8f, 0x03, 0x4e, 0x91, 0x80, 0x05, 0x39, 0x40,
+  0xf4, 0xc2, 0xff, 0x00, 0x9f, 0x91, 0x84, 0x05, 0x31, 0xc6, 0xe8, 0x07,
+  0x7f, 0x80, 0xcd, 0x00, 0xc4, 0x04, 0x31, 0x06, 0xc9, 0x0e, 0x00, 0xc0,
+  0x48, 0x88, 0xe0, 0x04, 0x79, 0x04, 0xdb, 0x12, 0x00, 0x30, 0x0c, 0xc8,
+  0xe4, 0x04, 0x6d, 0x06, 0xb6, 0x23, 0x00, 0x18, 0x1c, 0xc0, 0x84, 0x04,
+  0x25, 0x0c, 0xff, 0xc2, 0x00, 0x4e, 0x06, 0xb0, 0x80, 0x04, 0x3f, 0x8a,
+  0xb3, 0x83, 0xff, 0xc3, 0x03, 0x91, 0x84, 0x04, 0x2e, 0xd8, 0x0f, 0x3f,
+  0x00, 0x00, 0x5f, 0x83, 0x84, 0x04, 0x2a, 0x70, 0xfd, 0x7f, 0x00, 0x00,
+  0xc8, 0xc0, 0x84, 0x04, 0x4b, 0xe2, 0x2f, 0x01, 0x00, 0x08, 0x58, 0x60,
+  0x80, 0x04, 0x5b, 0x82, 0xff, 0x01, 0x00, 0x08, 0xd0, 0xa0, 0x84, 0x04,
+  0x72, 0x80, 0xe5, 0x00, 0x00, 0x08, 0xd2, 0x20, 0x44, 0x04, 0xca, 0x02,
+  0xff, 0x00, 0x00, 0x08, 0xde, 0xa0, 0x44, 0x04, 0x82, 0x02, 0x6d, 0x00,
+  0x00, 0x08, 0xf6, 0xb0, 0x40, 0x02, 0x82, 0x07, 0x3f, 0x00, 0x00, 0x08,
+  0x44, 0x58, 0x44, 0x02, 0x93, 0x3f, 0x1f, 0x00, 0x00, 0x30, 0x88, 0x4f,
+  0x44, 0x03, 0x83, 0x23, 0x3e, 0x00, 0x00, 0x00, 0x18, 0x60, 0xe0, 0x07,
+  0xe3, 0x0f, 0xfe, 0x00, 0x00, 0x00, 0x70, 0x70, 0xe4, 0x07, 0xc7, 0x1b,
+  0xfe, 0x01, 0x00, 0x00, 0xe0, 0x3c, 0xe4, 0x07, 0xc7, 0xe3, 0xfe, 0x1f,
+  0x00, 0x00, 0xff, 0x1f, 0xfc, 0x07, 0xc7, 0x03, 0xf8, 0x33, 0x00, 0xc0,
+  0xf0, 0x07, 0xff, 0x07, 0x87, 0x02, 0xfc, 0x43, 0x00, 0x60, 0xf0, 0xff,
+  0xff, 0x07, 0x8f, 0x06, 0xbe, 0x87, 0x00, 0x30, 0xf8, 0xff, 0xff, 0x07,
+  0x8f, 0x14, 0x9c, 0x8f, 0x00, 0x00, 0xfc, 0xff, 0xff, 0x07, 0x9f, 0x8d,
+  0x8a, 0x0f, 0x00, 0x00, 0xfe, 0xff, 0xff, 0x07, 0xbf, 0x0b, 0x80, 0x1f,
+  0x00, 0x00, 0xff, 0xff, 0xff, 0x07, 0x7f, 0x3a, 0x80, 0x3f, 0x00, 0x80,
+  0xff, 0xff, 0xff, 0x07, 0xff, 0x20, 0xc0, 0x3f, 0x00, 0x80, 0xff, 0xff,
+  0xff, 0x07, 0xff, 0x01, 0xe0, 0x7f, 0x00, 0xc0, 0xff, 0xff, 0xff, 0x07,
+  0xff, 0x0f, 0xf8, 0xff, 0x40, 0xe0, 0xff, 0xff, 0xff, 0x07, 0xff, 0xff,
+  0xff, 0xff, 0x40, 0xf0, 0xff, 0xff, 0xff, 0x07, 0xff, 0xff, 0xff, 0xff,
+  0x41, 0xf0, 0xff, 0xff, 0xff, 0x07];
 
-/*************** Callback **********************/
-
-Window form;
-Widget[18] tobj;
-Widget exitob, btypeob, modeob;
-
-void boxtypeCb(Widget ob)
-{
-    int reqBt = fl_get_choice(ob) - 1;
-    static int lastbt = -1;
-
-    if (lastbt != reqBt)
-    {
-        fl_freeze_form(form);
-        fl_redraw_form(form);
-        for (int i = 0; i < 18; i++)
-            fl_set_object_boxtype(tobj[i], btypes[reqBt].val);
-        fl_unfreeze_form(form);
-        lastbt = reqBt;
-        fl_redraw_form(form); // added for FLTK
-    }
-}
-
-void modeCb(Widget)
-{
-    // empty
-}
-
-/*************** Creation Routines *********************/
-
-void createFormForm()
-{
-    Widget obj;
-
-    form = fl_bgn_form(Boxtype.noBox, 720, 520);
-    obj = fl_add_box(Boxtype.upBox, 0, 0, 720, 520, "");
-    fl_set_object_color(obj, blue, gray);
-    obj = fl_add_box(Boxtype.downBox, 10, 90, 700, 420, "");
-    fl_set_object_color(obj, gray, gray);
-    obj = fl_add_box(Boxtype.downBox, 10, 10, 700, 70, "");
-    fl_set_object_color(obj, cast(Color) 0 /* FL_SLATEBLUE */ , gray);
-    tobj[0] = obj = fl_add_box(Boxtype.upBox, 30, 110, 110, 110, "Box");
-    tobj[1] = obj = fl_add_text(normalText, 30, 240, 110, 30, "Text");
-    tobj[2] = obj = fl_add_bitmap(normalBitmap, 40, 280, 90, 80, "Bitmap");
-    fl_set_object_lcol(obj, blue);
-    tobj[3] = obj = fl_add_chart(barChart, 160, 110, 160, 110, "Chart");
-    tobj[4] = obj = fl_add_clock(analogClock, 40, 390, 90, 90, "Clock");
-    // fl_set_object_dblbuffer(tobj[4], 1); // removed for FLTK
-    tobj[5] = obj = fl_add_button(normalButton, 340, 110, 120, 30, "Button");
-    tobj[6] = obj = fl_add_lightbutton(pushButton, 340, 150, 120, 30, "Lightbutton");
-    tobj[7] = obj = fl_add_roundbutton(pushButton, 340, 190, 120, 30, "Roundbutton");
-    tobj[8] = obj = fl_add_slider(vertSlider, 160, 250, 40, 230, "Slider");
-    tobj[9] = obj = fl_add_valslider(vertSlider, 220, 250, 40, 230, "Valslider");
-    tobj[10] = obj = fl_add_dial(lineDial, 280, 250, 100, 100, "Dial");
-    tobj[11] = obj = fl_add_positioner(normalPositioner, 280, 380, 150, 100, "Positioner");
-    tobj[12] = obj = fl_add_counter(normalCounter, 480, 110, 210, 30, "Counter");
-    tobj[13] = obj = fl_add_input(normalInput, 520, 170, 170, 30, "Input");
-    tobj[14] = obj = fl_add_menu(pushMenu, 400, 240, 100, 30, "Menu");
-    tobj[15] = obj = fl_add_choice(normalChoice, 580, 250, 110, 30, "Choice");
-    tobj[16] = obj = fl_add_timer(valueTimer, 580, 210, 110, 30, "Timer");
-    // fl_set_object_dblbuffer(tobj[16], 1); // removed for FLTK
-    tobj[17] = obj = fl_add_browser(normalBrowser, 450, 300, 240, 180, "Browser");
-    exitob = obj = fl_add_button(normalButton, 590, 30, 100, 30, "Exit");
-    btypeob = obj = fl_add_choice(normalChoice, 110, 30, 130, 30, "Boxtype");
-    fl_set_object_callback(obj, (w) { boxtypeCb(w); });
-    modeob = obj = fl_add_choice(normalChoice, 370, 30, 130, 30, "Graphics mode");
-    fl_set_object_callback(obj, (w) { modeCb(w); });
-    fl_end_form();
-}
-
-/*---------------------------------------*/
-
-void createTheForms()
-{
-    createFormForm();
-}
-
-/*************** Main Routine ***********************/
-
-string[] browserlines = [
-    " ", "@C1@c@lbObjects Demo", " ",
-    "This demo shows you all", "objects that currently",
-    "exist in the Forms Library.", " ",
-    "You can change the boxtype", "of the different objects",
-    "using the buttons at the top", "of the form. Note that some",
+immutable string[] browserLines = [
+    " ", "@C1@c@l@bObjects Demo", " ",
+    "This demo shows you all", "kinds of widgets.", " ",
+    "You can change the box type", "of the different widgets",
+    "using the choice at the top", "of the window. Note that some",
     "combinations might not", "look too good. Also realize",
-    "that for all object classes", "many different types are",
-    "available with different", "behaviour.", " ",
-    "With this demo you can also", "see the effect of the drawing",
-    "mode on the appearance of", "the objects.",
+    "that for many widgets", "different types are",
+    "available with different", "behaviour.",
 ];
 
 void main(string[] args)
 {
-    Color c = black;
+    auto window = new Window(720, 520, "Box types");
 
-    fl_initialize(args, "FormDemo", null, 0);
-    createTheForms();
-    fl_set_bitmap_data(tobj[2], sorceressWidth, sorceressHeight, sorceressBits);
-    fl_add_chart_value(tobj[3], 15, "item 1", c++);
-    fl_add_chart_value(tobj[3], 5, "item 2", c++);
-    fl_add_chart_value(tobj[3], -10, "item 3", c++);
-    fl_add_chart_value(tobj[3], 25, "item 4", c++);
-    fl_set_menu(tobj[14], "item 1|item 2|item 3|item 4|item 5");
-    fl_addto_choice(tobj[15], "item 1");
-    fl_addto_choice(tobj[15], "item 2");
-    fl_addto_choice(tobj[15], "item 3");
-    fl_addto_choice(tobj[15], "item 4");
-    fl_addto_choice(tobj[15], "item 5");
-    fl_set_timer(tobj[16], 1000.0);
+    auto background = new Box(Boxtype.upBox, 0, 0, 720, 520, null);
+    background.color(blue);
+    auto showcase = new Box(Boxtype.downBox, 10, 90, 700, 420, null);
+    auto topBar = new Box(Boxtype.downBox, 10, 10, 700, 70, null);
+    topBar.color(cast(Color) 195); // slate blue
 
-    foreach (line; browserlines)
-        fl_add_browser_line(tobj[17], line);
+    // The widgets whose box type the choice at the top changes.
+    Widget[] samples;
 
-    foreach (vn; btypes)
+    samples ~= new Box(Boxtype.upBox, 30, 110, 110, 110, "Box");
+
+    auto text = new Box(Boxtype.noBox, 30, 240, 110, 30, "Text");
+    text.alignment(alignLeft | alignInside);
+    samples ~= text;
+
+    auto picture = new Box(Boxtype.noBox, 40, 280, 90, 95, "Bitmap");
+    picture.image(new Bitmap(sorceressBits, sorceressWidth, sorceressHeight));
+    picture.labelcolor(blue);
+    samples ~= picture;
+
+    auto chart = new Chart(160, 110, 160, 110, "Chart");
+    chart.add(15, "item 1", black);
+    chart.add(5, "item 2", red);
+    chart.add(-10, "item 3", green);
+    chart.add(25, "item 4", yellow);
+    samples ~= chart;
+
+    samples ~= new FlClock(40, 390, 90, 90, "Clock");
+    samples ~= new Button(340, 110, 120, 30, "Button");
+    samples ~= new LightButton(340, 150, 120, 30, "LightButton");
+    samples ~= new RoundButton(340, 190, 120, 30, "RoundButton");
+    samples ~= new Slider(160, 250, 40, 230, "Slider");
+    samples ~= new ValueSlider(220, 250, 40, 230, "ValueSlider");
+
+    auto dial = new Dial(280, 250, 100, 100, "Dial");
+    dial.type(lineDial);
+    samples ~= dial;
+
+    samples ~= new Positioner(280, 380, 150, 100, "Positioner");
+    samples ~= new Counter(480, 110, 210, 30, "Counter");
+    samples ~= new Input(520, 170, 170, 30, "Input");
+
+    auto menu = new MenuButton(400, 240, 100, 30, "Menu");
+    foreach (i; 1 .. 6)
+        menu.add(format("item %d", i), 0, null);
+    samples ~= menu;
+
+    auto choice = new Choice(580, 250, 110, 30, "Choice");
+    foreach (i; 1 .. 6)
+        choice.add(format("item %d", i), 0, null);
+    samples ~= choice;
+
+    // A countdown from 1000 seconds, shown as minutes and seconds. It
+    // turns red when it reaches zero.
+    auto countdown = new Box(Boxtype.downBox, 580, 210, 110, 30, null);
+    samples ~= countdown;
+    double remaining = 1000.0;
+    void showRemaining()
     {
-        if (cast(int) vn.val < 0)
-            break;
-        fl_addto_choice(btypeob, vn.name);
+        int minutes = cast(int) ((remaining + 0.05) / 60);
+        countdown.label(minutes ? format("%d:%04.1f", minutes, remaining - 60 * minutes)
+                                    : format("%.1f", remaining));
     }
-
-    fl_show_form(form, placeMouse, border, "Box types");
-
-    while (fl_do_forms() !is exitob)
+    showRemaining();
+    void tick()
     {
+        remaining -= 0.1;
+        if (remaining <= 0)
+        {
+            countdown.label("0.0");
+            countdown.color(red);
+            countdown.redraw();
+            return;
+        }
+        showRemaining();
+        fl.repeatTimeout(0.1, &tick);
     }
+    fl.addTimeout(0.1, &tick);
+
+    auto browser = new Browser(450, 300, 240, 180, "Browser");
+    foreach (line; browserLines)
+        browser.add(line);
+    samples ~= browser;
+
+    auto boxChoice = new Choice(110, 30, 130, 30, "Box type");
+    foreach (b; boxTypes)
+        boxChoice.add(b.name, 0, null);
+    boxChoice.callback((o) {
+        foreach (w; samples)
+            w.box(boxTypes[boxChoice.value()].box);
+        window.redraw();
+    });
+
+    // Has no items and does nothing, as in FLTK's version.
+    new Choice(370, 30, 130, 30, "Graphics mode");
+
+    auto exitButton = new Button(590, 30, 100, 30, "Exit");
+    exitButton.callback((o) { window.hide(); });
+
+    window.end();
+    window.hotspot(window);
+    window.show(args);
+    fl.run();
 }

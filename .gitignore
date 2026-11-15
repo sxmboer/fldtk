@@ -6,6 +6,7 @@
 /fldtk.lib
 /fluid
 /fluid-bootstrap
+/fldtk-options
 /build/
 /smoke-tests/*
 !/smoke-tests/*.d

@@ -557,18 +557,14 @@ comment {---- gui_main.d integration surface ----
 gui_main.d's own call sites need only a mechanical swap, not a
 rewrite. `onBeforeEdit`/`onEdited`/`onOpenExternalEditor` are the
 same delegate-hook contract that class exposed too, assigned by
-gui_main.d once, before `make_widget_panel()` runs (matching
-`liveModeCb`/`overlayCb`/`okCb`'s own pre-construction assignment
-requirement: a `.callback(name)` assignment captures the delegate's
-*value* at that statement, not a live reference to the variable).
+gui_main.d once.
 `wireEditHooks()` is what actually threads `onBeforeEdit`/`onEdited`
 through every property-editing widget under `widgetTabs` (including
 both Grid sub-panels, reached transitively): gui_main.d calls it once
-right after `make_widget_panel()` returns. Unlike the three .callback
-hooks above, `onBeforeEdit`/`onEdited` are read from *inside* each
-wrapped callback at press time, not captured at wrap time, so
-`wireEditHooks()` itself has no ordering requirement relative to when
-gui_main.d assigns them.
+right after `make_widget_panel()` returns. `onBeforeEdit`/`onEdited`
+are read from *inside* each wrapped callback at press time, not
+captured at wrap time, so `wireEditHooks()` itself has no ordering
+requirement relative to when gui_main.d assigns them.
 
 `onBeforeEdit`/`onEdited` fire around *every* callback under
 `widgetTabs`, not just the ones `WidgetPanelDialog` used to gate
@@ -3942,7 +3938,7 @@ wn.instanceName = cppNameInput.value();}
                             labelsize 11
                             compact {1}
                             type Radio
-                            tooltip {The callback function or code for the widget. Use the variable name 'o' to access the widget itself.}
+                            tooltip {The code that runs when the widget is used. Use the variable name 'o' to access the widget itself; to call a shared function, write name(o);}
                           }
                       }
                     Wizard codeWiz
@@ -4075,7 +4071,7 @@ codeChoice5.redraw();}
                                     setup {o.buffer(new TextBuffer());
 enableHighlighting(o);
 enableAutoIndent(o);}
-                                    tooltip {The callback function or code for the widget. Use the variable name 'o' to access the widget itself.}
+                                    tooltip {The code that runs when the widget is used. Use the variable name 'o' to access the widget itself; to call a shared function, write name(o);}
                                     resizable
                                   }
                               }
@@ -5221,7 +5217,7 @@ o.add(widgetTabGridChild);}
             Button wLiveMode
               {
                 label {Live &Resize}
-                callback {liveModeCb}
+                callback {liveModeCb(o);}
                 xywh {10 370 80 20}
                 labelsize 10
                 type Toggle
@@ -5230,7 +5226,7 @@ o.add(widgetTabGridChild);}
             Button overlayButton
               {
                 label {Hide &Overlays}
-                callback {overlayCb}
+                callback {overlayCb(o);}
                 xywh {94 370 80 20}
                 labelsize 10
                 tooltip {Hide the widget overlay box.}
@@ -5238,7 +5234,7 @@ o.add(widgetTabGridChild);}
             Button runButton
               {
                 label {Run (F5)}
-                callback {runCb}
+                callback {runCb(o);}
                 xywh {178 370 80 20}
                 labelsize 10
                 tooltip {Save the project, build the program with dub and start it (F5).}
@@ -5254,7 +5250,7 @@ o.add(widgetTabGridChild);}
             ReturnButton {}
               {
                 label {Close}
-                callback {okCb}
+                callback {okCb(o);}
                 xywh {330 370 80 20}
                 labelsize 11
               }
@@ -5263,8 +5259,8 @@ o.add(widgetTabGridChild);}
   }
 comment {`liveModeCb`/`overlayCb`/`runCb`/`okCb` are the callbacks of the
 bottom bar's four buttons (`wLiveMode`, `overlayButton`, `runButton` and
-the Close `ReturnButton`). `gui_main.d` assigns them before it builds
-this panel: `liveModeCb` runs Live Resize (ported from FLTK's
+the Close `ReturnButton`). `gui_main.d` assigns them; each button calls
+whatever its variable holds when it is pressed. `liveModeCb` runs Live Resize (ported from FLTK's
 `live_mode_cb()`), `overlayCb` forwards to `toggleOverlays()`, `runCb`
 runs File > Run (`runProject()`), and `okCb` closes the panel.}
   {

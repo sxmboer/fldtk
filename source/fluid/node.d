@@ -260,7 +260,7 @@ class Node
             hasLabel = true;
             return true;
         case "callback":
-            callback = r.readValue();
+            callback = callbackFromName(r.readValue());
             return true;
         case "user_data":
             userData = r.readValue();
@@ -466,4 +466,31 @@ unittest
     assert(b.uid != 7 && b.uid != 0);
     assert(c.uid != 0 && c.uid != 7 && c.uid != b.uid);
     assert(root.uid != 0 && root.uid != a.uid && root.uid != b.uid && root.uid != c.uid);
+}
+
+/// A callback field holds code. A `.fl` file may still hold just a
+/// function or delegate name there (`callback okCb`); that is read as a
+/// call passing the widget, `okCb(o);`, which does the same thing.
+/// Anything else is returned unchanged.
+string callbackFromName(string text)
+{
+    import std.ascii : isAlpha, isAlphaNum;
+    import std.algorithm.searching : all;
+    import std.string : strip;
+
+    string name = text.strip();
+    if (name.length == 0 || !(name[0].isAlpha || name[0] == '_')
+        || !name.all!(c => c.isAlphaNum || c == '_'))
+        return text;
+    return name ~ "(o);";
+}
+
+unittest
+{
+    assert(callbackFromName("okCb") == "okCb(o);");
+    assert(callbackFromName(" _cb2\n") == "_cb2(o);");
+    assert(callbackFromName("okCb(o);") == "okCb(o);");
+    assert(callbackFromName("") == "");
+    assert(callbackFromName("x = 1;") == "x = 1;");
+    assert(callbackFromName("2abc") == "2abc");
 }

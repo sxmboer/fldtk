@@ -5,8 +5,8 @@ Function {closeTabCB(Widget o)}
     comment {Shared by every closeable tab page (Fl_Tabs' own "x" close
 button) -- FLTK hoists this as one shared static function too,
 just via Fluid's own duplicate-callback-text dedup, not a named
-Function. Also reused directly (as a bare delegate) by the "add tab"
-button below for tabs it creates at runtime.}
+Function. Also called by the callbacks of the tabs that the "add tab"
+button below creates at runtime.}
     return_type void
     open
   }
@@ -53,7 +53,7 @@ else
             Group {}
               {
                 label {Label&1}
-                callback {closeTabCB}
+                callback {closeTabCB(o);}
                 xywh {10 60 315 235}
                 selection_color 1
                 when 16
@@ -82,7 +82,7 @@ else
             Group {}
               {
                 label {tab&2}
-                callback {closeTabCB}
+                callback {closeTabCB(o);}
                 xywh {10 60 315 235}
                 selection_color 2
                 when 16
@@ -118,7 +118,7 @@ message("Make sure you cannot change the tabs while this modal window is up");}
             Group {}
               {
                 label {tab&3}
-                callback {closeTabCB}
+                callback {closeTabCB(o);}
                 xywh {10 60 315 235}
                 selection_color 3
                 when 16
@@ -145,7 +145,7 @@ message("Make sure you cannot change the tabs while this modal window is up");}
             Group {}
               {
                 label {&tab4}
-                callback {closeTabCB}
+                callback {closeTabCB(o);}
                 xywh {10 60 315 235}
                 selection_color 5
                 labelfont 2
@@ -467,7 +467,7 @@ int W = tabsGroup.w(), H = tabsGroup.h() - 25;
 FlGroup.current(null);
 auto newTab = new FlGroup(X, Y, W, H, format("tab%d", n));
 newTab.when(whenClosed);
-newTab.callback(closeTabCB);
+newTab.callback((w) \{ closeTabCB(w); \});
 auto box = new Box(X + 5, Y + 5, W - 10, H - 10, format("Empty tab %d.", n));
 box.alignment(alignCenter | alignInside);
 tabsGroup.add(newTab);

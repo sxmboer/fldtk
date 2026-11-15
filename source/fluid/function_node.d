@@ -1,17 +1,13 @@
 /*
- * The top-level `Function {}` wrapper node from a `.fl` file. Two
- * shapes are supported: the anonymous top-level function == main()
- * (`Function {} {open} { ...window... }`), and a named shared-callback
- * function (`Function {button_cb(Fl_Button *b, void *)} { ... } {
- * code {...} {} }`, e.g. radio.fl's `button_cb`) whose `instanceName`
- * (see `Node`/`fluid.project_reader.Reader.parseNode()`) holds the full C++
- * prototype string. `instanceName.length == 0` is how `code_writer.d`
- * tells the two shapes apart -- see its `generate()`. Parsing the
- * prototype string itself (name + first parameter's type/name) is
- * `code_writer.d`'s `parseFunctionSignature()`'s job, not this class's --
- * this node just stores the raw text, matching how every other node
- * kind stores its own raw `instanceName`. Ported from FLTK's
- * `Function_Node` (`fluid/nodes/Function_Node.h`/`.cxx`).
+ * The top-level `Function {}` node from a `.fl` file. Two shapes: the
+ * anonymous function, which becomes `main()` (`Function {} {open} {
+ * ...window... }`), and a named function (`Function {buttonCB(Button b)}
+ * {...} { code {...} {} }`), which becomes an ordinary D function.
+ * `instanceName` (see `Node`/`fluid.project_reader.Reader.parseNode()`)
+ * holds the function's D signature; `instanceName.length == 0` is how
+ * `code_writer.d` tells the two shapes apart (see its `generate()`, and
+ * `functionName()` for taking the name out of the signature). Ported
+ * from FLTK's `Function_Node` (`fluid/nodes/Function_Node.h`/`.cxx`).
  */
 module fluid.function_node;
 

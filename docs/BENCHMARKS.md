@@ -102,10 +102,42 @@ mostly-static-UI construction phase like this one; not a blanket
 recommendation to disable collection for the lifetime of a long-running,
 continuously-allocating app.
 
+## dmd and LDC
+
+Measured on Linux (X11) with dmd 2.112 and LDC 1.41 (`ldc` package),
+single runs of `time` on the real desktop, not under Xvfb. See
+`BUILDING.md`, "Choosing the compiler", for the build
+commands.
+
+**Running `tree_as_container`** (120,000 widgets built at startup; the
+window was closed as soon as it appeared, so elapsed time includes that
+moment, CPU time doesn't):
+
+| Build | Elapsed | CPU (`user`) |
+|---|---|---|
+| dmd, debug | 5.9 s | 37.7 s |
+| LDC, `-O -release -inline` | 3.1 s | 22.5 s |
+
+The large CPU figures are mostly druntime's garbage collector marking in
+parallel on 16 cores. Programs that mostly wait for input feel the same
+in both builds.
+
+**Building**:
+
+| What | dmd, debug | LDC, debug | LDC, optimized |
+|---|---|---|---|
+| The library, `dub build --force` (~200 modules) | 1.8 s | 5.8 s | 26 s |
+| All 162 demo programs, `buildsamples.d --force`, library already built | 1 min 4 s | 1 min 25 s | -- |
+
+For the demo programs the difference is small because each one is a
+small program compiled on its own: linking it and starting the compiler
+for it take most of the time, the same for both compilers.
+
 ## Future work
 
-- **Re-run with this file's own methodology now that a `-release` build
-  exists (GDC only -- see `BUILDING.md`'s "Release builds" section).**
+- **Re-run with this file's own methodology against a release build
+  (LDC or GDC -- see `BUILDING.md`'s "Choosing the compiler"
+  section).**
   `rdmd buildsamples.d --release` links every sample against it. The
   only numbers gathered against it so far are informal: on
   `tree_as_container`, the GDC release build ran slightly faster than
@@ -116,17 +148,13 @@ continuously-allocating app.
   wall-clock + `/proc` CPU time). Re-run and record it properly before
   drawing any conclusion from it.
 - **A build's speed is only meaningful once its correctness is
-  established.** A partial `-O`/`-inline` DMD build described in
-  `BUILDING.md`'s "Release builds" section draws wrong pixels and
-  segfaults on some programs; numbers from a build in that state aren't
-  evidence of a real optimization win, since silently skipping or
-  truncating work looks exactly like speed on a clock. Any future
-  "faster" claim about a build needs a correctness check first --
-  same pixels, same clean exit -- not just a timer. The GDC release
-  build above passes this check: every sample has been run and behaves
-  identically to its plain dmd debug build, so its own (still informal)
-  `tree_as_container` timing above is trustworthy in a way the old
-  partial DMD build's numbers never were.
+  established.** Silently skipping or truncating work looks exactly like
+  speed on a clock, so any "faster" claim about a build needs a
+  correctness check first -- same pixels, same clean exit -- not just a
+  timer. The GDC release build and the dmd-`master` release build both
+  pass this check: their samples behave identically to the plain dmd
+  debug build. On `tree_as_container` the dmd-`master` build used about
+  25% less CPU than the debug build (single, informal runs).
 - Extend this file with more sample programs as they come up naturally
   (don't go benchmark every program speculatively -- add an entry when a
   real investigation like this one produces numbers worth keeping, the same

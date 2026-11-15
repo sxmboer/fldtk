@@ -862,11 +862,8 @@ void runEditor(string[] args)
     // `overlayCb`/`okCb`/`liveModeCb` are `widget_panel.fl`'s own
     // module-level `void delegate(Widget)` hooks (see that file's
     // "gui_main.d integration surface" comment), implemented here
-    // because they need this module's state -- assigned *before*
-    // `make_widget_panel()` runs, since `overlayButton.callback(overlayCb)`/
-    // `wLiveMode.callback(liveModeCb)` inside it capture each
-    // delegate's value at that statement, not a live reference to this
-    // variable.
+    // because they need this module's state. Each button's callback
+    // calls whatever its hook holds when the button is pressed.
     //
     // `overlayCb` mirrors `WidgetPanelDialog.onOverlayButtonPressed()`'s
     // own old body: flip the button's own label in lockstep, then apply
@@ -1041,27 +1038,6 @@ void runEditor(string[] args)
     wireEditHooks(tabsWizard);
     ExternalCodeEditor.setUpdateTimerCallback(() { externalEditorTimer(); });
 
-    // Must be assigned *before* `makeWidgetBin()` runs: `Callback`/`void delegate(Widget)` is
-    // a plain value type in D, so `o.callback(binButtonCb)` (executed
-    // inside `makeWidgetBin()`, which every button's own `setup {}`
-    // property runs during construction) copies whatever `binButtonCb`
-    // *currently holds* into that button's own `callback_` field --
-    // permanently. If this assignment ran *after*
-    // `makeWidgetBin()` instead, every
-    // button's `callback_` would capture `binButtonCb`'s un-initialized
-    // `.init` value, `null`, and a later `binButtonCb = (w) { ... };`
-    // line would only ever update the free-standing module-level variable,
-    // never any already-copied `callback_` field (confirmed with a
-    // minimal standalone repro: a class storing a delegate value copied
-    // from a module-level var, reassigned after the copy, has the class's
-    // own copy stay null). A click on any widget-bin button would then
-    // silently fall through to `Widget.defaultCallback()` (push onto
-    // the read queue) instead of ever reaching `addWidget()`/
-    // `addNode()` -- invisible for the *widget* palette specifically
-    // because dragging a button onto the canvas is a separate code path
-    // that never touches `callback_` at all (`BinButton.handle()`'s own
-    // `Event.drag` case calls `fl.copy()`/`fl.dnd()` directly), but fatal for the Code group, which has no
-    // canvas/drag path at all.
     // Dropping the Window button on the desktop creates a window there
     // (`Bin_Window_Button`); a window nested in another keeps its place
     // inside its parent.
@@ -1073,6 +1049,9 @@ void runEditor(string[] args)
         if (auto cv = canvases_.get(win, null)) cv.position(x, y);
     };
     acceptsWidgetDrop = (Widget win) => cast(ProjectCanvas) win !is null;
+    // `binButtonCb`/`codeButtonCb` are `function_panel.fl`'s hooks: each
+    // palette button's callback calls whatever they hold when it is
+    // clicked.
     binButtonCb = (w) {
         auto btn = cast(BinButton) w;
         if (btn is null) return;
@@ -5253,9 +5232,19 @@ private void runProject()
     string code = codeFilePath_();
     string workDir = dubDir !is null ? dubDir : dirName(code);
     string[] target = dubDir !is null ? [] : ["--single", baseName(code)];
-    startRun(["dub", "build"] ~ target, ["dub", "describe"] ~ target
+    startRun(["dub", "build", "--compiler=" ~ ownCompiler] ~ target, ["dub", "describe"] ~ target
         ~ ["--data=target-path", "--data=target-name", "--data-list"], workDir);
 }
+
+/// The compiler Fluid itself was built with. Run builds the design with
+/// the same one: Fluid's libfldtk.so was built with it too, and a program
+/// must share one D runtime with the library it uses.
+version (LDC)
+    private enum ownCompiler = "ldc2";
+else version (GNU)
+    private enum ownCompiler = "gdc";
+else
+    private enum ownCompiler = "dmd";
 
 /// `runProject()`'s second half: `dub build` with `buildArgs` in
 /// `workDir`, then, when it succeeded, the program it built, found

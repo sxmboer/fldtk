@@ -4,7 +4,7 @@
  * the on/off options (`fl.core.Option`) and the scheme, zoom, display
  * backend and graphics (`fl.core.startupSetting()`).
  *
- * Build: dub build fldtk:options   (puts ./fldtk-options in the repo root)
+ * Build: dub build :options        (puts ./fldtk-options in the repo root)
  *
  * Each setting has a "System" and a "User" value, either one of its
  * choices or "default". A program takes the user value if there is one,

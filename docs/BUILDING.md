@@ -18,19 +18,39 @@ chooses one for every program, and the environment variable
 (in any case: `X11` works too). `PORTING.md`'s `FL/wayland.H` row lists
 what the Wayland backend doesn't do yet.
 
-From the repo root:
+## Where fldtk is
+
+`dub run fldtk:fluid` fetches fldtk from code.dlang.org into dub's own
+package folder, builds the library and Fluid there and starts Fluid.
+That folder holds all of fldtk, the demo programs (`source/test/`,
+`source/examples/`) and this file included. dub shows where it is:
+
+    dub list fldtk
+
+which prints, for instance,
+
+    Packages present in the system and known to dub:
+      fldtk 1.1.0: /home/you/.dub/packages/fldtk/1.1.0/fldtk/
+
+(on Windows, `C:\Users\you\AppData\Local\dub\packages\fldtk\1.1.0\fldtk\`).
+That is the folder this file calls the fldtk folder. A clone of fldtk's
+git repository works the same way; then the clone is the fldtk folder.
+
+From the fldtk folder:
 
     dub build              # the fl.* library -> ./libfldtk.so
-    rdmd buildfluid.d      # the Fluid editor  -> ./fluid
+    dub build :fluid       # the Fluid editor  -> ./fluid
     rdmd buildsamples.d    # the demo programs -> ./build/
-    dub build fldtk:options  # the options program -> ./fldtk-options
+    dub build :options     # the options program -> ./fldtk-options
+    dub run :demo          # the demo programs, then starts build/demo
 
-All four are incremental: each checks whether its output is missing or
+All of these are incremental: each checks whether its output is missing or
 older than the sources it is built from, and does nothing if it is
 already current.
 
 The file names above are the Linux ones; on Windows the outputs are
-fldtk.lib, fluid.exe, build\*.exe and fldtk-options.exe. See the Windows
+fldtk.lib, fluid.exe, build\*.exe (build\demo-launcher.exe for `:demo`)
+and fldtk-options.exe. See the Windows
 section below.
 
 
@@ -38,22 +58,25 @@ section below.
 
     dub build
 
-Compiles source/fl/ into libfldtk.so in the repo root.
+Compiles source/fl/ into libfldtk.so in the fldtk folder.
 
 
 ## Fluid
 
-    rdmd buildfluid.d
+    dub build :fluid
 
 Builds ./fluid, the UI designer. Fluid's own interface panels are
-themselves Fluid documents (source/fluid/panels/*.fl), so this script
-also regenerates source/fluid/panels/generated/*.d from them whenever one has
-changed -- including on a fresh checkout, where none of them exist yet
-and a temporary bootstrap build of Fluid is made to produce them.
+themselves Fluid documents (source/fluid/panels/*.fl). Before each build,
+dub runs buildfluidpanels.d, which regenerates
+source/fluid/panels/generated/*.d from any panel that changed. On a fresh
+checkout none of them exist yet, and a temporary build of Fluid's code
+generator, fluid-bootstrap, produces them.
 
-Run it after editing any panels/*.fl. It is the only supported way to
-build Fluid; a direct `dub build fldtk:fluid` works only once the
-generated panels are already present.
+The leading colon names the sub-package of the fldtk folder you are in.
+`dub build fldtk:fluid` names fldtk in general, and once dub has
+fetched fldtk from code.dlang.org for some other project, it may build
+that copy instead of this one. Outside this folder, `dub run fldtk:fluid`
+is right: it builds and starts Fluid from the fldtk on code.dlang.org.
 
     fluid file.fl          # open the interactive editor
     fluid -c file.fl       # generate file.d instead
@@ -69,7 +92,7 @@ and combine with -c to merge first and then regenerate.
 
 ## fldtk-options
 
-    dub build fldtk:options
+    dub build :options
 
 Builds ./fldtk-options, which shows and changes the settings every fldtk
 program reads when it starts, for you or for every user of the computer:
@@ -92,22 +115,36 @@ or a script: `FLDTK_SCHEME`, `FLDTK_SCALING_FACTOR`, `FLDTK_BACKEND`,
 
 ## The demo programs
 
+From any folder:
+
+    dub run fldtk:demo
+
+builds every demo program, Fluid and fldtk-options, as far as they are
+missing or out of date, and starts the demo program, which starts the
+others from one window. The first run builds them all and takes a few
+minutes; later runs start the demo program almost at once. In the fldtk
+folder, `dub run :demo` does the same with that folder's fldtk (see the
+Fluid section for the difference).
+
+To build them without starting anything, or only some of them, in the
+fldtk folder (see "Where fldtk is" above):
+
     rdmd buildsamples.d               # everything
     rdmd buildsamples.d test          # only source/test/
     rdmd buildsamples.d examples      # only source/examples/
     rdmd buildsamples.d test hello    # a single program
+    rdmd buildsamples.d --force       # regenerate and rebuild everything
 
 Binaries land in ./build/ under their own names (./build/hello,
 ./build/table_sort, ...), and run from anywhere -- each is linked with a
-relative rpath back to libfldtk.so in the repo root.
+relative rpath back to libfldtk.so in the fldtk folder.
 
 A program is simply a .d file under source/test/ or source/examples/
 that defines main(); helper modules alongside them are pulled in
 automatically by whichever program imports them. Programs whose UI comes
-from a .fl file have their .d regenerated by Fluid first, as needed.
-
-One program is knowingly skipped and reports why when you build: forms
-(the XForms compatibility layer, out of scope).
+from a .fl file have their .d regenerated by Fluid first when the .fl
+is newer. After a change to Fluid's code generator, `--force`
+regenerates them all.
 
 cairo_test and cairo_draw_x build either way, like FLTK's own: without
 Cairo support they just show a message saying they need it. See the next
@@ -161,8 +198,8 @@ configuration, dub copies libfldtk.so next to the program.
 A program written against fldtk, or generated by `fluid -c`, is a single
 .d file with `import fl;` at the top. It needs two things: the compiler
 must find the `fl.*` modules (source/fl/), and the linker must find
-libfldtk.so, so run `dub build` in the repo root first. The examples
-below assume the program is example.d and is compiled from the repo root.
+libfldtk.so, so run `dub build` in the fldtk folder first. The examples
+below assume the program is example.d and is compiled from the fldtk folder.
 
 **With a symlink `fl` -> source/fl next to example.d** (dmd searches the
 current directory for imports, and `import fl.widget;` then finds
@@ -293,15 +330,16 @@ pipe.
 
 ## Windows
 
-The same four commands work on Windows with dmd (64-bit). No Visual
+The same commands work on Windows with dmd (64-bit). No Visual
 Studio or Windows SDK is needed: every system library fldtk uses comes
 from dmd's own bundled import libraries. (Cairo and Pango are the
 exception; see "Cairo and Pango on Windows" below.)
 
     dub build              # the fl.* library -> .\fldtk.lib
-    rdmd buildfluid.d      # the Fluid editor  -> .\fluid.exe
+    dub build :fluid       # the Fluid editor  -> .\fluid.exe
     rdmd buildsamples.d    # the demo programs -> .\build\*.exe
-    dub build fldtk:options  # the options program -> .\fldtk-options.exe
+    dub build :options     # the options program -> .\fldtk-options.exe
+    dub run :demo          # the demo programs, then starts .\build\demo.exe
 
 What differs from Linux:
 
@@ -316,11 +354,11 @@ What differs from Linux:
   anywhere, without the rpath/LD_LIBRARY_PATH setup Linux needs.
 - **One more demo is skipped**: list_visuals, which dumps X11 visuals
   and has no Windows equivalent.
-- **Release builds** (`--config=linux-release`, `buildsamples.d
-  --release`) are Linux-only; see the release section below.
+- **dmd only.** LDC, GDC and optimized release builds (`buildsamples.d
+  --release`) are Linux-only; see "Choosing the compiler" below.
 
 **Building your own program.** With fldtk.lib built, compile from the
-repo root, naming fldtk.lib and the system libraries it needs:
+fldtk folder, naming fldtk.lib and the system libraries it needs:
 
     dmd -Isource example.d fldtk.lib gdi32.lib user32.lib kernel32.lib msvcrt120.lib oldnames.lib ole32.lib gdiplus.lib opengl32.lib glu32.lib msimg32.lib shell32.lib comdlg32.lib imm32.lib
 
@@ -629,92 +667,94 @@ program's object files. That is no burden for open-source programs; for
 closed-source ones, check what it means for you.
 
 
-## Release builds: not currently supported
+## Choosing the compiler
 
-**Only the plain `dub build` (debug) library is supported right now.
-Don't ship or rely on an optimized build of fldtk/Fluid.** This isn't
-a gap in this project's own code -- it's real, currently-open bugs in
-both D compilers available to build it, discovered while investigating
-whether a release build was even possible:
+fldtk builds with all three D compilers: dmd (the default), LDC and
+GDC. The `DC` environment variable picks the compiler for everything at
+once: the library, Fluid, the programs Fluid's Run command builds, and
+the demo programs.
 
-- **DMD 2.112.0-2.113.0 crash outright** compiling `source/fl/platform_x11.d`
-  with `-O` or `-inline` (either alone is enough; `-release` alone is
-  fine) -- an internal compiler error. A bug report was filed and was fixed
-  by the dmd team, but will not be available until a future release.
-- **GDC 14.2.0 can build the library itself** (`dub build
-  --compiler=gdc --build=release` produces a real, loadable
-  `libfldtk.so`), but hits its own internal compiler error building
-  Fluid, unrelated to the DMD one (a large map literal in
-  `source/fluid/code_writer.d` trips GCC's D-frontend bounds-check
-  codegen under `-frelease` specifically).
-- **Working around the DMD crash doesn't produce something usable
-  either.** Compiling `platform_x11.d` separately with `-release`
-  only (skipping `-O`/`-inline` just for that one file, everything
-  else fully optimized) does sidestep the crash and link into a real
-  `libfldtk.so` -- but running real sample programs against it turned
-  up serious, silent problems that don't exist in the debug build:
-  `fractals` showed no meaningful speedup, window repaint after being
-  obscured/re-exposed lagged noticeably, GL windows had real painting
-  glitches, text rendering broke in places (only the upper half of
-  glyphs drew), some ordinary widgets had their own drawing problems,
-  and several example programs segfaulted outright. None of that is
-  from the one known ICE (which was worked around) -- it's DMD's
-  `-O`/`-inline` optimizer silently miscompiling other, unrelated code
-  elsewhere in `source/fl/`, not yet bisected to a specific file.
-  A build that produces wrong pixels or crashes without warning is
-  worse than one that fails to compile at all.
+| | dmd | LDC | GDC |
+|---|---|---|---|
+| Install (Ubuntu) | from dlang.org | `sudo apt install ldc` | `sudo apt install gdc` |
+| `DC=` | not needed | `ldc2` | `gdc` |
+| Compiles | fastest | slower | slower |
+| Optimized builds | not yet: a dmd bug, see the next section | yes | yes |
+| Platforms | Linux, Windows | Linux | Linux |
 
-To try a release build without replacing the debug libfldtk.so (which
-Fluid and the samples are linked against), use the
-separate `linux-release` configuration:
+Put the variable in front of each build command, or set it once for the
+shell session with `export DC=ldc2` (or `export DC=gdc`):
 
-    dub build --config=linux-release --build=release                  # dmd
-    dub build --config=linux-release --build=release --compiler=gdc   # gdc
+    DC=ldc2 dub build                  # the library, ./libfldtk.so
+    DC=ldc2 dub build :fluid           # Fluid, ./fluid
+    DC=ldc2 rdmd buildsamples.d        # the demo programs, ./build/*
+    DC=ldc2 dub build :options         # ./fldtk-options
 
-It writes build/release/libfldtk-release.so. Any dub build type works
-(`release-nobounds`, `plain`, ...). With DMD 2.112.0 this still dies
-with the crash described above (the compiler exits with SIGILL); GDC
-15.2.0 builds the library successfully.
+Without `DC` the same commands use dmd. `rdmd` itself may be dmd's: it
+only runs the build script.
 
-To exercise the GDC release library with real programs, without
-touching the debug build:
+**The library and every program that uses it must be built with the
+same compiler.** Each compiler has its own D runtime, and a program
+that loads two of them fails at startup. The build commands keep to
+this rule:
 
-    rdmd buildsamples.d --release              # everything
-    rdmd buildsamples.d --release test hello   # one program, as usual
+- dub rebuilds the library and Fluid for the compiler it is given, and
+  `buildsamples.d` rebuilds the library or a demo program built with
+  another compiler than the one `DC` names, so switching is just running
+  the build again with another `DC`.
+- Fluid's Run command builds a design with the compiler Fluid itself was
+  built with, which is the one its libfldtk.so was built with too.
+- The dub commands (`dub build`, `dub build :fluid`, `dub build
+  :options`) take the compiler from `DC` too: give them the same `DC` as
+  the rest, or export it once.
+- dub.sdl gives LDC and GDC the switch that makes a program use the
+  shared D runtime the library uses (`-link-defaultlib-shared`,
+  `-shared-libphobos`); dmd does that by itself.
 
-This builds the library the same way as above (`--config=linux-release
---build=release --compiler=gdc`) if it's stale, then compiles every
-sample with `gdc` instead of `dmd` and links against
-build/release/libfldtk-release.so, writing binaries to build/release/
-instead of build/ so they never collide with the debug ones. Every
-buildable sample links cleanly this way (the same handful of programs
-`buildsamples.d`'s own `skip`/`skipWindows` tables list stay skipped,
-for the same reasons), and every one of them has been run and behaves
-identically to its plain dmd debug build. GDC is a viable alternative
-compiler for building fldtk, not just a way to test around DMD's own
-`-O`/`-inline` crash -- worth keeping regardless of whether DMD's
-optimizer ever gets fixed, since it widens which toolchains fldtk can be
-built with.
+A program of your own (see "Building your own program") follows the same
+rule: compile it with the compiler the library was built with.
 
-**If you have a local, not-yet-released DMD fix for the crash above**
-(e.g. a compiler patch accepted FLTK but not in any tagged DMD
-release yet): building the one file that fails to compile as
-unoptimized/no-bounds-checks and linking it into an otherwise-optimized
-library is a normal, standard workaround -- neither dub.sdl's
-configurations nor `buildsamples.d --release` do this automatically,
-since it depends on which file and which DMD build you're working
-around. Roughly:
+### Optimized release builds
 
-    mkdir -p build/release/objs
-    dmd -c -release -Isource -odbuild/release/objs source/fl/platform_x11.d      # no -O/-inline: sidesteps the crash
-    dmd -c -release -O -inline -Isource -odbuild/release/objs $(other source/fl/*.d)
-    dmd -shared -of=build/release/libfldtk-release.so build/release/objs/*.o -L-lX11 -L-lXft -L-lXinerama -L-lfontconfig -L-lXcursor -L-lXfixes -L-lXext -L-lXi -L-lGL -L-lGLU -L-lz
+`--build=release` makes dub build optimized; `--release` does the same
+for the demo programs, into build/release/ against an optimized
+build/release/libfldtk-release.so, leaving the debug build alone:
 
-adjusting for whichever file/flag combination the fix you have actually
-needs.
+    DC=ldc2 dub build --build=release              # optimized library
+    DC=ldc2 dub build :fluid --build=release  # optimized library and Fluid
+    DC=ldc2 rdmd buildsamples.d --release          # optimized demo programs
 
-Given all of that, **the project's own stance for now is: build and
-ship debug only**, until DMD's optimizer is fixed enough to trust. If
-you're reading this later and DMD has released a fix, it's worth
-re-testing this whole section from scratch rather than assuming
-anything above still holds.
+With `DC=gdc` the same works. With dmd it doesn't yet, because of the
+dmd bug described below.
+
+**Speed.** Programs that do a lot of work in D run clearly faster when
+optimized, but the compilers that optimize compile more slowly than dmd.
+A common way to work is dmd while developing and LDC or GDC for the
+build you hand out. The numbers are in `BENCHMARKS.md`, "dmd and LDC".
+
+## Release builds with dmd: a dmd bug
+
+No released dmd can compile an optimized fldtk yet, because of a bug in
+dmd itself. The bug is reported and fixed in dmd's git repository; only
+an official dmd release with the fix is still missing.
+
+- **The bug:** dmd crashes with an internal compiler error (it stops
+  with SIGILL, in its code generator's `cgcod.comsub()`) while compiling
+  `source/fl/platform_x11.d` with `-O` or `-inline`. It is a compiler
+  crash, not an error in fldtk's code: the same file compiles without
+  those flags, all of fldtk's other ~200 modules compile with them, and
+  LDC and GDC compile everything optimized.
+- **Reported:** [dlang/dmd#23802](https://github.com/dlang/dmd/issues/23802),
+  filed by fldtk's author.
+- **Fixed in dmd's git:** merged into dmd's `master` branch as commit
+  `70145d6e` (with a regression test,
+  `compiler/test/compilable/issue23802.d`).
+- **Not in a release yet:** dmd 2.112, 2.113 and 2.114 all still crash;
+  dub reports only `exit code -4`. The fix was merged after 2.114
+  branched off for its beta and was not copied to dmd's `stable`
+  branch, so it is expected in the first release cut from `master`
+  after it.
+- **Verified with dmd built from `master`** (together with Phobos from
+  `master`): the optimized library, Fluid and every demo build and
+  behave as their debug builds do.
+

@@ -11,9 +11,6 @@ program's buttons call functions in a module of your own. It assumes
 you have done Tutorial 1, so Fluid is built and you know your way
 around it; no earlier experience with dub is needed.
 
-In this tutorial the fldtk folder is `~/fldtk`; use your own path
-everywhere it appears.
-
 ## What dub is
 
 dub is D's build tool and package manager, installed with the dmd D compiler.
@@ -31,7 +28,7 @@ source files anywhere: a new `.d` file placed in the `source/` directory
 automatically becomes part of the program.
 
 This project depends on one package, fldtk. dub uses the fldtk library
-in your fldtk folder, and passes your program everything it needs to
+it fetched in Tutorial 1, and passes your program everything it needs to
 use it: import paths, version flags and the libraries to link. Fluid
 writes the `dub.sdl` for you.
 
@@ -39,7 +36,7 @@ writes the `dub.sdl` for you.
 
 Start Fluid:
 
-    ~/fldtk/fluid
+    dub run fldtk:fluid
 
 The Widget Bin opens with it:
 
@@ -188,15 +185,8 @@ Make actions.d in one of two ways:
 
 - copy the code above, paste it into a new file in a text editor, and
   save that as `actions.d` in the project's `source` folder; or
-- copy the finished file from the fldtk folder, on Linux:
-
-      cp ~/fldtk/docs/tutorial02/actions.d ~/fluidtutorials/tutorial02/source/
-
-  or, on Windows, in the Command Prompt:
-
-      copy %USERPROFILE%\fldtk\docs\tutorial02\actions.d %USERPROFILE%\fluidtutorials\tutorial02\source\
-
-  or use File Explorer to copy the file.
+- download the finished file, [`actions.d`](tutorial02/actions.d), and
+  save it in the project's `source` folder.
 
 Either way, it has to be in `source/`, next to `hello.d`, not in the
 project folder itself. The project now holds:
@@ -345,7 +335,7 @@ The `dub.sdl` that Fluid wrote in step 1 reads:
     authors "you"
     license "proprietary"
     targetType "executable"
-    dependency "fldtk" path="/home/you/fldtk"
+    dependency "fldtk" path="/home/you/.dub/packages/fldtk/1.1.0/fldtk"
     subConfiguration "fldtk" "program"
     preGenerateCommands "\"$FLDTK_PACKAGE_DIR/fluid\" -c \"$PACKAGE_DIR/hello.fl\"" platform="linux"
     preGenerateCommands "\"$FLDTK_PACKAGE_DIR\\fluid.exe\" -c \"$PACKAGE_DIR\\hello.fl\"" platform="windows"
@@ -354,24 +344,26 @@ The first four lines name the project and describe it; change them as
 you like (`authors` is your user name). The others, one by one:
 
 - `targetType "executable"`: the project is a program.
-- `dependency "fldtk" path="/home/you/fldtk"`: where your fldtk folder
-  is. Fluid writes the folder Fluid itself is in (or the one in Edit >
-  Settings..., General, fldtk Folder) as a full path (on Windows, for
-  instance, `C:/Users/you/fldtk`), so the project folder can be moved
-  anywhere. (dub doesn't understand `~` in this path.)
+- `dependency "fldtk" path=...`: where fldtk is. Fluid writes the
+  folder Fluid itself is in, the one dub fetched fldtk into (or the one
+  in Edit > Settings..., General, fldtk Folder), as a full path (on
+  Windows, for instance,
+  `C:/Users/you/AppData/Local/dub/packages/fldtk/1.1.0/fldtk`), so the
+  project folder can be moved anywhere. (dub doesn't understand `~` in
+  this path.)
 - `subConfiguration "fldtk" "program"`: how the program uses fldtk. A
   dub package can be built in several ways, called configurations;
   `program` is the one fldtk has for programs that use it. It links
-  your program to the library in the fldtk folder, without building it
-  again. On Linux, the library is a shared library,
-  `~/fldtk/libfldtk.so`: every program built this way uses that one
+  your program to the library in that folder, without building it
+  again. On Linux, the library is a shared library, `libfldtk.so` in
+  that folder: every program built this way uses that one
   file, so rebuilding fldtk updates all of them, and the program finds
   it there when it runs. On Windows, the library, `fldtk.lib`, is
   linked into the program itself.
 - `preGenerateCommands`: a command dub runs before every build. Here it
   is `fluid -c hello.fl`, which writes `source/hello.d` from the
   design, so a build started in a terminal also uses the latest design.
-  `$FLDTK_PACKAGE_DIR` is dub's name for the fldtk folder and
+  `$FLDTK_PACKAGE_DIR` is dub's name for fldtk's folder and
   `$PACKAGE_DIR` for your project folder. The `\"` are quotes inside
   the quoted command, so folder names with spaces work. `platform=`
   picks the line for the system you build on.

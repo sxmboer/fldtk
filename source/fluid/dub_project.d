@@ -47,7 +47,7 @@ bool isFldtkFolder(string dir)
 
 /// Finds the fldtk folder, trying in this order: `preferred` (the
 /// fldtk Folder setting), `exeDir` (the folder Fluid itself is in,
-/// where `rdmd buildfluid.d` puts it), then `startDir` and each folder
+/// where `dub build :fluid` puts it), then `startDir` and each folder
 /// above it. Returns an absolute, normalised path, or null when none of
 /// them is a fldtk folder (`isFldtkFolder()`).
 string findFldtkFolder(string preferred, string exeDir, string startDir)

@@ -14,13 +14,13 @@ holds a blank compact button with no icon and no callback, so every block
 is a full rectangle.
 
 Each button is a `BinButton` (`class \{BinButton\}`, real `tooltip`,
-`setup \{o.typeName("X");\}`, `callback binButtonCb`) whose type is
+`setup \{o.typeName("X");\}`, `callback \{binButtonCb(o);\}`) whose type is
 registered in both `fluid.factory` (Node-parsing side) and
 `fluid.instantiate` (live-widget side) -- click to add at a default
 position, or drag onto the canvas to drop at the exact release
 point via real XDND. See `fluid/bin_button.d`'s own doc
 comment for the click-vs-drag mechanism. The Code group's own 9
-buttons are wired to a second delegate, `callback codeButtonCb` --
+buttons call a second delegate, `callback \{codeButtonCb(o);\}` --
 they still reuse `BinButton` for its `typeName()` storage, but a
 `Function`/`decl`/`comment`/... node is never a live canvas widget, so
 only the click path (`gui_main.d`'s `addNode()`, the non-widget
@@ -90,7 +90,7 @@ Function makeWidgetBin()
               {
                 Button {}
                   {
-                    callback {codeButtonCb}
+                    callback {codeButtonCb(o);}
                     xywh {6 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -102,7 +102,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {codeButtonCb}
+                    callback {codeButtonCb(o);}
                     xywh {30 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -114,7 +114,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {codeButtonCb}
+                    callback {codeButtonCb(o);}
                     xywh {54 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -126,7 +126,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {codeButtonCb}
+                    callback {codeButtonCb(o);}
                     xywh {6 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -138,7 +138,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {codeButtonCb}
+                    callback {codeButtonCb(o);}
                     xywh {30 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -150,7 +150,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {codeButtonCb}
+                    callback {codeButtonCb(o);}
                     xywh {54 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -162,7 +162,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {codeButtonCb}
+                    callback {codeButtonCb(o);}
                     xywh {6 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -174,7 +174,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {codeButtonCb}
+                    callback {codeButtonCb(o);}
                     xywh {30 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -186,7 +186,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {codeButtonCb}
+                    callback {codeButtonCb(o);}
                     xywh {54 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -214,7 +214,7 @@ Function makeWidgetBin()
               {
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {90 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -226,7 +226,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {114 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -238,7 +238,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {138 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -251,7 +251,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {90 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -263,7 +263,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {114 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -275,7 +275,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {138 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -287,7 +287,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {90 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -299,7 +299,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {114 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -311,7 +311,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {138 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -339,7 +339,7 @@ Function makeWidgetBin()
               {
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {174 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -351,7 +351,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {198 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -363,7 +363,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {174 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -375,7 +375,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {198 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -387,7 +387,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {174 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -399,7 +399,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {198 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -427,7 +427,7 @@ Function makeWidgetBin()
               {
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {234 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -439,7 +439,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {258 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -451,7 +451,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {282 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -463,7 +463,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {306 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -475,7 +475,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {234 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -487,7 +487,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {258 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -499,7 +499,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {282 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -511,7 +511,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {306 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -523,7 +523,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {234 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -535,7 +535,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {258 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -575,7 +575,7 @@ Function makeWidgetBin()
               {
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {342 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -587,7 +587,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {366 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -599,7 +599,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {342 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -611,7 +611,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {366 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -623,7 +623,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {342 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -635,7 +635,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {366 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -663,7 +663,7 @@ Function makeWidgetBin()
               {
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {401 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -675,7 +675,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {425 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -687,7 +687,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {449 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -699,7 +699,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {401 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -711,7 +711,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {425 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -723,7 +723,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {449 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -735,7 +735,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {401 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -747,7 +747,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {425 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -781,7 +781,7 @@ Function makeWidgetBin()
               {
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {485 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -793,7 +793,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {509 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -805,7 +805,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {485 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -817,7 +817,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {509 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -829,7 +829,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {485 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -841,7 +841,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {509 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -869,7 +869,7 @@ Function makeWidgetBin()
               {
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {543 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -881,7 +881,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {567 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
@@ -893,7 +893,7 @@ Function makeWidgetBin()
                   }
                 Button {}
                   {
-                    callback {binButtonCb}
+                    callback {binButtonCb(o);}
                     xywh {543 46 24 24}
                     box THIN_UP_BOX
                     compact {1}

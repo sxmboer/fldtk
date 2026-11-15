@@ -1,13 +1,10 @@
 // D transliteration of FLTK's test/glpuzzle.cxx and test/trackball.c/.h.
 // Build: rdmd buildsamples.d test glpuzzle
 //
-// A GLUT demo program exercising fltk's GLUT emulation (FL/glut.H) to
-// render a 3D sliding-block puzzle. fldtk has no GL/GLUT support at all
-// yet (no fl.gl_window module, no gl_*/glu*/glut* bindings) -- the raw
-// gl*/glu*/glut* calls below keep their FLTK C names verbatim
-// (foreign GL/GLU/GLUT API, not FLTK's own naming surface), following
-// the IDENTICAL convention already established in cube.d/shape.d
-// (GL calls) and glut_test.d (GLUT calls). GLfloat/GLint/GLuint/GLsizei/
+// A 3D sliding-block puzzle drawn with OpenGL through fl.glut, fldtk's
+// GLUT layer. The gl*/glu*/glut* calls keep their C names, as the
+// GL/GLU/GLUT APIs' own, as in cube.d/shape.d (GL calls) and
+// glut_test.d (GLUT calls). GLfloat/GLint/GLuint/GLsizei/
 // GLenum are likewise kept as the FLTK GL type names, matching
 // shape.d/gl_overlay.d/OpenGL3_glut_test.d. This program is essentially
 // a straight GLUT program (not FLTK-widget-tree-based like cube.d/
@@ -17,8 +14,8 @@
 // Notes on what's invented/adapted here, beyond the gl*/glu*/glut* names:
 //  - trackball.c/.h's quaternion/vector math (trackball(), add_quats(),
 //    build_rotmatrix(), axis_to_quat(), the v*() vector helpers) is pure
-//    numerical code, not FLTK API surface -- per the batch instructions
-//    it keeps its original snake_case C names and is ported faithfully
+//    numerical code, not FLTK API surface, so it keeps its original
+//    snake_case C names and is ported faithfully
 //    as ordinary D functions rather than being renamed to fit fldtk's
 //    Widget-porting conventions. Its `float q[4]`/`float v[3]` C
 //    array-decays-to-pointer out-parameters are transliterated as D

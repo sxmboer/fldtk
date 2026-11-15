@@ -5,7 +5,7 @@
 # compiles example.d into example (example.exe on Windows), first
 # generating example.d from example.fl with `fluid -c` when there is an
 # example.fl newer than it. The library is built with `dub build` if it
-# isn't there yet; Fluid itself is built with `rdmd buildfluid.d`.
+# isn't there yet; Fluid itself is built with `dub build :fluid`.
 #
 # Needs GNU make (on Windows, e.g. from a Cygwin shell) and dmd.
 

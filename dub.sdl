@@ -11,6 +11,12 @@ description "Full-D-toolkit: A complete D port of FLTK (Fast Light Toolkit), inc
 sourcePaths "source/fl"
 importPaths "source"
 
+// The library and every program that uses it must share one D runtime.
+// dmd arranges that by itself; LDC and GDC link their runtime statically
+// unless told otherwise, and the program then aborts at startup.
+dflags "-link-defaultlib-shared" platform="linux-ldc"
+dflags "-shared-libphobos" platform="linux-gdc"
+
 
 // Linux-specific configuration. Includes Cairo support -- fl.cairo_c (the
 // Cairo C API), fl.cairo and fl.cairo_window (Fl_Cairo.H/Fl_Cairo_Window.H),
@@ -27,6 +33,9 @@ importPaths "source"
 configuration "linux-default" {
     platforms "linux"
     targetType "dynamicLibrary"
+    // dub copies libfldtk.so next to a program that depends on this
+    // package; the rpath lets the program find it there.
+    lflags "-rpath=$$ORIGIN"
     versions "FLDTK_HAVE_CAIRO" "FLDTK_HAVE_PANGO" "FLDTK_HAVE_WAYLAND"
     libs "X11" "Xft" "Xinerama" "Xrandr" "fontconfig" "Xcursor" "Xfixes" "Xext" "Xi" "GL" "GLU" "z" "cairo" "pangocairo-1.0" "pango-1.0" "gobject-2.0" "glib-2.0" "wayland-client" "wayland-cursor" "xkbcommon" "EGL" "wayland-egl"
 }
@@ -40,6 +49,7 @@ configuration "linux-default" {
 configuration "linux-no-cairo" {
     platforms "linux"
     targetType "dynamicLibrary"
+    lflags "-rpath=$$ORIGIN"
     libs "X11" "Xft" "Xinerama" "Xrandr" "fontconfig" "Xcursor" "Xfixes" "Xext" "Xi" "GL" "GLU" "z"
 }
 
@@ -48,8 +58,9 @@ configuration "linux-no-cairo" {
 // `dub build --config=linux-release --build=release` (or `-b release-nobounds`,
 // `-b plain`, ...) can be tried without replacing the debug libfldtk.so in
 // the repo root that Fluid and the samples are linked
-// against. The result is build/release/libfldtk-release.so. Release builds
-// are not supported yet; see BUILDING.md.
+// against. The result is build/release/libfldtk-release.so. Use LDC or GDC:
+// released dmd versions (up to 2.114) crash compiling it, a dmd bug fixed in
+// dmd's git but not yet released (dlang/dmd#23802); see BUILDING.md.
 configuration "linux-release" {
     platforms "linux"
     targetType "dynamicLibrary"
@@ -136,7 +147,7 @@ configuration "windows-cairo" {
 // For a dub project that uses fldtk, selected with
 // `subConfiguration "fldtk" "program"` (see docs/TUTORIAL02.md). Nothing is
 // compiled here: the program links the library already in this folder,
-// which `dub build` or `rdmd buildfluid.d` made (linux-default or
+// which `dub build` or `dub build :fluid` made (linux-default or
 // windows-default), and the configuration passes on the import path, the
 // versions and the link line, the system libraries included, for a
 // program that calls Cairo, GL, ... itself. After fldtk itself changes,
@@ -158,6 +169,8 @@ configuration "program" {
     lflags "/LIBPATH:$PACKAGE_DIR" platform="windows"
 }
 
-// buildfluid needs fluid to be defined as a sub package
+// Fluid and fldtk-options: `dub build :fluid`, `dub build :options`;
+// the demo programs: `dub run :demo` (see source/demo/app.d)
 subPackage "source/fluid"
 subPackage "source/options"
+subPackage "source/demo"

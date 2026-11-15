@@ -59,10 +59,6 @@
 	@u:fast && slow widgets:fast_slow
 	@u:inactive:inactive
 
-@main:Tools...:@t
-	@t:Fluid\n(UI design tool):fluid valuators.fl
-	@t:fldtk\nRuntime\nOptions:fldtk-options
-
 @main:Cool\nDemos...:@e
 	@e:Mandelbrot:mandelbrot
 	@e:Fractals:fractals
@@ -76,7 +72,7 @@
 
 @main:Other\nTests...:@o
 	@o:File Chooser:file_chooser
-	@o:Native File Chooser:native-filechooser
+	@o:Native File Chooser:native_filechooser
 	@o:HelpDialog:help_dialog help_dialog.html
 	@o:Input Choice:input_choice
 	@o:Preferences:preferences
@@ -89,29 +85,71 @@
 		@of:Fonts:fonts
 		@of:UTF-8 Fonts:utf8
 
-@main:Tutorial\nfrom\nManual...:@j
-	@j:ask\n(modified):ask
-	@j:button:button
-	@j:CubeView:CubeView
-	@j:editor:editor editor.d
-	@j:hello:hello
-	@j:shape:shape
+@main:Manual...:@m
+	@m:Tutorial\nfrom\nManual...:@j
+		@j:ask\n(modified):ask
+		@j:button:button
+		@j:CubeView:CubeView
+		@j:editor:editor editor.d
+		@j:hello:hello
+		@j:shape:shape
 
-@main:Images\nfor\nManual...:@i
-	@i:valuators:valuators
-	@i:symbols:symbols
-	@i:buttons:buttons
-	@i:clock:clock
-	@i:popups:message
-	@i:boxtypes:boxtype
-	@i:line styles:line_style_docs
-	@i:Resize Examples\n...:@ir
-		@ir:Example\n1:resize-example1
-		@ir:Example\n2:resize-example2
-		@ir:Example\n3a:resize-example3a
-		@ir:Example\n3b:resize-example3b
-		@ir:Example\n3c:resize-example3c
-		@ir:Example\n4a:resize-example4a
-		@ir:Example\n4b:resize-example4b
-		@ir:Example\n5a:resize-example5a
-		@ir:Example\n5b:resize-example5b
+	@m:Images\nfor\nManual...:@i
+		@i:valuators:valuators
+		@i:symbols:symbols
+		@i:buttons:buttons
+		@i:clock:clock
+		@i:popups:message
+		@i:boxtypes:boxtype
+		@i:line styles:line_style_docs
+		@i:Resize Examples\n...:@ir
+			@ir:Example\n1:resize_example1
+			@ir:Example\n2:resize_example2
+			@ir:Example\n3a:resize_example3a
+			@ir:Example\n3b:resize_example3b
+			@ir:Example\n3c:resize_example3c
+			@ir:Example\n4a:resize_example4a
+			@ir:Example\n4b:resize_example4b
+			@ir:Example\n5a:resize_example5a
+			@ir:Example\n5b:resize_example5b
+
+@main:fldtk...:@f
+	@f:Fluid\n(UI design tool):fluid valuators.fl
+	@f:fldtk\nRuntime\nOptions:fldtk-options
+	@f:mouse wheel:value_wheel
+	@f:compact\nbuttons:compact_buttons
+	@f:SVG\ngradients:svg_gradients
+	@f:line widths:arc_width
+	@f:GL text:gl_text
+	@f:GL capture:gl_capture
+	@f:Pen and\nTouch...:@fp
+		@fp:pen:pen_test
+		@fp:touch:touch_test
+
+@main:Developer\nTests...:@v
+	@v:Flex and\nGrid...:@vf
+		@vf:flex demo:flex_demo
+		@vf:flex login:flex_login
+		@vf:grid\nalignment:grid_alignment
+		@vf:grid buttons:grid_buttons
+		@vf:grid dialog:grid_dialog
+		@vf:grid login:grid_login
+	@v:Events and\nFocus...:@ve
+		@ve:handle\nevents:handle_events
+		@ve:handle keys:handle_keys
+		@ve:window focus:windowfocus
+		@ve:coordinates:coordinates
+		@ve:pen pal:penpal
+	@v:Widgets and\nWindows...:@vw
+		@vw:adjuster:adjuster
+		@vw:group:group
+		@vw:wizard:wizard
+		@vw:terminal:terminal
+		@vw:two windows:twowin
+		@vw:icon:icon
+		@vw:resize\nexample 5c:resize_example5c
+	@v:GL image:gl_image
+	@v:GLUT:glut_test
+	@v:versions:fltk_versions
+	@v:X11 visuals:list_visuals
+	@v:shadowed\nvariables:shadow_variables

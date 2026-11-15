@@ -187,7 +187,7 @@ tree.add("Bbb/child-04");
           tree.begin();
           bbbButton = new Button(1, 1, 140, 1, "ccc button");     // we control w() only
           bbbButton.labelsize(10);
-          bbbButton.callback(buttonCB);
+          bbbButton.callback((w) \{ buttonCB(w); \});
           bbbButton.tooltip("Button inside tree.\\n" ~
               "If 'Item h() from widget' enabled, " ~
               "pressing button enlarges it.");
@@ -215,11 +215,11 @@ tree.add("Bbb/child-04");
           bbbGroup.begin();
           auto abut = new Button(bbbGroup.x() + 0, bbbGroup.y() + 2, 65, 15, "D1");
           abut.labelsize(10);
-          abut.callback(buttonCB);
+          abut.callback((w) \{ buttonCB(w); \});
           abut.tooltip(tipmsg);
           auto bbut = new Button(bbbGroup.x() + 75, bbbGroup.y() + 2, 65, 15, "D2");
           bbut.labelsize(10);
-          bbut.callback(buttonCB);
+          bbut.callback((w) \{ buttonCB(w); \});
           bbut.tooltip(tipmsg);
 
           bbbGroup.end();

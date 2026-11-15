@@ -5,13 +5,13 @@
  * Builds the demo programs under source/test/ and source/examples/ into
  * build/, each under its own name (`build/hello`, `build/table_sort`,
  * ...), doing only whatever staleness-driven work is actually needed --
- * the same Makefile-shaped model as buildfluid.d alongside it.
+ * a Makefile-shaped model.
  *
  * Run: rdmd buildsamples.d          # everything, both categories
  *      rdmd buildsamples.d test      # only source/test/
  *      rdmd buildsamples.d examples  # only source/examples/
  *      rdmd buildsamples.d test hello    # one program by name
- *      rdmd buildsamples.d --force   # ignore mtimes, relink every binary
+ *      rdmd buildsamples.d --force   # ignore mtimes: regenerate and relink everything
  *      rdmd buildsamples.d --no-cairo [test|examples] [name]
  *          builds libfldtk.so without Cairo and Pango support (dub.sdl's
  *          "linux-no-cairo" configuration) and compiles every program
@@ -30,21 +30,25 @@
  *          Pango out otherwise, since they need libraries Windows doesn't
  *          have; see BUILDING.md's "Cairo and Pango on Windows".
  *      rdmd buildsamples.d --release [test|examples] [name]
- *          builds against dub.sdl's "linux-release" configuration
- *          instead (build/release/libfldtk-release.so, built with gdc
- *          -- see BUILDING.md's "Release builds" section for why gdc,
- *          not dmd) with gdc as the sample compiler too, into
- *          build/release/ instead of build/ -- a way to exercise the
- *          release library with real programs without touching the
- *          debug libfldtk.so/build/ everything else here uses. Linux
- *          only, matching that dub.sdl configuration.
+ *          builds an optimized library, build/release/libfldtk-release.so
+ *          (dub.sdl's "linux-release" configuration), and optimized
+ *          programs against it, into build/release/ instead of build/,
+ *          without touching the debug libfldtk.so and build/. Linux only,
+ *          matching that dub.sdl configuration.
+ *      DC=ldc2 rdmd buildsamples.d ...   or   DC=gdc rdmd buildsamples.d ...
+ *          the compiler: the `DC` environment variable, as for dub, dmd
+ *          when it is not set. The library and the programs are always
+ *          built with the same compiler: a library or program built
+ *          with another one is rebuilt. LDC and GDC are Linux only. See
+ *          BUILDING.md, "Choosing the compiler".
  *
  * `--force`/`-f` (anywhere in the argument list, combinable with a
- * category/name filter) skips the mtime staleness check entirely and
- * relinks every matching binary regardless -- an escape hatch for
- * whenever the staleness check itself is in doubt (e.g. file timestamps
- * changed by some outside tool) rather than a sign the check is wrong
- * by default; leave it off for normal day-to-day rebuilds.
+ * category/name filter) skips the mtime staleness check entirely,
+ * regenerates every .fl-backed program's code with Fluid and relinks
+ * every matching binary regardless. Use it after changing Fluid's code
+ * generator, or whenever the staleness check itself is in doubt (e.g.
+ * file timestamps changed by some outside tool); leave it off for
+ * normal day-to-day rebuilds.
  *
  * Works from any cwd -- every path is resolved from this script's own
  * location, not $PWD.
@@ -67,14 +71,13 @@
  *   1. Build libfldtk.so (`dub build`) if it is missing or older than
  *      any source/fl/*.d.
  *   2. Regenerate source/<category>/generated/<name>.d from any
- *      source/<category>/*.fl that is newer than it (or newer than the
- *      fluid binary, which picks up code-generator fixes without
- *      needing a manual delete). Building fluid first if it is missing,
- *      via buildfluid.d's own logic -- this script shells out to it
- *      rather than duplicating that bootstrap dance.
+ *      source/<category>/*.fl that is newer than it, or from every .fl
+ *      with --force, which is how a change to Fluid's code generator
+ *      reaches the generated programs. Building fluid first if it is
+ *      missing, with `dub build :fluid`.
  *   3. Compile each program whose binary is missing or older than any
  *      source file it actually depends on (its own .d plus, recursively,
- *      every local .d it imports) or than libfldtk.so itself.
+ *      every local .d it imports) or than any source/fl/*.d.
  */
 module buildsamples;
 
@@ -105,9 +108,7 @@ else
 /// external-library-backed features" and "Out of scope: XForms/Forms
 /// Library compatibility" sections. Skipped with their reason printed,
 /// so the run stays green and the exceptions stay visible.
-enum string[string] skip = [
-    "forms":         "XForms/Forms compatibility layer, deliberately out of scope",
-];
+enum string[string] skip = null;
 
 /// Programs skipped only on Windows -- unlike `skip` above (unsupported
 /// on every platform), these build and run fine on Linux; they just have
@@ -214,14 +215,24 @@ int main(string[] args)
     string repoRoot = dirName(buildNormalizedPath(__FILE_FULL_PATH__));
 
     bool force = args.canFind("--force") || args.canFind("-f");
-    // --release: build against the GDC release library (dub.sdl's
-    // "linux-release" configuration, build/release/libfldtk-release.so)
-    // with gdc instead of dmd, for trying a release build without
-    // touching the debug libfldtk.so everything else here links against
-    // -- see BUILDING.md's "Release builds" section. Linux only: the
-    // release configuration is Linux-only (see dub.sdl), and this whole
-    // flag exists only to test that one library build.
+    // --release: an optimized library (dub.sdl's "linux-release"
+    // configuration, build/release/libfldtk-release.so) and optimized
+    // programs, without touching the debug libfldtk.so. Linux only, as
+    // that configuration is.
     bool release = args.canFind("--release");
+
+    // The compiler, from DC as dub reads it; dmd by default. `kind` is
+    // which of the three D compilers it is.
+    string dc = environment.get("DC", "dmd");
+    string dcName = baseName(dc);
+    string kind = dcName.canFind("ldc") || dcName.canFind("ldmd") ? "ldc"
+        : dcName.canFind("gdc") || dcName.canFind("gdmd") ? "gdc" : "dmd";
+    version (Windows)
+        if (kind != "dmd")
+        {
+            stderr.writeln("buildsamples: on Windows fldtk builds with dmd only");
+            return 1;
+        }
     // --no-cairo (Linux): build libfldtk.so without Cairo and Pango
     // support (dub.sdl's "linux-no-cairo" configuration) and compile every
     // program without -version=FLDTK_HAVE_CAIRO/FLDTK_HAVE_PANGO.
@@ -279,9 +290,21 @@ int main(string[] args)
     // where the two builds are separate libraries (fldtk.lib,
     // fldtk-cairo.lib).
     bool wrongCairoMode = false;
+    // A library built with another compiler is stale too: a program and
+    // the library must share one D runtime. Told apart by the runtime
+    // library each one needs (LDC's and GDC's have their own names).
+    bool wrongCompiler = false;
     version (linux)
-        wrongCairoMode = exists(libPath)
-            && (cast(const(ubyte)[]) read(libPath)).canFind(cast(const(ubyte)[]) "_D2fl5cairo10CairoState") != cairo;
+    {
+        if (exists(libPath))
+        {
+            auto bytes = cast(const(ubyte)[]) read(libPath);
+            wrongCairoMode = bytes.canFind(cast(const(ubyte)[]) "_D2fl5cairo10CairoState") != cairo;
+            string builtWith = bytes.canFind(cast(const(ubyte)[]) "phobos2-ldc") ? "ldc"
+                : bytes.canFind(cast(const(ubyte)[]) "libgphobos") ? "gdc" : "dmd";
+            wrongCompiler = builtWith != kind;
+        }
+    }
 
     // Windows --cairo: the static Cairo/Pango link line, from dub.sdl.
     version (Windows)
@@ -295,18 +318,19 @@ int main(string[] args)
             cairoLinkFlags = libs;
         }
     }
-    if (!exists(libPath) || wrongCairoMode || newestMtime(flSources) > timeLastModified(libPath))
+    if (!exists(libPath) || wrongCairoMode || wrongCompiler || newestMtime(flSources) > timeLastModified(libPath))
     {
         version (Windows)
             bool plainLib = !cairo;
         else
             bool plainLib = noCairo;
-        writeln("buildsamples: building lib" ~ (release ? "fldtk-release (gdc)" : plainLib ? "fldtk (no Cairo)" : "fldtk") ~ "...");
-        string[] dubArgs = release
-            ? ["dub", "build", "--config=linux-release", "--build=release", "--compiler=gdc"]
+        writeln("buildsamples: building lib" ~ (release ? "fldtk-release" : plainLib ? "fldtk (no Cairo)" : "fldtk")
+            ~ " with " ~ dc ~ "...");
+        string[] dubArgs = (release
+            ? ["dub", "build", "--config=linux-release", "--build=release"]
             : noCairo ? ["dub", "build", "--config=linux-no-cairo"]
             : cairo && isWindows ? ["dub", "build", "--config=windows-cairo"]
-            : ["dub", "build"];
+            : ["dub", "build"]) ~ ["--compiler=" ~ dc];
         auto pid = spawnProcess(dubArgs, cast(string[string]) null, Config.none, repoRoot);
         enforce(wait(pid) == 0, "dub build failed");
     }
@@ -337,18 +361,15 @@ int main(string[] args)
 
                 string gen = buildPath(genDir, baseName(fl).stripExtension().replace("-", "_") ~ ".d");
 
-                bool needGen = !exists(gen) || timeLastModified(gen) < timeLastModified(fl);
-                if (!needGen && exists(fluidBin) && timeLastModified(gen) < timeLastModified(fluidBin))
-                    needGen = true;
-                if (!needGen)
+                if (!force && exists(gen) && timeLastModified(gen) >= timeLastModified(fl))
                     continue;
 
                 if (!exists(fluidBin))
                 {
-                    writeln("buildsamples: no fluid binary yet -- running buildfluid.d...");
-                    auto fp = spawnProcess(["rdmd", buildPath(repoRoot, "buildfluid.d")],
+                    writeln("buildsamples: no fluid binary yet -- building it...");
+                    auto fp = spawnProcess(["dub", "build", ":fluid", "--compiler=" ~ environment.get("DC", "dmd")],
                         cast(string[string]) null, Config.none, repoRoot);
-                    enforce(wait(fp) == 0, "buildfluid.d failed");
+                    enforce(wait(fp) == 0, "dub build :fluid failed");
                 }
 
                 mkdirRecurse(genDir);
@@ -410,13 +431,19 @@ int main(string[] args)
             // mtime, so a binary built the other way is stale too. No
             // stamp means a build from before Cairo existed, i.e. without it.
             string modeStamp = buildPath(buildDir, "obj", name ~ ".mode");
-            string mode = cairo ? "cairo" : "plain";
-            string builtMode = exists(modeStamp) ? readText(modeStamp) : "plain";
+            string mode = (cairo ? "cairo" : "plain") ~ " " ~ kind;
+            string builtMode = exists(modeStamp) ? readText(modeStamp) : "plain dmd";
 
             if (!force && exists(binary) && builtMode == mode)
             {
                 auto binMtime = timeLastModified(binary);
-                if (newestMtime(deps) <= binMtime && timeLastModified(libPath) <= binMtime)
+                // Compared with the library's sources, not the library
+                // file: dub relinks libfldtk.so when any .d under source/
+                // changes, the demo programs' own included, which says
+                // nothing about the library's code. A real change to
+                // source/fl rebuilds the library in step 1 and every
+                // program here.
+                if (newestMtime(deps) <= binMtime && newestMtime(flSources) <= binMtime)
                     continue; // up to date
             }
 
@@ -460,28 +487,22 @@ int main(string[] args)
                     "opengl32.lib", "glu32.lib", "msimg32.lib", "shell32.lib",
                     "comdlg32.lib", "imm32.lib",
                 ];
-            else if (release)
-                // gdc shells out to `cc`/`ld` directly -- unlike dmd,
-                // which wants its own linker flags wrapped in `-L...` so
-                // it can tell them apart from its own compiler flags,
-                // gdc takes plain gcc-style `-L<dir>`/`-l<name>`. The
-                // binary lands in build/release, right next to
-                // libfldtk-release.so, so `$ORIGIN` alone (not dmd's
-                // `$ORIGIN/..` -- the debug binaries sit one level below
-                // libfldtk.so, in build/) finds it at run time.
-                linkFlags = [
-                    "-L" ~ libDir,
-                    "-lfldtk-release",
-                    "-lGL", "-lGLU", "-lX11",
-                    "-Wl,-rpath,$ORIGIN",
-                ];
             else
-                linkFlags = [
-                    "-L-L" ~ repoRoot,
-                    "-L-lfldtk",
-                    "-L-lGL", "-L-lGLU", "-L-lX11",
-                    "-L-rpath=$ORIGIN/..",
-                ];
+            {
+                // A release binary lands in build/release, next to
+                // libfldtk-release.so, so `$ORIGIN` finds it; a debug one
+                // sits in build/, one level below libfldtk.so.
+                string lib = release ? "fldtk-release" : "fldtk";
+                string rpath = release ? "$ORIGIN" : "$ORIGIN/..";
+                if (kind == "gdc")
+                    // gdc is a gcc front end: gcc-style linker flags.
+                    linkFlags = ["-L" ~ libDir, "-l" ~ lib, "-lGL", "-lGLU", "-lX11",
+                        "-Wl,-rpath," ~ rpath];
+                else
+                    // dmd and ldmd2 want linker flags wrapped in -L.
+                    linkFlags = ["-L-L" ~ libDir, "-L-l" ~ lib, "-L-lGL", "-L-lGLU", "-L-lX11",
+                        "-L-rpath=" ~ rpath];
+            }
             version (Windows)
                 if (auto extra = stem in extraLibsWindows)
                     linkFlags ~= *extra;
@@ -507,7 +528,7 @@ int main(string[] args)
                             ? "-L/IMPLIB:" ~ buildPath(buildDir, "obj", stem ~ ".lib") : f).array;
             }
             else if (cairo)
-                linkFlags ~= release
+                linkFlags ~= kind == "gdc"
                     ? ["-fversion=FLDTK_HAVE_CAIRO", "-fversion=FLDTK_HAVE_PANGO",
                        "-lcairo", "-lpangocairo-1.0", "-lpango-1.0", "-lgobject-2.0", "-lglib-2.0"]
                     : ["-version=FLDTK_HAVE_CAIRO", "-version=FLDTK_HAVE_PANGO",
@@ -515,25 +536,28 @@ int main(string[] args)
 
             mkdirRecurse(buildDir);
             string[] cmd;
-            if (release)
+            if (kind == "gdc")
                 // gdc has no dmd-style `-i` ("pull in every locally-
                 // resolvable import automatically") -- `deps` (already
                 // computed above by following `src`'s own imports, the
                 // same set `-i` would have pulled in) is passed as an
-                // explicit source-file list instead, the way gdc always
-                // expects a multi-module program to be named. No
-                // `-od`/`-of`: gdc is a gcc frontend, so it takes `-o
-                // <path>` for the final binary and leaves no `.o` litter
-                // behind for a single compile+link invocation like this.
-                cmd = [
-                    "gdc",
-                    "-I" ~ buildPath(repoRoot, "source"),
-                ] ~ searchDirs.map!(d => "-I" ~ d).array ~ deps ~ linkFlags ~ [
+                // explicit source-file list instead. gdc takes `-o
+                // <path>` for the binary and leaves no `.o` files behind.
+                // -shared-libphobos: the program shares GDC's runtime with
+                // libfldtk.so instead of carrying its own copy.
+                cmd = [dc, "-shared-libphobos"]
+                    ~ (release ? ["-O2", "-frelease"] : [])
+                    ~ ["-I" ~ buildPath(repoRoot, "source")]
+                    ~ searchDirs.map!(d => "-I" ~ d).array ~ deps ~ linkFlags ~ [
                     "-o", binary,
                 ];
             else
-                cmd = [
-                    "dmd",
+                // LDC through ldmd2, its front end that takes dmd's flags.
+                // -link-defaultlib-shared: the program shares LDC's runtime
+                // with libfldtk.so instead of carrying its own copy.
+                cmd = (kind == "ldc" ? ["ldmd2", "-link-defaultlib-shared"] : [dc])
+                    ~ (release ? ["-O", "-release", "-inline"] : [])
+                    ~ [
                     "-i", "-i=-fl",
                     "-I" ~ buildPath(repoRoot, "source"),
                 ] ~ searchDirs.map!(d => "-I" ~ d).array ~ extraFiles ~ [

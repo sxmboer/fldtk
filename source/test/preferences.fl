@@ -128,7 +128,7 @@ Function {}
     Window myWindow
       {
         label {My Preferences}
-        callback {closeWindowCB}
+        callback {closeWindowCB(o);}
         xywh {480 345 322 355}
         type Double
         open
@@ -137,13 +137,13 @@ Function {}
         Button {}
           {
             label {Cancel}
-            callback {closeWindowCB}
+            callback {closeWindowCB(o);}
             xywh {118 316 90 24}
           }
         Button {}
           {
             label {OK}
-            callback {saveAndCloseWindowCB}
+            callback {saveAndCloseWindowCB(o);}
             xywh {217 316 90 24}
           }
         Group {}

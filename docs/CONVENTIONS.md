@@ -349,13 +349,13 @@ This applies to GL too: `fl.gl_window`/`fl.gl_window_driver` cover Linux/X11
 
 See [`BUILDING.md`](BUILDING.md) for the full walkthrough. In summary:
 `dub build` builds the library, `dub test` runs the unit tests,
-`rdmd buildfluid.d` builds Fluid and `rdmd buildsamples.d [test|examples]
+`dub build :fluid` builds Fluid and `rdmd buildsamples.d [test|examples]
 [name]` builds the demo programs.
 
 Fluid's own interface panels (`source/fluid/panels/*.fl`) are its primary
 source, the same self-hosting model FLTK uses for its own panels. The
 `source/fluid/panels/generated/*.d` files are `fluid -c` output: generated
-rather than checked in, rebuilt by `rdmd buildfluid.d`, and edited only by
+rather than checked in, rebuilt by `buildfluidpanels.d` before each `dub build :fluid`, and edited only by
 editing the `.fl` and regenerating. Before authoring or editing a `.fl` file,
 read [`FLUID_DIALECT.md`](FLUID_DIALECT.md); before converting a raw C++ `.fl`
 file, read [`TRANSLITERATION_GUIDE.md`](TRANSLITERATION_GUIDE.md).

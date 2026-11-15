@@ -28,9 +28,11 @@ model, including how a helper module shared between several programs
 (`CubeView.d`, `checkers_pieces.d`, `fracviewer.d`, `resize_arrows.d`)
 gets pulled in automatically.
 
-One program is knowingly skipped, printing why when you build: `forms`
-(the XForms compatibility layer, out of scope for this port). On
-Windows, `list_visuals` (it lists X11 visuals) is skipped too.
+On Windows, `list_visuals` (it lists X11 visuals) is skipped, printing
+why when you build.
+
+`forms` is FLTK's XForms demo written with fldtk's own widgets: the
+XForms compatibility layer it was written for is not part of fldtk.
 
 ## Programs not in FLTK
 

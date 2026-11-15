@@ -6,28 +6,24 @@ This tutorial makes a first program: a window with two buttons that
 perform callback functions when they are clicked. You design it in Fluid,
 and Fluid builds and starts it when you press F5.
 
-In this tutorial the fldtk folder is assumed to be `~/fldtk`; use your own path
-everywhere it appears.
+You need a D compiler and dub, D's build tool and package manager,
+which comes with every D compiler. dub fetches fldtk and Fluid for you,
+and Fluid uses it to build your program.
 
-## 1. Preparing fldtk and Fluid
+## 1. Opening a terminal
 
-If you haven't done so already, once, in your fldtk folder, build Fluid (and
-the fldtk library if needed):
-
-    cd ~/fldtk
-    rdmd buildfluid.d
-
-This builds the fldtk library and Fluid (`~/fldtk/fluid`, or
-`fluid.exe` on Windows). You
-also need dub, D's build tool, which comes with every D compiler: Fluid
-uses it to build your program.
+Fluid is started from a terminal: on Windows a Command Prompt or
+PowerShell, on Linux the terminal program of your choice. Every command
+in the tutorials is typed there.
 
 ## 2. Starting Fluid
 
-    ~/fldtk/fluid
+    dub run fldtk:fluid
 
-(Or start it from a file manager or a desktop shortcut: it doesn't
-matter which folder it starts in.)
+The first time, dub asks whether to fetch fldtk; answer `y`. It then
+downloads fldtk, builds the fldtk library and Fluid, and starts Fluid.
+That takes a while once; from then on the same command starts Fluid in
+a few seconds, from any folder.
 
 Fluid's main window shows the project as a tree; a new project is
 empty:
@@ -223,22 +219,24 @@ shaded.)
 `hello.d` starts with a comment that tells dub how to build it:
 
     /+ dub.sdl:
-    dependency "fldtk" path="/home/you/fldtk"
+    dependency "fldtk" path="/home/you/.dub/packages/fldtk/1.1.0/fldtk"
     subConfiguration "fldtk" "program"
     +/
     import fl;
     ...
 
-It says that the program needs fldtk, found in your fldtk folder, and
-how to use it. The folder is written as a full path (on Windows, for
-instance, `C:/Users/you/fldtk`), so `tutorial01` can be moved anywhere.
+It says that the program needs fldtk, found in the folder dub fetched
+it into, and how to use it. The folder is written as a full path (on
+Windows, for instance,
+`C:/Users/you/AppData/Local/dub/packages/fldtk/1.1.0/fldtk`), so
+`tutorial01` can be moved anywhere.
 Fluid adds it because of the Single File choice, which it keeps in the
 design (Edit > Settings..., Project tab, "Dub single-file-package
 header").
 
-On Linux, the program uses `~/fldtk/libfldtk.so`, the fldtk library,
-from where it is: it runs from any folder, as long as the fldtk folder
-stays in place. Started from a terminal,
+On Linux, the program uses `libfldtk.so`, the fldtk library, from that
+folder: it runs from any folder, as long as that folder stays in
+place. Started from a terminal,
 the program should launch and when clicking the `Hi` button,
 it prints its output there:
 
@@ -251,7 +249,8 @@ To build and run an application directly from a Fluid project file, the
 following commands can be used (the same as what Fluid does when hitting F5).
 Assuming you are in the project folder:
 
-    $ ~/fldtk/fluid -c hello.fl
+    $ dub run fldtk:fluid -- -c hello.fl
+    ...
     fluid: hello.fl -> hello.d
     $ dub build --single hello.d
         Starting Performing "debug" build using /usr/bin/dmd for x86_64.
@@ -259,7 +258,9 @@ Assuming you are in the project folder:
          Linking hello
     $ ./hello
 
-`--single` tells dub to build one file that carries its own dub
+dub passes everything after `--` on to Fluid, and `-c` makes Fluid
+write the code without opening its window. `--single` tells dub to
+build one file that carries its own dub
 comment, instead of a project; `dub run --single hello.d` builds it and
 starts it in one go.
 

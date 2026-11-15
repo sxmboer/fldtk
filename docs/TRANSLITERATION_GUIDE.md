@@ -415,15 +415,10 @@ different physical contexts both use it:
 - Inside `code0`-`code3` (construction-time code, attached to a
   widget's own property list): `o` means "this widget's own variable"
   — already the widget's real, correctly-typed name at that point.
-- Inside a `callback { ... }` property (or a named callback-shaped
-  `Function`'s body): `o` means "the freshly cast closure local" —
+- Inside a `callback { ... }` property: `o` means "the freshly cast closure local" —
   `code_writer.d` generates `.callback((raw) { auto o = cast(X) raw;
   <your snippet>; });` around whatever you write. Just write `o.value()`,
   `o.label()`, etc. directly; the cast is handled for you.
-
-A named `Function` taking a differently-named parameter (e.g.
-`radio.fl`'s `buttonCB(Button b)`) follows the same rule with that
-parameter's own name instead of `o`.
 
 **`raw` is effectively reserved inside a `callback { ... }` property
 body too, for the same reason.** It's the *outer* closure parameter
@@ -513,23 +508,16 @@ similar} ``) is real, existing, working FLTK text — confirms the
 escaping rule is about the raw character appearing anywhere in a
 value, not about which property it's in.
 
-### Two shapes of named `Function`
+### Named `Function`s and shared callbacks
 
-A named top-level `Function` node splits into two shapes,
-disambiguated by `isCallbackShape()` in `code_writer.d`:
-
-- **Callback-shaped**: `void` (or unset) return type *and* exactly one
-  parameter — matching `Fl_Callback`'s own `void(Widget)` shape. Meant
-  to be used bare as a `.callback(name)` value. Becomes a module-level
-  `void delegate(Widget) name;` variable, assigned a delegate literal.
-  (D forbids implicitly converting a plain function to a delegate, so
-  this can't just be an ordinary `void name(Widget o) { ... }`
-  function — confirmed via a minimal repro.)
-- **Plain**: anything else — a different return type (a *factory* that
-  produces a callback, not one directly), or a different parameter
-  count/shape (a zero-parameter builder like `makeWindow()`). Becomes
-  an ordinary top-level D function, signature and body emitted
-  verbatim.
+A named top-level `Function` node becomes an ordinary top-level D
+function, signature and body emitted verbatim. A FLTK `.fl` file that
+shares one callback function between widgets (`callback button_cb`)
+becomes a Function such as `buttonCB(Button b)` and a callback field
+that calls it: `callback {buttonCB(o);}`. Where FLTK code passes the
+function on (`o->callback(button_cb);`), write a delegate literal:
+`o.callback((w) { buttonCB(w); });`. See `FLUID_DIALECT.md`, "Named
+Functions and callbacks".
 
 FLTK's `Fl_Callback*`-cast-and-`user_data`-trampoline machinery
 (needed in C++ purely because a plain function pointer can't close over

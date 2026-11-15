@@ -23,10 +23,9 @@
  * what keeps that one indirect path clear too -- see that module's own
  * top comment).
  *
- * `fluid/buildfluid.d` (`rdmd fluid/buildfluid.d`) drives this binary
- * end to end -- building it, regenerating every missing panel through
- * it, deleting it again, and building the real `fluid` binary -- doing
- * only whichever of those steps is actually needed each time.
+ * `buildfluidpanels.d`, which `dub build :fluid` runs first, drives this
+ * binary: when a panel is missing or stale it builds it, regenerates
+ * the stale panels through it and deletes it again.
  *
  * Supports the same options as `fluid` -- there is no GUI mode here
  * at all, unlike `app.d`'s own bare/no-flag case, so this binary reports

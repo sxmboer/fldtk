@@ -12,29 +12,19 @@ shortcut of its own, groups them into one bar, and turns them into
 radio buttons, of which only one can be down at a time. It then keeps
 the choice in a variable and shows it in a dialog, and finally asks the
 buttons themselves which one is down. It is done on Windows; on Linux
-the steps are the same, except for the command that starts Fluid. It
-assumes you have done [Tutorial 1](TUTORIAL01.md) and
+the steps are the same. It assumes you have done [Tutorial 1](TUTORIAL01.md) and
 [Tutorial 2](TUTORIAL02.md), so it says less about the basics of Fluid.
 
-The commands are typed in a Command Prompt window (`cmd`). This
-tutorial assumes the fldtk folder is `fldtk` in your user folder
-(`%USERPROFILE%\fldtk`, for instance `C:\Users\you\fldtk`), and keeps
-the project in `%USERPROFILE%\fluidtutorials\tutorial03`.
+## 1. Opening a Command Prompt
 
-## 1. Preparing fldtk
-
-    cd %USERPROFILE%\fldtk
-    rdmd buildfluid.d
-
-This builds the fldtk library and Fluid, `fluid.exe`.
+Click Start, type `cmd` and press Enter. The commands in this tutorial
+are typed in the Command Prompt window that opens. The project goes in
+`%USERPROFILE%\fluidtutorials\tutorial03` (for instance
+`C:\Users\you\fluidtutorials\tutorial03`).
 
 ## 2. Starting Fluid
 
-    %USERPROFILE%\fldtk\fluid.exe
-
-Double-clicking `fluid.exe` in File Explorer starts it too. To keep it
-at hand, right-click `fluid.exe` and choose Pin to Start; from then on
-it is in the Start menu.
+    dub run fldtk:fluid
 
 Fluid opens with an empty design. The project folder doesn't exist
 yet: Fluid asks for it the first time you press F5, in step 6.
@@ -417,7 +407,7 @@ For a single file, write the code from the design, then build and run
 it, as in Tutorial 1's [Rebuilding and launching a project
 manually](TUTORIAL01.md#rebuilding-and-launching-a-project-manually):
 
-    %USERPROFILE%\fldtk\fluid.exe -c fourbuttons.fl
+    dub run fldtk:fluid -- -c fourbuttons.fl
     dub run --single fourbuttons.d
 
 For a dub project, one command does it all:

@@ -1136,55 +1136,16 @@ XIM XOpenIM(Display* display, void* rdb, const(char)* resName, const(char)* resC
 
 Status XCloseIM(XIM im);
 
-/// Creates an input context. Deliberately narrower than FLTK's own
-/// `XCreateIC()` call (which is a variadic name/value-pair list,
-/// negotiated against whichever preedit/status styles the input method
-/// actually supports via a separate `XGetIMValues()`/`XIMStyles` query)
-/// -- this port always requests the plain `XIMPreeditNothing |
-/// XIMStatusNothing` style directly (no on-screen preedit text or
-/// status/candidate area at all), which is also FLTK's own
-/// fallback when none of its fancier styles are available. Real
-/// composition (dead keys, CJK input via `Xutf8LookupString()`) works
-/// identically either way -- the preedit/status styles only affect
-/// whether the input method draws its own inline UI, which needs a
-/// widget to report a text-cursor "spot" via `XNSpotLocation`
-/// (FLTK's `fl_set_spot()`, called from individual text-editing
-/// widgets) for positioning; no widget in this port calls that yet
-/// (on-screen preedit positioning isn't implemented),
-/// so there'd be nothing to correctly position an inline preedit
-/// against anyway. `name1`/`style`/`term` matches the exact 1-pair
-/// variadic call shape this port actually makes
-/// (`XCreateIC(im, XNInputStyle, style, NULL)`).
-XIC XCreateIC(XIM im, const(char)* name1, XIMStyle style, void* term);
-
-/// A second, wider `XCreateIC()` overload for the one other call shape
-/// this port makes (see `fl.platform_x11.newIc()`, ported from
-/// FLTK's `Fl_X11_Screen_Driver::new_ic()`): creating an IC with
-/// `XIMPreeditPosition | XIMStatusNothing` style needs a third
-/// name/value pair, `XNPreeditAttributes`, supplying the nested
-/// spot-location/font-set list `XVaCreateNestedList()` built. Both
-/// declarations bind the same underlying (genuinely C-variadic)
-/// `XCreateIC` symbol -- D resolves which one to call per call site,
-/// same technique as this file's other multi-shape Xlib bindings.
-XIC XCreateIC(XIM im, const(char)* name1, XIMStyle style,
-    const(char)* name2, void* val2, void* term);
+/// Creates an input context. A C variadic function: name/value pairs
+/// ending in `null`, e.g. `XCreateIC(im, XNInputStyle, style, null)`.
+/// Values must be pointer-sized (pointers, `XIMStyle`, `Window`).
+XIC XCreateIC(XIM im, ...);
 
 void XDestroyIC(XIC ic);
 
-/// Sets 2 name/value pairs then a `NULL` terminator -- matches this
-/// port's one actual call shape (`XSetICValues(ic, XNFocusWindow, w,
-/// XNClientWindow, w, NULL)`, re-pointing an existing IC at a new
-/// focus/client window, ported from `Fl_X11_Screen_Driver::
-/// xim_activate()`), not FLTK's fully general variadic API.
-void XSetICValues(XIC ic, const(char)* name1, Window val1, const(char)* name2, Window val2, void* term);
-
-/// A second `XSetICValues()` overload for updating a single nested-list
-/// attribute -- this port's other call shape is
-/// `XSetICValues(ic, XNPreeditAttributes, preeditAttr, NULL)` (see
-/// `fl.platform_x11.setSpot()`). Distinguished from the overload above
-/// by `val1`'s type (`void*` here vs. `Window` there) -- both bind the
-/// same underlying variadic `XSetICValues` symbol.
-void XSetICValues(XIC ic, const(char)* name1, void* val1, void* term);
+/// Sets values of an input context: name/value pairs ending in `null`,
+/// like `XCreateIC()`.
+void XSetICValues(XIC ic, ...);
 
 void XSetICFocus(XIC ic);
 void XUnsetICFocus(XIC ic);
@@ -1257,13 +1218,11 @@ struct XIMStyles
     XIMStyle* supported_styles;
 }
 
-/// Queries an input method's own values -- this port's one call shape
-/// is `XGetIMValues(im, XNQueryInputStyle, &styles, NULL)` (querying
-/// the input method's supported preedit/status styles). Returns `null`
-/// on success, matching Xlib's general "returns the name of the first
-/// unrecognized/failed attribute, or NULL if every one succeeded"
-/// *Values() convention.
-const(char)* XGetIMValues(XIM im, const(char)* name1, XIMStyles** val1, void* term);
+/// Queries an input method's values: name/pointer pairs ending in
+/// `null`, e.g. `XGetIMValues(im, XNQueryInputStyle, &styles, null)`.
+/// Returns `null` on success, or the name of the first attribute that
+/// failed.
+const(char)* XGetIMValues(XIM im, ...);
 
 /// Creates a font set for `baseFontNameList` (an XLFD pattern, e.g.
 /// `"-misc-fixed-*"`) in the current locale -- backs `newIc()`'s
@@ -1298,15 +1257,10 @@ int XFreeFont(Display* display, XFontStruct* fontStruct);
 /// Frees the missing-charset list `XCreateFontSet()` may allocate.
 void XFreeStringList(char** list);
 
-/// Builds a `NULL`-terminated nested name/value attribute list for use
-/// as an `XNPreeditAttributes` value -- this port's one call shape is
-/// `XVaCreateNestedList(0, XNSpotLocation, &rect, XNFontSet, fs,
-/// NULL)`. The leading `int` parameter is `XVaCreateNestedList()`'s own
-/// always-`0` first argument (a real Xlib API quirk -- FLTK passes
-/// literal `0` at every call site too, not a value this port invented
-/// meaning for).
-XVaNestedList XVaCreateNestedList(int dummy, const(char)* name1, void* val1,
-    const(char)* name2, void* val2, void* term);
+/// Builds a nested name/value attribute list for an `XNPreeditAttributes`
+/// value: name/value pairs ending in `null`. The leading `int` is Xlib's
+/// unused first argument, always `0`.
+XVaNestedList XVaCreateNestedList(int dummy, ...);
 
 /// `Xutf8LookupString()`'s `status_return` values (`X11/Xlib.h`).
 /// `XBufferOverflow` means `buffer` was too small -- retry with a
@@ -1319,13 +1273,13 @@ enum int XLookupBoth = 4;
 
 /// XIC attribute name strings (`X11/Xlib.h`'s `#define XN*` macros --
 /// plain C string constants, not integer flags).
-enum string XNInputStyle = "inputStyle";
-enum string XNFocusWindow = "focusWindow";
-enum string XNClientWindow = "clientWindow";
-enum string XNQueryInputStyle = "queryInputStyle";
-enum string XNPreeditAttributes = "preeditAttributes";
-enum string XNSpotLocation = "spotLocation";
-enum string XNFontSet = "fontSet";
+enum const(char)* XNInputStyle = "inputStyle";
+enum const(char)* XNFocusWindow = "focusWindow";
+enum const(char)* XNClientWindow = "clientWindow";
+enum const(char)* XNQueryInputStyle = "queryInputStyle";
+enum const(char)* XNPreeditAttributes = "preeditAttributes";
+enum const(char)* XNSpotLocation = "spotLocation";
+enum const(char)* XNFontSet = "fontSet";
 
 /// Reads a window property -- backs the `PropertyNotify` handling
 /// that recovers `_NET_WM_STATE`'s current atom list (fullscreen/

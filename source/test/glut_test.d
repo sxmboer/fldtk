@@ -1,11 +1,10 @@
 // D transliteration of FLTK's test/glut_test.cxx.
 // Build: rdmd buildsamples.d test glut_test
 //
-// GLUT compatibility test. fldtk has no GL/GLUT support at all yet (no
-// FL/glut.H port) -- the glut*() calls below keep their FLTK C
-// names verbatim (foreign GLUT API, not FLTK's own naming surface).
-// Expected to fail on essentially every line; the point is recording
-// the surface this program exercises, not perfecting the transliteration.
+// GLUT compatibility test for fl.glut: creates two windows and calls the
+// GLUT window, overlay, menu and callback functions and glutGet() twice,
+// first with a valid current window and then with an invalid one,
+// printing what GLUT reports. The glut*() calls keep their C names, as GLUT's own API.
 import fl;
 import std.stdio : writefln;
 

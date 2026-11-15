@@ -4,8 +4,10 @@ copyright "Copyright 2026 Steef Boerrigter"
 license "BSL-1.0"
 description "fldtk-options: shows and changes the options every fldtk program reads"
 dependency "fldtk" version="*" path="../../"
+// dub.selections.json next to this file is needed: without it dub
+// considers this package out of date and rebuilds it on every build.
 
-// `dub build fldtk:options` puts the fldtk-options binary in the repo
+// `dub build :options` puts the fldtk-options binary in the repo
 // root, next to libfldtk.so and fluid, where the demo program's
 // "Runtime Options" button looks for it.
 targetType "executable"
@@ -14,3 +16,8 @@ targetPath "../.."
 sourcePaths "."
 importPaths "."
 lflags "-rpath=$$ORIGIN" platform="linux"
+// The library and every program that uses it must share one D runtime.
+// dmd arranges that by itself; LDC and GDC link their runtime statically
+// unless told otherwise, and the program then aborts at startup.
+dflags "-link-defaultlib-shared" platform="linux-ldc"
+dflags "-shared-libphobos" platform="linux-gdc"

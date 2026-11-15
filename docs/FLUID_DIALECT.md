@@ -8,7 +8,7 @@ section.
 
 For current implementation status (what's built, what's a known gap,
 file by file) see `PORTING.md`'s `## Fluid` section. For build/run
-commands (`fluid -c`, `rdmd fluid/buildfluid.d`, etc.) see `CONVENTIONS.md`.
+commands (`fluid -c`, `dub build :fluid`, etc.) see `CONVENTIONS.md`.
 
 ## The dialect pivot: `.fl` files contain literal D, not C++
 
@@ -32,8 +32,7 @@ it:
 - Inside `setup`/`finalize` (construction-time code, attached to a
   widget's own property list): `o` means "this widget's own variable"
   (which already has a real, distinct name) — the writer substitutes it.
-- Inside a `callback { ... }` property, or a named callback-shaped
-  Function's body: `o` means "the freshly cast closure local" the writer
+- Inside a `callback { ... }` property: `o` means "the freshly cast closure local" the writer
   itself introduces (`auto o = cast(X) raw;`) — write it as-is, no
   substitution needed. The closure's own outer, `Widget`-typed parameter
   is named `raw` specifically so it doesn't collide with that inner `o`
@@ -127,27 +126,45 @@ the second, worse shape — it's an inherited C++ habit with no reason to
 carry over here, since nothing depends on byte-for-byte matching
 FLTK's own save format.)
 
-## Two shapes of named Function
+## Named Functions and callbacks
 
-A named top-level `Function` node splits into two shapes, disambiguated
-by `isCallbackShape()` in `code_writer.d`:
+A named top-level `Function` node becomes an ordinary top-level D
+function, signature and body emitted verbatim.
 
-- **Callback-shaped**: `return_type` is `void` (or unset) *and* it takes
-  exactly one parameter — matching `Fl_Callback`'s own `void(Widget)`
-  shape. Meant to be used *bare* as a `.callback(name)` value; becomes a
-  module-level `void delegate(Widget) name;` variable assigned a
-  delegate literal (D forbids implicitly converting a plain function to
-  a delegate, so a real closure is unavoidable). The assignment sits at
-  the top of `main()`, or, in a file without an anonymous root Function,
-  in a `static this()` module constructor, so it is in place before any
-  widget that uses the callback is built. Code elsewhere can still
-  assign the variable its own delegate before building those widgets,
-  which is how the panels' `liveModeCb`/`overlayCb`/`okCb` work (they
-  are plain `decl {}` nodes in `widget_panel.fl`).
-- **Plain**: anything else — a different return type (a factory that's
-  *called* to produce a callback, not assigned directly) or a different
-  parameter count (e.g. a zero-parameter window-builder method). Becomes
-  an ordinary top-level D function, signature and body emitted verbatim.
+A `callback` property always holds code. To share one callback between
+several widgets, write it as a named Function and call it, passing the
+widget along:
+
+```
+Function {buttonCB(Button b)}
+  {
+    return_type void
+  }
+  {
+    code {writeln(b.label());}
+      {
+      }
+  }
+...
+Button {}
+  {
+    label {OK}
+    callback {buttonCB(o);}
+  }
+```
+
+`o` has the widget's own class, so the parameter can be `Widget` or the
+widget's class. A delegate variable (`decl {void delegate(Widget)
+okCb;}`) is called the same way, `okCb(o);`: the button calls whatever
+the variable holds when it is pressed, which is how the panels'
+`liveModeCb`/`overlayCb`/`okCb` work. In code text, pass a function on
+as a delegate literal: `button.callback((w) { buttonCB(w); });` (inside
+a callback body, name the parameter something other than `o`, which is
+already taken).
+
+A `.fl` file whose callback field holds just a name (`callback
+buttonCB`) is read as `buttonCB(o);`; saving the file writes it that
+way.
 
 ## `Class_Node`: only for a real base-class relationship
 
@@ -192,7 +209,7 @@ The same applies to any container node with no real children: write
 
 - A named widget declared *inside* a class's own method becomes a class
   **field**, not a module-level global.
-- A named Function ("plain" shape, see above) can have a real widget
+- A named Function can have a real widget
   tree as its body instead of a bare `code { ... }` block, walked the
   same way any other widget tree is.
 - A Window inside a class method never gets an automatic `.show(args)`

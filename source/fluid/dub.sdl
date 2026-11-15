@@ -4,12 +4,19 @@ copyright "Copyright 2026 Steef Boerrigter"
 license "BSL-1.0"
 description "Fluid, FLTK's UI designer, ported to emit D source files"
 dependency "fldtk" version="*" path="../../"
+// dub.selections.json next to this file is needed: without it dub
+// considers this package out of date and rebuilds it on every build.
 
 // The fluid binary lands in the repo root, next to libfldtk.so -- the
 // library dub itself builds there, so an $ORIGIN rpath (no "/..") is
 // all it needs to find the .so at runtime from any working directory.
 targetPath "../.."
 lflags "-rpath=$$ORIGIN" platform="linux"
+// The library and every program that uses it must share one D runtime.
+// dmd arranges that by itself; LDC and GDC link their runtime statically
+// unless told otherwise, and the program then aborts at startup.
+dflags "-link-defaultlib-shared" platform="linux-ldc"
+dflags "-shared-libphobos" platform="linux-gdc"
 
 // Fluid's icons (`pixmaps_svg/*.svg`), embedded by `pixmaps.d`'s
 // `loadPixmaps()` with a string import; both configurations build it.
@@ -50,9 +57,13 @@ configuration "fluid" {
     // `showHelp()` with a string import.
     stringImportPaths "documentation"
     mainSourceFile "app.d"
+    // Generates panels/generated/*.d first when they are missing or stale
+    // (see buildfluidpanels.d), so a plain `dub build :fluid` works
+    // on a fresh checkout and from dub's package cache.
+    preGenerateCommands "rdmd \"$PACKAGE_DIR/../../buildfluidpanels.d\""
 }
 
-// `dub build fldtk:fluid --config=bootstrap`: a second, standalone
+// `dub build :fluid --config=bootstrap`: a second, standalone
 // binary, `fluid-bootstrap`, built from this directory alone (no
 // `panels/generated/` at all) -- see `bootstrap.d`'s own top comment for
 // why it exists and how it's used to regenerate `panels/generated/*.d`

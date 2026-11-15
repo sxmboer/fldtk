@@ -32,6 +32,22 @@ which produces a window with a clickable button.
 
 ![A window with a clickable button](https://raw.githubusercontent.com/sxmboer/fldtk/main/docs/button.png)
 
+## New since v1.1.0: ready to use straight from dub
+
+- **Fluid in one command.** `dub run fldtk:fluid` fetches fldtk, builds
+  Fluid and starts it, from any folder. Fluid's own dialogs are generated
+  automatically during the build, with no setup step first.
+- **The demos in one command.** `dub run fldtk:demo` builds every demo
+  program and starts the demo program, which starts the others from one
+  window.
+- **Programs that just run.** A program that adds fldtk with
+  `dub add fldtk` builds and runs with a plain `dub run`: the fldtk
+  library is placed next to the program, and the program finds it there.
+- **Your choice of compiler.** fldtk, Fluid, fldtk-options and the demo
+  programs build with dmd (the default) and, on Linux, with LDC or GDC; set `DC=ldc2` or
+  `DC=gdc` to switch. LDC and GDC also build optimized releases. See
+  [Choosing the compiler](docs/BUILDING.md#choosing-the-compiler).
+
 ## New in v1.1.0: press F5 to run the compiled application almost instantly
 
 Fluid is now fully integrated with the dub infrastructure for a seamless,
@@ -219,14 +235,22 @@ GLU and zlib must be installed, which is the case by default on most
 Linux distributions. Then, from the repository root:
 
     dub build                # the library: ./libfldtk.so
-    rdmd buildfluid.d        # the Fluid designer: ./fluid
+    dub build :fluid         # the Fluid designer: ./fluid
     rdmd buildsamples.d      # the demo programs: ./build/*
-    dub build fldtk:options  # the settings program: ./fldtk-options
+    dub build :options       # the settings program: ./fldtk-options
+    dub run :demo            # builds the demo programs and starts the demo
 
 New to fldtk? Start with the [tutorials](docs/TUTORIALS.md).
 [`docs/BUILDING.md`](docs/BUILDING.md) has the details, including how to compile your own
 programs against the library and the Windows instructions.
-It should be mentioned that dmd and gdc have both been tested to work. ldc has not been tested.
+fldtk builds with dmd (the default), ldc and gdc: set `DC=ldc2` or
+`DC=gdc` in front of the commands above to use another compiler for the
+library, Fluid and the demo programs alike. For an optimized release
+build, use ldc or gdc. Released versions of dmd (up to 2.114) can't
+optimize fldtk yet, because of a dmd bug that is fixed in dmd's git
+repository ([dlang/dmd#23802](https://github.com/dlang/dmd/issues/23802))
+but not yet released. See
+[`docs/BUILDING.md`](docs/BUILDING.md#choosing-the-compiler).
 
 ## Documentation
 

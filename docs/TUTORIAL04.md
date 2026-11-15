@@ -1,4 +1,4 @@
-# Tutorial 4: a bill splitter
+# Tutorial 4: a bill splitter, on Wayland
 
 [All tutorials](TUTORIALS.md)
 
@@ -16,9 +16,9 @@ steps are the same.
 
 ## 1. Creating the window and the title
 
-Start Fluid in your usual way, e.g.:
+Start Fluid:
 
-    ~/fldtk/fluid
+    dub run fldtk:fluid
 
 Click ![Window](../source/fluid/pixmaps_svg/flWindow.svg) (Window) and
 click Create a Function, as in Tutorial 1.

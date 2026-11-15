@@ -1,0 +1,16 @@
+name "demo"
+authors "Steef Boerrigter"
+copyright "Copyright 2026 Steef Boerrigter"
+license "BSL-1.0"
+description "Builds fldtk's demo programs and starts the demo program, which starts the others"
+
+// `dub run :demo` in the fldtk folder, or `dub run fldtk:demo` from
+// anywhere. The launcher uses Phobos only, not fldtk: it builds the
+// demo programs with buildsamples.d, Fluid and fldtk-options with dub,
+// and then starts build/demo. It lands in build/ as demo-launcher, next
+// to the programs it builds.
+targetType "executable"
+targetName "demo-launcher"
+targetPath "../../build"
+sourcePaths "."
+importPaths "."
