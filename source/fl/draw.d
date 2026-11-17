@@ -3767,7 +3767,7 @@ void drawArrow(Rect bb, ArrowType t, Orientation o, Color color)
 /// thickness and corner-convergence handling for free, matching
 /// FLTK exactly -- this covers
 /// `fl.chart`'s gridlines, `fl.browser`'s separator lines,
-/// `fl.help_view`'s horizontal rules, and the "oxy" scheme's own box
+/// `fl.html_view`'s horizontal rules, and the "oxy" scheme's own box
 /// border, all of which draw axis-aligned lines through this function. Only a
 /// genuinely diagonal line falls through to the plain
 /// `scaledFloor()`-per-coordinate `XDrawLine()` path below, matching
@@ -5028,8 +5028,22 @@ version (linux)
     /// same FLTK-unit size) would wrongly keep reusing a font opened at
     /// the old device pixel size (see `currentFontScale_`'s own
     /// comment).
+    // Whether fl_font() has opened the display (see there).
+    private bool fontOpenedDisplay_;
+
     void fl_font(Font face, Fontsize size)
     {
+        // Choosing a font opens the display, as in FLTK, so text measured
+        // before the first window is shown (a widget laying out its text
+        // when it is created) gets the real font's widths. The unit tests
+        // run without a display.
+        version (unittest) {}
+        else if (!fontOpenedDisplay_)
+        {
+            fontOpenedDisplay_ = true;
+            import fl.platform : openDisplay;
+            openDisplay();
+        }
         version (FLDTK_HAVE_CAIRO)
         {
             if (cairoDisplay_ !is null)

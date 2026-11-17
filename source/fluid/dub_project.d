@@ -28,18 +28,32 @@ import fluid.app_prefs : appPrefs;
 /// The preference key of Settings > General > fldtk Folder.
 enum fldtkFolderPrefKey = "fldtk_folder";
 
-/// Whether `dir` is a fldtk checkout: it has a `dub.sdl` whose package
-/// is named `fldtk`.
+/// Whether `dir` is a fldtk folder: it has a `dub.sdl` or `dub.json`
+/// whose package is named `fldtk`. A clone has `dub.sdl`; a copy dub
+/// fetched from the dub registry has a `dub.json` the registry wrote
+/// in its place.
 bool isFldtkFolder(string dir)
 {
+    import std.json : JSONType, parseJSON;
+
     if (dir.length == 0) return false;
     string sdl = buildPath(dir, "dub.sdl");
-    if (!exists(sdl) || !isFile(sdl)) return false;
+    string json = buildPath(dir, "dub.json");
     try
     {
-        foreach (line; readText(sdl).splitLines())
-            if (line.strip() == `name "fldtk"`)
-                return true;
+        if (exists(sdl) && isFile(sdl))
+        {
+            foreach (line; readText(sdl).splitLines())
+                if (line.strip() == `name "fldtk"`)
+                    return true;
+        }
+        else if (exists(json) && isFile(json))
+        {
+            auto root = parseJSON(readText(json));
+            if (root.type == JSONType.object)
+                if (auto name = "name" in root.object)
+                    return name.type == JSONType.string && name.str == "fldtk";
+        }
     }
     catch (Exception) {}
     return false;
@@ -359,6 +373,13 @@ unittest
     string fl = buildPath(root, "fldtk");
     assert(isFldtkFolder(fl));
     assert(!isFldtkFolder(buildPath(root, "notfldtk")));
+    // A copy fetched from the dub registry has dub.json instead.
+    mkdirRecurse(buildPath(root, "fetched"));
+    write(buildPath(root, "fetched", "dub.json"), `{"name": "fldtk", "version": "1.1.1"}`);
+    assert(isFldtkFolder(buildPath(root, "fetched")));
+    mkdirRecurse(buildPath(root, "otherjson"));
+    write(buildPath(root, "otherjson", "dub.json"), `{"name": "x"}`);
+    assert(!isFldtkFolder(buildPath(root, "otherjson")));
 
     // The setting wins, then Fluid's folder, then the folders above.
     assert(findFldtkFolder(fl, buildPath(root, "notfldtk"), buildPath(root, "other")) == fl);

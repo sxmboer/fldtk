@@ -252,7 +252,7 @@ void main(string[] args)
                           ~ "An empty string may be used.\n");
 
         y += G_filter.h() + 10;
-        auto view = new HelpView(x, y, G_filename.w(), 200);
+        auto view = new HtmlView(x, y, G_filename.w(), 200);
         view.box(Boxtype.flatBox);
         view.color(win.color());
         enum TAB = "&lt;Tab&gt;";

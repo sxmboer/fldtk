@@ -2,7 +2,7 @@
 // Build: rdmd buildsamples.d test help_dialog
 //
 // Notes on this transliteration:
-//  - Fl_Help_Dialog (fl.help_dialog.HelpDialog) is real, ported fldtk
+//  - Fl_Help_Dialog (fl.html_dialog.HtmlDialog) is real, ported fldtk
 //    API, used directly below.
 //  - Fl_GIF_Image (fl.gif_image.GifImage) decodes a static single frame;
 //    `GifImage.animate` below is a flag with no playback effect on its
@@ -21,7 +21,7 @@ void main(string[] args)
 {
     GifImage.animate = true; // create animated shared .GIF images
 
-    auto help = new HelpDialog();
+    auto help = new HtmlDialog();
 
     void cbRefresh()
     {
@@ -38,7 +38,7 @@ void main(string[] args)
 
     help.load(fname); // TODO: add error check (when load() returns int instead of void)
 
-    help.show(); // HelpDialog.show() takes no args -- see fl.help_dialog's
+    help.show(); // HtmlDialog.show() takes no args -- see fl.html_dialog's
     // own doc comment on why show(argc, argv) wasn't ported
 
     fl.addTimeout(1.0 / 10, &cbRefresh); // to animate GIF's

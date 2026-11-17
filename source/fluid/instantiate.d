@@ -253,12 +253,17 @@ static this()
         return o;
     });
     reg("Help_View", (x, y, w, h, l) {
-        auto o = new HelpView(x, y, w, h, l);
-        o.value("<HTML><BODY><H1>Fl_Help_View Widget</H1>"
-            ~ "<P>This is a Fl_Help_View widget.</P></BODY></HTML>");
+        auto o = new HtmlView(x, y, w, h, l);
+        o.value("<HTML><BODY><H1>HtmlView Widget</H1>"
+            ~ "<P>This is an HtmlView widget.</P></BODY></HTML>");
         return o;
     });
-    registry["HelpView"] = registry["Fl_Help_View"];
+    registry["HtmlView"] = registry["Fl_Help_View"];
+    registry["MarkdownView"] = (x, y, w, h, l) {
+        auto o = new MarkdownView(x, y, w, h, l);
+        o.value("# MarkdownView Widget\n\nThis is a **MarkdownView** widget.\n");
+        return cast(Widget) o;
+    };
     reg("Check_Browser", (x, y, w, h, l) {
         auto o = new CheckBrowser(x, y, w, h, l);
         foreach (i; 1 .. 21)
@@ -933,10 +938,10 @@ Widget instantiateOne(WidgetNode wn, string projectDir = ".")
 
 /// The widget classes whose text font and size a node can set: the ones
 /// FLTK's `Widget_Node::textstuff()` overrides cover (inputs, valuator
-/// text, menus, browsers, text displays, counters, spinners, help views,
+/// text, menus, browsers, text displays, counters, spinners, HTML and Markdown views,
 /// terminals). Each has its own unrelated `textfont()`/`textsize()`.
 private alias TextStuffTypes = AliasSeq!(Input_, ValueOutput, ValueInput, ValueSlider,
-    Menu_, Browser_, Counter, Spinner, TextDisplay, HelpView, Terminal, InputChoice);
+    Menu_, Browser_, Counter, Spinner, TextDisplay, HtmlView, MarkdownView, Terminal, InputChoice);
 
 /// Reads `w`'s text font and size; `false` if `w` has none.
 bool getTextStuff(Widget w, out Font font, out int size)
@@ -1969,7 +1974,7 @@ package(fluid) void idealSizeFor(string typeName, out int w, out int h,
     case "Browser": case "CheckBrowser": case "FileBrowser": case "Tree":
         w = 120; h = 160;
         break;
-    case "HelpView": case "Table":
+    case "HtmlView": case "MarkdownView": case "Table":
         w = 160; h = 120;
         break;
 

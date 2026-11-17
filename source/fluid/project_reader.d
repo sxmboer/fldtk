@@ -567,6 +567,8 @@ class Reader
 
         string instanceName = readValue();
 
+        // HTML View's earlier names, in older projects and FLTK's.
+        if (typeName == "HelpView" || typeName == "Fl_Help_View") typeName = "HtmlView";
         Node node = createNode(typeName);
         node.typeName = typeName;
         node.instanceName = instanceName;

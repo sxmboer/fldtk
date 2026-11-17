@@ -59,7 +59,7 @@
  */
 module fl.input_;
 
-import std.ascii : isDigit, isHexDigit, isWhite, isAlphaNum;
+import std.ascii : isDigit, isWhite, isAlphaNum;
 import std.math : ceil;
 import std.utf : codeLength;
 
@@ -1237,39 +1237,25 @@ class Input_ : Widget
             if (tend == 0) return 1;
             t = t[0 .. tend];
 
-            if (inputType() == inputInt)
-            {
-                size_t i = 0;
-                while (i < t.length && isWhite(t[i])) i++;
-                size_t p = i;
-                if (p < t.length && (t[p] == '+' || t[p] == '-')) p++;
-                if (p + 1 < t.length && t[p] == '0' && t[p + 1] == 'x')
-                {
-                    p += 2;
-                    while (p < t.length && isHexDigit(t[p])) p++;
-                }
-                else
-                {
-                    while (p < t.length && isDigit(t[p])) p++;
-                }
-                if (p < t.length)
-                {
-                    fl.core.beep(Beep.error);
-                    return 1;
-                }
-                return replace(0, size(), t[i .. $]);
-            }
-            else if (inputType() == inputFloat)
+            // A number field takes a pasted number as a whole, replacing
+            // its text, and only a decimal number as std.conv.to!int or
+            // to!double reads it: an optional sign, digits, and for a
+            // FloatInput an optional point with digits and an optional
+            // exponent ("12", "-3.5", "1e5", "2.5E-3").
+            if (inputType() == inputInt || inputType() == inputFloat)
             {
                 size_t i = 0;
                 while (i < t.length && isWhite(t[i])) i++;
                 size_t p = i;
                 if (p < t.length && (t[p] == '+' || t[p] == '-')) p++;
                 while (p < t.length && isDigit(t[p])) p++;
-                if (p < t.length && t[p] == '.')
+                if (inputType() == inputFloat)
                 {
-                    p++;
-                    while (p < t.length && isDigit(t[p])) p++;
+                    if (p < t.length && t[p] == '.')
+                    {
+                        p++;
+                        while (p < t.length && isDigit(t[p])) p++;
+                    }
                     if (p < t.length && (t[p] == 'e' || t[p] == 'E'))
                     {
                         p++;

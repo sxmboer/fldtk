@@ -68,7 +68,21 @@ private Image load(string name)()
 {
     auto img = new SvgImage(null, import(name ~ ".svg"));
     img.scale(16, 16);
+    iconNames_[img] = name;
     return img;
+}
+
+/// The file name (without `.svg`) of each icon `load()` made.
+private string[Image] iconNames_;
+
+/// The name of `typeName`'s icon in `pixmaps_svg/`, without `.svg`
+/// (`"flButton"` for "Button"), or null if it has none. The Technical
+/// Reference shows the same icon in each widget's heading, so this
+/// leads from a node to its section there.
+string iconNameFor(string typeName)
+{
+    auto img = pixmapFor(typeName);
+    return img is null ? null : iconNames_.get(img, null);
 }
 
 /// Populates every icon -- call once at startup (`gui_main.d`'s
@@ -175,7 +189,8 @@ void loadPixmaps()
     pixmaps_["FileInput"] = pixmaps_["Fl_File_Input"];
     pixmaps_["CheckBrowser"] = pixmaps_["Fl_Check_Browser"];
     pixmaps_["FileBrowser"] = pixmaps_["Fl_File_Browser"];
-    pixmaps_["HelpView"] = pixmaps_["Fl_Help_View"];
+    pixmaps_["HtmlView"] = pixmaps_["Fl_Help_View"];
+    pixmaps_["MarkdownView"] = load!"flMarkdownView";
 
     addSymbol("fd_zoom", &fdZoom, true);
     addSymbol("fd_beaker", &fdBeaker, true);
@@ -388,6 +403,9 @@ unittest
     assert(pixmapFor("Fl_Button") !is null);
     assert(pixmapFor("Fl_Grid") !is null);
     assert(pixmapFor("NoSuchType") is null);
+    assert(iconNameFor("Fl_Button") == "flButton");
+    assert(iconNameFor("ReturnButton") == "flReturnButton");
+    assert(iconNameFor("NoSuchType") is null);
     assert(pixmapFor("Fl_Button").w() == 16);
     assert(pixmapFor("Fl_Button").h() == 16);
 

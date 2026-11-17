@@ -27,7 +27,7 @@
  * `std.uri.decodeComponent()`); and `fl_getcwd_str()` (use
  * `std.file.getcwd()`).
  *
- * `openUri()` (`fl.help_view`'s first real caller, for non-`file:`
+ * `openUri()` (`fl.html_view`'s first real caller, for non-`file:`
  * link schemes -- http/https/ftp/mailto/news) is real on both
  * platforms it's ported for. On Linux, only a minimal port: FLTK's
  * own `Fl_Unix_System_Driver::open_uri()` tries a whole fallback chain

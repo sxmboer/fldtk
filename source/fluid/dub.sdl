@@ -58,9 +58,9 @@ configuration "fluid" {
     stringImportPaths "documentation"
     mainSourceFile "app.d"
     // Generates panels/generated/*.d first when they are missing or stale
-    // (see buildfluidpanels.d), so a plain `dub build :fluid` works
+    // (see buildpanels.d), so a plain `dub build :fluid` works
     // on a fresh checkout and from dub's package cache.
-    preGenerateCommands "rdmd \"$PACKAGE_DIR/../../buildfluidpanels.d\""
+    preGenerateCommands "rdmd \"$PACKAGE_DIR/../../buildpanels.d\""
 }
 
 // `dub build :fluid --config=bootstrap`: a second, standalone

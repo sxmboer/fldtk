@@ -238,8 +238,10 @@ unsubscribes it.
   the eraser, barrel buttons, traits, a subscribed subwindow, an
   unsubscribed widget getting the pen as a mouse, no pen events under a
   modal dialog, drawing at the exact pen point at any scale, and
-  `penpal`'s Tests menu. Twist is untested (that pen doesn't report it).
-  The Wayland driver is untested on hardware.
+  `penpal`'s Tests menu. Twist will stay untested for lack of
+  hardware: it needs a pen that reports barrel rotation, which only a
+  few Wacom pens do. The Wayland
+  driver is untested on hardware.
 
 ### `FL/Fl_Export.H`
 
@@ -1797,10 +1799,11 @@ through the clipboard.
   underlined instead of highlighted, and the next keystroke replaces it.
   `TextEditor`/`TextDisplay` do the same. On X11 and Windows the input
   method shows the text being composed in a window of its own.
-- Pasting into a `FloatInput` checks the whole text against a stricter
-  pattern than typing does: an exponent is only accepted after a `.`, so
-  `1e5` and `0x1F` can be typed but not pasted (`Input_.handle()`,
-  `Event.paste`; `FLTK_ISSUES_3.md`).
+- `IntInput` and `FloatInput` take decimal numbers only, as
+  `std.conv.to!int` and `to!double` read them: a sign and digits, and for
+  a `FloatInput` a point and an exponent (`1e5`, `2.5E-3`). Typing
+  (`Input.handleKey()`) and pasting (`Input_.handle()`, `Event.paste`,
+  which replaces the whole text) accept the same numbers.
 
 ### `FL/Fl_Input.H`
 
@@ -2490,15 +2493,19 @@ modal `fl_color_chooser()` dialog. The gradients are drawn with one
 
 ### `FL/Fl_Help_View.H`
 
-**Status:** Complete — `fl.help_view`
+**Status:** Complete — `fl.html_view`
 ([header](https://github.com/fltk/fltk/blob/master/FL/Fl_Help_View.H))
 
 An HTML-subset layout and rendering engine: tokenizer and layout (tables
 included), text selection, `find()`, `load()` (local files and other
 schemes), the right-click copy menu, and `<IMG>` with a broken-image
-symbol (drawn from SVG).
+symbol (drawn from SVG). Hovering over a link shows its address in a
+tooltip. The class is `HtmlView`; `HelpView` (and
+`HelpFunc` for `HtmlLinkFunc`, module `fl.help_view`) are aliases for
+programs written for fldtk 1.0.2. Fluid's widget bin calls it HTML View
+and reads `HelpView`/`Fl_Help_View` nodes as `HtmlView`.
 
-- One class, `HelpView : FlGroup`.
+- One class, `HtmlView : FlGroup`.
 - The character under the mouse is found by running `draw()` with a
   zero-size clip, so nothing is drawn while positions are measured; that
   pass doesn't change the scrollbars.
@@ -2516,17 +2523,76 @@ symbol (drawn from SVG).
 
 ### `FL/Fl_Help_Dialog.H`
 
-**Status:** Complete — `fl.help_dialog`
+**Status:** Complete — `fl.html_dialog`
 ([header](https://github.com/fltk/fltk/blob/master/FL/Fl_Help_Dialog.H))
 
-Back/Forward and text-size buttons and a find field over a `HelpView`,
-with a navigation history of any length (`HistoryEntry[]`).
+Back/Forward and text-size buttons and a find field over an `HtmlView`,
+with a navigation history of any length (`HistoryEntry[]`). The class
+is `HtmlDialog`; `HelpDialog` (module `fl.help_dialog`) is an alias for
+programs written for fldtk 1.0.2.
 
 - Back and Forward both restore the scroll position recorded for the
   page they go to.
+- Alt+Left and Alt+Right, or the mouse's back and forward side buttons,
+  go back and forward; Ctrl with the mouse wheel changes the text size.
+  The window is a `fl.browser_window.BrowserWindow`, shared with
+  `MarkdownDialog`.
 - Find continues after the previous match, and starts over at the top
   after the last one.
 - Not ported: `show(int argc, char **argv)`.
+
+### `fl.markdown`, `fl.markdown_view`, `fl.markdown_dialog` (no FLTK header: Markdown documents)
+
+**Status:** Complete — `fl.markdown`, `fl.markdown_view`, `fl.markdown_dialog`
+
+A Markdown reader: `parseMarkdown()` turns the text into a document
+tree, `MarkdownView` lays it out and draws it, and `MarkdownDialog` is
+a window around the view with Back/Forward, text size and find
+(Alt+Left/Right and the mouse's side buttons go back and forward, Ctrl
+with the wheel changes the text size: `fl.browser_window`). Fluid's
+Help > fldtk README and the widget help (the tree's right-click menu,
+the properties panel's Help button) show the README and the Technical
+Reference in a `MarkdownDialog`, and
+`MarkdownView` is in Fluid's widget bin (Browsers, Markdown View).
+
+- Read: CommonMark's blocks and inlines, GitHub's tables,
+  strikethrough and bare `http(s)://` links, link reference
+  definitions (not shown, so `[//]: # (...)` works as a comment), all
+  of HTML5's named character references (`fl.html_entities`), and HTML
+  comments (skipped).
+- Raw HTML is recognised as CommonMark defines it, so it binds before
+  links and emphasis, but not shown: `<br>` is a line break and
+  `<img src alt>` an image; other tags are dropped, their text kept.
+  HTML blocks are read as paragraphs, with their tags dropped.
+- Not read: footnotes, task-list check boxes, GitHub's `www.` and bare
+  e-mail links. Tabs in code blocks are expanded to spaces.
+- A code block marked as D (```` ```D ```` or ```` ```dlang ````) is coloured
+  with `fl.d_syntax`, the lexer and colours Fluid's code editors use
+  (`fluid.code_highlight` re-exports it). Other languages are shown in one
+  colour.
+- `smoke-tests/markdown_review.d` checks the parser against the
+  CommonMark and GitHub spec examples; `--report` lists the ones that
+  differ.
+- Links to `#anchor` scroll to the heading with GitHub's anchor for
+  it; links to other `.md` files load them; other links go to
+  `fl.filename.openUri()`. `MarkdownView.link()` can take them over.
+  Hovering over a link shows its address in a tooltip.
+- Every block records the source lines it came from (`MdBlock.line`,
+  `lineCount`), and `MarkdownView.scrollToSourceLine()` scrolls to what a
+  source line shows: exactly for a block's first line and each table
+  row, estimated from the line's share of the block inside a paragraph
+  or code block; `topSourceLine()` is the other way round, the source
+  line at the view's top. `build/markdown_editor` keeps its page and its
+  editor at the same line with them, whichever is scrolled.
+- Images are loaded from files only. An image given by URL is shown
+  when the same file is under the document's folder (the URL's path,
+  or its tail end); otherwise its description is shown. Text given
+  with `value(md, directory)` uses that folder as the document's, as
+  `build/markdown_editor` does for the file it edits.
+- Selection, copy (Ctrl+C, right-click menu) and `find()` work on the
+  document's text, with list markers and table cells (tab-separated)
+  included.
+- Not there yet: editing.
 
 ### `FL/Fl_Tooltip.H`
 
@@ -2689,7 +2755,7 @@ the built-in GIF-to-SVG formats, so a program can add a format or take
 one over. `registerImages()` does nothing and is deprecated, kept so
 programs that call it still compile. A
 PNG, JPEG or SVG image made from memory with a name is added under that
-name (`SharedImage.addNamed()`), so `get(name)` and a `HelpView`
+name (`SharedImage.addNamed()`), so `get(name)` and an `HtmlView`
 `<img src>` find it.
 
 - The pool is an array searched linearly.
@@ -3029,8 +3095,13 @@ canvases.
   empty. These commands relayout `Flex` and `Grid` containers, and
   re-anchor a `Flex`'s fixed sizes to the moved children
   (`fluid.flex_node.reindexFlexIfNeeded()`).
-- **Help:** "Rapid development with FLUID..." and "FLTK Programmers
-  Manual..." open in `fl.help_dialog`, or `fl.openUri()` for
+- **Help:** "Help on <widget>" at the top of the tree's right-click
+  menu and the properties panel's Help button open
+  `docs/TECHNICAL_REFERENCE.md` at the section whose heading shows the
+  node's Fluid icon (`referenceSection()`, `fluid.pixmaps.iconNameFor()`);
+  a node without a section (code nodes) opens the reference at the top.
+  "Rapid development with FLUID..." and "FLTK Programmers
+  Manual..." open in `fl.html_dialog`, or `fl.openUri()` for
   `index.html` (`showHelp()`). The built-in `fluid.html` page describes
   the D workflow, with a flow chart
   (`source/fluid/documentation/fluid_flow_chart.svg`, embedded with its
@@ -3174,7 +3245,7 @@ On the canvas:
 **Status:** Complete
 
 Fluid's own windows are `.fl` files in the D dialect, generated by
-`fluid -c` into `panels/generated/` (`buildfluidpanels.d`, run by `dub build :fluid`), and driven by
+`fluid -c` into `panels/generated/` (`buildpanels.d`, run by `dub build :fluid`), and driven by
 `gui_main.d`.
 
 **Widget panel** (`widget_panel.fl`, with `widget_panel_grid_tab.fl` and
@@ -3498,9 +3569,9 @@ Fluid's own widgets, built on `fl.*`.
   string import), drawn by `SvgImage` at the screen's scale.
 - **Which widgets the bin and New menu offer:** every widget kind
   including `Pack`, `Scroll`, `Tile`, `RepeatButton`, `TextEditor`,
-  `FileInput`, `Tree`, `CheckBrowser`, `HelpView`, `FileBrowser`, `Table`
+  `FileInput`, `Tree`, `CheckBrowser`, `HtmlView`, `FileBrowser`, `Table`
   and `Progress`, registered in `fluid.factory`/`fluid.instantiate`, with
-  a Browsers category in the New menu. `Tree` and `HelpView` are leaf
+  a Browsers category in the New menu. `Tree` and `HtmlView` are leaf
   nodes (they hold no designed children). `Table` is a `GroupNode`: on the
   canvas a `fluid.table_proxy.TableProxy` with 14 rows and 7 columns of
   sample data, it accepts children (the first one brings FLTK's "not
@@ -3547,9 +3618,10 @@ Fluid's own widgets, built on `fl.*`.
   Image Options scale fields use it without variables (a name is then
   0).
 - **Code highlighting** (`fluid.code_highlight`, from `Code_Editor`/
-  `Code_Viewer`/`Style_Parser`): a D lexer (`styleParse()`) with token
-  classes following nano's `d.syntax` and colors for a white background,
-  `enableHighlighting()` (a style buffer for any `TextDisplay`, restyled
+  `Code_Viewer`/`Style_Parser`): a D lexer (`styleParse()`, in the
+  library as `fl.d_syntax`, which `MarkdownView` uses for D code blocks)
+  with token classes following nano's `d.syntax` and colors for a white
+  background, `enableHighlighting()` (a style buffer for any `TextDisplay`, restyled
   on each change) and `enableAutoIndent()` (Enter keeps the indentation).
   Used by the panel's D code fields (callback, setup code, code and decl
   text, function name and return type) and Code View's Source pane.

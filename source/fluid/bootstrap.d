@@ -23,7 +23,7 @@
  * what keeps that one indirect path clear too -- see that module's own
  * top comment).
  *
- * `buildfluidpanels.d`, which `dub build :fluid` runs first, drives this
+ * `buildpanels.d`, which `dub build :fluid` runs first, drives this
  * binary: when a panel is missing or stale it builds it, regenerates
  * the stale panels through it and deletes it again.
  *

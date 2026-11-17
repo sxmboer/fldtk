@@ -267,7 +267,7 @@ To reproduce, add this to `surface_frame_done()` in
 `src/drivers/Wayland/Fl_Wayland_Gl_Window_Driver.cxx` in place of the
 `eglSwapBuffers()` call (with `#include <stdio.h>`):
 
-```cpp
+```C++
 EGLSurface cur = eglGetCurrentSurface(EGL_DRAW);
 EGLBoolean ok = eglSwapBuffers(Fl_Wayland_Gl_Window_Driver::egl_display, gl_dr->egl_surface);
 EGLint err = eglGetError();
@@ -417,7 +417,7 @@ moves the popup so the picked swatch stays on screen. It first clamps to
 the bounds of the monitor under the mouse (`Fl::screen_xywh()`), then
 does:
 
-```cpp
+```C++
 if (px+bx < BORDER) px = BORDER-bx;
 if (py+by < BORDER) py = BORDER-by;
 ```

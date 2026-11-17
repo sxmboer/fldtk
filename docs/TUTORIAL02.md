@@ -398,8 +398,11 @@ before.
 
 ![Right-clicking a selected button: Change To and New](tutorial02/fig16.png)
 
-**In the tree.** Right-click on an item in the tree. For a widget, the
-menu starts with the same Change To, followed by Cut, Copy, Paste,
+**In the tree.** Right-click on an item in the tree. The menu starts
+with Help on the widget, which opens its section of the
+[Technical Reference](TECHNICAL_REFERENCE.md); the Help button in the
+properties window does the same. For a widget, the same Change To
+follows, then Cut, Copy, Paste,
 Duplicate and Delete, and Earlier and Later, which move the item up or
 down among its neighbors; they are the same commands as in the Edit
 menu, with the same shortcuts. A right-click selects the item first,

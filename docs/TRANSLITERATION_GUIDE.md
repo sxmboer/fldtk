@@ -284,7 +284,7 @@ and which are OpenGL itself.
 | `fl_scale` | `PagedDevice.scale()`, `Postscript.scale()` override, `Slider.scale()`/`scale(ScaleType)`, `SvgImage.scale()`, `Image.scale()`, `fl.draw`'s own local `scale()` |
 | `fl_scroll` | `Terminal.scroll()` (3 overloads), `TextDisplay.scroll()` |
 | `fl_shortcut_label` | `Widget.shortcutLabel()`/`shortcutLabel(bool)` (the `&`-underline flag) |
-| `fl_size` | a widely-used plain method name: `Chart.size()`, `TextBuffer.size()`, `Window.size(int,int)`, `Widget.size(int,int)`, `Browser.size()`/`size(int,int)`, `Tooltip.size()`/`size(Fontsize)`, `Menu_.size()`, `MenuItem.size()`, `HelpView.size()`, and more |
+| `fl_size` | a widely-used plain method name: `Chart.size()`, `TextBuffer.size()`, `Window.size(int,int)`, `Widget.size(int,int)`, `Browser.size()`/`size(int,int)`, `Tooltip.size()`/`size(Fontsize)`, `Menu_.size()`, `MenuItem.size()`, `HtmlView.size()`, and more |
 | `fl_translate` | `WidgetSurface.translate()` + overrides (`postscript` x2, `svg_file_surface`, `image_surface` x2) |
 | `fl_visual` | a `__gshared` global; `platform_x11.createWindow()`'s own `visual` parameter shadows it in the same file (same shape as `fl_colormap`) |
 | `fl_xyline` | `GraphicsDriver.xyline()` (abstract) + overrides |
@@ -616,7 +616,7 @@ exists. FLTK's Fluid's own property-panel fields (and its own
 `widget_panel.fl`) share one callback per field, gated on the C++
 `void*` parameter being the sentinel `LOAD` or not:
 
-```cpp
+```C++
 void label_cb(Fl_Input* i, void* v) {
   if (v == LOAD) {
     i->value(current_widget->label());
@@ -733,7 +733,7 @@ each level's dynamic type, e.g. `check_redraw_corresponding_parent()`
 (deciding whether a selected node sits inside a `Tabs`'s or `Wizard`'s
 hidden page):
 
-```cpp
+```C++
 for (Node *i = s; i && i->parent; i = i->parent) {
   if (dynamic_cast<Group_Node*>(i) && prev_parent) {
     if (dynamic_cast<Tabs_Node*>(i)) { ((Fl_Tabs*)...)->value(...); return; }
@@ -748,7 +748,7 @@ this type") becomes `cast(T) x !is null`, or more idiomatically D's
 `if (auto t = cast(T) x)` pattern, which both tests *and* gives you the
 correctly-typed reference in one step:
 
-```d
+```D
 for (Node i = s; i !is null; i = i.parent)
 {
     auto iw = i in live.widgetOf;

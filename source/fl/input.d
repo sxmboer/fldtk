@@ -60,7 +60,7 @@
  */
 module fl.input;
 
-import std.ascii : isDigit, isHexDigit, isWhite;
+import std.ascii : isDigit, isWhite;
 import std.algorithm.searching : canFind;
 
 import fl.enumerations;
@@ -408,12 +408,12 @@ class Input : Input_
                 fl.core.composeReset();
 
                 int ip = insertPosition() < mark() ? insertPosition() : mark();
+                // Decimal numbers only, as std.conv.to!int and to!double
+                // read them: a sign at the start and digits, and for a
+                // FloatInput also the point and the exponent.
                 bool legal =
                        (ip == 0 && (ascii == '+' || ascii == '-'))
                     || (ascii >= '0' && ascii <= '9')
-                    || (ip == 1 && index(0) == '0' && (ascii == 'x' || ascii == 'X'))
-                    || (ip > 1 && index(0) == '0' && (index(1) == 'x' || index(1) == 'X')
-                        && ((ascii >= 'A' && ascii <= 'F') || (ascii >= 'a' && ascii <= 'f')))
                     || (inputType() == inputFloat && ascii != 0 && legalFpChars.canFind(ascii));
 
                 if (legal)

@@ -91,6 +91,8 @@ import std.process;
 import std.regex : ctRegex, matchAll, matchFirst;
 import std.stdio;
 import std.string;
+import std.parallelism;
+import core.atomic : atomicLoad, atomicOp;
 
 version (Windows)
 {
@@ -335,7 +337,8 @@ int main(string[] args)
         enforce(wait(pid) == 0, "dub build failed");
     }
 
-    int total, built, skipped;
+    // Updated from the parallel build loop below, hence shared/atomic.
+    shared int total, built, skipped;
     string[] failures;
 
     foreach (category; categories)
@@ -394,7 +397,7 @@ int main(string[] args)
                 .map!(e => e.name).array;
         candidates.sort();
 
-        foreach (src; candidates)
+        foreach (src; candidates.parallel)
         {
             string stem = baseName(src).stripExtension();
             if (!definesMain(src))
@@ -404,13 +407,13 @@ int main(string[] args)
             if (nameFilter.length && name != nameFilter && stem != nameFilter)
                 continue;
 
-            total++;
+            atomicOp!"+="(total, 1);
 
             auto skipReason = stem in skip;
             version (Windows) if (skipReason is null) skipReason = stem in skipWindows;
             if (skipReason)
             {
-                skipped++;
+                atomicOp!"+="(skipped, 1);
                 writefln("%-28s %-9s skipped -- %s", name, category, *skipReason);
                 continue;
             }
@@ -576,7 +579,7 @@ int main(string[] args)
             {
                 mkdirRecurse(buildPath(buildDir, "obj"));
                 std.file.write(modeStamp, mode);
-                built++;
+                atomicOp!"+="(built, 1);
                 writefln("%-28s %-9s ok", name, category);
             }
             else
@@ -599,7 +602,7 @@ int main(string[] args)
                     .filter!(l => l.toLower.canFind("error") || l.toLower.canFind("exception"))
                     .array;
                 string reason = firstError.length ? firstError[0].strip : "(build failed)";
-                failures ~= category ~ "/" ~ name ~ ": " ~ reason;
+                synchronized failures ~= category ~ "/" ~ name ~ ": " ~ reason;
                 writefln("%-28s %-9s FAILED  %s", name, category, reason);
             }
         }
@@ -607,7 +610,7 @@ int main(string[] args)
 
     writeln();
     writefln("buildsamples: %d built, %d skipped, %d failed (of %d)",
-        built, skipped, failures.length, total);
+        atomicLoad(built), atomicLoad(skipped), failures.length, atomicLoad(total));
     if (failures.length)
     {
         writeln("Failures:");

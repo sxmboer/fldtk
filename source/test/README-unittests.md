@@ -12,7 +12,7 @@ relate.
 2. Define a class derived from `FlGroup` for your test, with a static
    `create()` factory:
 
-   ```d
+   ```D
    module unittest_xxx;
 
    import fl;
@@ -45,7 +45,7 @@ relate.
 3. Add an entry to the `enum : int { ... }` block near the top of
    `unittests.d`:
 
-   ```d
+   ```D
    enum : int
    {
        UT_TEST_ABOUT = 0,

@@ -236,7 +236,7 @@ Identical to `source/examples/tree_as_container.d` except for the added
 `import core.memory : GC;` and the `GC.disable();` as the first line of
 `main()`:
 
-```d
+```D
 // D transliteration of FLTK's examples/tree-as-container.cxx.
 // Build: rdmd buildsamples.d examples tree_as_container
 import fl;
@@ -320,7 +320,7 @@ shutdown path (`Window.hide()`) instead of being `SIGTERM`ed -- required
 for druntime's GC profile summary to print at all, since both `SIGTERM`
 and `core.stdc.exit()` skip its termination hook:
 
-```d
+```D
     win.end();
     win.resizable(win);
     win.show();

@@ -9,6 +9,8 @@
 # @main indicates the main menu.
 #
 
+@main:Widget\nGallery:widget_gallery
+
 @main:Widget\nTests...:@x
 	@x:Fl_Browser:browser browser.d
 	@x:Fl_Input:input
@@ -73,7 +75,7 @@
 @main:Other\nTests...:@o
 	@o:File Chooser:file_chooser
 	@o:Native File Chooser:native_filechooser
-	@o:HelpDialog:help_dialog help_dialog.html
+	@o:HtmlDialog:help_dialog help_dialog.html
 	@o:Input Choice:input_choice
 	@o:Preferences:preferences
 	@o:Threading:threads
@@ -120,36 +122,39 @@
 	@f:compact\nbuttons:compact_buttons
 	@f:SVG\ngradients:svg_gradients
 	@f:line widths:arc_width
-	@f:GL text:gl_text
-	@f:GL capture:gl_capture
+	@f:Markdown...:@fm
+		@fm:Markdown\nviewer:markdown_viewer
+		@fm:Markdown\neditor:markdown_editor
 	@f:Pen and\nTouch...:@fp
 		@fp:pen:pen_test
 		@fp:touch:touch_test
-
-@main:Developer\nTests...:@v
-	@v:Flex and\nGrid...:@vf
-		@vf:flex demo:flex_demo
-		@vf:flex login:flex_login
-		@vf:grid\nalignment:grid_alignment
-		@vf:grid buttons:grid_buttons
-		@vf:grid dialog:grid_dialog
-		@vf:grid login:grid_login
-	@v:Events and\nFocus...:@ve
-		@ve:handle\nevents:handle_events
-		@ve:handle keys:handle_keys
-		@ve:window focus:windowfocus
-		@ve:coordinates:coordinates
-		@ve:pen pal:penpal
-	@v:Widgets and\nWindows...:@vw
-		@vw:adjuster:adjuster
-		@vw:group:group
-		@vw:wizard:wizard
-		@vw:terminal:terminal
-		@vw:two windows:twowin
-		@vw:icon:icon
-		@vw:resize\nexample 5c:resize_example5c
-	@v:GL image:gl_image
-	@v:GLUT:glut_test
-	@v:versions:fltk_versions
-	@v:X11 visuals:list_visuals
-	@v:shadowed\nvariables:shadow_variables
+	@f:Developer\nTests...:@v
+		@v:Flex and\nGrid...:@vf
+			@vf:flex demo:flex_demo
+			@vf:flex login:flex_login
+			@vf:grid\nalignment:grid_alignment
+			@vf:grid buttons:grid_buttons
+			@vf:grid dialog:grid_dialog
+			@vf:grid login:grid_login
+		@v:Events and\nFocus...:@ve
+			@ve:handle\nevents:handle_events
+			@ve:handle keys:handle_keys
+			@ve:window focus:windowfocus
+			@ve:coordinates:coordinates
+			@ve:pen pal:penpal
+		@v:Widgets and\nWindows...:@vw
+			@vw:adjuster:adjuster
+			@vw:group:group
+			@vw:wizard:wizard
+			@vw:terminal:terminal
+			@vw:two windows:twowin
+			@vw:icon:icon
+			@vw:resize\nexample 5c:resize_example5c
+		@v:OpenGL...:@vg
+			@vg:GL text:gl_text
+			@vg:GL capture:gl_capture
+		@v:GL image:gl_image
+		@v:GLUT:glut_test
+		@v:versions:fltk_versions
+		@v:X11 visuals:list_visuals
+		@v:shadowed\nvariables:shadow_variables

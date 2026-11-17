@@ -59,6 +59,22 @@ XForms compatibility layer it was written for is not part of fldtk.
 - `arc_width`: `fl_rect()`, `fl_arc()` and `fl_pie()` at line widths
   from the default to 8, each on a grey square the size of its box, to
   show where a wide line falls and that a pie's size doesn't change.
+- `markdown_viewer`: a `MarkdownDialog` showing a Markdown file, by
+  default fldtk's `README.md`. Its links lead on through the tutorials
+  and the other documents.
+- `markdown_editor`: a Markdown editor, the text on the left and the
+  formatted page on the right, which follows the typing and the
+  scrolling. The Format menu writes the markup for every element the
+  page shows, with the usual shortcuts (Ctrl+B bold, Ctrl+I italic,
+  Ctrl+1 to 6 headings, Ctrl+K a link, ...; the welcome text lists
+  them all); a link to another `.md` file opens it in the editor.
+  `build/markdown_editor [file.md]`.
+- `widget_gallery`: every widget of Fluid's widget bin, in the bin's
+  order and in the default scheme, each with its bin icon and name, one
+  tab per bin group: the pictures for `docs/TECHNICAL_REFERENCE.md`.
+  `build/widget_gallery --capture docs/widgets`, run from the
+  fldtk folder, writes those pictures as PNG files and quits. They are
+  checked in; run it again when a widget's look changes.
 
 ## The `unittests` program
 

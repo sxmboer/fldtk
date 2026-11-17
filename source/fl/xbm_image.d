@@ -9,7 +9,7 @@
  * };` byte array. Ported from `Fl_XBM_Image::Fl_XBM_Image()`, reading
  * the whole file via `std.file.readText()` and splitting into lines
  * rather than FLTK's byte-at-a-time `fgets()` loop (this port's
- * usual substitution, same as `fl.help_view`/`fl.file_browser`'s own
+ * usual substitution, same as `fl.html_view`/`fl.file_browser`'s own
  * loaders) -- safe here since XBM files are plain ASCII text
  * throughout, unlike PNM's binary pixel formats (see fl.pnm_image's
  * row for why that one needs raw bytes instead).

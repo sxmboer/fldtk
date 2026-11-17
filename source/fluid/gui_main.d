@@ -46,7 +46,7 @@
  *
  * `show_help()` is real -- `showHelp()` below,
  * wired to `&Help/&Rapid development with FLUID.../&FLTK Programmers
- * Manual...`. Ported from `Application::show_help()` (`Fluid.cxx`); see
+ * Manual...`; `&Help/fl&dtk README...` is `showReadme()`. Ported from `Application::show_help()` (`Fluid.cxx`); see
  * its own doc comment for the fallback chain (`$FLDTK_DOCDIR`, a canned
  * page, or `fl.openUri()` to fltk.org).
  *
@@ -101,7 +101,7 @@ import widget_panel : make_widget_panel, wireEditHooks, widgetPanelLoad = load,
     widgetPanelOnEdited = onEdited, widgetPanelOnEditSettled = onEditSettled,
     widgetPanelOnOpenExternalEditor = onOpenExternalEditor,
     widgetPanelOnBeforeTextEdit = onBeforeTextEdit,
-    overlayCb, okCb, liveModeCb, runCb, changeTypeCb, wLiveMode, thePanel, widgetTabs, tabsWizard, overlayButton,
+    overlayCb, okCb, liveModeCb, runCb, helpCb, changeTypeCb, wLiveMode, thePanel, widgetTabs, tabsWizard, overlayButton,
     vCodeInput2, vCodeInput3, wCallback, userDataInput;
 import fluid.factory : createNode, isNodeType;
 import fluid.instantiate : instantiateOne, instantiateChild, instantiateStandalone, idealSizeFor, startsHorizontal, defaultLabelFor, defaultNameFor, LiveTree, loadImageFile, applyMenuItems, applyProperties, scrollOffsetWithin, getTextStuff, onImageLoadError;
@@ -780,7 +780,8 @@ void runEditor(string[] args)
     newWidgetItem("&New/&Browsers/&Browser", "Browser");
     newWidgetItem("&New/&Browsers/Tre&e", "Tree");
     newWidgetItem("&New/&Browsers/Chec&k Browser", "CheckBrowser");
-    newWidgetItem("&New/&Browsers/&Help View", "HelpView");
+    newWidgetItem("&New/&Browsers/&HTML View", "HtmlView");
+    newWidgetItem("&New/&Browsers/&Markdown View", "MarkdownView");
     newWidgetItem("&New/&Browsers/File Bro&wser", "FileBrowser");
     newWidgetItem("&New/&Browsers/Ta&ble", "Table");
     newWidgetItem("&New/&Other/Bo&x", "Box");
@@ -889,6 +890,7 @@ void runEditor(string[] args)
     };
 
     runCb = (w) { runProject(); };
+    helpCb = (w) { showDocument(referenceDoc, referenceSectionOf(helpNode())[0]); };
     changeTypeCb = (kind) { changeSelectedType(kind); };
 
     okCb = (w) {
@@ -1123,9 +1125,10 @@ void runEditor(string[] args)
     // `&Rapid development with FLUID...`/`&FLTK Programmers Manual...`
     // both call `showHelp()`, ported
     // from `Application::show_help()` (`Fluid.cxx`); see that function's
-    // own doc comment for what it actually shows. Order/names/divider
-    // match `Menu.cxx`'s real `main_menu[]` `&Help` group exactly.
+    // own doc comment for what it actually shows. `fl&dtk README...`
+    // opens fldtk's README in a Markdown viewer (`showReadme()`).
     menu.add("&Help/&Rapid development with FLUID...", 0, (w) { showHelp("fluid.html"); });
+    menu.add("&Help/fl&dtk README...", 0, (w) { showReadme(); });
     menu.add("&Help/&FLTK Programmers Manual...", 0, (w) { showHelp("index.html"); }, menuDivider);
     menu.add("&Help/&About", 0, (w) { showAboutPanel(); });
 
@@ -1148,7 +1151,7 @@ void runEditor(string[] args)
     // against `fluid.app_prefs.appPrefs` the same way every other
     // persisted UI setting in this app already works. Defaults chosen
     // to tile the same way FLTK's own do, just resized for this
-    // port's own `shelf_`/`widgetBinPanel` dimensions (280x400/600x102
+    // port's own `shelf_`/`widgetBinPanel` dimensions (280x400/624x102
     // here vs FLTK's 300x525/600x102) rather than copying FLTK's
     // literal pixel values verbatim.
     bool shelfVisible = positionWindow(shelf_, "main_window_pos", true, 10, 30);
@@ -4223,7 +4226,8 @@ private MenuItem[] changeToMenuItems()
     return items;
 }
 
-/// The project tree's right-click menu: "Change To" for a widget that
+/// The project tree's right-click menu: help on the selected node (its
+/// section of the Technical Reference), "Change To" for a widget that
 /// can change kind, then the Edit menu's commands for the selection.
 private void showTreeContextMenu()
 {
@@ -4241,6 +4245,9 @@ private void showTreeContextMenu()
         items[0].flags |= menuDivider;
     items ~= edit;
     items ~= MenuItem(null);
+    auto section = referenceSectionOf(helpNode());
+    items = [MenuItem(section[1].length ? "Help on " ~ section[1] : "Technical Reference", 0,
+        (w) { showDocument(referenceDoc, section[0]); }, menuDivider)] ~ items;
     popupMenuItems_ = items;
     auto m = fl.popup(popupMenuItems_.ptr, fl.core.eventXRoot(), fl.core.eventYRoot());
     if (m !is null) m.doCallback(browser_);
@@ -5954,7 +5961,7 @@ private void showAboutPanel()
 /// Lazily-created, reused across calls -- matches FLTK's own
 /// `Application::help_dialog` (a single persistent `Fl_Help_Dialog*`,
 /// never recreated).
-private HelpDialog helpDialog_;
+private HtmlDialog helpDialog_;
 
 /// `&Help/&Rapid development with FLUID...` (`name == "fluid.html"`) and
 /// `&Help/&FLTK Programmers Manual...` (`name == "index.html"`) --
@@ -5974,7 +5981,7 @@ private void showHelp(string name)
     import std.process : environment;
     import std.file : exists;
 
-    if (helpDialog_ is null) helpDialog_ = new HelpDialog();
+    if (helpDialog_ is null) helpDialog_ = new HtmlDialog();
 
     auto docdir = environment.get("FLDTK_DOCDIR");
     string helpname = docdir ? docdir ~ "/" ~ name : "";
@@ -6023,7 +6030,7 @@ private void showHelp(string name)
     else
     {
         string msg;
-        // Matches `fl.help_view`'s own caller convention (`if
+        // Matches `fl.html_view`'s own caller convention (`if
         // (!openUri(f, urimsg)) ...`) -- surface a real failure (no
         // browser configured, etc.) instead of silently discarding it.
         if (!openUri("https://www.fltk.org/doc-1.5/" ~ name, msg))
@@ -6031,6 +6038,111 @@ private void showHelp(string name)
         return;
     }
     helpDialog_.show();
+}
+
+/// The window showing fldtk's Markdown documents (the README, the
+/// Technical Reference), made on first use.
+private MarkdownDialog docDialog_;
+
+/// Shows the document `name` (a path relative to the folder Fluid was
+/// started from, the fldtk folder where `dub build :fluid` puts it) in
+/// `docDialog_`, scrolled to the heading `anchor` if one is given.
+/// Its links lead on to the tutorials and the other documents there.
+private void showDocument(string name, string anchor = null)
+{
+    import std.file : exists, thisExePath;
+    import std.path : buildNormalizedPath, dirName;
+
+    string dir;
+    try dir = dirName(thisExePath());
+    catch (Exception) {}
+    string path = buildNormalizedPath(dir, name);
+    if (!dir.length || !exists(path))
+    {
+        fl.message("There is no " ~ name ~ " in " ~ (dir.length ? dir : "Fluid's folder") ~ ".");
+        return;
+    }
+    if (docDialog_ is null) docDialog_ = new MarkdownDialog();
+    if (docDialog_.view().filename() != path || anchor.length)
+        docDialog_.load(anchor.length ? path ~ "#" ~ anchor : path);
+    docDialog_.show();
+}
+
+/// `&Help/fl&dtk README...`: the README.md in Fluid's folder.
+private void showReadme()
+{
+    showDocument("README.md");
+}
+
+/// The Technical Reference, relative to Fluid's folder.
+private enum referenceDoc = "docs/TECHNICAL_REFERENCE.md";
+
+/// The section of the Technical Reference about nodes of type
+/// `typeName`: the anchor and text of the heading that shows the type's
+/// Fluid icon (`pixmaps_svg/flButton.svg` for a Button). Both are null
+/// when the type has no section, as for code nodes.
+private string[2] referenceSection(string typeName, string referenceText)
+{
+    import fl.markdown : MdBlock, MdBlockKind, MdInlineKind, parseMarkdown, plainText;
+    import fluid.pixmaps : iconNameFor;
+    import std.algorithm : endsWith;
+    import std.string : strip;
+
+    string icon = iconNameFor(typeName);
+    if (icon is null) return [null, null];
+    string[2] found;
+    void search(MdBlock b)
+    {
+        if (found[0] !is null) return;
+        if (b.kind == MdBlockKind.heading)
+        {
+            foreach (inl; b.inlines)
+                if (inl.kind == MdInlineKind.image && inl.url.endsWith("/" ~ icon ~ ".svg"))
+                {
+                    found = [b.id, plainText(b.inlines).strip()];
+                    return;
+                }
+        }
+        foreach (c; b.children) search(c);
+    }
+    search(parseMarkdown(referenceText));
+    return found;
+}
+
+unittest
+{
+    import fluid.pixmaps : loadPixmaps;
+
+    loadPixmaps();
+    string md = "# Reference\n\n## 4. Buttons\n\n"
+        ~ "### ![](../source/fluid/pixmaps_svg/flButton.svg) Button\n\ntext\n\n"
+        ~ "### ![](../source/fluid/pixmaps_svg/flReturnButton.svg) Return Button\n";
+    assert(referenceSection("Button", md) == ["button", "Button"]);
+    assert(referenceSection("ReturnButton", md) == ["return-button", "Return Button"]);
+    assert(referenceSection("Fl_Slider", md) == [null, null]);
+    assert(referenceSection("Function", md) == [null, null]);
+}
+
+/// `referenceSection()` for `n` in the Technical Reference next to
+/// Fluid; both null when `n` is null, has no section, or the reference
+/// can't be read.
+private string[2] referenceSectionOf(Node n)
+{
+    import std.file : thisExePath;
+    import std.path : buildNormalizedPath, dirName;
+
+    if (n is null) return [null, null];
+    string text;
+    try text = readText(buildNormalizedPath(dirName(thisExePath()), referenceDoc));
+    catch (Exception) return [null, null];
+    return referenceSection(n.typeName, text);
+}
+
+/// The node the Help commands are about: the last one selected.
+private Node helpNode()
+{
+    auto sel = allSelectedNodes();
+    return sel.length ? sel[$ - 1] : null;
 }
 
 unittest

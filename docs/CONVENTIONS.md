@@ -355,7 +355,7 @@ See [`BUILDING.md`](BUILDING.md) for the full walkthrough. In summary:
 Fluid's own interface panels (`source/fluid/panels/*.fl`) are its primary
 source, the same self-hosting model FLTK uses for its own panels. The
 `source/fluid/panels/generated/*.d` files are `fluid -c` output: generated
-rather than checked in, rebuilt by `buildfluidpanels.d` before each `dub build :fluid`, and edited only by
+rather than checked in, rebuilt by `buildpanels.d` before each `dub build :fluid`, and edited only by
 editing the `.fl` and regenerating. Before authoring or editing a `.fl` file,
 read [`FLUID_DIALECT.md`](FLUID_DIALECT.md); before converting a raw C++ `.fl`
 file, read [`TRANSLITERATION_GUIDE.md`](TRANSLITERATION_GUIDE.md).

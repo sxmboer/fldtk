@@ -67,7 +67,7 @@ Compiles source/fl/ into libfldtk.so in the fldtk folder.
 
 Builds ./fluid, the UI designer. Fluid's own interface panels are
 themselves Fluid documents (source/fluid/panels/*.fl). Before each build,
-dub runs buildfluidpanels.d, which regenerates
+dub runs buildpanels.d, which regenerates
 source/fluid/panels/generated/*.d from any panel that changed. On a fresh
 checkout none of them exist yet, and a temporary build of Fluid's code
 generator, fluid-bootstrap, produces them.

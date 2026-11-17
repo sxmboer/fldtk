@@ -3,7 +3,7 @@
 //
 // Notes on this transliteration:
 //  - Fl_Sys_Menu_Bar/Fl_Menu_Item (SysMenuBar/MenuItem), Fl_Help_Dialog
-//    (HelpDialog), Fl_Preferences (Preferences), Fl_Image_Surface/
+//    (HtmlDialog), Fl_Preferences (Preferences), Fl_Image_Surface/
 //    Fl_Surface_Device (ImageSurface/SurfaceDevice), Fl_Bitmap (Bitmap),
 //    Fl::fl_alert() (fl.ask.alert()), and Fl::fl_choice()
 //    (fl.ask.choice()) are all real, ported fldtk API, used directly
@@ -371,7 +371,7 @@ class Sudoku : DoubleWindow
     private GameState[64] undoStack;
     private int undoHead_, undoTail_, redoHead_;
 
-    private static HelpDialog helpDialog_;
+    private static HtmlDialog helpDialog_;
     private static Preferences prefs_;
 
     static this()
@@ -712,7 +712,7 @@ class Sudoku : DoubleWindow
     {
         if (helpDialog_ is null)
         {
-            helpDialog_ = new HelpDialog();
+            helpDialog_ = new HtmlDialog();
 
             helpDialog_.value(
                 "<HTML>\n" ~

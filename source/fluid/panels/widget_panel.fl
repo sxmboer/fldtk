@@ -1819,7 +1819,7 @@ else
 decl {/// FLTK: `Widget_Node::textstuff()` returns non-zero (the widget has a
 /// text font/size/color of its own, separate from its label) only for
 /// the node kinds overriding it: inputs, text displays, value inputs/
-/// outputs/sliders, spinners, counters, browsers, help views, terminals,
+/// outputs/sliders, spinners, counters, browsers, HTML and Markdown views, terminals,
 /// input choices and menu widgets.
 private bool widgetHasTextStuff(Widget w)
 \{
@@ -1831,7 +1831,8 @@ private bool widgetHasTextStuff(Widget w)
         || cast(Spinner) w !is null
         || cast(Counter) w !is null
         || cast(Browser_) w !is null
-        || cast(HelpView) w !is null
+        || cast(HtmlView) w !is null
+        || cast(MarkdownView) w !is null
         || cast(Terminal) w !is null
         || cast(InputChoice) w !is null
         || cast(Menu_) w !is null;
@@ -5239,10 +5240,18 @@ o.add(widgetTabGridChild);}
                 labelsize 10
                 tooltip {Save the project, build the program with dub and start it (F5).}
               }
+            Button helpButton
+              {
+                label {&Help}
+                callback {helpCb(o);}
+                xywh {262 370 50 20}
+                labelsize 10
+                tooltip {Show the selected widget's section of the Technical Reference.}
+              }
             Box {}
               {
                 comment {Hidden resizable box}
-                xywh {258 370 72 20}
+                xywh {312 370 18 20}
                 labelsize 11
                 hide
                 resizable
@@ -5257,12 +5266,14 @@ o.add(widgetTabGridChild);}
           }
       }
   }
-comment {`liveModeCb`/`overlayCb`/`runCb`/`okCb` are the callbacks of the
-bottom bar's four buttons (`wLiveMode`, `overlayButton`, `runButton` and
-the Close `ReturnButton`). `gui_main.d` assigns them; each button calls
-whatever its variable holds when it is pressed. `liveModeCb` runs Live Resize (ported from FLTK's
+comment {`liveModeCb`/`overlayCb`/`runCb`/`helpCb`/`okCb` are the callbacks
+of the bottom bar's five buttons (`wLiveMode`, `overlayButton`,
+`runButton`, `helpButton` and the Close `ReturnButton`). `gui_main.d`
+assigns them; each button calls whatever its variable holds when it is
+pressed. `liveModeCb` runs Live Resize (ported from FLTK's
 `live_mode_cb()`), `overlayCb` forwards to `toggleOverlays()`, `runCb`
-runs File > Run (`runProject()`), and `okCb` closes the panel.}
+runs File > Run (`runProject()`), `helpCb` shows the selected widget's
+section of the Technical Reference, and `okCb` closes the panel.}
   {
     in_source
     in_header
@@ -5273,6 +5284,11 @@ decl {void delegate(Widget) liveModeCb;}
     global
   }
 decl {void delegate(Widget) runCb;}
+  {
+    public
+    global
+  }
+decl {void delegate(Widget) helpCb;}
   {
     public
     global

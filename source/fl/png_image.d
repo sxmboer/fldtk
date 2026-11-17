@@ -691,7 +691,7 @@ class PngImage : RGBImage
     /// at compile time via Fluid or similar. A non-empty `namePng` adds
     /// the decoded image to the shared-image pool under that name, as
     /// FLTK does, so `SharedImage.get(namePng)` (and an `<img src>` in a
-    /// `HelpView`) finds it.
+    /// `HtmlView`) finds it.
     this(string namePng, const(ubyte)[] buffer)
     {
         import fl.shared_image : SharedImage;

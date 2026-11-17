@@ -144,7 +144,7 @@ static this()
     // source comments say so explicitly ("FLUID does not support
     // extended Fl_Tree"/"Fl_Help_View is derived from Fl_Group, but
     // supporting children is not useful"), and this port's own
-    // fl.tree.Tree/fl.help_view.HelpView constructors both already call
+    // fl.tree.Tree/fl.html_view.HtmlView constructors both already call
     // end() internally (matching Fl_Text_Display's own FLTK pattern),
     // so registering them as a plain WidgetNode here -- not GroupNode --
     // needs no extra Group.current() bookkeeping. Fl_Table is the
@@ -152,7 +152,9 @@ static this()
     // widgets.
     reg("Tree", () => cast(Node) new WidgetNode());
     reg("Help_View", () => cast(Node) new WidgetNode());
-    registry["HelpView"] = () => cast(Node) new WidgetNode();
+    registry["HtmlView"] = () => cast(Node) new WidgetNode();
+    // A Group in the library, a leaf here, like HtmlView.
+    registry["MarkdownView"] = () => cast(Node) new WidgetNode();
     reg("Check_Browser", () => cast(Node) new WidgetNode());
     registry["CheckBrowser"] = () => cast(Node) new WidgetNode();
     reg("File_Browser", () => cast(Node) new WidgetNode());

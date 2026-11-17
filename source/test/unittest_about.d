@@ -10,7 +10,7 @@ import unittests;
 //
 //------- Introduction to FLTK drawing test -------
 //
-class UtAboutView : HelpView
+class UtAboutView : HtmlView
 {
     static Widget create()
     {

@@ -1,5 +1,7 @@
 # fldtk
 
+[//]: # (This file is best viewed using a markdown reader https://md-reader.github.io/install)
+
 **fldtk** (Full-D-toolkit) is a complete port of [FLTK](https://www.fltk.org/), the
 Fast Light Toolkit GUI system, to the D programming language. It is not a binding layer: the
 toolkit is reimplemented as native D code, so the only things it links against are

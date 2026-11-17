@@ -96,7 +96,7 @@ returns the offset where the match starts, so the next Find starts at that
 same match and returns it again: pressing Enter in the find field never
 moves past the first match after the current position.
 
-**Deviated from in the port**: `fl.help_dialog`'s `findCB()` continues at
+**Deviated from in the port**: `fl.html_dialog`'s `findCB()` continues at
 the match's offset plus one, and starts over at 0 after the last match.
 
 ### `Fl_Cairo_Graphics_Driver::draw(const char*, int, float, float)` (`src/drivers/Cairo/Fl_Cairo_Graphics_Driver.cxx` line 1241): text sits too low on a line with a fallback-font character
@@ -170,7 +170,7 @@ Fluid's Settings dialog after dragging another window across it, and
 To test it in FLTK, save this program as `group_label_overhang.cxx`, the
 FLTK version of `smoke-tests/group_label_overhang.d`:
 
-```cpp
+```C++
 #include <FL/Fl.H>
 #include <FL/Fl_Window.H>
 #include <FL/Fl_Group.H>
@@ -260,7 +260,7 @@ two need the paste check to accept what the typing check does.
 
 To test it in FLTK, save this program as `float_input_paste.cxx`:
 
-```cpp
+```C++
 #include <FL/Fl.H>
 #include <FL/Fl_Window.H>
 #include <FL/Fl_Float_Input.H>
@@ -287,5 +287,8 @@ bottom field and paste with Ctrl+V: it beeps and stays empty. Typing
 `1e5` there works. Selecting and pasting `1.e5` works; `0x1F` is
 refused like `1e5`.
 
-**Not yet fixed in the port**: `fl.input_.Input_.handle()` has the same
-check.
+**Deviated from in the port**: fldtk's number fields take decimal numbers
+only, as `std.conv.to!int` and `to!double` read them (D's conversions
+read neither `0x1F` nor `1,5`). Typing (`fl.input.Input.handleKey()`)
+and pasting (`fl.input_.Input_.handle()`, `Event.paste`) accept the same
+numbers, `1e5` included.

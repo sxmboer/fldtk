@@ -2860,6 +2860,9 @@ class TextDisplay : FlGroup
     int xyToPosition(int X, int Y, PositionType posType = PositionType.characterPos)
     {
         int fontHeight = maxsize_;
+        // Before the first layout (recalcDisplay()) there is no line
+        // height yet, and no line in view: the top is the only answer.
+        if (fontHeight <= 0) return firstChar_;
         int visLineNum = (Y - textArea_.y) / fontHeight;
         if (visLineNum < 0) return firstChar_;
         if (visLineNum >= nVisibleLines_) visLineNum = nVisibleLines_ - 1;
@@ -2876,6 +2879,12 @@ class TextDisplay : FlGroup
     {
         int fontHeight = maxsize_;
         int fontWidth = tmpFontWidth;
+        // Before the first layout (recalcDisplay()) there are no lines.
+        if (fontHeight <= 0 || fontWidth <= 0)
+        {
+            row = column = 0;
+            return;
+        }
 
         row = (Y - textArea_.y) / fontHeight;
         if (row < 0) row = 0;
@@ -3780,5 +3789,22 @@ unittest
 
     destroy(td);
     fl.core.resetForTest();
+    FlGroup.current(null);
+}
+
+unittest
+{
+    // Asking for a position before the first layout gives the top
+    // instead of dividing by the line height, which is still 0.
+    FlGroup.current(null);
+    auto buf = new TextBuffer();
+    buf.text("one\ntwo\nthree\n");
+    auto td = new TextDisplay(0, 0, 200, 100);
+    td.buffer(buf);
+    assert(td.maxsize_ == 0); // not laid out yet
+    assert(td.xyToPosition(5, 50) == 0);
+    int row, column;
+    td.xyToRowcol(5, 50, row, column);
+    assert(row == 0 && column == 0);
     FlGroup.current(null);
 }

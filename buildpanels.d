@@ -1,6 +1,6 @@
 #!/usr/bin/env rdmd
 /*
- * buildfluidpanels.d
+ * buildpanels.d
  *
  * Generates Fluid's dialogs, source/fluid/panels/generated/*.d, from
  * source/fluid/panels/*.fl. Fluid's own dub.sdl runs it before every
@@ -20,7 +20,7 @@
  * Paths are taken from this script's own location, so it works from any
  * working directory.
  */
-module buildfluidpanels;
+module buildpanels;
 
 import std.algorithm;
 import std.array : array;
@@ -39,7 +39,7 @@ else
 int main()
 {
     // buildNormalizedPath() first: __FILE_FULL_PATH__ keeps a "." segment
-    // when the script is run as ./buildfluidpanels.d, and dirName() doesn't
+    // when the script is run as ./buildpanels.d, and dirName() doesn't
     // collapse it.
     string repoRoot = dirName(buildNormalizedPath(__FILE_FULL_PATH__));
     string fluidDir = buildPath(repoRoot, "source", "fluid");
@@ -69,7 +69,7 @@ int main()
     if (stale.length == 0)
         return 0;
 
-    writeln("buildfluidpanels: generating ", stale.length, " Fluid panel(s) through fluid-bootstrap...");
+    writeln("buildpanels: generating ", stale.length, " Fluid panel(s) through fluid-bootstrap...");
     auto pid = spawnProcess(["dub", "build", ":fluid", "--config=bootstrap",
             "--compiler=" ~ environment.get("DC", "dmd")],
         cast(string[string]) null, Config.none, repoRoot);

@@ -1,5 +1,7 @@
 # Tutorials
 
+[//]: # (This file is best viewed using a markdown reader https://md-reader.github.io/install)
+
 Step-by-step introductions to making programs with fldtk and Fluid,
 from the very first one on. Each builds on what the ones before it
 show, so they are best read in order.
