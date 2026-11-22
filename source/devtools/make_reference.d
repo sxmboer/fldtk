@@ -132,6 +132,16 @@ bool findType(string name, out JSONValue type, out JSONValue mod)
 
 string prot(JSONValue d) => ("protection" in d) ? d["protection"].str : "public";
 
+// A function, or a function template (`Job runInBackground(T)(...)`,
+// `E selected(E)()`), whose line and doc comment are the template's.
+bool isFunction(JSONValue d)
+{
+    if (d["kind"].str == "function") return true;
+    return d["kind"].str == "template" && ("members" in d)
+        && d["members"].array.any!(m => m["kind"].str == "function"
+            && m["name"].str == d["name"].str);
+}
+
 // The declaration at `line` of `file`, up to its body: one line or
 // several, without attributes and without its body.
 string signature(string file, long line)
@@ -249,8 +259,7 @@ string members(ref typeof(appender!string()) o, string name)
     string[string] desc;
     foreach (d; t["members"].array)
     {
-        string kind = d["kind"].str;
-        if (kind != "function" || prot(d) != "public") continue;
+        if (!isFunction(d) || prot(d) != "public") continue;
         string n = d["name"].str;
         if (n.startsWith("__") || n == "draw" || n == "handle") continue;
         string sig = signature(file, d["line"].integer);
@@ -362,7 +371,7 @@ string functions(ref typeof(appender!string()) o, string modName, string[] names
     string[string] desc;
     foreach (d; mod["members"].array)
     {
-        if (d["kind"].str != "function" || prot(d) != "public") continue;
+        if (!isFunction(d) || prot(d) != "public") continue;
         string n = d["name"].str;
         if (n.startsWith("__")) continue;
         if (names.length && !names.canFind(n)) continue;

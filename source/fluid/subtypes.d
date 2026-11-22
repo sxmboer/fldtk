@@ -313,7 +313,7 @@ unittest
     auto win = new WidgetNode();
     win.typeName = "Fl_Double_Window";
     auto wt = subtypesFor(win.typeName);
-    assert(wt is subtypesFor("Fl_Window") && subtypesFor("widget_class") is null);
+    assert(wt is subtypesFor("Fl_Window") && subtypesFor("class") is null);
     assert(subtypeIndex(win, wt) == 1 && isDoubleWindow("Fl_Window", "Double"));
     setSubtype(win, wt, 0);
     assert(win.typeName == "Fl_Window" && win.typeWord == "" && subtypeIndex(win, wt) == 0);

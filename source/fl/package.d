@@ -5,6 +5,7 @@ public import fl.enumerations;
 public import fl.rgb_colors;
 public import fl.filename;
 public import fl.ask;
+public import fl.background;
 public import fl.text_buffer;
 public import fl.input_;
 public import fl.input;

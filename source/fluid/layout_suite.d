@@ -703,7 +703,7 @@ private LayoutSuite gridSuite()
 /// writeup). `LayoutPreset`/`LayoutSuite`'s
 /// project-file parsing (`readFrom(Reader)`) makes `fluid.layout_suite` import `fluid.
 /// project_reader`, which itself already imports `fluid.factory`/
-/// `fluid.class_node` in a pre-existing cycle back to `project_reader`
+/// the node modules in a pre-existing cycle back to `project_reader`
 /// -- adding `layout_suite` into that same cycle while it still had a
 /// real `static this()` made druntime's `sortCtors()` refuse to start
 /// the program at all (`Cyclic dependency between module constructors/

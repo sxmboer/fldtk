@@ -60,6 +60,7 @@ Terminal tty;
 SchemeChoice schemeChoice;
 Button[9] but;
 Button exitButton;
+Button backButton; // back to the menu above; inactive on the main menu
 
 // Global path variables.
 string appPath;     // directory of all demo binaries
@@ -126,6 +127,12 @@ void createTheForms()
     schemeChoice = new SchemeChoice(90, 405, 100, 25, "Scheme:");
     schemeChoice.labelfont(helveticaBold);
 
+    backButton = new Button(210, 405, 60, 25, "Back");
+    backButton.callback((w) { doback(w); });
+    backButton.shortcut(backSpace); // from anywhere in the window
+    backButton.tooltip("Back to the menu above (Backspace, or click the empty space around the buttons)");
+    backButton.deactivate();
+
     exitButton = new Button(280, 405, 60, 25, "Exit");
     exitButton.callback((w) { doexit(w); });
     exitButton.takeFocus();
@@ -133,7 +140,7 @@ void createTheForms()
     obj = new Button(10, 15, 330, 380);
     obj.type(hiddenButton);
     obj.callback((w) { doback(w); });
-    obj.tooltip("Use right mouse button to show/hide debug terminal");
+    obj.tooltip("Click to go back to the menu above;\nthe right mouse button shows or hides the debug terminal");
 
     but[0] = new Button( 30, 85, 90, 90);
     but[1] = new Button(130, 85, 90, 90);
@@ -291,6 +298,8 @@ void pushMenu(string nnn)
     }
     stack[stsize] = nnn;
     stsize++;
+    if (stsize > 1) backButton.activate();
+    else backButton.deactivate();
 }
 
 // Pop a menu

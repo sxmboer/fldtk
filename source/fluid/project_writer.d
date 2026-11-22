@@ -56,14 +56,9 @@ import fluid.node : Node, Access, ensureUniqueUids;
 import fluid.project_settings : ProjectSettings;
 import fluid.widget_node : WidgetNode;
 import fluid.window_node : WindowNode;
-import fluid.widget_class_node : WidgetClassNode;
+import fluid.class_node : ClassNode;
 import fluid.group_node : GroupNode;
 import fluid.function_node : FunctionNode;
-import fluid.class_node : ClassNode;
-import fluid.decl_node : DeclNode;
-import fluid.decl_block_node : DeclBlockNode;
-import fluid.data_node : DataNode;
-import fluid.code_block_node : CodeBlockNode;
 import fluid.comment_node : CommentNode;
 import fluid.grid_node : GridNode, GridCellInfo;
 import fluid.flex_node : FlexNode;
@@ -355,71 +350,16 @@ final class ProjectWriter
             if (fn.declareC) writeFlag(buf, depth, "C");
         }
 
-        // `class Name {open : Base}` -- the base class is introduced by a
-        // bare `:` token, see `ClassNode.readProperty()`.
+        // A Class's base: a bare `:` token, see `ClassNode.readProperty()`.
         if (auto cn = cast(ClassNode) n)
             if (cn.baseClass.length) writeBracedProp(buf, depth, ":", cn.baseClass);
 
         if (auto wn = cast(WidgetNode) n)
             writeWidgetProperties(buf, wn, depth);
 
-        // DeclNode's visibility/static flags, matching FLTK's own
-        // Decl_Node::write_properties() -- DataNode inherits these too
-        // (FLTK: `Data_Node : public Decl_Node`), see below for its
-        // own additional "filename" property.
-        if (auto dcn = cast(DeclNode) n)
-        {
-            final switch (dcn.visibility_)
-            {
-                case 0: writeFlag(buf, depth, "private"); break;
-                case 1: writeFlag(buf, depth, "public"); break;
-                case 2: writeFlag(buf, depth, "protected"); break;
-            }
-            writeFlag(buf, depth, dcn.staticFlag_ ? "local" : "global");
-        }
-        if (auto dan = cast(DataNode) n)
-        {
-            if (dan.filename.length) writeBracedProp(buf, depth, "filename", dan.filename);
-            // Storage format -- see `data_node.d`'s own doc comment for
-            // the mapping from FLTK's original 6-value `output_
-            // format_` enum down to these two independent flags.
-            // Reuses FLTK's own "textmode"/"compressed" bare-flag
-            // spellings (both real FLTK `.fl` keywords already),
-            // just no longer mutually exclusive with each other the way
-            // FLTK's single `Fl_Choice` forced them to be.
-            if (dan.asString) writeFlag(buf, depth, "textmode");
-            if (dan.compressedFlag) writeFlag(buf, depth, "compressed");
-        }
-
-        // `CodeBlockNode`/`DeclBlockNode`'s own "after" text, matching
-        // FLTK's own two different write conditions exactly:
-        // `CodeBlock_Node::write_properties()` only writes "after" when
-        // `end_code()` is non-empty; `DeclBlock_Node::write_properties()`
-        // writes it unconditionally (FLTK's own comment on that
-        // function says why: "after" always followed by a value token,
-        // even an empty one). `writeMap_` mirrors `DeclBlock_Node`'s own
-        // "map" property, only emitted when it differs from the default
-        // (`CODE_IN_SOURCE`) -- both round-trip-only fields with no
-        // D-codegen meaning in this dialect, see `DeclBlockNode`'s own
-        // doc comment.
-        if (auto cbn = cast(CodeBlockNode) n)
-            if (cbn.afterText.length) writeBracedProp(buf, depth, "after", cbn.afterText);
-        if (auto dbn = cast(DeclBlockNode) n)
-        {
-            if ((dbn.writeMap_ & DeclBlockNode.codeInHeader) != 0) writeFlag(buf, depth, "public");
-            if (dbn.writeMap_ != DeclBlockNode.codeInSource)
-                writeBareProp(buf, depth, "map", format("%d", dbn.writeMap_));
-            writeBracedProp(buf, depth, "after", dbn.afterText);
-        }
-        // `CommentNode.inSource_`/`inHeader_` -- matches FLTK's own
-        // `Comment_Node::write_properties()` exactly: both always
-        // written (never omitted, even at the default), one of a
-        // matched positive/negative pair per flag.
+        // A Comment node that stays in the project file only.
         if (auto comn = cast(CommentNode) n)
-        {
-            writeFlag(buf, depth, comn.inSource_ ? "in_source" : "not_in_source");
-            writeFlag(buf, depth, comn.inHeader_ ? "in_header" : "not_in_header");
-        }
+            if (!comn.inSource_) writeFlag(buf, depth, "not_in_source");
 
         if (auto win = cast(WindowNode) n)
         {
@@ -430,12 +370,6 @@ final class ProjectWriter
             if (win.hasSizeRange)
                 writeBareProp(buf, depth, "size_range", format("{%d %d %d %d}",
                     win.sizeRangeMinW, win.sizeRangeMinH, win.sizeRangeMaxW, win.sizeRangeMaxH));
-        }
-
-        if (auto wcn = cast(WidgetClassNode) n)
-        {
-            if (wcn.wcRelative == 1) writeFlag(buf, depth, "position_relative");
-            else if (wcn.wcRelative == 2) writeFlag(buf, depth, "position_relative_rescale");
         }
 
         if (auto gn = cast(GridNode) n) writeGridProperties(buf, gn, depth);
@@ -924,15 +858,10 @@ unittest
 
 unittest
 {
-    // `DeclBlockNode`/`CodeBlockNode` round-trip -- `after`/`map`/`public` all
-    // survive a load-then-save cycle, including FLTK's own two
-    // different write conditions (`CodeBlockNode`'s "after" only when
-    // non-empty; `DeclBlockNode`'s "after" always written, even empty;
-    // "map" only when it differs from the default). Also covers a
-    // nested `declblock {}` (a `decl {}` child inside another
-    // `declblock {}`) and a `codeblock {}` sitting among a Window's own
-    // widget-tree children -- both real, exercised shapes, not just
-    // root-level placement.
+    // An older file's `declblock`/`codeblock` nodes (with their `after`,
+    // `map` and header-file flags) and `decl` nodes load as Conditional
+    // and Code nodes and are saved in that form: at the top of a
+    // Function, nested in each other, and among a window's widgets.
     import fluid.project_reader : Reader;
 
     string source = "version 1.0000\n"
@@ -973,40 +902,28 @@ unittest
     auto text2 = new ProjectWriter().generate(roots1);
     auto roots2 = new Reader(text2).readProject();
 
-    auto fn1 = cast(FunctionNode) roots1[0];
+    import fluid.code_node : CodeNode;
+    import fluid.conditional_node : ConditionalNode;
+    import std.algorithm.searching : canFind;
+
+    // Saved in the new form: Conditional and Code nodes, with no end code
+    // and no header-file flags left.
+    assert(text2.canFind("conditional {version (Windows)}"));
+    assert(text2.canFind("code {int winOnlyDecl;}"));
+    assert(!text2.canFind("declblock") && !text2.canFind("codeblock") && !text2.canFind("decl "));
+    assert(!text2.canFind("after") && !text2.canFind("map"));
+
     auto fn2 = cast(FunctionNode) roots2[0];
+    auto cond = cast(ConditionalNode) fn2.children[0];
+    assert(cond !is null && cond.instanceName == "version (Windows)");
+    assert((cast(CodeNode) cond.children[0]).instanceName == "int winOnlyDecl;");
+    auto nested = cast(ConditionalNode) cond.children[1];
+    assert(nested !is null && nested.instanceName == "version (Posix)");
 
-    auto dbn1 = cast(DeclBlockNode) fn1.children[0];
-    auto dbn2 = cast(DeclBlockNode) fn2.children[0];
-    assert(dbn1 !is null && dbn2 !is null);
-    assert(dbn1.instanceName == "version (Windows)" && dbn2.instanceName == dbn1.instanceName);
-    assert(dbn1.afterText == "// win only" && dbn2.afterText == dbn1.afterText);
-    assert(dbn1.writeMap_ == 3 && dbn2.writeMap_ == 3);
-    assert((cast(DeclNode) dbn1.children[0]).instanceName == "int winOnlyDecl;");
-    assert((cast(DeclNode) dbn2.children[0]).instanceName == "int winOnlyDecl;");
-
-    auto nested1 = cast(DeclBlockNode) dbn1.children[1];
-    auto nested2 = cast(DeclBlockNode) dbn2.children[1];
-    assert(nested1 !is null && nested2 !is null);
-    assert(nested1.instanceName == "version (Posix)" && nested2.instanceName == nested1.instanceName);
-    assert(nested1.afterText == "" && nested2.afterText == "");
-    // Default write_map_ (CODE_IN_SOURCE) -- "map" line correctly
-    // omitted on save, not silently written as 0.
-    assert(nested1.writeMap_ == DeclBlockNode.codeInSource);
-    assert(nested2.writeMap_ == DeclBlockNode.codeInSource);
-
-    auto win1 = cast(WindowNode) fn1.children[1];
     auto win2 = cast(WindowNode) fn2.children[1];
-    auto cb1 = cast(CodeBlockNode) win1.children[0];
-    auto cb2 = cast(CodeBlockNode) win2.children[0];
-    assert(cb1 !is null && cb2 !is null);
-    assert(cb1.instanceName == "if (test())" && cb2.instanceName == cb1.instanceName);
-    assert(cb1.afterText == "while (0)" && cb2.afterText == cb1.afterText);
-
-    auto cb1b = cast(CodeBlockNode) win1.children[1];
-    auto cb2b = cast(CodeBlockNode) win2.children[1];
-    assert(cb1b !is null && cb2b !is null);
-    assert(cb1b.afterText == "" && cb2b.afterText == "");
+    auto cb = cast(ConditionalNode) win2.children[0];
+    assert(cb !is null && cb.instanceName == "if (test())");
+    assert(cast(ConditionalNode) win2.children[1] !is null);
 }
 
 unittest
@@ -1289,30 +1206,10 @@ unittest
 
 unittest
 {
-    // A class's base class survives a save/load round trip.
-    import fluid.project_reader : Reader;
-    import std.algorithm : canFind;
-
-    auto roots = new Reader("version 1.0000\nclass Foo {open : Fl_Group\n} {\n"
-        ~ "  Function {make()} {open\n  } {\n  }\n}\n").readProject();
-    auto cn = cast(ClassNode) roots[0];
-    assert(cn !is null && cn.baseClass == "Fl_Group");
-
-    string text = new ProjectWriter().generate(roots);
-    assert(text.canFind("\n    : {Fl_Group}\n"));
-    auto reread = new Reader(text).readProject();
-    auto cn2 = cast(ClassNode) reread[0];
-    assert(cn2 !is null && cn2.baseClass == "Fl_Group");
-
-    // A class with no base class writes no `:` line.
-    auto plain = new Reader("version 1.0000\nclass Bar {\n} {\n}\n").readProject();
-    assert(!new ProjectWriter().generate(plain).canFind(" : "));
-}
-
-unittest
-{
-    // A class attribute (FLTK's `Class_Node::prefix()`) is the extra word
-    // before the class name; it round-trips and is emitted before `class`.
+    // A Class keeps its base class and its attribute (the extra word
+    // before the name) through a save, and is written as that D class.
+    // An older file's `widget_class` becomes a Class whose `make()`
+    // builds its widgets in a window.
     import fluid.project_reader : Reader;
     import fluid.code_writer : Writer;
     import std.algorithm : canFind;
@@ -1320,26 +1217,29 @@ unittest
     auto roots = new Reader("version 1.0000\nclass final Foo {open : Fl_Group\n} {\n"
         ~ "  Function {make()} {open\n  } {\n  }\n}\n"
         ~ "class {deprecated(\"old\")} Bar {\n} {\n}\n"
-        ~ "class Plain {open : Fl_Group\n} {\n}\n").readProject();
-    assert(roots.length == 3);
-    auto foo = cast(ClassNode) roots[0];
-    auto bar = cast(ClassNode) roots[1];
-    auto plain = cast(ClassNode) roots[2];
-    assert(foo.instanceName == "Foo" && foo.prefix == "final" && foo.baseClass == "Fl_Group");
-    assert(bar.instanceName == "Bar" && bar.prefix == "deprecated(\"old\")");
-    assert(plain.prefix == "");
+        ~ "class Plain {open : Fl_Group\n} {\n}\n"
+        ~ "widget_class Panel {open\n  xywh {0 0 100 50}\n  position_relative\n} {\n"
+        ~ "  decl {int count;} {private local}\n"
+        ~ "  Fl_Button ok {\n    xywh {5 5 40 20}\n  }\n"
+        ~ "  Function {load()} {open\n  } {\n  }\n}\n").readProject();
+    assert(roots.length == 4);
+    foreach (r; roots)
+        assert(cast(ClassNode) r !is null && r.typeName == "class");
+    assert((cast(ClassNode) roots[0]).prefix == "final" && (cast(ClassNode) roots[0]).baseClass == "Fl_Group");
 
     string text = new ProjectWriter().generate(roots);
-    assert(text.canFind("class final Foo\n"));
-    assert(text.canFind("class deprecated(\"old\") Bar\n"));
-    assert(text.canFind("class Plain\n"));
-    auto again = new Reader(text).readProject();
-    assert((cast(ClassNode) again[0]).prefix == "final" && (cast(ClassNode) again[1]).prefix == "deprecated(\"old\")");
+    assert(text.canFind("\nclass final Foo\n") && text.canFind(": {Fl_Group}"));
+    assert(!text.canFind("widget_class") && !text.canFind("position_relative"));
+    auto reread = new Reader(text).readProject();
+    assert(new ProjectWriter().generate(reread) == text);
 
-    string d = new Writer().generate(roots);
-    assert(d.canFind("final class Foo : Group"));
+    string d = new Writer().generate(reread);
+    assert(d.canFind("final class Foo : FlGroup"));
+    assert(d.canFind("void make()"));
     assert(d.canFind("deprecated(\"old\") class Bar"));
-    assert(d.canFind("\nclass Plain : Group"));
+    assert(d.canFind("\nclass Plain : FlGroup"));
+    assert(d.canFind("class Panel\n{\n    Window window;\n    Button ok;"));
+    assert(d.canFind("    int count;") && d.canFind("    void make()") && d.canFind("    void load()"));
 }
 
 unittest

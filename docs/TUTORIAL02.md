@@ -36,7 +36,9 @@ writes the `dub.sdl` for you.
 
 Start Fluid:
 
-    dub run fldtk:fluid
+```
+dub run fldtk:fluid
+```
 
 The Widget Bin opens with it:
 
@@ -98,13 +100,15 @@ menu](#setting-up-from-the-file-menu) at the end of this tutorial.
 
 The folder `tutorial02` now holds:
 
-    tutorial02/
-      dub.sdl            the project's description for dub
-      .gitignore         the files git should leave out
-      hello.fl           the design, made with Fluid
-      source/
-        hello.d          the D code for the design, written on every build
-      hello              the program (hello.exe on Windows)
+```
+tutorial02/
+  dub.sdl            the project's description for dub
+  .gitignore         the files git should leave out
+  hello.fl           the design, made with Fluid
+  source/
+    hello.d          the D code for the design, written on every build
+  hello              the program (hello.exe on Windows)
+```
 
 The design and the program's own code are kept apart:
 
@@ -126,13 +130,17 @@ becomes impractical to put large functions in the `.fl` file. In this tutorial,
 they only call a function, which you write in a module of your own in the next
 step. Double-click the Say Hello button, and on the D tab set its callback to:
 
-    sayHello();
+```D
+sayHello();
+```
 
 ![The callback of Say Hello](tutorial02/fig07.png)
 
 Click the Counter button and set its callback to:
 
-    countClick(o);
+```D
+countClick(o);
+```
 
 ![The callback of Counter](tutorial02/fig08.png)
 
@@ -141,33 +149,49 @@ button. Passing it to `countClick()` hands that function the button itself, so
 it can read from it or change it. The callback calls your code, and your code
 changes the button. Step 5 shows where `o` comes from.
 
-Press F5. The build fails:
+Press F5. The build fails. Fluid opens the Code View, which shows the D
+code Fluid wrote for the design, and marks every line the compiler
+complained about: red line numbers, the offending word red and
+underlined, and under each such line the compiler's message about it,
+on a light red background. It also selects the Say Hello button, which the first error
+is about, opens its properties and highlights its part of the code:
 
-![The build fails: undefined identifier sayHello](tutorial02/fig09.png)
+![The Code View with the errors marked](tutorial02/fig09.png)
+
+Hovering the mouse over the red text shows the same message in a
+tooltip. (Edit > Settings > General > Errors turns either of the two
+off.) It is the same message the Run window lists for that line:
+
+![The build fails: undefined identifier sayHello](tutorial02/fig10.png)
 
 The compiler doesn't know `sayHello` and `countClick`: they don't exist
 yet. (The errors under each one, that none of the overloads of
-`callback` are callable, follow from the same mistake.)
+`callback` are callable, follow from the same mistake; that is the
+red `(` after `o.callback`.) A double-click on an error message in the
+Run window, such as the one about `countClick`, selects that item and
+shows its line in the Code View.
 
 ## 4. Writing a module of your own
 
 The functions go in a new file, `source/actions.d`, with this code:
 
-    import fl;
-    import std.format : format;
+```D
+import fl;
+import std.format : format;
 
-    void sayHello()
-    {
-        message("Hello from actions.d!");
-    }
+void sayHello()
+{
+    message("Hello from actions.d!");
+}
 
-    int clicks;
+int clicks;
 
-    void countClick(Button button)
-    {
-        clicks++;
-        button.label(format("Clicks: %d", clicks));
-    }
+void countClick(Button button)
+{
+    clicks++;
+    button.label(format("Clicks: %d", clicks));
+}
+```
 
 - The module is called `actions`, after its file name. Other modules
   use that name to import it.
@@ -191,33 +215,41 @@ Make actions.d in one of two ways:
 Either way, it has to be in `source/`, next to `hello.d`, not in the
 project folder itself. The project now holds:
 
-    tutorial02/
-      dub.sdl            the project's description for dub
-      .gitignore         the files git should leave out
-      hello.fl           the design, made with Fluid
-      source/
-        actions.d        NEW: your code
-        hello.d          the D code for the design, written on every build
-      hello              the program (hello.exe on Windows)
+```
+tutorial02/
+  dub.sdl            the project's description for dub
+  .gitignore         the files git should leave out
+  hello.fl           the design, made with Fluid
+  source/
+    actions.d        NEW: your code
+    hello.d          the D code for the design, written on every build
+  hello              the program (hello.exe on Windows)
+```
 
-Press F5 again. **It still fails!** And the errors are the same:
+Press F5 again. **It still fails!** The Code View marks the same lines,
+and the compiler's messages are the same:
 
-![Still undefined identifier sayHello](tutorial02/fig10.png)
+![Still undefined identifier sayHello](tutorial02/fig11.png)
 
 Why is this? Even though `sayHello` is defined in `actions.d` now,
 the callbacks in `hello.d` don't know where to find it.
 Neither D nor dub searches through all the modules to find the needed
 functions, so you have to tell them where to look.
 A module only sees the functions that it imports: `hello.d` has to import
-`actions`. To do this in Fluid, choose New > Code > Declaration, or click
-![Declaration](../source/fluid/pixmaps_svg/flDeclaration.svg)
-(Declaration) in the Widget Bin. The Declaration is added below
-`main()`, and its properties open. Replace the automatically generated example `int x;` in the
-Declaration field with:
+`actions`. To do this in Fluid, first choose Edit > Select None, so that
+nothing in the tree is selected: a new Code node goes where the selection
+is, and the import belongs at the top of the file, not inside `main()`.
+Then choose New > Code > Code, or click
+![Code](../source/fluid/pixmaps_svg/flCode.svg)
+(Code) in the Widget Bin. The Code node is added at the top of the tree,
+above `main()`, and its properties open. Replace the automatically
+generated example `writeln("Hello, World!");` with:
 
-    import actions;
+```D
+import actions;
+```
 
-![The Declaration import actions;](tutorial02/fig11.png)
+![The Code node import actions;](tutorial02/fig12.png)
 
 The compiler should now be able to find the functions we need.
 
@@ -229,40 +261,41 @@ errors](#compilation-errors) at the end of this tutorial.
 
 Click Say Hello, and the message should appear:
 
-![The message from actions.d](tutorial02/fig12.png)
+![The message from actions.d](tutorial02/fig13.png)
 
 Click Counter a few times; it counts the number of times it has been clicked:
 
-![The button after three clicks](tutorial02/fig13.png)
+![The button after three clicks](tutorial02/fig14.png)
 
 To look under the hood and see how Fluid builds the interface, choose
 Edit > Show Code View (or press Alt+C). It shows the code Fluid writes
 to `hello.d`:
 
-![The Code View](tutorial02/fig14.png)
+![The Code View](tutorial02/fig15.png)
 
 Notice how the nested layout of the code tree (main, Window, Button, Button) corresponds to
 the indentation levels in the generated source code.
 
 Two things in the code are worth a closer look:
 
-**The Declaration.** In the tree, `import actions;` sits below
-`main()`, but in the code it is at the top, with `import fl;` and
-`import std;`. Fluid writes a Declaration at the top level of the file,
-outside every function, whatever its place in the tree, so you don't
-have to worry about where it ends up there. A Declaration is for any
-code that belongs at the top of the file: an import, as here, or a
-variable or a constant that the whole file uses.
+**The Code node.** In the tree, `import actions;` sits at the top level,
+outside `main()`, and in the code it is at the top too, with `import fl;`
+and `import std;`. A Code node holds D code, and its place in the tree
+says where in the file the code goes: at the top level, as here, it is
+for an import, or a variable or a constant that the whole file uses;
+inside `main()` or another function it is code that runs there.
 
 **Where `o` comes from.** Each button is made in a block of its own,
 in a variable called `o`:
 
-    {
-        auto o = new Button(89, 25, 64, 22, "Counter");
-        o.callback((raw_) {
-            countClick(o);
-        });
-    }
+```D
+{
+    auto o = new Button(89, 25, 64, 22, "Counter");
+    o.callback((raw_) {
+        countClick(o);
+    });
+}
+```
 
 The block between the curly braces defines a **scope**. Note that within the
 scope of the button, the variable `o` refers to the new Button. That
@@ -290,6 +323,14 @@ nothing about the window: it could be a module you already had. That is
 also how you give an existing program a GUI: design the window in Fluid
 and have its callbacks call the functions the program already has.
 
+The finished design is the same as [`hello.fl`](tutorial02/hello.fl) in
+fldtk's `docs/tutorial02` folder, with the module `actions.d` next to
+it. When you read this tutorial in Fluid (Help > fldtk README..., then
+the tutorials), clicking the file's name opens the design in Fluid;
+[Where fldtk and the tutorials
+are](TUTORIALS.md#where-fldtk-and-the-tutorials-are) explains where the
+folder is.
+
 ## Summary
 
 You have had Fluid set up a dub project. You have learned what each file in it
@@ -307,14 +348,16 @@ A dub project builds without Fluid too. Once Fluid has set it up, all
 it takes is `dub run` in the project folder, which builds the program
 and starts it:
 
-    $ cd ~/fluidtutorials/tutorial02
-    $ dub run
-         Pre-gen Running commands for hello
-    fluid: /home/you/fluidtutorials/tutorial02/hello.fl -> /home/you/fluidtutorials/tutorial02/source/hello.d
-        Starting Performing "debug" build using /usr/bin/dmd for x86_64.
-        Building hello ~master: building configuration [application]
-         Linking hello
-         Running hello
+```
+$ cd ~/fluidtutorials/tutorial02
+$ dub run
+     Pre-gen Running commands for hello
+fluid: /home/you/fluidtutorials/tutorial02/hello.fl -> /home/you/fluidtutorials/tutorial02/source/hello.d
+    Starting Performing "debug" build using /usr/bin/dmd for x86_64.
+    Building hello ~master: building configuration [application]
+     Linking hello
+     Running hello
+```
 
 The program's window opens, the same as with F5. `dub build` only
 builds it; `./hello` (`hello.exe` on Windows) then starts it.
@@ -330,15 +373,18 @@ When changing .d files in your business logic using your own text editor,
 
 The `dub.sdl` that Fluid wrote in step 1 reads:
 
-    name "hello"
-    description "A program made with Fluid and fldtk."
-    authors "you"
-    license "proprietary"
-    targetType "executable"
-    dependency "fldtk" path="/home/you/.dub/packages/fldtk/1.1.0/fldtk"
-    subConfiguration "fldtk" "program"
-    preGenerateCommands "\"$FLDTK_PACKAGE_DIR/fluid\" -c \"$PACKAGE_DIR/hello.fl\"" platform="linux"
-    preGenerateCommands "\"$FLDTK_PACKAGE_DIR\\fluid.exe\" -c \"$PACKAGE_DIR\\hello.fl\"" platform="windows"
+```
+name "hello"
+description "A program made with Fluid and fldtk."
+authors "you"
+license "proprietary"
+targetType "executable"
+dependency "fldtk" path="/home/you/.dub/packages/fldtk/1.1.0/fldtk"
+subConfiguration "fldtk" "program"
+preGenerateCommands "\"$FLDTK_PACKAGE_DIR/fluid\" -c \"$PACKAGE_DIR/hello.fl\"" platform="linux"
+preGenerateCommands "\"$FLDTK_PACKAGE_DIR\\fluid.exe\" -c \"$PACKAGE_DIR\\hello.fl\"" platform="windows"
+stringImportPaths "."
+```
 
 The first four lines name the project and describe it; change them as
 you like (`authors` is your user name). The others, one by one:
@@ -367,6 +413,9 @@ you like (`authors` is your user name). The others, one by one:
   `$PACKAGE_DIR` for your project folder. The `\"` are quotes inside
   the quoted command, so folder names with spaces work. `platform=`
   picks the line for the system you build on.
+- `stringImportPaths "."`: the folder of `hello.fl`, where the program
+  can read files into its code when it is compiled, with D's
+  `import("file")` (a picture, a help text).
 
 ## Setting up from the File menu
 
@@ -388,7 +437,7 @@ and choose New > Buttons > Button.... The new button lands where you
 clicked, instead of at the spot the Widget Bin picks. Every kind of
 widget in the New menu can be added this way.
 
-![The right-click menu in the window: New > Buttons > Button...](tutorial02/fig15.png)
+![The right-click menu in the window: New > Buttons > Button...](tutorial02/fig16.png)
 
 Right-clicking on a widget that is already selected gives a menu with
 two entries. Change To turns the widget into another kind of widget,
@@ -396,10 +445,10 @@ here a Button into a Return Button, keeping its label, name, callback
 and other settings; Tutorial 4 uses it. New is the same menu as
 before.
 
-![Right-clicking a selected button: Change To and New](tutorial02/fig16.png)
+![Right-clicking a selected button: Change To and New](tutorial02/fig17.png)
 
 **In the tree.** Right-click on an item in the tree. The menu starts
-with Help on the widget, which opens its section of the
+with Help on the widget (or code node), which opens its section of the
 [Technical Reference](TECHNICAL_REFERENCE.md); the Help button in the
 properties window does the same. For a widget, the same Change To
 follows, then Cut, Copy, Paste,
@@ -409,14 +458,14 @@ menu, with the same shortcuts. A right-click selects the item first,
 unless it is already part of the selection, in which case the command
 applies to the whole selection.
 
-![The tree's right-click menu on a button](tutorial02/fig17.png)
+![The tree's right-click menu on a button](tutorial02/fig18.png)
 
 **In the properties.** Change To is also in the widget's properties
 window, as Change to: at the bottom of the Style tab. It shows the
 widget's current kind; pick another one to change it. Widgets that
 can't change kind don't have it.
 
-![Change to: on the Style tab](tutorial02/fig18.png)
+![Change to: on the Style tab](tutorial02/fig19.png)
 
 Ctrl+Z undoes each of these steps.
 
@@ -442,12 +491,14 @@ Ctrl+Z undoes each of these steps.
   Your `app.d` imports the design's module, named after its file, and
   its `main()` shows the window and runs the program:
 
-      import fl;
-      import hello;   // source/hello.d, the design's code
-      ...
-      auto window = makeWindow();
-      window.show(args);
-      fl.run();
+  ```D
+  import fl;
+  import hello;   // source/hello.d, the design's code
+  ...
+  auto window = makeWindow();
+  window.show(args);
+  fl.run();
+  ```
 
   (`args` is `main(string[] args)`'s parameter; with a `main()`
   without parameters, use `window.show();`.) Tutorial 7 ([coming
@@ -465,7 +516,9 @@ Ctrl+Z undoes each of these steps.
   the project and, on Linux, puts a copy of `libfldtk.so` in the project
   folder; add this line so the program finds it there:
 
-      lflags "-rpath=$$ORIGIN" platform="linux"
+  ```
+  lflags "-rpath=$$ORIGIN" platform="linux"
+  ```
 
   (`$$` is how you write a plain `$` in `dub.sdl`.)
 
@@ -477,7 +530,7 @@ to produce an error and quit. The output of the compiler will be shown in the
 Run window. If the Run window shows errors, look for:
 
 - `undefined identifier sayHello` (or `countClick`): `hello.d` doesn't
-  import `actions` (check the Declaration), or the function isn't in
+  import `actions` (check the Code node), or the function isn't in
   `actions.d` (check its name).
 - `undefined reference to actions.sayHello()` (or `ModuleInfo for
   actions`), from the linker at the end of the build: `actions.d` is in the
@@ -493,8 +546,10 @@ Run window. If the Run window shows errors, look for:
   name: `fl.message("...")` for fldtk's, `actions.message("...")` for yours.
 
 The first compiler error is usually where you want to look first.
-To find what causes the issue, pull up the code view and search for a keyword
-listed in the error report. Or, if you recognize the name of a widget, you can
-click on that widget and the code view should scroll immediately to the
-corresponding block of code that creates that widget.
+When a build fails, Fluid selects the item the first error is about,
+opens its properties and shows the D code at that line in the Code
+View, with the offending word marked in red. A double-click on another
+error message in the Run window does the same for that one. An error in
+`actions.d` is not in the code Fluid writes: open that file in your
+text editor at the line number the error names.
 

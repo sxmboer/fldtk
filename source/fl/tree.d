@@ -76,6 +76,15 @@ private enum { pushedNone, pushedOpenClose, pushedUserIcon, pushedLabel }
  */
 class Tree : FlGroup
 {
+    /// The widgets the items show (`TreeItem.widget()`), without the
+    /// Tree's scrollbars (see `FlGroup.widgets`).
+    override Widget[] widgets()
+    {
+        import std.algorithm : filter;
+        import std.array : array;
+        return super.widgets().filter!(w => w !is vscroll_ && w !is hscroll_).array;
+    }
+
     private TreeItem root_;
     private TreeItem itemFocus_;
     private TreeItem callbackItem_;
@@ -153,6 +162,12 @@ class Tree : FlGroup
     void rootLabel(string newLabel) { if (root_ !is null) root_.label(newLabel); }
     /// Returns the root item, or null.
     TreeItem root() { return root_; }
+
+    /// Every item in the tree, depth first, starting with the root (shown
+    /// or not, see `showroot()`): `foreach (item; tree.allItems)`. For one
+    /// item's children, or everything below it, see `TreeItem.items` and
+    /// `TreeItem.allItems`.
+    TreeItem[] allItems() { return root_ is null ? null : root_ ~ root_.allItems; }
     /// Sets the root item to newitem. If a root already exists,
     /// clear() runs first. Use to install a custom TreeItem subclass
     /// as the root.
@@ -1565,4 +1580,22 @@ unittest
     assert(t.callbackReason() == CallbackReason.closed);
 
     fl.core.resetForTest();
+}
+
+unittest
+{
+    // allItems, items and TreeItem.allItems: depth first, copies.
+    import fl.group : FlGroup;
+    import std.algorithm : map;
+    import std.array : array;
+    FlGroup.current(null);
+    auto t = new Tree(0, 0, 200, 200);
+    t.add("a/x");
+    t.add("a/y");
+    t.add("b");
+    auto names = t.allItems.map!(i => i.label()).array;
+    assert(names[1 .. $] == ["a", "x", "y", "b"]); // after the root
+    auto a = t.findItem("a");
+    assert(a.items.map!(i => i.label()).array == ["x", "y"]);
+    assert(t.root().allItems.length == 4);
 }

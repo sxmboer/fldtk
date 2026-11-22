@@ -2,16 +2,15 @@
 
 [All tutorials](TUTORIALS.md)
 
-> The figures in this tutorial were made just before the Run (F5)
-> button was added to the properties windows, so it is missing from
-> them, and the Command Prompt figure still shows the code going to
-> `source\app.d`. F5 should work on Windows as described.
+> Note: the Command Prompt figure still shows the code going to
+> `source\app.d`.
 
 This tutorial makes a window with four buttons, each with a keyboard
 shortcut of its own, groups them into one bar, and turns them into
 radio buttons, of which only one can be down at a time. It then keeps
-the choice in a variable and shows it in a dialog, and finally asks the
-buttons themselves which one is down. It is done on Windows; on Linux
+the choice in a variable and shows it in a dialog, asks the buttons
+themselves which one is down, then their group, and finally names the
+choices in an enum, so the program can decide what to do for each. It is done on Windows; on Linux
 the steps are the same. It assumes you have done [Tutorial 1](TUTORIAL01.md) and
 [Tutorial 2](TUTORIAL02.md), so it says less about the basics of Fluid.
 
@@ -24,7 +23,9 @@ are typed in the Command Prompt window that opens. The project goes in
 
 ## 2. Starting Fluid
 
-    dub run fldtk:fluid
+```
+dub run fldtk:fluid
+```
 
 Fluid opens with an empty design. The project folder doesn't exist
 yet: Fluid asks for it the first time you press F5, in step 6.
@@ -118,7 +119,9 @@ A button does nothing when clicked until it has a callback: D code that
 runs on each click. Open the first button's properties, and on the D
 tab click "callback" and type:
 
-    writeln("Button 1 pushed");
+```D
+writeln("Button 1 pushed");
+```
 
 ![The first button's callback](tutorial03/fig05.png)
 
@@ -170,9 +173,13 @@ without asking. To build in the Command Prompt instead, see
 [Building in the Command Prompt](#building-in-the-command-prompt) at
 the end of this tutorial.
 
-The finished design is the same as `fourbuttons_1.fl` in fldtk's
+The finished design is the same as [`fourbuttons_1.fl`](tutorial03/fourbuttons_1.fl) in fldtk's
 `docs/tutorial03` folder (apart from the Code File, if you chose
-Single File).
+Single File). When you read this tutorial in Fluid (Help > fldtk
+README..., then the tutorials), clicking the file's name opens the
+design in Fluid; [Where fldtk and the tutorials
+are](TUTORIALS.md#where-fldtk-and-the-tutorials-are) explains where the
+folder is.
 
 ## 7. Grouping the buttons
 
@@ -254,8 +261,10 @@ variable, and adds a button that shows it in a dialog.
 1. **A variable for the choice.** Select the window, open its
    properties, and on the D tab click "setup". Type:
 
-       // the scope has to be higher than the buttons
-       int selected;
+   ```D
+   //the scope has to be higher than the buttons
+   int selected;
+   ```
 
    ![The window's setup code](tutorial03/fig16.png)
 
@@ -269,8 +278,10 @@ variable, and adds a button that shows it in a dialog.
    `selected = 2;` for the second, and so on. The first button's
    callback becomes:
 
-       selected = 1;
-       writeln("Button 1 pushed");
+   ```D
+   selected = 1;
+   writeln("Button 1 pushed");
+   ```
 
 3. **A button that shows the choice.** Select the window and add a
    Return Button (New > Buttons > Return Button) outside the group, to
@@ -279,7 +290,9 @@ variable, and adds a button that shows it in a dialog.
    group, so drag it to the right of the group. A return button is pressed by
    the Enter key as well as by a click. Its callback:
 
-       message(format("Button %s is selected", selected));
+   ```D
+   message(format("Button %s is selected", selected));
+   ```
 
    `message()` shows a small dialog with a text and a Close button. It
    takes one piece of text, so `format()` puts the number into it: each
@@ -287,7 +300,7 @@ variable, and adds a button that shows it in a dialog.
    a `%s` for `selected`, the program stops with a `FormatException`
    ("Orphan format arguments") when the button is pressed.
 
-   ![The window with the Check button](tutorial03/fig17.png)
+   ![The Check button and its callback](tutorial03/fig17.png)
 
    Edit > Show Code View (Alt+C) shows where `selected` ends up in the
    generated code: right after the window is made, before the group and
@@ -301,7 +314,7 @@ Choose a button, then press Enter or click Check:
 
 ![The dialog showing the selected button](tutorial03/fig19.png)
 
-The finished design is the same as `fourbuttons_2.fl` in fldtk's
+The finished design is the same as [`fourbuttons_2.fl`](tutorial03/fourbuttons_2.fl) in fldtk's
 `docs/tutorial03` folder (apart from the Code File, if you chose
 Single File).
 
@@ -331,12 +344,14 @@ step asks them instead, and the variable is no longer needed.
    and the four buttons' callbacks.
 3. **Ask them.** Change the Check button's callback to:
 
-       long selected;
-       foreach (i, b; [b1, b2, b3, b4])
-         if (b.value())
-           selected = i + 1;
+   ```D
+   long selected;
+   foreach (i, b; [b1, b2, b3, b4])
+     if (b.value())
+       selected = i + 1;
 
-       message(format("Button %s is selected", selected));
+   message(format("Button %s is selected", selected));
+   ```
 
    ![The Check button's new callback](tutorial03/fig21.png)
 
@@ -347,11 +362,13 @@ step asks them instead, and the variable is no longer needed.
    number type, which fits in a `long` but not in an `int`; that is why
    `selected` is a `long` here. The same, without the list, would be:
 
-       long selected;
-       if (b1.value()) selected = 1;
-       if (b2.value()) selected = 2;
-       if (b3.value()) selected = 3;
-       if (b4.value()) selected = 4;
+   ```D
+   long selected;
+   if (b1.value()) selected = 1;
+   if (b2.value()) selected = 2;
+   if (b3.value()) selected = 3;
+   if (b4.value()) selected = 4;
+   ```
 
    The Code View shows the four named buttons as variables at the top
    of the generated code, outside `main()`:
@@ -376,7 +393,205 @@ step asks them instead, and the variable is no longer needed.
 Press Check right away: the dialog now says Button 1, the one that is
 down. Choose another button and press Check again: it names that one.
 
-The finished design is the same as `fourbuttons_3.fl` in fldtk's
+The finished design is the same as [`fourbuttons_3.fl`](tutorial03/fourbuttons_3.fl) in fldtk's
+`docs/tutorial03` folder (apart from the Code File, if you chose
+Single File).
+
+## 11. Asking the group
+
+Step 10 needed a name for every button and a loop to go through them.
+As of fldtk v1.1.3, the group that holds the buttons can answer the
+question in two different ways.
+
+Only the group needs a name and you can optionally remove the names for the
+buttons themselves.
+
+1. **Name the group.** Select the group in the tree, and on the D tab,
+   in the Name row, type `buttons`.
+
+   ![The D tab with the group's name buttons](tutorial03/fig24.png)
+
+2. **(OPTIONAL) Remove what is no longer needed.** Select each button in turn and
+   clear its Name, `b1` to `b4`. The buttons go back to being `o`,
+   each in its own block.
+
+   The Code View (Alt+C) now shows `FlGroup buttons;` at the top of the
+   file: the group is the only named widget, a variable at the level of
+   the module, as the buttons were in step 10.
+
+   ![The Code View with the variable buttons](tutorial03/fig25.png)
+
+The first way is to use the group's `widgets` function. It returns the
+widgets in the group as an array, and an array can be used in a foreach loop.
+So, you can replace the manually entered array `[b1, b2, b3, b4]` by using that
+function as follows:
+
+```D
+long selected;
+foreach (i, w; buttons.widgets)
+  if (auto b = cast(Button) w)
+    if (b.value())
+      selected = i + 1;
+
+message(format("Button %s is selected", selected));
+```
+
+`w` is a widget of any kind, and only a button has a value, so
+`cast(Button) w` checks first that it is a button: it gives the button,
+or `null` when `w` is some other widget.
+
+However, not all the widgets in the group may be  radio buttons and  an even
+more elegant way is to use the `selectedRadioButton` function, which returns
+just the selected radio button or `null` if no radio button is selected at all.
+
+3. **Ask the group.** Change the Check button's callback to:
+
+   ```D
+   auto b = buttons.selectedRadioButton;
+   if (b !is null)
+     message(format("%s is selected", b.label.replace("&", "")));
+   else
+     message("no button is selected");
+   ```
+
+   ![The Check button's callback asking the group](tutorial03/fig26.png)
+
+   `buttons.selectedRadioButton` asks the group which of its radio
+   buttons is down, and gives that button itself. `b` is the button, so
+   any of its properties can be read; here its label, `Button &3`.
+   `replace("&", "")` takes out the `&` that marks the shortcut letter.
+   The group asks its buttons each time, so the answer is right however
+   a button was put down: by a click, by its shortcut, or by its Value
+   setting, as Button 1 at the start.
+
+   When no radio button is down, `selectedRadioButton` gives `null`, no
+   button at all. A `null` has no label, so `b.label` would stop the
+   program with an error. That is why the callback checks first:
+   `b !is null` is true when there is a button, and only then is its
+   label used; otherwise the dialog says so. Here one button is always
+   down, since Button 1 starts down, from its Value in step 8, and
+   pressing a radio button puts it down, never up. Checking for `null`
+   is still a good habit: without that Value, or after a change to the
+   design later on, there may be no button down.
+
+4. Press F5 again.
+
+Choose Button 3 and press Check: the dialog says "Button 3 is selected".
+Choose another button and press Check again: it names that one.
+
+![The dialog showing the label of the button that is down](tutorial03/fig27.png)
+
+The finished design is the same as [`fourbuttons_4.fl`](tutorial03/fourbuttons_4.fl) in fldtk's
+`docs/tutorial03` folder (apart from the Code File, if you chose
+Single File).
+
+## 12. Using enums for switch statements
+
+Showing the name of which button is down is rarely what a program needs: the
+user already sees it. What the program needs is to do something different for
+each choice.
+In D this is typically done using switch statements and this can be facilitated
+by using an enumerated list that provides a name for each choice. A label is no
+good for this: it is text for the user, and changing `Button &3` to `&Third`
+should not break the program. fldtk uses the power of the D programming language
+to give the choices names in the code: an `enum`.
+
+1. **Name the choices.** Choose Edit > Select None, then New > Code >
+   Code, or click
+   ![Code](../source/fluid/pixmaps_svg/flCode.svg)
+   (Code) in the Widget Bin. Replace `writeln("Hello, World!");` with:
+
+   ```D
+   enum Pick { button1, button2, button3, button4 }
+   ```
+
+   ![The Code node with the enum Pick](tutorial03/fig28.png)
+
+   An `enum` is a type of your own with a fixed list of named values,
+   its members: a variable of type `Pick` can only be `Pick.button1`,
+   `Pick.button2`, `Pick.button3` or `Pick.button4`. Here each member
+   stands for one radio button: the first member for the first radio
+   button in the group, the second for the second, and so on.
+
+   In the tree, the Code node sits at the top level, outside `main()`.
+   As Tutorial 2 explained, a Code node at the top level is written
+   outside every function, so `Pick` can be used by every callback in
+   the file.
+
+   ![The enum Pick in the tree, outside main()](tutorial03/fig29.png)
+
+   The Code View shows the `enum` at the top of the file, above
+   `FlGroup buttons;`:
+
+   ![The Code View with the enum Pick and the variable buttons](tutorial03/fig31.png)
+
+2. **Ask the group for a member.** Change the Check button's callback
+   to:
+
+   ```D
+   message(format("%s is selected", buttons.selectedRadioButton!Pick));
+   ```
+
+   ![The Check button's callback asking for a member of Pick](tutorial03/fig30.png)
+
+   `buttons.selectedRadioButton!Pick` asks the group the same question
+   as in step 11, but answers with the member of `Pick` that stands for
+   the button that is down, not with the button itself. The `!` hands
+   the type `Pick` to `selectedRadioButton`, so that it knows which list
+   of names to answer with.
+
+
+3. Press F5 again.
+
+Choose Button 3 and press Check: the dialog says "button3 is
+selected", the member's name, exactly as it is spelled in the `enum`.
+
+That is a gimmick, but it shows something C and C++ cannot do. There,
+an enum's names are gone once the program is compiled, and printing a
+member gives only its number, 2 for the third. In D, the program keeps
+the names, so what you type in the `enum` is what the choices are
+known as in the program. Rename the members, say to
+`{ red, green, blue, yellow }`, and the dialog says "blue is selected",
+with nothing else to change.
+
+Two things to keep in mind:
+
+- **The order is the tree's, not the window's.** The first member of
+  `Pick` stands for the first radio button in the group as the tree
+  lists it, wherever that button is in the window. Edit > Earlier (F2)
+  and Edit > Later (F3) move a button up or down in the tree, and so
+  change which member it stands for. Moving a button in the window does
+  not.
+- **One member for each radio button.** When the `enum` has more or
+  fewer members than the group has radio buttons, pressing Check stops
+  the program with an exception that says so, for instance "Pick has 3
+  members, but the group has 4 radio buttons".
+
+**How a program uses it.** Where the `enum` pays off is in deciding
+what to do. A `final switch` on the group's answer has one `case` for
+each member:
+
+```D
+final switch (buttons.selectedRadioButton!Pick)
+{
+    case Pick.button1: writeln("Doing the first thing"); break;
+    case Pick.button2: writeln("Doing the second thing"); break;
+    case Pick.button3: writeln("Doing the third thing"); break;
+    case Pick.button4: writeln("Doing the fourth thing"); break;
+}
+```
+
+Each `case` names a member, so the code says what it is about, not a
+number or a label. `final` makes the compiler check that every member
+has its `case`: leave one out and the program does not build. When a
+fifth button and a fifth member are added later, the compiler points
+at every `final switch` that still has to handle it.
+
+The same works the other way round: `buttons.selectRadioButton(Pick.button3);` in
+a callback puts down Button 3 and releases the others, as a click on it
+would, but without running its callback.
+
+The finished design is the same as [`fourbuttons_5.fl`](tutorial03/fourbuttons_5.fl) in fldtk's
 `docs/tutorial03` folder (apart from the Code File, if you chose
 Single File).
 
@@ -392,7 +607,12 @@ one bar, and made them radio buttons, of which only one can be down at
 a time. Finally, you have kept the chosen option in a variable declared
 in the window's setup code, and then asked the buttons themselves by
 giving them names, which makes them variables that every callback in
-the file, and, with global, other modules too, can use.
+the file, and, with global, other modules too, can use. Then you have
+asked the group itself: `selectedRadioButton` gives the button that is
+down, and with it its label. Last, you have named the choices in an
+`enum` of your own, asked the group with `selectedRadioButton!Pick` for the member
+that stands for the button that is down, and seen how a `final switch`
+on those members decides what the program does.
 
 This concludes Tutorial 3. Additional information is provided below.
 
@@ -401,18 +621,24 @@ This concludes Tutorial 3. Additional information is provided below.
 The program builds without Fluid too. In the Command Prompt, go to the
 project folder:
 
-    cd %USERPROFILE%\fluidtutorials\tutorial03
+```
+cd %USERPROFILE%\fluidtutorials\tutorial03
+```
 
 For a single file, write the code from the design, then build and run
 it, as in Tutorial 1's [Rebuilding and launching a project
 manually](TUTORIAL01.md#rebuilding-and-launching-a-project-manually):
 
-    dub run fldtk:fluid -- -c fourbuttons.fl
-    dub run --single fourbuttons.d
+```
+dub run fldtk:fluid -- -c fourbuttons.fl
+dub run --single fourbuttons.d
+```
 
 For a dub project, one command does it all:
 
-    dub run
+```
+dub run
+```
 
 dub then runs Fluid first, to write `source\fourbuttons.d` from the
 design (Tutorial 2's [What dub.sdl

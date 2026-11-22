@@ -1,6 +1,6 @@
 /*
  * Detects a project tree that's actually raw, unconverted FLTK C++
- * (a `.fl` file whose `code`/`callback`/`setup`/`decl` bodies are real
+ * (a `.fl` file whose `code`/`callback`/`setup` bodies are real
  * C++, or whose class overrides are C++ namespace-qualified) rather than
  * this project's own D-embedded `.fl` dialect.
  *
@@ -50,7 +50,7 @@ private bool hasRawDirective(string s)
 
 /// True if any node in `roots` (recursively) looks like raw,
 /// unconverted FLTK C++: a C preprocessor directive in any code-bearing
-/// field (`callback`, `comment`, a `DeclNode`'s own text -- stored in
+/// field (`callback`, `comment`, a Code node's text -- stored in
 /// the shared `Node.instanceName` slot, see that field's own doc
 /// comment -- or a `WidgetNode`'s `setupCode`/`finalizeCode`), or a `::`-scoped
 /// (C++ namespace-qualified) class-override name.
@@ -89,7 +89,7 @@ unittest
     assert(!looksLikeRawCpp([win]));
 
     auto raw = new Node();
-    raw.typeName = "decl";
+    raw.typeName = "code";
     raw.instanceName = `#include "Fluid.h"`;
     win.addChild(raw);
 

@@ -56,7 +56,7 @@
  * There is no manifest file and no per-program configuration: a program
  * is simply "a .d file under source/<category>/ (or its generated/
  * subdirectory) that defines main()". Everything else there is a helper
- * module -- CubeView.d, checkers_pieces.d, fracviewer.d, resize_arrows.d
+ * module -- CubeView.d, fracviewer.d, resize_arrows.d
  * -- and gets pulled into whichever program imports it automatically by
  * `dmd -i`, so it needs no declaring anywhere. `-i=-fl` keeps that
  * automatic inclusion from also dragging in the fl.* library modules
@@ -550,7 +550,7 @@ int main(string[] args)
                 // libfldtk.so instead of carrying its own copy.
                 cmd = [dc, "-shared-libphobos"]
                     ~ (release ? ["-O2", "-frelease"] : [])
-                    ~ ["-I" ~ buildPath(repoRoot, "source")]
+                    ~ ["-I" ~ buildPath(repoRoot, "source"), "-J" ~ catDir]
                     ~ searchDirs.map!(d => "-I" ~ d).array ~ deps ~ linkFlags ~ [
                     "-o", binary,
                 ];
@@ -563,6 +563,9 @@ int main(string[] args)
                     ~ [
                     "-i", "-i=-fl",
                     "-I" ~ buildPath(repoRoot, "source"),
+                    // A `.fl` file's string imports (`import("pixmaps/...")`)
+                    // name files relative to the category's folder.
+                    "-J" ~ catDir,
                 ] ~ searchDirs.map!(d => "-I" ~ d).array ~ extraFiles ~ [
                     src,
                 ] ~ linkFlags ~ [

@@ -21,14 +21,15 @@ Contents:
 
 1. [Introduction](#1-introduction)
 2. [Every widget](#2-every-widget)
-3. [Groups](#3-groups)
-4. [Buttons](#4-buttons)
-5. [Valuators](#5-valuators)
-6. [Text](#6-text)
-7. [Menus](#7-menus)
-8. [Browsers](#8-browsers)
-9. [Misc](#9-misc)
-10. [Beyond widgets](#10-beyond-widgets)
+3. [Code](#3-code)
+4. [Groups](#4-groups)
+5. [Buttons](#5-buttons)
+6. [Valuators](#6-valuators)
+7. [Text](#7-text)
+8. [Menus](#8-menus)
+9. [Browsers](#9-browsers)
+10. [Misc](#10-misc)
+11. [Beyond widgets](#11-beyond-widgets)
 
 ## 1. Introduction
 
@@ -102,11 +103,12 @@ window can't be resized.
 
 ### Reading this reference
 
-Sections 3 to 9 follow Fluid's widget bin, group by group, in the bin's
-order. Each widget has its bin icon, a picture, what it is for, how to
-make one in code, its member functions, and the constants its
-properties take. Section 2 holds what every widget has in common, and
-section 10 the parts of the library that aren't widgets.
+Sections 3 to 10 follow Fluid's widget bin, group by group, in the
+bin's order. Section 3 is the code a design holds besides its widgets.
+From section 4 on, each widget has its bin icon, a picture, what it is
+for, how to make one in code, its member functions, and the constants
+its properties take. Section 2 holds what every widget has in common,
+and section 11 the parts of the library that aren't widgets.
 
 ## 2. Every widget
 
@@ -436,11 +438,164 @@ take a `Color`: one of these, an index into the colour map, or
 | `CallbackReason.enterKey` |  |
 | `CallbackReason.user` |  |
 
-## 3. Groups
+## 3. Code
+
+Besides widgets, a design holds code: the first group of Fluid's widget
+bin. Fluid writes each node's code into the generated `.d` file where the
+node stands in the widget tree, top to bottom, so the tree is also an
+outline of the file. Every one of these nodes has a Comment field on its
+properties page, written as a comment above its code.
+
+Where a node stands decides what its code can be:
+
+| Place in the tree | What goes there |
+|---|---|
+| At the top, not inside anything (the file itself, D's *module scope*) | imports, variables and types the whole file shares, functions, classes |
+| Directly in a Class | fields and methods |
+| In a Function, or among a window's widgets | statements, run one after the other when the function runs |
+
+### ![](../source/fluid/pixmaps_svg/flFunction.svg) Function
+
+A function. With its Function field left blank, it is the program's
+`main()`: Fluid writes `void main(string[] args)`, builds the widgets
+inside it, shows its windows and starts `fl.run()`. A design has one
+such Function.
+
+With a name and parameters, such as `makeWindow()` or `buttonCB(Button
+b)`, it is an ordinary function that the program calls itself; inside a
+Class it is a method, `this(...)` a constructor and `~this()` the
+destructor. Its children are its body: Code nodes, Conditional nodes and
+widgets, in order.
+
+- **Return Type**: blank in a function that builds widgets gives the
+  type of its first widget, and the function returns that widget; so a
+  `makeWindow()` holding a window returns the window, and the program
+  shows it with `makeWindow().show();`. Blank otherwise, and in a
+  method, is `void`.
+- **Visibility**: `static` makes a top-level function `private` to the
+  generated file; `global` and `local` leave it public. In a Class, the
+  choice is `private`, `public` or `protected`.
+- **declare "C"**: writes the function as `extern (C)`, for a function
+  that C code calls. It has no effect on a method.
+
+Several widgets can share one callback: write it as a named Function and
+call it from each widget's callback with the widget, `buttonCB(o);`.
+
+### ![](../source/fluid/pixmaps_svg/flClass.svg) Class
+
+A D class. **Class Name** is its name, **Base Class** what it is based
+on (often a widget type, such as `Window` or `Group`; blank for none),
+and **Attribute** words written before `class`, such as `final` or
+`abstract`.
+
+Its children make up the class, in order: a Code node is a field, a
+Function a method, a Conditional fields or methods under a condition,
+and a Class a class inside it. A named widget that one of its methods
+builds becomes a field, so each object of the class has its own.
+
+A widget of your own, `class MyButton : Button` with methods that change
+how it behaves, is used by placing a Button in a window and typing
+`MyButton` in its `class` property. A group of your own builds its
+widgets in its constructor:
+
+```
+class Counter : Group
+    Function this(int x, int y, int w, int h, string label = null)
+        Code     super(x, y, w, h, label);
+        Button   minus
+        Output   count
+        Button   plus
+        Code     end();
+```
+
+A class that has nothing to do with widgets works too, but belongs in a
+`.d` module of the program's own.
+
+### ![](../source/fluid/pixmaps_svg/flCode.svg) Code
+
+D code, written as it is where the node stands. What it can hold depends
+on the place:
+
+| Place | Example |
+|---|---|
+| At the top | `import std.stdio;`, `int clicks;`, `enum Size { small, medium, large }` |
+| In a Class | `int count;` |
+| In a Function, among widgets | `writeln("ready");`, `clicks++;` |
+
+A Code node can also put a file into the program when it is compiled,
+with D's `import("file")`: `enum help = import("help.md");` for text,
+`immutable ubyte[] logo = cast(immutable ubyte[])
+import("pictures/logo.png");` for anything else. The file is named by
+its path from the folder of the `.fl` file and must be inside that
+folder; Fluid tells the compiler to look there.
+
+**Edit Externally...** opens the code in your own text editor, the one
+named in Edit > Settings..., General, External Editor, once Use for Code
+Nodes is checked there. Each time you save in that editor, the node
+takes the new text.
+
+### ![](../source/fluid/pixmaps_svg/flCodeBlock.svg) Conditional
+
+Code and widgets that are only there when a condition holds. The
+**Condition** is written as given, and the node's children inside `{
+... }` after it. An `else` is a Conditional node of its own, placed
+directly after the `if` (or `static if`, `version`, `debug`) node it
+belongs to. Fluid doesn't check the condition or where it stands; the
+compiler reports one that doesn't fit.
+
+| Condition | Example | Works | Decided |
+|---|---|---|---|
+| `if (...)` | `if (args.length > 1)` | in a Function | when the program runs |
+| `else` | `else` | after an `if`, `static if`, `version` or `debug` node | as that node |
+| `static if (...)` | `static if (size_t.sizeof == 8)` | everywhere | when the program is compiled |
+| `version (...)` | `version (Windows)` | everywhere | when the program is compiled |
+| `debug` | `debug` | everywhere | when the program is compiled |
+
+- `version` names the system or the compiler: `Windows`, `linux`,
+  `Posix`, `X86_64`, `DigitalMars` (dmd), `LDC`, `GNU` (gdc).
+  `version (none)` switches code off without deleting it, and `version
+  (unittest)` keeps it for `dub test` only.
+- `debug` code is in the everyday build, `dub build` and Fluid's Run, and
+  left out of `dub build -b release`: a place for checks and messages
+  the finished program doesn't need.
+- `static if` tests anything the compiler knows, such as a type's size or
+  whether a module is there.
+
+To put existing nodes under a condition, select them in the tree (two
+or more, with Ctrl-click) and add a Conditional, from the New menu or
+the widget bin: it takes the place of the first selected node, and the
+selected nodes move into it, in their order, wherever they were. Widgets
+can be wrapped among the widgets of their own window, not in a Flex or
+Grid. When the nodes can't go into a Conditional there, it is added as
+usual instead. A Function or a Class wraps nodes the same way. **Unwrap**,
+in the tree's right-click menu, does the reverse: the selected
+Conditional node's children move up to its place, and it is removed.
+Each is one step for Undo.
+
+### ![](../source/fluid/pixmaps_svg/flComment.svg) Comment
+
+A note in the widget tree, also written as a comment in the generated
+code where it stands. With **output to source file** unchecked, it stays
+in the `.fl` file only. **Predefined** keeps comment texts you use often,
+such as a licence: Edit, Add current comment... saves the text, and it
+can then be chosen in any project. **Import...** reads the text from a
+file.
+
+## 4. Groups
 
 A group holds other widgets: it moves them, draws them, and hands them
 events. Each group below is an `FlGroup`, with these members as well as
 those of `Widget`.
+
+To go through a group's widgets, use `widgets`; `allWidgets` also
+takes the widgets inside the groups inside it. Both are arrays, so
+Phobos works on them:
+
+```D
+foreach (w; group.widgets)
+    w.deactivate();
+auto edited = window.allWidgets.filter!(w => w.changed).array;
+```
 
 | Member | What it does |
 |---|---|
@@ -448,6 +603,11 @@ those of `Widget`.
 | `void begin()` | Makes this the current() group: subsequently constructed widgets are auto-added to it until end() is called. |
 | `void end()` | Same as current(this.parent), so widget construction resumes adding to the enclosing group. |
 | `int children()` |  |
+| `Widget[] widgets()` | The widgets in this group, in order, as an array, so they work with `foreach` and with Phobos: `foreach (w; group.widgets)`, `group.widgets.filter!(w => w.visible)`. |
+| `Widget[] allWidgets()` | Every widget inside this group, depth first: each widget of `widgets`, followed by the widgets inside it. |
+| `Button selectedRadioButton()`<br>`E selectedRadioButton(E)() if (is(E == enum))` | The group's radio button that is down, or `null` when none is. |
+| `void selectRadioButton(E)(E value) if (is(E == enum))` | Puts down the radio button that stands for `value` (see `selectedRadioButton!E`) and releases the group's other radio buttons, as a click would, but without calling any callback. |
+| `Button[] selectedButtons()` | The group's buttons that are on: every button of any kind (check, round, light, toggle, radio...) whose `value()` is set, in the order of `widgets`. |
 | `inout(Widget) child(int n) inout` | Returns null if n is out of range. |
 | `int find(const(Widget) o)` | Returns children() if o is null or not found. |
 | `inout(Widget)[] array() inout` | Valid only until the next add()/insert()/remove() on this group. |
@@ -728,6 +888,8 @@ new Grid(int x, int y, int w, int h, string label = null)
 | `int gapRow()` |  |
 | `int gapCol()` |  |
 | `Cell cell(int row, int col)`<br>`Cell cell(Widget widget)` | The cell at (row, col), or null if out of bounds or unoccupied. |
+| `Widget[] rowWidgets(int row)` | The widgets in row `row` (counting from 0), left to right, as an array: `foreach (w; grid.rowWidgets(0))`. |
+| `Widget[] columnWidgets(int col)` | The widgets in column `col` (counting from 0), top to bottom, as an array. |
 | `Cell widget(Widget wi, int row, int col, GridAlign align_ = gridFill)`<br>`Cell widget(Widget wi, int row, int col, int rowspan, int colspan, GridAlign align_ = gridFill)` | Assigns wi to the cell at (row, col), spanning rowspan rows and colspan columns. |
 | `void colWidth(int col, int value)`<br>`void colWidth(const(int)[] values)`<br>`int colWidth(int col)` |  |
 | `void colWeight(int col, int value)`<br>`void colWeight(const(int)[] values)`<br>`int colWeight(int col)` |  |
@@ -757,7 +919,7 @@ How a child sits in its cell:
 | `gridBottomLeft` | `gridBottom \| gridLeft` |  |
 | `gridBottomRight` | `gridBottom \| gridRight` |  |
 
-## 4. Buttons
+## 5. Buttons
 
 Each button is a `Button`, with these members as well as those of
 `Widget`. `value()` is 1 when the button is on.
@@ -783,6 +945,37 @@ is on.
 | `toggleButton` | `1` |  |
 | `radioButton` | `102` |  |
 | `hiddenButton` | `3` |  |
+
+To find out which radio button of a group is on, name the options in an
+enum and ask the group: the first radio button stands for the enum's
+first member, the second for its second, and so on. "First" means first
+in the group, as in Fluid's widget tree, not where the button is in the
+window: after moving buttons around in the tree with Earlier and Later
+(F2, F3), put them back in the order of the enum. `selectRadioButton()`
+sets the choice from the program.
+
+```D
+enum Size { small, medium, large }
+
+Size s = sizes.selectedRadioButton!Size;
+sizes.selectRadioButton(Size.large);
+```
+
+Without an enum, `selectedRadioButton` gives the radio button that is
+down itself, or `null` when none is, so its label or any other property
+can be read:
+
+```D
+message(format("%s is selected", sizes.selectedRadioButton.label));
+```
+
+For buttons that are on or off each by themselves, such as check
+buttons, `selectedButtons` gives every button of the group that is on:
+
+```D
+foreach (b; options.selectedButtons)
+    writeln(b.label, " is on");
+```
 
 ### ![](../source/fluid/pixmaps_svg/flButton.svg) Button
 
@@ -850,7 +1043,7 @@ of several.
 new RoundButton(int x, int y, int w, int h, string label = null)
 ```
 
-## 5. Valuators
+## 6. Valuators
 
 A valuator holds a number between a minimum and a maximum, in steps.
 Each is a `Valuator`, with these members as well as those of `Widget`.
@@ -1088,7 +1281,7 @@ new ValueInput(int x, int y, int w, int h, string label = null)
 | `Color cursorColor()`<br>`void cursorColor(Color c)` |  |
 | `int shortcut()`<br>`void shortcut(int s)` |  |
 
-## 6. Text
+## 7. Text
 
 The one-line text widgets (Input, Output, File Input) are each an
 `Input_`, with these members as well as those of `Widget`.
@@ -1212,6 +1405,7 @@ The `TextBuffer` holding the text:
 | `const(char)* address(int pos)`<br>`char* address(int pos)` | Converts a byte offset into a raw pointer into the gap-buffer storage. |
 | `void insert(int pos, const(char)[] text, int insertedLength = -1)` | Inserts text at pos (which must be on a UTF-8 character boundary), clamping pos into range first. |
 | `void append(const(char)[] text, int addedLength = -1)` | Appends text to the end of the buffer. |
+| `void printf(Args...)(string fmt, Args args)` | Formats text and appends it to the end of the buffer. |
 | `void replace(int start, int end, const(char)[] text, int insertedLength = -1)` | Deletes the byte range [start, end), inserting text in its place. |
 | `void remove(int start, int end)` | Deletes the byte range [start, end), swapping/clamping out-of- order or out-of-range arguments first. |
 | `void copy(TextBuffer fromBuf, int fromStart, int fromEnd, int toPos)` | Copies text from another TextBuffer (which may be this one) into this buffer at toPos. |
@@ -1418,6 +1612,7 @@ new Terminal(int x, int y, int w, int h, string label, int rows, int cols, int h
 | `void append(const(char)[] s)` |  |
 | `int handleUnknownChar()`<br>`int handleUnknownChar(int drow, int dcol)` |  |
 | `string text(bool linesBelowCursor = false)` | Return a copy of all lines in the terminal (including scrollback history). |
+| `string lineAt(int y)` | The text of the line shown at window coordinate `y` (a line of the scrollback history when the terminal is scrolled back), without trailing spaces; null when `y` is above or below the text area. |
 | `RedrawStyle redrawStyle()`<br>`void redrawStyle(RedrawStyle val)` |  |
 | `float redrawRate()`<br>`void redrawRate(float val)` |  |
 | `bool showUnknown()`<br>`void showUnknown(bool val)` |  |
@@ -1427,13 +1622,32 @@ new Terminal(int x, int y, int w, int h, string label, int rows, int cols, int h
 | `int scrollbarActualSize()` |  |
 | `int scrollbarSize()`<br>`void scrollbarSize(int val)` |  |
 | `ScrollbarStyle hscrollbarStyle()`<br>`void hscrollbarStyle(ScrollbarStyle val)` |  |
+| `void printf(Args...)(string fmt, Args args)` | Formats `args` into `fmt` with `std.format.format` and appends the text, escape sequences included, as `append()` does. |
 
-## 7. Menus
+## 8. Menus
 
 A menu is a list of `MenuItem`s. Each widget below that shows one is a
 `Menu_`, with these members as well as those of `Widget`; `add()` adds
 items, with a `/` in the label for a submenu (`"&File/&Open..."`) and a
 `&` before the letter that picks it from the keyboard.
+
+For a choice between fixed options, name them in an enum: `add!E()`
+makes one item per member, and `selected!E` reads which one is picked.
+In a Choice the items are its own; in a menu bar they are radio items in
+a submenu. An `@ItemText("...")` on a member gives its item a text other
+than the member's name. `item()` gives a member's item, to grey it out
+or hide it like any other item.
+
+```D
+enum Size { small, medium, @ItemText("Extra large") extraLarge }
+
+size.add!Size();                    // a Choice
+Size s = size.selected!Size;
+
+menubar.add!Size("View/Size");      // radio items in View > Size
+menubar.select(Size.medium, "View/Size");
+menubar.item(Size.extraLarge, "View/Size").deactivate();
+```
 
 | Member | What it does |
 |---|---|
@@ -1443,7 +1657,7 @@ items, with a `/` in the label for a submenu (`"&File/&Open..."`) and a
 | `void clear()` | Same as menu(null): clears the menu array entirely. |
 | `int clearSubmenu(int index)` | Clears the submenu at `index` (which must be a submenu title) of all its items, so it can be repopulated (e.g. a "Recent Files" list). |
 | `int insert(int index, string label, int shortcut, Callback cb, MenuFlags flags = 0)` | Inserts a new item at `index` (-1 appends). |
-| `int add(string label, int shortcut, Callback cb, MenuFlags flags = 0)` | Same as insert(-1, label, shortcut, cb, flags): appends. |
+| `int add(string label, int shortcut, Callback cb, MenuFlags flags = 0)`<br>`void add(E)(string submenu = null) if (is(E == enum))` | Same as insert(-1, label, shortcut, cb, flags): appends. |
 | `void replace(int i, string label)` | Changes item i's label. |
 | `void remove(int i)` | Deletes item i (and, if it's a submenu title, its whole body) from the menu. |
 | `int findIndex(const(MenuItem)* item)`<br>`int findIndex(Callback cb)`<br>`int findIndex(string pathname)` | Converts an item pointer into its index in menu(), or -1 if it isn't in this menu (including items inside a detached FL_SUBMENU_POINTER submenu, matching FLTK). |
@@ -1453,6 +1667,11 @@ items, with a `/` in the label for a submenu (`"&File/&Open..."`) and a
 | `const(MenuItem)* prevMvalue()` |  |
 | `int value()`<br>`int value(const(MenuItem)* m)`<br>`int value(int i)` | Index into menu() of the last item picked, or -1 (see mvalue()'s own doc comment for when: never picked yet, or the picked item lives in a detached FL_SUBMENU_POINTER submenu). |
 | `string text()`<br>`string text(int i)` | The label of the last item picked, or null. |
+| `E selected(E)(string submenu = null) if (is(E == enum))` | Which item is selected, as a member of the enum `E`: the first item stands for `E`'s first member, the second for its second, and so on. |
+| `void select(E)(E value, string submenu = null) if (is(E == enum))` | Selects the item that stands for `value` (see `selected`): it becomes `value()`, or, in a submenu, the radio item that is on. |
+| `MenuItem* item(E)(E value, string submenu = null) if (is(E == enum))` | The item that stands for `value` (see `selected`), to grey it out, hide it or change it like any other item. |
+| `MenuItem*[] items(string submenu = null)` | The items directly in `submenu` (a path such as `"File"`; the top level when it is empty), in order, as an array, so `foreach` and Phobos work on them: `foreach (item; menubar.items("File"))`. |
+| `MenuItem*[] allItems()` | Every item of the menu, depth first: each submenu's title, followed by the items inside it. |
 | `Font textfont()`<br>`void textfont(Font f)` |  |
 | `Fontsize textsize()`<br>`void textsize(Fontsize s)` |  |
 | `Color textcolor()`<br>`void textcolor(Color c)` |  |
@@ -1593,7 +1812,7 @@ new Choice(int x, int y, int w, int h, string label = null)
 
 No members of its own.
 
-## 8. Browsers
+## 9. Browsers
 
 ### ![](../source/fluid/pixmaps_svg/flBrowser.svg) Browser
 
@@ -1628,6 +1847,8 @@ new Browser(int x, int y, int w, int h, string label = null)
 | `int value()`<br>`void value(int line)` |  |
 | `const(char)[] text(int line)`<br>`void text(int line, string newtext)` | Changes line's text. |
 | `Object data(int line)`<br>`void data(int line, Object d)` |  |
+| `string[] lines()` | The text of every line, in order, as an array, so `foreach` and Phobos work on it: `foreach (t; browser.lines)`. |
+| `int[] selectedLines()` | The numbers of the selected lines, counting from 1, in order. |
 | `const(int)[] columnWidths()`<br>`void columnWidths(const(int)[] arr)` |  |
 | `char columnChar()`<br>`void columnChar(char c)` |  |
 | `char formatChar()`<br>`void formatChar(char c)` |  |
@@ -1694,6 +1915,7 @@ new Tree(int X, int Y, int W, int H, string L = null)
 | `void autoResizeChildren(bool mode)`<br>`bool autoResizeChildren()` | Enable/disable automatically resizing children when the Tree container itself is resized (default: false). |
 | `void rootLabel(string newLabel)` | Set the label for the root item. |
 | `TreeItem root()`<br>`void root(TreeItem newitem)` | Returns the root item, or null. |
+| `TreeItem[] allItems()` | Every item in the tree, depth first, starting with the root (shown or not, see `showroot()`): `foreach (item; tree.allItems)`. |
 | `TreePrefs prefs()`<br>`const(TreePrefs) prefs()` | Return the tree's preferences (fonts, colors, margins, icons, selection/connector style). |
 | `TreeItem add(string path, TreeItem item = null)`<br>`TreeItem add(TreeItem parentItem, string name)`<br>`TreeItem add(TreeItem parentItem, string name, TreeItem item)` | Add a new item given a menu-style path (e.g. "Flintstones/Fred"), creating any missing parent nodes automatically. |
 | `TreeItem insertAbove(TreeItem above, string name)` | Insert a new item named name above item above. |
@@ -1799,6 +2021,8 @@ The members of a `TreeItem`:
 | `void widget(Widget val)`<br>`Widget widget()` | Assign an FLTK widget to this item. |
 | `int children()` | Return the number of children this item has. |
 | `TreeItem child(int index)` | Return the child item for the given index. |
+| `TreeItem[] items()` | This item's children, in order, as an array, so `foreach` and Phobos work on them. |
+| `TreeItem[] allItems()` | Every item below this one, depth first: each child, followed by the items below it. |
 | `bool hasChildren()` | See if this item has children. |
 | `int findChild(string name)`<br>`int findChild(TreeItem item)` | Return the index of the immediate child with label name, or -1. |
 | `TreeItem findChildItem(string name)`<br>`TreeItem findChildItem(const(string)[] arr)` | Return the immediate child with label name, or null. |
@@ -1896,6 +2120,8 @@ new CheckBrowser(int x, int y, int w, int h, string label = null)
 | `void checkNone()` |  |
 | `int value()` | The 1-based line number of the currently selected item, or 0. |
 | `const(char)[] text(int item)` |  |
+| `string[] lines()` | The text of every line, in order, as an array, so `foreach` and Phobos work on it. |
+| `int[] checkedLines()` | The numbers of the checked lines, counting from 1, in order. |
 
 ### ![](../source/fluid/pixmaps_svg/flHelp.svg) HTML View
 
@@ -1939,7 +2165,7 @@ new HtmlView(int x, int y, int w, int h, string label = null)
 Shows Markdown documents, such as a README, formatted: headings,
 emphasis, lists, block quotes, code, tables, links and images. Links to
 other `.md` files open them. `MarkdownDialog` is a window with a
-Markdown View and Back, Forward, text size and find; Fluid's Help menu
+Markdown View and Back, Forward, text size, Reload (F5) and find; Fluid's Help menu
 shows fldtk's README in one.
 
 ```D
@@ -1950,7 +2176,7 @@ new MarkdownView(int x, int y, int w, int h, string label = null)
 |---|---|
 | `Scrollbar scrollbar()` | The vertical and horizontal scrollbars. |
 | `Scrollbar hscrollbar()` |  |
-| `void value(string md)`<br>`string value()` | Shows the Markdown text `md`. |
+| `void value(string md, string directory = null)`<br>`string value()` | Shows the Markdown text `md`. |
 | `int load(string f)` | Loads and shows the Markdown file `f`, scrolled to the heading `#anchor` at the end of `f` if there is one (`README.md#status`). |
 | `string filename()` | The file on show, as an absolute path, or null. |
 | `string directory()` | The folder relative links and images are found from, or null for the current directory. |
@@ -1961,6 +2187,8 @@ new MarkdownView(int x, int y, int w, int h, string label = null)
 | `Color textcolor()`<br>`void textcolor(Color c)` | The colour of body text. |
 | `int scrollbarSize()`<br>`void scrollbarSize(int s)` | The scrollbars' width, or 0 for `fl.core.scrollbarSize()`. |
 | `void topline(string anchor)`<br>`void topline(int top)`<br>`int topline()` | Scrolls to the heading whose anchor is `anchor` (`fl.markdown. |
+| `void scrollToSourceLine(int line)` | Scrolls so that what source line `line` of the Markdown text (counting from 0) shows is at the top of the view. |
+| `int topSourceLine()` | The source line of the Markdown text (counting from 0) whose part of the page is at the top of the view: the other way round from `scrollToSourceLine()`, for an editor that follows the page. |
 | `void leftline(int left)`<br>`int leftline()` | Scrolls sideways so that column `left` is at the left of the view. |
 | `int size()` | The laid-out document's height in pixels. |
 | `bool textSelected()` | Whether text is selected. |
@@ -2056,7 +2284,7 @@ What `drawCell()` is asked to draw:
 | `contextTable` | `0x20` | drawing or event occurred in a dead zone of table |
 | `contextRcResize` | `0x40` | column or row is being resized |
 
-## 9. Misc
+## 10. Misc
 
 ### ![](../source/fluid/pixmaps_svg/flBox.svg) Box
 
@@ -2116,7 +2344,7 @@ new Progress(int x, int y, int w, int h, string label = null)
 | `void minimum(float v)`<br>`float minimum()` |  |
 | `void value(float v)`<br>`float value()` |  |
 
-## 10. Beyond widgets
+## 11. Beyond widgets
 
 ### The program: `fl.core`
 
@@ -2296,6 +2524,46 @@ screens, the scheme, and the state of the event being handled.
 | `int boxDh(Boxtype t)` |  |
 | `bool boxBg(Boxtype t)` | True if boxtype t paints a solid background; false if it's an outline-only "frame" boxtype. |
 
+### Work in the background: `fl.background`
+
+A slow computation in a callback freezes the window until it ends.
+`runInBackground()` runs it on another thread instead and hands the
+result to a second function on the GUI thread, where it is safe to
+change widgets. The work itself must not touch widgets. Give the
+button that starts the work as the third argument, and it is greyed
+out until the work is done, so it can't be started twice:
+
+```D
+button.callback((w) {
+    runInBackground({ return countPrimes(10_000_000); },
+                    (int n) { result.value(format("%d primes", n)); },
+                    w);
+});
+```
+
+To show how far the work is, let it take a `Report` and call it with
+the fraction done, and set the job's `onProgress`, right after starting
+it, to show that fraction:
+
+```D
+auto job = runInBackground((Report report) { return countPrimes(10_000_000, report); },
+                           (int n) { result.value(format("%d primes", n)); });
+job.onProgress = (fraction) { bar.value(fraction * 100); };
+```
+
+`examples/howto_run_in_background.d` shows both, with a list of progress
+bars for counts started over and over, next to a callback that freezes
+the window.
+
+| Function | What it does |
+|---|---|
+| `Job runInBackground(T)(T delegate() work, void delegate(T) done, Widget busy = null) if (!is(T == void))`<br>`Job runInBackground(T)(T delegate(Report) work, void delegate(T) done, Widget busy = null) if (!is(T == void))`<br>`Job runInBackground(void delegate() work, void delegate() done = null, Widget busy = null)`<br>`Job runInBackground(void delegate(Report) work, void delegate() done = null, Widget busy = null)` | Runs `work` on another thread and, when it is done, calls `done` with its result on the GUI thread. |
+
+| Member | What it does |
+|---|---|
+| `bool running()` | Whether the work is still running; false from the moment its result is handed over (or its failure reported). |
+| `double progress()` | The fraction the work last reported, as far as the GUI thread knows: 0 until the first report. |
+
 ### Messages and questions: `fl.ask`
 
 Small dialogs that show a message or ask a question and wait for the
@@ -2389,6 +2657,25 @@ way to show it: set what to choose, call `show()`, read `filename()`.
 For a widget that draws itself: a subclass overrides `draw()` and uses
 these. Positions are in the window's coordinates.
 
+A `draw()` that changes the clip, the colour, the font, the line style
+or the transform should put it back, or whatever is drawn after it is
+spoiled. The easy way is a `use...` function: it makes the change and
+undoes it at the end of the block, also on an early `return` or an
+exception. Keep the value it returns in a variable (`auto` will do);
+the compiler refuses to let it be thrown away.
+
+```D
+override void draw()
+{
+    auto clip = clipTo(x, y, w, h);      // drawing stays inside the widget
+    auto line = useLineStyle(lineDash, 2);
+    auto font = useFont(helveticaBold, 14);
+    auto col  = useColor(red);
+    auto m    = saveMatrix();            // translate, scale, rotate freely
+    ...
+}                                        // everything is as it was before
+```
+
 | Function | What it does |
 |---|---|
 | `void deleteOffscreen(Offscreen ctx)` |  |
@@ -2408,6 +2695,11 @@ these. Positions are in the window's coordinates.
 | `void fl_arc(int x, int y, int w, int h, double a1, double a2)`<br>`void fl_arc(double x, double y, double r, double start, double end)` | Draws the outline of an elliptical arc inscribed in (x,y,w,h), from angle a1 to a2. |
 | `void fl_pie(int x, int y, int w, int h, double a1, double a2)` | Draws a filled pie slice/ellipse inscribed in (x,y,w,h), from angle a1 to a2. |
 | `void drawCircle(int x, int y, int d, Color c)` | Draws a filled circle bounded by (x,y,d,d) in color c. |
+| `ClipScope clipTo(int x, int y, int w, int h)` | Clips drawing to the rectangle (intersected with the clip already in effect) until the end of the scope: `pushClip()`, and `popClip()` at the end. |
+| `ColorScope useColor(Color c)` | Draws in colour `c` until the end of the scope, then goes back to the colour in use before. |
+| `FontScope useFont(Font face, Fontsize size)` | Draws text in `face` at `size` until the end of the scope, then goes back to the font in use before. |
+| `LineStyleScope useLineStyle(int style, int width = 0, const(ubyte)[] dashes = null)` | Draws lines with `lineStyle(style, width, dashes)` until the end of the scope, then goes back to the line style in use before. |
+| `MatrixScope saveMatrix()` | Keeps the transform matrix as it is now, so the `fl_translate()`, `fl_scale()`, `fl_rotate()` and `multMatrix()` calls after it last until the end of the scope: `pushMatrix()`, and `popMatrix()` at the end. |
 | `void pushMatrix()` | Pushes a copy of the current transform matrix, so a later fl_pop_matrix() can restore it. |
 | `void popMatrix()` | Pops the transform matrix stack, restoring the previous transform. |
 | `void loadIdentity()` | Sets the transform matrix to identity, discarding any accumulated translate/scale/rotate (but not the push/pop stack itself). |

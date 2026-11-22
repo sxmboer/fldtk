@@ -5,7 +5,7 @@ comment {The interactive editor's widget palette ("Tools" window).
 Ported from FLTK's fluid/panels/function_panel.fl -- only the
 `make_widgetbin()` window (`widgetbin_panel`, renamed `widgetBinPanel`
 here for this project's own camelCase convention): all 8 labelled
-groups and all 58 buttons, in a window of 624x102.
+groups and all their buttons, in a window of 599x102.
 
 Each labelled group holds a borderless inner group fitted exactly around
 a full grid of 24x24 compact buttons, so the group's buttons draw as one
@@ -22,7 +22,7 @@ point via real XDND. See `fluid/bin_button.d`'s own doc
 comment for the click-vs-drag mechanism. The Code group's own 9
 buttons call a second delegate, `callback \{codeButtonCb(o);\}` --
 they still reuse `BinButton` for its `typeName()` storage, but a
-`Function`/`decl`/`comment`/... node is never a live canvas widget, so
+`Function`/`code`/`comment`/... node is never a live canvas widget, so
 only the click path (`gui_main.d`'s `addNode()`, the non-widget
 counterpart of `addWidget()`) actually does anything; dragging one onto
 the canvas is a harmless no-op (matches FLTK's own real split -- these 9
@@ -43,23 +43,15 @@ The Code group's `NodeBrowser.build()` handles the whole `projectRoots_`
 list, so a node with no enclosing window can be created from here too.
 }
   {
-    in_source
-    in_header
   }
-decl {void delegate(Widget) binButtonCb;}
+code {void delegate(Widget) binButtonCb;}
   {
-    public
-    global
   }
-decl {void delegate(Widget) codeButtonCb;}
+code {void delegate(Widget) codeButtonCb;}
   {
-    public
-    global
   }
-decl {import fluid;}
+code {import fluid;}
   {
-    private
-    local
   }
 Function makeWidgetBin()
   {
@@ -69,7 +61,7 @@ Function makeWidgetBin()
       {
         label {Widget Bin}
         callback {widgetBinPanel.hide();}
-        xywh {395 227 624 102}
+        xywh {395 227 599 102}
         class WidgetBinWindow
         non_modal
       }
@@ -77,14 +69,14 @@ Function makeWidgetBin()
         Group {}
           {
             label {Code}
-            xywh {3 19 79 79}
+            xywh {3 19 54 79}
             labelsize 12
             open
           }
           {
             Group {}
               {
-                xywh {6 22 72 72}
+                xywh {6 22 48 72}
                 open
               }
               {
@@ -95,10 +87,11 @@ Function makeWidgetBin()
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flFunction.svg}
                     setup {o.typeName("Function");}
                     tooltip {Function}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flFunction.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
@@ -107,22 +100,11 @@ Function makeWidgetBin()
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flClass.svg}
                     setup {o.typeName("class");}
                     tooltip {Class}
-                  }
-                Button {}
-                  {
-                    callback {codeButtonCb(o);}
-                    xywh {54 22 24 24}
-                    box THIN_UP_BOX
-                    compact {1}
-                    class BinButton
                     scale_image {16 16}
-                    image {../pixmaps_svg/flComment.svg}
-                    setup {o.typeName("comment");}
-                    tooltip {Comment}
+                    image {../pixmaps_svg/flClass.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
@@ -131,10 +113,11 @@ Function makeWidgetBin()
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flCode.svg}
                     setup {o.typeName("code");}
                     tooltip {Code}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flCode.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
@@ -143,22 +126,11 @@ Function makeWidgetBin()
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
+                    setup {o.typeName("conditional");}
+                    tooltip {Conditional}
                     scale_image {16 16}
                     image {../pixmaps_svg/flCodeBlock.svg}
-                    setup {o.typeName("codeblock");}
-                    tooltip {Code Block}
-                  }
-                Button {}
-                  {
-                    callback {codeButtonCb(o);}
-                    xywh {54 46 24 24}
-                    box THIN_UP_BOX
-                    compact {1}
-                    class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flWidgetClass.svg}
-                    setup {o.typeName("widget_class");}
-                    tooltip {Widget Class}
+                    compress_image 1
                   }
                 Button {}
                   {
@@ -167,393 +139,401 @@ Function makeWidgetBin()
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
+                    setup {o.typeName("comment");}
+                    tooltip {Comment}
                     scale_image {16 16}
-                    image {../pixmaps_svg/flDeclaration.svg}
-                    setup {o.typeName("decl");}
-                    tooltip {Declaration}
+                    image {../pixmaps_svg/flComment.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
-                    callback {codeButtonCb(o);}
                     xywh {30 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
-                    class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flDeclarationBlock.svg}
-                    setup {o.typeName("declblock");}
-                    tooltip {Declaration Block}
-                  }
-                Button {}
-                  {
-                    callback {codeButtonCb(o);}
-                    xywh {54 70 24 24}
-                    box THIN_UP_BOX
-                    compact {1}
-                    class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flData.svg}
-                    setup {o.typeName("data");}
-                    tooltip {Inline Data}
                   }
               }
           }
         Group {}
           {
             label {Groups}
-            xywh {87 19 79 79}
+            xywh {62 19 79 79}
             labelsize 12
             open
           }
           {
             Group {}
               {
-                xywh {90 22 72 72}
+                xywh {65 22 72 72}
                 open
               }
               {
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {90 22 24 24}
+                    xywh {65 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flWindow.svg}
                     setup {o.typeName("Window");}
                     tooltip {Window}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flWindow.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {114 22 24 24}
+                    xywh {89 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flGroup.svg}
                     setup {o.typeName("Group");}
                     tooltip {Group}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flGroup.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {138 22 24 24}
+                    xywh {113 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flPack.svg}
                     setup {o.typeName("Pack");}
                     tooltip {Pack}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flPack.svg}
+                    compress_image 1
                     selected
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {90 46 24 24}
+                    xywh {65 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flTabs.svg}
                     setup {o.typeName("Tabs");}
                     tooltip {Tabs}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flTabs.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {114 46 24 24}
+                    xywh {89 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flScroll.svg}
                     setup {o.typeName("Scroll");}
                     tooltip {Scroll}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flScroll.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {138 46 24 24}
+                    xywh {113 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flFlex.svg}
                     setup {o.typeName("Flex");}
                     tooltip {Flex}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flFlex.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {90 70 24 24}
+                    xywh {65 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flTile.svg}
                     setup {o.typeName("Tile");}
                     tooltip {Tile}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flTile.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {114 70 24 24}
+                    xywh {89 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flWizard.svg}
                     setup {o.typeName("Wizard");}
                     tooltip {Wizard}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flWizard.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {138 70 24 24}
+                    xywh {113 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flGrid.svg}
                     setup {o.typeName("Grid");}
                     tooltip {Grid}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flGrid.svg}
+                    compress_image 1
                   }
               }
           }
         Group {}
           {
             label {Buttons}
-            xywh {171 19 54 79}
+            xywh {146 19 54 79}
             labelsize 12
             open
           }
           {
             Group {}
               {
-                xywh {174 22 48 72}
+                xywh {149 22 48 72}
                 open
               }
               {
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {174 22 24 24}
+                    xywh {149 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flButton.svg}
                     setup {o.typeName("Button");}
                     tooltip {Button}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flButton.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {198 22 24 24}
+                    xywh {173 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flReturnButton.svg}
                     setup {o.typeName("ReturnButton");}
                     tooltip {Return Button}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flReturnButton.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {174 46 24 24}
+                    xywh {149 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flLightButton.svg}
                     setup {o.typeName("LightButton");}
                     tooltip {Light Button}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flLightButton.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {198 46 24 24}
+                    xywh {173 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flRepeatButton.svg}
                     setup {o.typeName("RepeatButton");}
                     tooltip {Repeat Button}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flRepeatButton.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {174 70 24 24}
+                    xywh {149 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flCheckButton.svg}
                     setup {o.typeName("CheckButton");}
                     tooltip {Check Button}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flCheckButton.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {198 70 24 24}
+                    xywh {173 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flRoundButton.svg}
                     setup {o.typeName("RoundButton");}
                     tooltip {Round Button}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flRoundButton.svg}
+                    compress_image 1
                   }
               }
           }
         Group {}
           {
             label {Valuators}
-            xywh {230 19 104 79}
+            xywh {205 19 104 79}
             labelsize 12
             open
           }
           {
             Group {}
               {
-                xywh {234 22 96 72}
+                xywh {209 22 96 72}
                 open
               }
               {
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {234 22 24 24}
+                    xywh {209 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flSlider.svg}
                     setup {o.typeName("Slider");}
                     tooltip {Slider}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flSlider.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {258 22 24 24}
+                    xywh {233 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flScrollBar.svg}
                     setup {o.typeName("Scrollbar");}
                     tooltip {Scroll Bar}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flScrollBar.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {282 22 24 24}
+                    xywh {257 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flValueSlider.svg}
                     setup {o.typeName("ValueSlider");}
                     tooltip {Value Slider}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flValueSlider.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {306 22 24 24}
+                    xywh {281 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flValueOutput.svg}
                     setup {o.typeName("ValueOutput");}
                     tooltip {Value Output}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flValueOutput.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {234 46 24 24}
+                    xywh {209 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flAdjuster.svg}
                     setup {o.typeName("Adjuster");}
                     tooltip {Adjuster}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flAdjuster.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {258 46 24 24}
+                    xywh {233 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flCounter.svg}
                     setup {o.typeName("Counter");}
                     tooltip {Counter}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flCounter.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {282 46 24 24}
+                    xywh {257 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flDial.svg}
                     setup {o.typeName("Dial");}
                     tooltip {Dial}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flDial.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {306 46 24 24}
+                    xywh {281 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flRoller.svg}
                     setup {o.typeName("Roller");}
                     tooltip {Roller}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flRoller.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {234 70 24 24}
+                    xywh {209 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flSpinner.svg}
                     setup {o.typeName("Spinner");}
                     tooltip {Spinner}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flSpinner.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {258 70 24 24}
+                    xywh {233 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flValueInput.svg}
                     setup {o.typeName("ValueInput");}
                     tooltip {Value Input}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flValueInput.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
-                    xywh {282 70 24 24}
+                    xywh {257 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                   }
                 Button {}
                   {
-                    xywh {306 70 24 24}
+                    xywh {281 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                   }
@@ -562,204 +542,218 @@ Function makeWidgetBin()
         Group {}
           {
             label {Text}
-            xywh {339 19 54 79}
+            xywh {314 19 54 79}
             labelsize 12
             open
           }
           {
             Group {}
               {
-                xywh {342 22 48 72}
+                xywh {317 22 48 72}
                 open
               }
               {
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {342 22 24 24}
+                    xywh {317 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flInput.svg}
                     setup {o.typeName("Input");}
                     tooltip {Input}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flInput.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {366 22 24 24}
+                    xywh {341 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flOutput.svg}
                     setup {o.typeName("Output");}
                     tooltip {Output}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flOutput.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {342 46 24 24}
+                    xywh {317 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flTextEdit.svg}
                     setup {o.typeName("TextEditor");}
                     tooltip {Text Edit}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flTextEdit.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {366 46 24 24}
+                    xywh {341 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flTextDisplay.svg}
                     setup {o.typeName("TextDisplay");}
                     tooltip {Text Display}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flTextDisplay.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {342 70 24 24}
+                    xywh {317 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flFileInput.svg}
                     setup {o.typeName("FileInput");}
                     tooltip {File Input}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flFileInput.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {366 70 24 24}
+                    xywh {341 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flSimpleTerminal.svg}
                     setup {o.typeName("Terminal");}
                     tooltip {Terminal}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flSimpleTerminal.svg}
+                    compress_image 1
                   }
               }
           }
         Group {}
           {
             label {Menus}
-            xywh {398 19 79 79}
+            xywh {373 19 79 79}
             labelsize 12
             open
           }
           {
             Group {}
               {
-                xywh {401 22 72 72}
+                xywh {376 22 72 72}
                 open
               }
               {
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {401 22 24 24}
+                    xywh {376 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flInputChoice.svg}
                     setup {o.typeName("InputChoice");}
                     tooltip {Input Choice}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flInputChoice.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {425 22 24 24}
+                    xywh {400 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flMenuitem.svg}
                     setup {o.typeName("MenuItem");}
                     tooltip {Menu Item}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flMenuitem.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {449 22 24 24}
+                    xywh {424 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flMenubar.svg}
                     setup {o.typeName("MenuBar");}
                     tooltip {Menu Bar}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flMenubar.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {401 46 24 24}
+                    xywh {376 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flMenuButton.svg}
                     setup {o.typeName("MenuButton");}
                     tooltip {Menu Button}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flMenuButton.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {425 46 24 24}
+                    xywh {400 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flCheckMenuitem.svg}
                     setup {o.typeName("CheckMenuItem");}
                     tooltip {Checkbox Menu Item}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flCheckMenuitem.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {449 46 24 24}
+                    xywh {424 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flSubmenu.svg}
                     setup {o.typeName("Submenu");}
                     tooltip {Sub Menu}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flSubmenu.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {401 70 24 24}
+                    xywh {376 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flChoice.svg}
                     setup {o.typeName("Choice");}
                     tooltip {Choice}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flChoice.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {425 70 24 24}
+                    xywh {400 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flRadioMenuitem.svg}
                     setup {o.typeName("RadioMenuItem");}
                     tooltip {Radio Menu Item}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flRadioMenuitem.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
-                    xywh {449 70 24 24}
+                    xywh {424 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                   }
@@ -768,110 +762,117 @@ Function makeWidgetBin()
         Group {}
           {
             label {Browsers}
-            xywh {482 19 78 79}
+            xywh {457 19 78 79}
             labelsize 12
             open
           }
           {
             Group {}
               {
-                xywh {485 22 72 72}
+                xywh {460 22 72 72}
                 open
               }
               {
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {485 22 24 24}
+                    xywh {460 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flBrowser.svg}
                     setup {o.typeName("Browser");}
                     tooltip {Browser}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flBrowser.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {509 22 24 24}
+                    xywh {484 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flTree.svg}
                     setup {o.typeName("Tree");}
                     tooltip {Tree}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flTree.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {533 22 24 24}
+                    xywh {508 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flCheckBrowser.svg}
                     setup {o.typeName("CheckBrowser");}
                     tooltip {Check Browser}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flCheckBrowser.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {485 46 24 24}
+                    xywh {460 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flHelp.svg}
                     setup {o.typeName("HtmlView");}
                     tooltip {HTML View}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flHelp.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {509 46 24 24}
+                    xywh {484 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flMarkdownView.svg}
                     setup {o.typeName("MarkdownView");}
                     tooltip {Markdown View}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flMarkdownView.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {533 46 24 24}
+                    xywh {508 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flFileBrowser.svg}
                     setup {o.typeName("FileBrowser");}
                     tooltip {File Browser}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flFileBrowser.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {485 70 24 24}
+                    xywh {460 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flTable.svg}
                     setup {o.typeName("Table");}
                     tooltip {Table}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flTable.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
-                    xywh {509 70 24 24}
+                    xywh {484 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                   }
                 Button {}
                   {
-                    xywh {533 70 24 24}
+                    xywh {508 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                   }
@@ -880,68 +881,71 @@ Function makeWidgetBin()
         Group {}
           {
             label {Misc}
-            xywh {564 19 55 79}
+            xywh {539 19 55 79}
             labelsize 12
             open
           }
           {
             Group {}
               {
-                xywh {567 22 48 72}
+                xywh {542 22 48 72}
                 open
               }
               {
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {567 22 24 24}
+                    xywh {542 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flBox.svg}
                     setup {o.typeName("Box");}
                     tooltip {Box}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flBox.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {591 22 24 24}
+                    xywh {566 22 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flClock.svg}
                     setup {o.typeName("Clock");}
                     tooltip {Clock}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flClock.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
                     callback {binButtonCb(o);}
-                    xywh {567 46 24 24}
+                    xywh {542 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                     class BinButton
-                    scale_image {16 16}
-                    image {../pixmaps_svg/flProgress.svg}
                     setup {o.typeName("Progress");}
                     tooltip {Progress}
+                    scale_image {16 16}
+                    image {../pixmaps_svg/flProgress.svg}
+                    compress_image 1
                   }
                 Button {}
                   {
-                    xywh {591 46 24 24}
+                    xywh {566 46 24 24}
                     box THIN_UP_BOX
                     compact {1}
                   }
                 Button {}
                   {
-                    xywh {567 70 24 24}
+                    xywh {542 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                   }
                 Button {}
                   {
-                    xywh {591 70 24 24}
+                    xywh {566 70 24 24}
                     box THIN_UP_BOX
                     compact {1}
                   }

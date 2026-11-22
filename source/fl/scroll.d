@@ -68,6 +68,15 @@ enum ubyte scrollBothAlways = 7;
 
 class Scroll : FlGroup
 {
+    /// The widgets in the Scroll, without its two scrollbars (see
+    /// `FlGroup.widgets`).
+    override Widget[] widgets()
+    {
+        import std.algorithm : filter;
+        import std.array : array;
+        return super.widgets().filter!(w => w !is scrollbar && w !is hscrollbar).array;
+    }
+
     private
     {
         int xposition_;

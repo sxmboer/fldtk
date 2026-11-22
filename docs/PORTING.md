@@ -211,7 +211,7 @@ declares its own delegate type (`fl.core.AbortHandler`, `FdHandler`,
 
 **Status:** Partial — `fl.pen` (the API, with
 `src/drivers/Base/Fl_Base_Pen_Driver.*`), `fl.wayland_pen_driver`,
-`fl.win32_pen_driver`; samples `test/penpal.d` and `examples/pen_test.d`
+`fl.win32_pen_driver`, `fl.x11_pen_driver`; samples `test/penpal.d` and `examples/pen_test.d`
 ([header](https://github.com/fltk/fltk/blob/master/FL/core/pen_events.H))
 
 Pen and tablet input: pressure, tilt, twist, barrel pressure, the eraser,
@@ -223,9 +223,13 @@ unsubscribes it.
 
 - Drivers for Wayland (`zwp_tablet_v2`) and Windows (`WM_POINTER*`,
   Windows 8 and later, its functions looked up in user32.dll at run
-  time). On X11 a pen acts as a mouse; an X11 driver through XInput2 is
-  planned (`CONVENTIONS.md`).
-- `fl.pen` dispatches for both drivers: the widget under the pen is found
+  time), and X11 (XInput2, `docs/X11_PEN_DRIVER.md`): pressure, tilt and
+  the eraser, barrel buttons when the tablet sends them as buttons, and
+  coming into and out of range from the Wacom X driver's "Wacom Serial
+  IDs" property (with other X drivers, a pen leaving the window counts as
+  out of range). The X11 driver doesn't read twist, barrel pressure or the
+  distance from the surface.
+- `fl.pen` dispatches for every driver: the widget under the pen is found
   by walking the window's widget tree, a widget destroyed while handling
   a pen event ends the dispatch, and losing the pointer capture
   mid-stroke keeps the barrel buttons' state.
@@ -240,8 +244,10 @@ unsubscribes it.
   modal dialog, drawing at the exact pen point at any scale, and
   `penpal`'s Tests menu. Twist will stay untested for lack of
   hardware: it needs a pen that reports barrel rotation, which only a
-  few Wacom pens do. The Wayland
-  driver is untested on hardware.
+  few Wacom pens do. The Wayland driver is tested with a Veikk
+  VK1060 Pro on KDE Plasma 5.27, and the X11 driver with the same
+  tablet on an X11 session with the Wacom X driver: position, pressure
+  and tilt.
 
 ### `FL/Fl_Export.H`
 
@@ -395,9 +401,12 @@ helpers with `fl_utf8.h` names live in the modules that use them:
 **Status:** Complete — `fl.names`
 ([header](https://github.com/fltk/fltk/blob/master/FL/names.h))
 
-`eventNames`/`fontNames`/`callbackReasonNames` and their `*Str()`
-lookups, for debugging output. `eventNames` includes the pen events. A
-value without a name gives a generic one (`"FL_FONT_16"`).
+`eventNames`, `fontNames` and the lookups `eventNameStr()`,
+`fontNameStr()` and `callbackReasonStr()`, for debugging output. The
+names are written as in D (`"Event.penTouch"`, `"helveticaBold"`,
+`"CallbackReason.changed"`); the event and callback-reason names come
+from the enums. A value without a name gives the cast that would make it
+(`"cast(Font) 16"`).
 
 ### `FL/fl_ask.H`
 
@@ -2543,16 +2552,18 @@ programs written for fldtk 1.0.2.
 
 ### `fl.markdown`, `fl.markdown_view`, `fl.markdown_dialog` (no FLTK header: Markdown documents)
 
-**Status:** Complete — `fl.markdown`, `fl.markdown_view`, `fl.markdown_dialog`
+**Status:** Complete, apart from a placement bug on Windows (below) — `fl.markdown`, `fl.markdown_view`, `fl.markdown_dialog`
 
 A Markdown reader: `parseMarkdown()` turns the text into a document
 tree, `MarkdownView` lays it out and draws it, and `MarkdownDialog` is
-a window around the view with Back/Forward, text size and find
+a window around the view with Back/Forward, text size, Reload (F5,
+which reads the page and its images again from disk) and find
 (Alt+Left/Right and the mouse's side buttons go back and forward, Ctrl
 with the wheel changes the text size: `fl.browser_window`). Fluid's
 Help > fldtk README and the widget help (the tree's right-click menu,
 the properties panel's Help button) show the README and the Technical
-Reference in a `MarkdownDialog`, and
+Reference in a `MarkdownDialog`, where a link to a `.fl` file (the
+tutorials' finished designs) opens that design in Fluid, and
 `MarkdownView` is in Fluid's widget bin (Browsers, Markdown View).
 
 - Read: CommonMark's blocks and inlines, GitHub's tables,
@@ -2593,6 +2604,10 @@ Reference in a `MarkdownDialog`, and
   document's text, with list markers and table cells (tab-separated)
   included.
 - Not there yet: editing.
+- On Windows, code text is placed badly: inline code, and the
+  highlighted D code in code blocks, overlaps the text next to it after
+  the text size or the window scale is changed. Linux draws the same
+  pages correctly.
 
 ### `FL/Fl_Tooltip.H`
 
@@ -3034,9 +3049,7 @@ How the `.fl` dialect and the generated code work (details in
   before its children), `finalize` (after its children, before `end()`;
   groups and windows only) and `callback`, stored as
   `WidgetNode.setupCode`/`finalizeCode`/`callback`. An import goes in a
-  parent widget's `setup` code or in a `decl` node.
-- The `in header`/`in source` controls of `decl`, `class` and `Function`
-  nodes are kept in the `.fl` file but change nothing in D output.
+  parent widget's `setup` code or in a Code node at the top.
 
 File > Run (F5, and the Run button of the widget panel) saves, writes
 the code, builds with `dub build` and starts the program, and File > Set
@@ -3072,8 +3085,8 @@ On purpose, and not waiting on work:
 `source/fluid/gui_main.d` (the editor)
 
 `app.d` runs `fluid -c`; `gui_main.d`'s `runEditor()` runs the editor: a
-main window with the menu bar and node browser, the panels, and the
-canvases.
+main window (a `DoubleWindow`) with the menu bar and node browser, the
+panels, and the canvases.
 
 - `confirmDiscardChanges()` asks before discarding a modified project;
   panel positions are kept in `Preferences`.
@@ -3085,7 +3098,7 @@ canvases.
   in-memory clipboard of `.fl` text (`clipboardText_`), and Select All /
   Select None, which widen from the current selection's parent and stay
   within the canvas's window when a canvas runs the command. They work on
-  top-level code nodes (`Function`, `decl`, `comment`, ...) too:
+  top-level code nodes (`Function`, `code`, `comment`, ...) too:
   `allSelectedNodes()` combines the canvas's selection with the node
   browser's, and Paste can use a top-level code node as its target.
 - **Sort, Earlier, Later, Group, Ungroup** (`fluid.node_order`,
@@ -3134,27 +3147,56 @@ The node kinds:
 - `WindowNode` (modal, xclass, noborder, size range, children),
   `GroupNode`, `GridNode`, `FlexNode`.
 - `MenuOwnerNode`/`MenuItemNode`.
-- `ClassNode`: a class with a base class (a `class Name {}` without one
-  is flattened into the module).
-- `WidgetClassNode`: a D `class Name : BaseClass` with the named children
-  as fields.
-- `CodeNode`, `DeclNode`, `DataNode` (code, declarations, embedded data).
-- `CodeBlockNode`/`DeclBlockNode`: their children between a "before" and
-  an "after" line. `DeclBlockNode` adds braces and indents its children,
-  since D's `version()`/`static if` need braces that a `.fl` value can't
-  hold unbalanced.
-- `FunctionNode`: `main()`, named functions, and a class's constructor,
-  destructor and methods.
-- `CommentNode`: a comment entry in the tree (with `in_h_`/`in_c_`),
-  separate from every node's `comment` property, written where it
-  stands: at the top of the file, or in a function body, code block or
-  widget class, as a `/* ... */` block.
+- `ClassNode`: a plain D `class Name : Base` (`prefix` holds attributes
+  written before `class`). Its Code children are fields, its Function
+  children methods (`this(...)` a constructor), and the named widgets of
+  windows its methods build become fields too, one set per instance.
+- `FunctionNode`: `main()`, named functions, and a class's methods.
+- `CodeNode`: raw D at any scope, written where it stands in the tree.
+  At the top of the file and directly in a Class it is written as
+  declarations; in a Function, or among a window's widgets, as
+  statements, tagged for MergeBack. Its comment is
+  written before it, and the text keeps its own indentation.
+- `ConditionalNode`: a header line (`if`, `else`, `static if`, `debug`,
+  `version (...)`) and its children inside braces, at any scope. In a
+  Class it holds fields and methods.
+- `CommentNode`: a comment entry in the tree (`not_in_source` keeps it in
+  the `.fl` file only), separate from every node's `comment` property,
+  written where it stands: at the top of the file, or in a function body,
+  Conditional node or Class, as a `/* ... */` block.
 
-A class or widget class inside another class is written as a `static`
-nested class; a function in a declaration block inside a class is a
-method. A unit test at the end of `code_writer.d` generates every node
-kind in every container Fluid allows it in, and fails if any of them is
-missing from the output.
+The top-level nodes are written in tree order. Comment nodes before every
+other node are the file's header and go above `import fl;`; the
+module-level variables of named widgets go just before the first
+Function or Class. A Class starts with the fields of its methods' named
+widgets, then has its children in tree order.
+
+A Class inside a Conditional node in another Class is written as a
+`static` nested class, and a Function there is a method. A unit test at
+the end of `code_writer.d` generates every node kind in every container
+Fluid allows it in, and fails if any of them is missing from the output.
+
+Older files' code nodes are converted as they are read
+(`project_reader.d`'s `convertLegacy()`, `fluid.legacy_nodes`), and saved in the new form; `Reader.notes` lists
+what changed, which Fluid shows on opening the file and `fluid -c`/`-u`
+print:
+- `decl` becomes a Code node, `declblock` and `codeblock` Conditional
+  nodes. A code block's end code (`while (0)` after `}`) is dropped with
+  a note.
+- `data` becomes a Code node with a string import, `immutable ubyte[] name
+  = cast(immutable ubyte[]) import("path");` (`immutable string` for
+  `textmode`). A `compressed` node imports its file as it is. The
+  compiler finds the file through the string import paths (dmd's `-J`);
+  a path outside the project's folder can't be imported that way, so it
+  is replaced by the file's own name, with a note.
+- A `widget_class` node (a group or window designed as a class that is
+  that widget) becomes a Class of the same name with a `make()` method
+  building its widgets in a Window, the field `window`. Its Code and
+  Function children stay fields and methods, and the note says how to
+  create it now. `position_relative`/`position_relative_rescale` are
+  dropped.
+- `in_header`/`in_source` and the header-file flags of `decl` and
+  `declblock` nodes are read and dropped.
 
 Properties:
 - A widget's `type` is chosen from a table per widget kind
@@ -3168,21 +3210,13 @@ Properties:
   variable. `FunctionNode` has `access` plus `declareC` (`C`): a method
   gets a protection attribute, a plain function `private`, and
   `declare "C"` gives `extern (C)`.
-- `ClassNode.prefix` (`class final Foo {` in the `.fl` file) is written
-  before `class`: `final class Foo`. The panel's Attribute field edits it.
-- An inline-data node without a file name generates an empty array; one
-  whose file can't be read generates `static assert(false, "Can't include
-  data from file. Can't open ...")`, alerts on Write Code, and is printed
-  as `FLUID ERROR:` by `fluid -c`.
-- `DataNode`'s storage is two flags, `asString` and `compressedFlag`,
-  which combine freely (the panel's "Storage Format:" group). In `.fl`
-  files they are `textmode` and `compressed`; `std_binary`/
-  `std_textmode`/`std_compressed` are read but not written.
+- Embedding a file is a Code node with a string import (see above). A
+  file the program wants compressed is compressed beforehand and unpacked
+  with Phobos: `std.zlib.uncompress(import("logo.png.z"))` for zlib data,
+  with `winbits` 31 for a `.gz` file.
 - Grid cells (`location`, `colspan`, `rowspan`, `align`, `minsize`) are
   read from a child's `parent_properties` block, which the reader hands
   to the parent node to interpret.
-- A `widget_class` with `position_relative`/`position_relative_rescale`
-  ends its constructor with `position(x, y)`/`resize(x, y, w, h)`.
 
 On the canvas:
 - A `Grid` is a `fluid.grid_proxy.GridProxy`: selecting it, or dragging
@@ -3249,8 +3283,9 @@ Fluid's own windows are `.fl` files in the D dialect, generated by
 `gui_main.d`.
 
 **Widget panel** (`widget_panel.fl`, with `widget_panel_grid_tab.fl` and
-`widget_panel_grid_child_tab.fl`, which define the `widget_class`es
-`GridTab`/`GridChildTab` and are imported by file name). `gui_main.d`
+`widget_panel_grid_child_tab.fl`, which define the Grid and Grid Child
+pages as the Classes `GridTab`/`GridChildTab`, Groups whose constructor
+builds the page and are imported by file name). `gui_main.d`
 uses `make_widget_panel()`, `load()`, `current()`,
 `refreshCodeFromNode()`, `wireEditHooks()`, the `onBeforeEdit`/
 `onEdited`/`onOpenExternalEditor` hooks and `overlayCb`/`okCb`/
@@ -3296,7 +3331,8 @@ uses `make_widget_panel()`, `load()`, `current()`,
   Auto-Refresh (`codeviewAutoRefresh()`, called from every change to the
   project, including `onEditSettled` after each finished property edit)
   updates the views at once; Refresh always does, and keeps the
-  highlight.
+  highlight. Both read the current project through `cvLoadProject`,
+  which `gui_main.d` sets (`codeviewRefreshCurrent()`).
 - `settings_panel.fl`: FLTK's six tabs at its 360×585 size, with tab
   icons drawn from SVG (`panels/pixmaps/`).
   - General and Locale work. General's fldtk Folder
@@ -3352,7 +3388,7 @@ uses `make_widget_panel()`, `load()`, `current()`,
     build step is found.
   - Blocks keep their indentation and are un-indented by the tag line's
     indentation. `setup` and `finalize` code is written with the widget's
-    name (`this` in a widget class) for `o`, and merged back with `o`
+    name for `o`, and merged back with `o`
     (`fluid.code_highlight.renameIdentifier()`): only uses as code are
     renamed, not text in strings, character literals or comments, and
     not a member access (`x.o`). Merging back also turns a use of the
@@ -3432,29 +3468,30 @@ uses `make_widget_panel()`, `load()`, `current()`,
 - **Placing new nodes** (`placeNewNode()`): from the selection (as its
   last child if it can hold children, else right after it), climb to the
   nearest parent the new kind may live in (`acceptsNewNode()`): a menu
-  item in a menu widget or submenu; Code in a Function, Code Block,
-  Widget Class or group; Code Block and Comment in a code block; Window
-  in a Function or Code Block; Function, Declaration, Inline Data,
-  Declaration Block and Class in a Declaration Block or Class; Widget
-  Class likewise but not inside another Widget Class. Other kinds go to
-  the top level (after the selection's top-level node, or first).
-  - Menu items, Code, Code Block, Window and widgets need such a parent;
-    when there is none, `assistNodeCreation()` offers to create it: a
-    Function (or a method of the selected class) for Code, Code Block and
-    Window; a Window, and a Function if needed, for a widget; a Menu
+  item in a menu widget or submenu; Code, Conditional and Comment in a
+  Function, Class, Conditional node or group; a Window in a Function or a
+  Conditional node holding statements, or in another window; a Function
+  in a Class or a Conditional node holding declarations; a Class in
+  another Class or a Conditional node holding declarations. Other kinds
+  go to the top level (after the selection's top-level node, or first).
+  - With two or more nodes of the same parent selected, a new Function,
+    Class or Conditional node takes the place of the first and they
+    become its children (`wrapSelectionIn()`), provided each may go into
+    it; otherwise it is placed as above.
+  - Menu items, Windows and widgets need such a parent; when there is
+    none, `assistNodeCreation()` offers to create it: a Function (or a
+    method of the selected class) for a Window; a Window, and a Function
+    if needed, for a widget; a Menu
     Button (a Menu Bar for a submenu) with its Window and Function for a
     menu item. The whole creation is one undo step; declining creates
     nothing.
   - Paste places each node the same way (widgets need a group or
     window; a node with no place is skipped); with nothing selected it
     pastes into the active window.
-  - A new Widget Class gets a window's starting geometry (480×320,
-    centred) and its own canvas.
 - **New node defaults:** a widget gets FLTK's default label
   (`instantiate.d`'s `defaultLabelFor()`), a code node a D default
   (`defaultNameFor()`: `makeWindow()`, `writeln("Hello, World!");`,
-  `if (test())`, `int x;`, `version (all)`, `myInlineData`, `my comment`,
-  `UserInterface`). A new menu item is "item" (a submenu "submenu"); a new
+  `version (all)`, `my comment`, `UserInterface`). A new menu item is "item" (a submenu "submenu"); a new
   Menu Button, Choice or Input Choice is labelled "menu", "choice:" or
   "input choice:", and shows a one-item "CHOICE" menu until it has items.
 - **Menus on the canvas:** `applyMenuItems()` rebuilds a menu widget's
@@ -3540,11 +3577,10 @@ Fluid's own widgets, built on `fl.*`.
   (`calcItemHeight()`/`drawItemContent()`): the class name in bold
   without `Fl_`, then the instance name, or the label in quotes; an
   optional dark green comment line above; a thin line under each
-  unselected row. Function, top-level or in-class Code Block, Comment and
-  the other code nodes have their own single-part rows in the User tab's
+  unselected row. Function, top-level or in-class Conditional, Comment and
+  Code nodes have their own single-part rows in the User tab's
   fonts and colors (`rowKind()`/`nodeTitle()`). The type icon gets a lock
-  for a private widget or function, a mark for a protected one (never on
-  a declaration or declaration block), and an "invisible" mark for a
+  for a private widget or function, a mark for a protected one, and an "invisible" mark for a
   hidden widget outside a Tabs or Wizard. Selecting on a canvas scrolls
   the browser to the selected row (`syncSelection()`). The browser shows
   every top-level node of the project.
@@ -3579,7 +3615,7 @@ Fluid's own widgets, built on `fl.*`.
 - **Adding nodes:** code nodes through `addNode()`, widgets through
   `insertWidget()`/`addWidget()` ("Please select a group widget or
   window" when there is no place for one), windows through
-  `createWindowNode()` (in the nearest Function, Code Block or window, or
+  `createWindowNode()` (in the nearest Function, Conditional node or window, or
   offering to create a Function). A window created inside another window
   is a subwindow at 10,10, 480×320 capped to fit its parent; its canvas is
   built inside its parent's (`nestedWindowFactory`,
@@ -3623,8 +3659,8 @@ Fluid's own widgets, built on `fl.*`.
   with token classes following nano's `d.syntax` and colors for a white
   background, `enableHighlighting()` (a style buffer for any `TextDisplay`, restyled
   on each change) and `enableAutoIndent()` (Enter keeps the indentation).
-  Used by the panel's D code fields (callback, setup code, code and decl
-  text, function name and return type) and Code View's Source pane.
+  Used by the panel's D code fields (callback, setup code, code text,
+  function name and return type) and Code View's Source pane.
   `fluid.code_viewer.CodeViewer` draws the selection in light gray, so
   the node highlight stays readable over the colors.
 - Not ported: `App_Menu_Bar` and `Text_Viewer`.

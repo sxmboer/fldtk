@@ -42,7 +42,9 @@ bool runRunning() { return running_; }
 /// signal ended it), and whether `stop()` ended it. Returns false, after
 /// reporting why through `onRunOutput`, when the process could not be
 /// started; `done` is then not called. A process still running is
-/// ended first (`runKill()`). `flushOutput` sets `FLDTK_FLUSH_OUTPUT`
+/// ended first (`runKill()`): File > Run starts the build this way, and
+/// on Windows a running program's `.exe` can't be overwritten, so the
+/// build would fail. `flushOutput` sets `FLDTK_FLUSH_OUTPUT`
 /// for the process (see the module comment).
 bool runStart(string[] args, string workDir, void delegate(int status, bool stopped) done, bool flushOutput = false)
 {

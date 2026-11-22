@@ -203,7 +203,8 @@ string dubPackageName(string s)
 /// `fldtkDubPath()` gives it) and to the design (`flPath`, ditto). The
 /// `preGenerateCommands` lines run `fluid -c` before every build, so a
 /// `dub build` or `dub run` typed in a terminal also uses the latest
-/// design.
+/// design. `stringImportPaths` names the design's folder, where a Code
+/// node's `import("file")` finds its files.
 string[] fldtkSdlLines(string fldtkPath, string flPath)
 {
     // In an SDL string, `\\` is one backslash.
@@ -214,7 +215,17 @@ string[] fldtkSdlLines(string fldtkPath, string flPath)
         `subConfiguration "fldtk" "program"`,
         `preGenerateCommands "\"$FLDTK_PACKAGE_DIR/fluid\" -c \"$PACKAGE_DIR/` ~ flPath ~ `\"" platform="linux"`,
         `preGenerateCommands "\"$FLDTK_PACKAGE_DIR\\fluid.exe\" -c \"$PACKAGE_DIR\\` ~ flWin ~ `\"" platform="windows"`,
+        `stringImportPaths "` ~ designDir(flPath) ~ `"`,
     ];
+}
+
+/// The folder of the design at `flPath` (relative to the project
+/// folder, with forward slashes), as `stringImportPaths` names it: `.`
+/// for a design in the project folder itself.
+private string designDir(string flPath)
+{
+    string dir = dirName(flPath);
+    return dir.length ? dir.replace('\\', '/') : ".";
 }
 
 /// The same as `fldtkSdlLines()` in dub.json's notation, to show to the
@@ -227,7 +238,8 @@ string fldtkLinesJson(string fldtkPath, string flPath)
         ~ `"dependencies": { "fldtk": { "path": "` ~ fldtkPath ~ `" } },` ~ "\n"
         ~ `"subConfigurations": { "fldtk": "program" },` ~ "\n"
         ~ `"preGenerateCommands-linux": [ "\"$FLDTK_PACKAGE_DIR/fluid\" -c \"$PACKAGE_DIR/` ~ flPath ~ `\"" ],` ~ "\n"
-        ~ `"preGenerateCommands-windows": [ "\"$FLDTK_PACKAGE_DIR\\fluid.exe\" -c \"$PACKAGE_DIR\\` ~ flWin ~ `\"" ]`;
+        ~ `"preGenerateCommands-windows": [ "\"$FLDTK_PACKAGE_DIR\\fluid.exe\" -c \"$PACKAGE_DIR\\` ~ flWin ~ `\"" ],` ~ "\n"
+        ~ `"stringImportPaths": [ "` ~ designDir(flPath) ~ `" ]`;
 }
 
 /// A new dub.sdl for package `name`, with the lines `dub init` writes
@@ -257,9 +269,11 @@ bool sdlUsesFldtk(string sdl)
 /// added (none when it already had them all). A line counts as present
 /// when the recipe's top level has a line with the same directive for
 /// the same thing: any `targetType`, `dependency "fldtk"`,
-/// `subConfiguration "fldtk"`, or a `preGenerateCommands` for the same
-/// platform that runs fluid. Existing lines are never changed, so a
-/// `dependency "fldtk"` with another path keeps it.
+/// `subConfiguration "fldtk"`, a `preGenerateCommands` for the same
+/// platform that runs fluid, or a `stringImportPaths` that names the
+/// design's folder (dub adds up the paths of several such lines).
+/// Existing lines are never changed, so a `dependency "fldtk"` with
+/// another path keeps it.
 string addFldtkSdlLines(string sdl, string fldtkPath, string flPath, out string[] added)
 {
     bool[string] have;
@@ -278,9 +292,12 @@ string addFldtkSdlLines(string sdl, string fldtkPath, string flPath, out string[
             else if (line.canFind(`platform="linux"`)) have["pre-linux"] = true;
             else { have["pre-windows"] = true; have["pre-linux"] = true; }
         }
+        if (line.startsWith("stringImportPaths") && line.canFind(`"` ~ designDir(flPath) ~ `"`))
+            have["stringImportPaths"] = true;
     }
 
-    static immutable string[] keys = ["targetType", "dependency", "subConfiguration", "pre-linux", "pre-windows"];
+    static immutable string[] keys = ["targetType", "dependency", "subConfiguration", "pre-linux", "pre-windows",
+        "stringImportPaths"];
     auto lines = fldtkSdlLines(fldtkPath, flPath);
     foreach (i, key; keys)
         if (key !in have)
@@ -418,6 +435,7 @@ unittest
     assert(sdl.canFind(`dependency "fldtk" path="../fldtk"`));
     assert(sdl.canFind(`"\"$FLDTK_PACKAGE_DIR/fluid\" -c \"$PACKAGE_DIR/hello.fl\"" platform="linux"`));
     assert(sdl.canFind(`"\"$FLDTK_PACKAGE_DIR\\fluid.exe\" -c \"$PACKAGE_DIR\\hello.fl\"" platform="windows"`));
+    assert(sdl.canFind("\nstringImportPaths \".\"\n"));
     assert(sdlUsesFldtk(sdl));
 
     // Nothing is added to a complete one.
@@ -429,9 +447,10 @@ unittest
     // newline in the original).
     string init = "name \"hello\"\ndescription \"A minimal D application.\"";
     string result = addFldtkSdlLines(init, "../fldtk", "ui/hello.fl", added);
-    assert(added.length == 5);
+    assert(added.length == 6);
     assert(result.startsWith(init ~ "\n"));
     assert(result.canFind(`$PACKAGE_DIR/ui/hello.fl`));
+    assert(result.canFind(`stringImportPaths "ui"`));
     assert(result.canFind(`$PACKAGE_DIR\\ui\\hello.fl`));
     assert(!sdlUsesFldtk(init) && sdlUsesFldtk(result));
 
@@ -440,9 +459,19 @@ unittest
     string partial = "name \"x\"\ntargetType \"executable\"\ndependency \"fldtk\" path=\"/opt/fldtk\"\n"
         ~ "configuration \"a\" {\n    subConfiguration \"fldtk\" \"program\"\n}\n";
     result = addFldtkSdlLines(partial, "../fldtk", "x.fl", added);
-    assert(added.length == 3);
+    assert(added.length == 4);
     assert(added[0] == `subConfiguration "fldtk" "program"`);
     assert(!result.canFind(`path="../fldtk"`));
+
+    // A project set up before stringImportPaths was written gets it; one
+    // whose stringImportPaths names other folders gets the design's too.
+    string older = sdl.replace("stringImportPaths \".\"\n", "");
+    addFldtkSdlLines(older, "../fldtk", "hello.fl", added);
+    assert(added == [`stringImportPaths "."`]);
+    addFldtkSdlLines(older ~ "stringImportPaths \"views\"\n", "../fldtk", "hello.fl", added);
+    assert(added == [`stringImportPaths "."`]);
+    addFldtkSdlLines(older ~ "stringImportPaths \"views\" \".\"\n", "../fldtk", "hello.fl", added);
+    assert(added.length == 0);
 }
 
 unittest

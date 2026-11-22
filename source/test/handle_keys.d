@@ -235,7 +235,7 @@ class App : DoubleWindow
         eventnum++;
         eventnum %= 1000;
         eventname = eventNames[ev];
-        tty.printf("[%3d] %-12s", eventnum, eventname);
+        tty.printf("[%3d] %-15s", eventnum, eventname);
         return 1;
     } // app::print_event()
 

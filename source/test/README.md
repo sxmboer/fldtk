@@ -25,7 +25,7 @@ program is simply a `.d` file here that defines `main()` — there is no
 manifest and nothing to register; add a file and it is picked up on
 the next run. See `docs/BUILDING.md` at the repo root for the full build
 model, including how a helper module shared between several programs
-(`CubeView.d`, `checkers_pieces.d`, `fracviewer.d`, `resize_arrows.d`)
+(`CubeView.d`, `fracviewer.d`, `resize_arrows.d`)
 gets pulled in automatically.
 
 On Windows, `list_visuals` (it lists X11 visuals) is skipped, printing

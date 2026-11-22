@@ -64,7 +64,7 @@ module fluid.code_writer;
 
 import std.array : appender, Appender, join;
 import std.format : format;
-import std.string : split, strip, lineSplitter, indexOf, lastIndexOf, toLower, startsWith, replace;
+import std.string : split, strip, lineSplitter, indexOf, lastIndexOf, toLower, startsWith, replace, stripRight;
 import std.regex : regex;
 import std.path : buildPath, extension, baseName, absolutePath, relativePath, dirName, buildNormalizedPath;
 import std.file : read, exists;
@@ -85,15 +85,11 @@ import fl.pnm_image : PNMImage;
 import fluid.node;
 import fluid.widget_node;
 import fluid.window_node;
-import fluid.widget_class_node;
 import fluid.group_node;
 import fluid.function_node;
 import fluid.code_node;
-import fluid.class_node;
-import fluid.decl_node;
-import fluid.decl_block_node;
-import fluid.data_node;
-import fluid.code_block_node;
+import fluid.conditional_node;
+import fluid.class_node : ClassNode;
 import fluid.grid_node;
 import fluid.flex_node;
 import fluid.menu_item_node;
@@ -202,7 +198,7 @@ private immutable string[int] fontMap = [
 // The colors `fl.enumerations` names, as FLTK's
 // `Widget_Node::write_color()` (`fluid/nodes/Widget_Node.cxx`) names them;
 // any other index is written as `cast(Color) N`. `selectionColor` is
-// written qualified, because inside a widget class it would name the
+// written qualified, because inside a class derived from a widget it would name the
 // widget's own `selectionColor()` method.
 private immutable string[int] colorNameMap = [
     0: "foregroundColor", 7: "background2Color", 8: "inactiveColor",
@@ -280,7 +276,7 @@ class Writer
     private string[string] nameMap; // .fl instance name -> D identifier (verbatim; identity map)
 
     /// The `.fl` file's own directory for this `generate()` call --
-    /// resolves every `DataNode.filename`/`WidgetNode.imageFilename`/
+    /// resolves every `WidgetNode.imageFilename`/
     /// `.deimageFilename` relative to it, matching FLTK's own
     /// `Fluid.proj.enter_project_dir()` convention (`Data_Node::
     /// write_code1()`). A field rather than a threaded parameter since
@@ -309,8 +305,9 @@ class Writer
 
     /// Whether to emit a leading dub single-file-package header comment
     /// (a deliberate fldtk-only convenience): `/+ dub.sdl:` naming
-    /// `dependency "fldtk" path="..."` and `subConfiguration "fldtk"
-    /// "program"`, then `+/`, letting the generated `.d` file be built
+    /// `dependency "fldtk" path="..."`, `subConfiguration "fldtk"
+    /// "program"` and `stringImportPaths` (the design's folder, for a
+    /// Code node's `import("file")`), then `+/`, letting the generated `.d` file be built
     /// directly via `dub build --single <file>.d`/`dub run --single
     /// <file>.d` with zero manually-typed linker flags -- dub resolves
     /// fldtk's own `libs`/`importPaths`/platform configuration as a
@@ -353,22 +350,10 @@ class Writer
     /// name to guarantee uniqueness regardless of nesting.
     private int imageVarCounter_;
 
-    /// `projectDir` is the `.fl` file's own directory -- resolves every
-    /// `DataNode.filename` relative to it, matching FLTK's own
-    /// `Fluid.proj.enter_project_dir()` convention (`Data_Node::
-    /// write_code1()`). Defaults to "." for callers (existing tests)
-    /// that never construct a `DataNode`. `i18n` is the project's own
-    /// `fluid.i18n.I18nSettings` (see that field's own doc comment);
-    /// defaults to `I18nSettings.init` (no i18n) for every existing
-    /// caller. `settings` is the project's own
-    /// `fluid.project_settings.ProjectSettings`, defaulting to no
-    /// flags set.
-    /// Inline-data files that couldn't be read during the last
-    /// `generate()`, one message each -- FLTK's `Data_Node::write_code1()`
-    /// alerts these when writing code interactively and prints them in
-    /// batch mode; the caller decides which.
-    string[] dataErrors;
-
+    /// `projectDir` is the `.fl` file's own directory, which widget
+    /// image files are read relative to. `i18n` is the project's
+    /// `fluid.i18n.I18nSettings` (see that field's own doc comment), and
+    /// `settings` its `fluid.project_settings.ProjectSettings`.
     string generate(Node[] roots, string projectDir = ".", I18nSettings i18n = I18nSettings.init,
         bool dubHeader = false, ProjectSettings settings = ProjectSettings.init)
     {
@@ -388,149 +373,35 @@ class Writer
         indent_ = 0;
 
         collectNames(roots);
+        clearSpans(roots);
 
-        FunctionNode mainFn;
-        FunctionNode[] plainFns;
-        ClassNode[] classNodes;
-        WidgetClassNode[] widgetClassNodes;
-        DeclNode[] declNodes;
-        DeclBlockNode[] declBlockNodes;
-        DataNode[] dataNodes;
-        Node[] commentNodes;
-        Node[] skippedRootNodes;
-
-        foreach (r; roots)
-        {
-            // A root-level `comment {TEXT} {}` block (FLTK's own
-            // `Comment_Node`, usually a file header/license comment) --
-            // `factory.d` registers "comment" as a plain, un-subclassed
-            // `Node`, with TEXT captured into `instanceName` the same
-            // way `CodeNode`/`DeclNode` capture their own raw text.
-            // Checked by `typeName`, not `typeid`, matching how every
-            // other node here identifies its own kind. Must be handled
-            // before this loop's
-            // own final `if (fn is null) continue;`, or every root
-            // comment node would silently drop from generated output
-            // entirely -- parsed and `.fl`-round-tripped, but the file
-            // header comment itself never appearing in the generated D
-            // at all (confirmed against `CubeViewUI.fl`/`fluid-
-            // callback.fl`/`preferences.fl`, all three of which open
-            // with exactly this).
-            if (r.typeName == "comment")
-            {
-                commentNodes ~= r;
-                continue;
-            }
-            // Checked before the plain-ClassNode case below: a
-            // `WidgetClassNode` isn't a `ClassNode` at all (it's a
-            // `WindowNode` subclass -- see that module's own doc
-            // comment), so there's no real ordering hazard here, just
-            // keeping the two "generates a real D class" root kinds
-            // next to each other for readability.
-            if (auto wcn = cast(WidgetClassNode) r)
-            {
-                widgetClassNodes ~= wcn;
-                continue;
-            }
-            if (auto cn = cast(ClassNode) r)
-            {
-                classNodes ~= cn;
-                continue;
-            }
-            // Checked before the plain-DeclNode case below: DataNode
-            // extends DeclNode (matching FLTK's own `Data_Node :
-            // public Decl_Node`), so `cast(DeclNode) r` would otherwise
-            // also match a DataNode and misroute it into declNodes --
-            // dumping its `instanceName` (just the bare identifier, not
-            // real D code) verbatim via emitSnippetLines().
-            if (auto dan = cast(DataNode) r)
-            {
-                dataNodes ~= dan;
-                continue;
-            }
-            if (auto dn = cast(DeclNode) r)
-            {
-                declNodes ~= dn;
-                continue;
-            }
-            // Not a `DeclNode` subclass at all (matches FLTK:
-            // `class DeclBlock_Node : public Node`), so no cast-order
-            // hazard with the `DeclNode`/`DataNode` checks above -- see
-            // `writeDeclBlockNode()` for how its own children (plain
-            // `decl {}`/`data {}`, or another nested `declblock {}`) get
-            // walked.
-            if (auto dbn = cast(DeclBlockNode) r)
-            {
-                declBlockNodes ~= dbn;
-                continue;
-            }
-            auto fn = cast(FunctionNode) r;
-            if (fn is null)
-            {
-                // A root-level node with no valid destination at D
-                // module scope -- most commonly a `code {}`/`codeblock
-                // {}` block that ended up as a top-level sibling instead
-                // of nested inside a `Function` (FLTK has the
-                // identical structural problem in real C++ too:
-                // arbitrary statements can't sit at file scope there
-                // either, only declarations -- Fluid itself doesn't
-                // validate this at edit time in either project, so
-                // nothing stops a user from creating one this way).
-                // Silently dropping this would make the content vanish
-                // with zero trace: e.g. a
-                // top-level `code {w.show(); fl.run();}` block, meant to
-                // start the program, would simply be missing from generated
-                // output with no indication anything had been skipped.
-                // Collected here and surfaced as a real comment near the
-                // top of the generated file (see `generate()`'s own use
-                // of `skippedRootNodes` below) instead.
-                skippedRootNodes ~= r;
-                continue;
-            }
-            if (fn.instanceName.length == 0)
-            {
-                mainFn = fn;
-                continue;
-            }
-            plainFns ~= fn;
-        }
+        // The top-level nodes are written in tree order. Comment nodes
+        // before every other node are the file's header and go above the
+        // imports.
+        size_t headerEnd = 0;
+        while (headerEnd < roots.length && cast(CommentNode) roots[headerEnd])
+            headerEnd++;
 
         // The dub header goes first of all: dub only reads it as the
         // first thing in the file. `program` is fldtk's configuration
         // for programs (see fldtk's dub.sdl): the program links the
         // library in the fldtk folder and finds it there when it runs.
+        // `stringImportPaths` names the design's folder, so a Code
+        // node's `import("file")` finds files next to the `.fl` file.
         if (dubHeader_)
         {
-            buf.put(format("/+ dub.sdl:\ndependency \"fldtk\" path=\"%s\"\nsubConfiguration \"fldtk\" \"program\"\n+/\n",
-                fldtkPathFrom(outputDir.length ? outputDir : projectDir_)));
+            import fluid.dub_project : dubPath;
+
+            string dir = outputDir.length ? outputDir : projectDir_;
+            buf.put(format("/+ dub.sdl:\ndependency \"fldtk\" path=\"%s\"\nsubConfiguration \"fldtk\" \"program\"\n"
+                ~ "stringImportPaths \"%s\"\n+/\n",
+                fldtkPathFrom(dir), dubPath(dir, projectDir_)));
         }
 
-        // Every root comment node goes at the very top, before `import
-        // fl;` -- matches FLTK's own file-header-comment placement
-        // (before any `#include`). Doesn't preserve the original
-        // interleaving of multiple comment nodes among Function/Class
-        // roots elsewhere in the file, but neither does anything else
-        // in this function -- every root kind is already bucketed and
-        // re-emitted in a fixed order (data, decls, classes, plain
-        // functions, main), not the source's own interleaving.
-        //
-        // Gated on `inSource_`, matching the property panel's own
-        // "output to source file" checkbox (`inSource_` round-trips
-        // through `project_writer.d`): unchecking
-        // it does what the property panel's own tooltip
-        // claims: the comment stays in the `.fl`
-        // project file only, never reaching generated D at all.
-        foreach (cn; commentNodes)
-        {
-            if (auto comn = cast(CommentNode) cn)
-                if (!comn.inSource_) continue;
-            immutable start = pos();
-            writeCommentText(cn.instanceName);
-            spanLeaf(cn, start);
-            blank();
-        }
+        foreach (cn; roots[0 .. headerEnd])
+            writeRootComment(cast(CommentNode) cn);
         buf.put("import fl;\n");
-        foreach (m; collectClassOverrideImports(roots, classNodes, widgetClassNodes, declNodes))
+        foreach (m; collectClassOverrideImports(roots, localClassNames(roots), moduleCodeTexts(roots)))
             // Selective, not whole-module: a plain "import CubeView;"
             // is genuinely ambiguous when the module and the class it
             // exports share the exact same name (dmd rejects it with
@@ -570,56 +441,75 @@ class Writer
         // this port's usual "drop the `Fl_`/`Fl` prefix" convention --
         // see those two modules' own doc comments), so generated code
         // never names the colliding symbol in the first place.
-        // `className()` and `writeWidgetClassNode()`'s own default base
-        // class below already emit `FlGroup`/`FlClock`, not `Group`/
+        // `className()` already emits `FlGroup`/`FlClock`, not `Group`/
         // `Clock`, for a plain `.fl`-dialect "Group"/"Clock" node.
         buf.put("import std;\n\n");
         writeI18nPrologue();
-        foreach (skipped; skippedRootNodes)
+        // The module-level widget variables go before the first Function
+        // or Class, so Code nodes above it (imports, types) come first.
+        bool declsWritten;
+        void writeWidgetDecls()
         {
-            line(format("// Skipped: a root-level `%s` node has no valid D module-scope", skipped.typeName));
-            line("// destination (only declarations, not statements, are legal there) --");
-            line("// move its contents inside a Function instead.");
-            if (skipped.instanceName.length)
+            if (declsWritten)
+                return;
+            declsWritten = true;
+            writeDecls(roots);
+            if (nameMap.length)
+                buf.put("\n");
+        }
+        foreach (r; roots[headerEnd .. $])
+        {
+            if (auto comn = cast(CommentNode) r)
+                writeRootComment(comn);
+            else if (cast(CodeNode) r || cast(ConditionalNode) r)
+                writeDeclChild(r);
+            else if (auto cn = cast(ClassNode) r)
             {
-                line("// Its own text:");
-                foreach (l; skipped.instanceName.lineSplitter)
-                    line("//   " ~ l);
+                writeWidgetDecls();
+                writeClassNode(cn);
             }
-            blank();
+            else if (auto fn = cast(FunctionNode) r)
+            {
+                writeWidgetDecls();
+                if (fn.instanceName.length == 0)
+                    writeFunctionBody(fn);
+                else
+                    writePlainFunction(fn);
+            }
+            else
+                writeSkippedRoot(r);
         }
-        foreach (dan; dataNodes)
-        {
-            writeDataNode(dan);
-            blank();
-        }
-        foreach (dn; declNodes)
-        {
-            immutable start = pos();
-            writeNodeComment(dn);
-            emitSnippetLines(dn.instanceName);
-            spanLeaf(dn, start);
-            blank();
-        }
-        foreach (dbn; declBlockNodes)
-            writeDeclBlockNode(dbn);
-        writeDecls(roots);
-        if (nameMap.length)
-            buf.put("\n");
-
-        foreach (cn; classNodes)
-            writeClassNode(cn);
-
-        foreach (wcn; widgetClassNodes)
-            writeWidgetClassNode(wcn);
-
-        foreach (fn; plainFns)
-            writePlainFunction(fn);
-
-        if (mainFn !is null)
-            writeFunctionBody(mainFn);
+        writeWidgetDecls();
 
         return buf.data;
+    }
+
+    /// A top-level Comment node: its text, unless it is switched off for
+    /// the source (`not_in_source`).
+    private void writeRootComment(CommentNode cn)
+    {
+        if (!cn.inSource_)
+            return;
+        immutable start = pos();
+        writeCommentText(cn.instanceName);
+        spanLeaf(cn, start);
+        blank();
+    }
+
+    /// A top-level node that has no place at module scope (a widget
+    /// outside any Function): reported in a comment instead of vanishing.
+    private void writeSkippedRoot(Node skipped)
+    {
+        line(format("// Skipped: a root-level `%s` node has no valid D module-scope", skipped.typeName));
+        line("// destination (only declarations, not statements, are legal there) --");
+        line("// move its contents inside a Function instead.");
+        if (skipped.instanceName.length)
+        {
+            line("// Its own text:");
+            foreach (l; skipped.instanceName.lineSplitter)
+                line("//   " ~ l);
+        }
+        blank();
     }
 
     private void line(string s)
@@ -644,6 +534,20 @@ class Writer
     /// the direct D equivalent of an `ostringstream`'s own write cursor.
     private int pos() { return cast(int) buf.data.length; }
 
+    /// Forgets the source positions of every node in `nodes` and below,
+    /// so a node this `generate()` doesn't write, or a piece of code it no
+    /// longer has, is untracked instead of keeping an old position.
+    private static void clearSpans(Node[] nodes)
+    {
+        foreach (n; nodes)
+        {
+            n.setupSpan = TextSpan.init;
+            n.finalizeSpan = TextSpan.init;
+            n.blockSpans = null;
+            clearSpans(n.children);
+        }
+    }
+
     /// Records a node without children whose code runs from `start` to
     /// here: all of it is setup code, and its finalize span is empty.
     private void spanLeaf(Node n, int start)
@@ -666,28 +570,17 @@ class Writer
     }
 
     /// Only widget-tree nodes get a "TypeName varname;" module-level
-    /// decl. Verbatim naming: the .fl instance name IS the
-    /// D identifier, no transformation -- the author writes exactly
-    /// what they want the D variable to be called (e.g. "cbInfo"). A
-    /// `ClassNode`'s own subtree is skipped entirely here -- a named
-    /// widget declared inside a class's own method (e.g.
-    /// mandelbrot_ui.fl's `DrawingWindow.window`/`.d`/`.xInput`) becomes
-    /// a class *field* instead, handled by `writeClassNode()`'s own
-    /// `writeClassFields()`, matching real Fluid's own behavior
-    /// (a named widget inside a class-scoped method becomes a member,
-    /// not a free-standing global). A `WidgetClassNode`'s own subtree
-    /// gets the identical treatment, for the identical reason --
-    /// `writeWidgetClassNode()` calls the same `writeClassFields()` --
-    /// and the `WidgetClassNode` itself is skipped too (its own
-    /// `instanceName` becomes the generated *class* name, not a
-    /// module-level variable).
+    /// decl. Verbatim naming: the .fl instance name IS the D identifier,
+    /// no transformation -- the author writes exactly what they want the
+    /// D variable to be called (e.g. "cbInfo"). A Class's subtree is
+    /// skipped: its named widgets become fields of the class
+    /// (`writeClassFields()`), and its own name is the class's name, not
+    /// a variable.
     private void collectNames(Node[] nodes)
     {
         foreach (n; nodes)
         {
             if (cast(ClassNode) n)
-                continue;
-            if (cast(WidgetClassNode) n)
                 continue;
             if (cast(WidgetNode) n && n.instanceName.length)
                 nameMap[n.instanceName] = n.instanceName;
@@ -699,14 +592,8 @@ class Writer
     {
         foreach (n; nodes)
         {
+            // A Class's widgets are its fields (`writeClassFields()`).
             if (cast(ClassNode) n)
-                continue;
-            // Same reasoning as `collectNames()`'s own matching guard
-            // (found together, same bug): a `WidgetClassNode`'s own
-            // name is a *class* name, not a module-level variable, and
-            // its children become class fields (`writeClassFields()`),
-            // not module globals either.
-            if (cast(WidgetClassNode) n)
                 continue;
             if (auto wn = cast(WidgetNode) n)
                 if (wn.instanceName.length)
@@ -716,109 +603,8 @@ class Writer
         }
     }
 
-    /// `pixmaps_black_checker_png` -> `pixmapsBlackCheckerPng` -- the
-    /// `.fl` instance name (FLTK's own C-identifier-safe convention,
-    /// since it becomes a literal C++ symbol) needs converting to this
-    /// project's camelCase D convention, unlike every other node kind's
-    /// verbatim-instance-name rule (see `writeDecls()`'s own doc
-    /// comment) -- a plain `Fl_Foo` -> `Foo` strip doesn't apply here,
-    /// there's no FLTK type prefix in a data node's own name.
-    private static string snakeToCamel(string s)
-    {
-        auto parts = s.split("_");
-        if (parts.length == 0)
-            return s;
-        auto result = appender!string();
-        result.put(parts[0]);
-        foreach (p; parts[1 .. $])
-        {
-            if (p.length == 0)
-                continue;
-            result.put(cast(char)(p[0] >= 'a' && p[0] <= 'z' ? p[0] - 32 : p[0]));
-            result.put(p[1 .. $]);
-        }
-        return result.data;
-    }
-
-    /// Emits the embedded content of one `data { filename {...} }`
-    /// node -- the D-codegen equivalent of FLTK's `Data_Node::
-    /// write_code1()`, covering all 4 combinations of `DataNode.
-    /// asString`/`.compressedFlag` (see that class's own doc comment
-    /// for how these map onto FLTK's original 6-value `output_
-    /// format_` enum). The file is read relative to `projectDir` (the
-    /// `.fl` file's own directory), matching FLTK's `Fluid.proj.
-    /// enter_project_dir()`.
-    ///
-    /// The uncompressed cases are simple literals (`writeByteArrayLiteral()`/
-    /// a `dByteStringLiteral()`-escaped `string`), computed once at
-    /// codegen time. The compressed cases can't be: D has no CTFE path
-    /// to zlib, so the *compressed* bytes are what gets embedded as a
-    /// literal, and a `static this()` module constructor decompresses
-    /// them once at program startup (`std.zlib.uncompress()`, already
-    /// used the same way by `fl.png_image`/`fl.svg_image` elsewhere in
-    /// this port) into the real, named variable the rest of the
-    /// generated file's own code refers to -- matching the "a single
-    /// named variable the `.fl` author's own code can reference
-    /// directly" shape every other embedded-data variable already has,
-    /// just resolved a moment later than a plain literal would be.
-    private void writeDataNode(DataNode dan)
-    {
-        immutable start = pos();
-        scope (exit) spanLeaf(dan, start);
-        writeNodeComment(dan);
-        string varName = snakeToCamel(dan.instanceName);
-        // As in FLTK: no filename embeds no data, and a file that can't
-        // be read leaves an error in the generated source (FLTK's
-        // `#error`, a `static assert` here) instead of stopping codegen.
-        ubyte[] bytes;
-        if (dan.filename.length)
-        {
-            try
-                bytes = cast(ubyte[]) read(buildPath(projectDir_, dan.filename));
-            catch (Exception)
-            {
-                line(format(`static assert(false, "Can't include data from file. Can't open %s");`,
-                    dByteStringLiteral(cast(const(ubyte)[]) dan.filename)));
-                dataErrors ~= format("Can't include data from file. Can't open\n%s\n", dan.filename);
-            }
-        }
-
-        if (dan.compressedFlag)
-        {
-            import std.zlib : compress;
-
-            auto compressedBytes = cast(ubyte[]) compress(bytes);
-            string rawName = varName ~ "Compressed";
-            writeByteArrayLiteral(rawName, compressedBytes);
-            string declType = dan.asString ? "string" : "immutable(ubyte)[]";
-            line(format("%s %s;", declType, varName));
-            line("static this()");
-            line("{");
-            indent_++;
-            line("import std.zlib : uncompress;");
-            if (dan.asString)
-                line(format("%s = cast(string) uncompress(%s);", varName, rawName));
-            else
-                line(format("%s = cast(immutable(ubyte)[]) uncompress(%s);", varName, rawName));
-            indent_--;
-            line("}");
-        }
-        else if (dan.asString)
-        {
-            line(format(`immutable string %s = "%s";`, varName, dByteStringLiteral(bytes)));
-        }
-        else
-        {
-            writeByteArrayLiteral(varName, bytes);
-        }
-    }
-
-    /// Emits `immutable ubyte[] name = [ ...bytes... ];` -- shared by
-    /// `writeDataNode()` (a `data { filename {...} }` node) and
-    /// `writeOneImage()` (`WidgetNode.imageFilename`/`.deimageFilename`,
-    /// the `Widget_Image` port), the
-    /// same byte-array-literal shape either way, just two different
-    /// reasons a `.fl` file wants a file's raw bytes embedded.
+    /// Emits `immutable ubyte[] name = [ ...bytes... ];`, for
+    /// `writeOneImage()` (`WidgetNode.imageFilename`/`.deimageFilename`).
     private void writeByteArrayLiteral(string varName, const(ubyte)[] bytes)
     {
         line(format("immutable ubyte[] %s = [", varName));
@@ -838,51 +624,49 @@ class Writer
         line("];");
     }
 
-    /// Writes one declaration-shaped child: a `data {}` node (via
-    /// `writeDataNode()`, checked first since `DataNode` extends
-    /// `DeclNode` -- same ordering hazard `generate()`'s own root
-    /// dispatch already documents), a plain `decl {}` node (comment
-    /// plus verbatim text), or a nested `declblock {}` (recursing
-    /// through `writeDeclBlockNode()`, which calls back into this same
-    /// dispatcher for its own children). Shared by `generate()`'s
-    /// module-scope decl loop, `writeClassNode()`'s class-body decl
-    /// loop, and `writeDeclBlockNode()` itself, so a `declblock {}`
-    /// wrapping a group of declarations behaves identically wherever it
-    /// appears.
+    /// Writes one child at module or class scope: a Code node's text
+    /// (an import, a variable, a field, a helper type), a Conditional
+    /// node whose children are declarations too, a Comment node, a
+    /// Function (a method when `classDepth_` says the code is in a class)
+    /// or a Class. Shared by `generate()`'s module-scope loop,
+    /// `writeClassNode()` for the class body,
+    /// and `writeConditionalDecl()` for its children.
     private void writeDeclChild(Node c)
     {
-        if (auto dan = cast(DataNode) c)
-        {
-            writeDataNode(dan);
-            blank();
-        }
-        else if (auto dn = cast(DeclNode) c)
+        if (auto code = cast(CodeNode) c)
         {
             immutable start = pos();
-            writeNodeComment(dn);
-            emitSnippetLines(dn.instanceName);
-            spanLeaf(dn, start);
+            writeNodeComment(code);
+            emitSnippetBlock(code.instanceName);
+            spanLeaf(code, start);
             blank();
         }
-        else if (auto dbn = cast(DeclBlockNode) c)
-            writeDeclBlockNode(dbn);
+        else if (auto cond = cast(ConditionalNode) c)
+            writeConditionalDecl(cond);
+        else if (auto comn = cast(CommentNode) c)
+        {
+            if (comn.inSource_)
+            {
+                immutable start = pos();
+                writeCommentText(comn.instanceName);
+                spanLeaf(comn, start);
+                blank();
+            }
+        }
         else if (auto fn = cast(FunctionNode) c)
         {
-            // A method when the block sits in a class, else a function.
             if (classDepth_ > 0)
                 writeClassMethod(fn);
             else
                 writePlainFunction(fn);
         }
-        else if (auto wcn = cast(WidgetClassNode) c)
-            writeWidgetClassNode(wcn);
         else if (auto cn = cast(ClassNode) c)
             writeClassNode(cn);
     }
 
-    /// How many class bodies (Class or Widget Class) are being written
-    /// around the current node: a function in a declaration block there
-    /// is a method, and a class there is a nested class.
+    /// How many class bodies are being written around the current node:
+    /// a function there is a method, and a class there is a nested
+    /// class.
     private int classDepth_;
 
     /// `static ` for a class nested in another class: like a nested class
@@ -892,72 +676,45 @@ class Writer
         return classDepth_ > 0 ? "static " : "";
     }
 
-    /// A `declblock { ... }` node -- see `decl_block_node.d`'s own doc
-    /// comment for the full reasoning, including why this writer
-    /// injects real braces and indents its children (deliberately
-    /// diverging from FLTK's own `DeclBlock_Node::write_code1()`/
-    /// `write_code2()`, which emit `before`/`after` completely raw) --
-    /// D's `version()`/`static if` need real braces the way FLTK's
-    /// own bare `#if`/`#endif` default content never did, and the `.fl`
-    /// grammar's own per-value balanced-brace requirement makes the
-    /// alternative (the `.fl` author supplying an unmatched brace
-    /// directly) impossible, not just inconvenient. Same shape as
-    /// `writeCodeBlockNode()` below in every respect except which kind
-    /// of children it recurses through (`writeDeclChild()`, not
-    /// `writeBodyChild()`).
-    private void writeDeclBlockNode(DeclBlockNode dbn)
+    /// A Conditional node at module or class scope: its header, then its
+    /// children (declarations, through `writeDeclChild()`) inside braces.
+    private void writeConditionalDecl(ConditionalNode cond)
     {
         immutable start = pos();
-        writeNodeComment(dbn);
-        line(dbn.instanceName ~ " {");
-        spanOpen(dbn, start);
+        writeNodeComment(cond);
+        line(cond.instanceName ~ " {");
+        spanOpen(cond, start);
         indent_++;
-        foreach (c; dbn.children)
+        foreach (c; cond.children)
             writeDeclChild(c);
         indent_--;
         immutable closeStart = pos();
-        line(dbn.afterText.length ? ("} " ~ dbn.afterText) : "}");
-        spanClose(dbn, closeStart);
+        line("}");
+        spanClose(cond, closeStart);
         blank();
     }
 
-    /// A `codeblock { ... }` node -- see `code_block_node.d`'s own doc
-    /// comment. Unlike `writeDeclBlockNode()` above, this one *does*
-    /// inject real braces and *does* indent its children one level
-    /// deeper, matching FLTK's `CodeBlock_Node::write_code1()`/
-    /// `write_code2()` exactly (`before + " {\n"`, indented children,
-    /// then `"} " + after + "\n"` or a bare `"}\n"` when `afterText` is
-    /// empty).
-    /// Doesn't write its own node comment -- reached either via
-    /// `writeWidgetTree()` (a `codeblock {}` sitting among ordinary
-    /// widget-tree children, e.g. wrapping a conditionally-constructed
-    /// widget; `writeWidgetTree()`'s own top already writes the comment
-    /// for every node kind it dispatches, once, generically) or via
-    /// `writeBodyChild()` (a top-level
-    /// function/method-body child, which write it explicitly
-    /// themselves) -- either way, exactly once, never here.
-    private void writeCodeBlockNode(CodeBlockNode cb)
+    /// A Conditional node inside a function or among a window's widgets:
+    /// its header, then its children (statements and widgets, through
+    /// `writeBodyChild()`) inside braces. Its comment is written by the
+    /// caller, `writeWidgetTree()`, as for every node there.
+    private void writeConditionalBody(ConditionalNode cond)
     {
         immutable start = pos();
-        line(cb.instanceName ~ " {");
-        spanOpen(cb, start);
+        line(cond.instanceName ~ " {");
+        spanOpen(cond, start);
         indent_++;
-        foreach (c; cb.children)
+        foreach (c; cond.children)
             writeBodyChild(c);
         indent_--;
         immutable closeStart = pos();
-        line(cb.afterText.length ? ("} " ~ cb.afterText) : "}");
-        spanClose(cb, closeStart);
+        line("}");
+        spanClose(cond, closeStart);
     }
 
-    /// Writes one function/method-body child: a raw `code {}` fragment
-    /// (verbatim text, deliberately skipping its own `.comment` -- see
-    /// `writeNodeComment()`'s own doc comment on why), or anything else
-    /// (a `codeblock {}` or a widget-tree node, both handled by
-    /// `writeWidgetTree()`, which is also what a `codeblock {}`'s own
-    /// children recurse back through). Shared by every place a
-    /// function/method body walks its own children in sequence:
-    /// `writeFunctionBody()`, `writePlainFunction()`, `writeClassMethod()`.
+    /// Writes one child of a function body, of a Conditional node in one,
+    /// or of a window or group: a Code node's statements, or anything
+    /// else through `writeWidgetTree()`.
     private void writeBodyChild(Node c)
     {
         if (auto code = cast(CodeNode) c)
@@ -966,11 +723,13 @@ class Writer
             writeWidgetTree(c);
     }
 
-    /// A `code {}` node's text, tagged for merge-back.
+    /// A Code node's statements, after its comment, tagged for
+    /// merge-back.
     private void writeCodeNode(CodeNode code)
     {
         immutable start = pos();
-        writeTaggedBlock(Tag.code, code.uid, code.instanceName);
+        writeNodeComment(code);
+        writeTaggedBlock(Tag.code, code, code.instanceName);
         spanLeaf(code, start);
     }
 
@@ -1359,9 +1118,9 @@ class Writer
         inMainFunction_ = true;
         // A Function's children are usually a widget tree (every
         // widget-based .fl file), but a Function that just wraps
-        // hand-written D driver code (fluid-callback.fl, CubeViewUI.fl's
+        // hand-written D driver code (fluid_callback.fl, CubeViewUI.fl's
         // merged-in main()) has a single bare `code { ... }` child
-        // instead, and a `codeblock {}` can wrap a mix of either --
+        // instead, and a Conditional node can wrap a mix of either --
         // see `writeBodyChild()`.
         foreach (c; fn.children)
             writeBodyChild(c);
@@ -1450,7 +1209,7 @@ class Writer
         // widget tree instead (keyboard_ui.fl's zero-param
         // `make_window()`, matching FLTK's own real file split --
         // see mandelbrot_ui.fl's identical shape for `makeWindow()`),
-        // or wrap either in a `codeblock {}` -- see `writeBodyChild()`.
+        // or wrap either in a Conditional node -- see `writeBodyChild()`.
         // `inMainFunction_` stays false here, same as inside a class
         // method: no `args` in scope, so a Window inside this tree
         // won't call `.show()` either.
@@ -1484,72 +1243,38 @@ class Writer
         blank();
     }
 
-    /// A real `class Name : Base { ... }` -- see class_node.d's own
-    /// doc comment for when this applies (a genuine base-class
-    /// relationship only; a bare `class Name {}` with no base is
-    /// flattened directly in the .fl source instead, never reaching
-    /// this code path).
+    /// A Class (`fluid.class_node`): `class Name : Base`, the named
+    /// widgets its methods build as fields, then its children in tree
+    /// order -- Code nodes as fields, Functions as methods, Conditional
+    /// nodes, Comments, and nested Classes.
     private void writeClassNode(ClassNode cn)
     {
         immutable start = pos();
         writeNodeComment(cn);
         string attribute = nestedClassPrefix() ~ (cn.prefix.length ? cn.prefix ~ " " : "");
+        // A base class of "Group" or "Clock" names fl's FlGroup/FlClock,
+        // as it does for a widget node (see className()).
+        string base = stripFlPrefix(cn.baseClass);
+        if (base == "Group") base = "FlGroup";
+        else if (base == "Clock") base = "FlClock";
         string header = cn.baseClass.length
-            ? format("%sclass %s : %s", attribute, cn.instanceName, stripFlPrefix(cn.baseClass))
+            ? format("%sclass %s : %s", attribute, cn.instanceName, base)
             : format("%sclass %s", attribute, cn.instanceName);
         line(header);
         line("{");
         spanOpen(cn, start);
         indent_++;
         classDepth_++;
-        // A `decl { ... }` child is this class's own equivalent of the
-        // module-level DeclNode handling above -- raw D text (usually a
-        // field declaration, e.g. `Window ringDebugWin;`) emitted
-        // verbatim into the class body. Distinct from the *inferred*
-        // widget fields writeClassFields() collects below: those come
-        // from named widgets found in a method's own widget tree, these
-        // are declared directly by the `.fl` author for state that
-        // isn't itself a widget (confirmed needed by terminal.fl's
-        // `MyTerminal`, which declares plain bool/pointer member fields
-        // this way -- FLTK's own equivalent `decl {...}` children
-        // of `Class_Node`). A `declblock {}` child (wrapping a group of
-        // `decl {}`s) gets the same treatment, via the shared
-        // `writeDeclChild()` dispatcher `generate()`'s own module-scope
-        // loop uses.
-        bool anyDecls;
-        foreach (c; cn.children)
-            if (cast(DeclNode) c || cast(DeclBlockNode) c)
-            {
-                writeDeclChild(c);
-                anyDecls = true;
-            }
-        if (anyDecls)
-            blank();
-        bool anyFields = writeClassFields(cn.children);
-        if (anyFields)
+        if (writeClassFields(cn.children))
             blank();
         foreach (c; cn.children)
-            if (auto fn = cast(FunctionNode) c)
-                writeClassMethod(fn);
-        writeNestedClasses(cn.children);
+            writeDeclChild(c);
         classDepth_--;
         indent_--;
         immutable closeStart = pos();
         line("}");
         spanClose(cn, closeStart);
         blank();
-    }
-
-    /// The classes and widget classes among a class's own children.
-    private void writeNestedClasses(Node[] children)
-    {
-        foreach (c; children)
-        {
-            if (auto wcn = cast(WidgetClassNode) c)
-                writeWidgetClassNode(wcn);
-            else if (auto cn = cast(ClassNode) c)
-                writeClassNode(cn);
-        }
     }
 
     /// Every named widget found anywhere inside a class's own subtree
@@ -1566,7 +1291,7 @@ class Writer
         foreach (n; nodes)
         {
             // A nested class has fields of its own.
-            if (cast(ClassNode) n || cast(WidgetClassNode) n)
+            if (cast(ClassNode) n)
                 continue;
             if (auto wn = cast(WidgetNode) n)
                 if (wn.instanceName.length)
@@ -1636,199 +1361,6 @@ class Writer
         blank();
     }
 
-    /// `WidgetClassNode` -- see that module's own doc comment for the
-    /// full mechanism. Generates a real D `class Name : BaseClass { ...
-    /// }` (`BaseClass` from `WidgetNode.classOverride`, defaulting to
-    /// `Group` matching FLTK's own `Fl_Group` default) instead of
-    /// the usual "factory function builds a local variable" shape every
-    /// other `WindowNode` gets (`writeWindowNode()`) -- every named
-    /// child widget becomes a class field (`writeClassFields()`, the
-    /// same helper `writeClassNode()`'s own hand-authored classes use),
-    /// and the constructor body is built the widget tree itself,
-    /// exactly like a normal window's own children.
-    ///
-    /// **Window-shaped base class (contains "Window" anywhere in its
-    /// name, matching FLTK's own `c.find("Window")!=npos` test) --
-    /// two constructors, not FLTK's three.** FLTK's C++ needs
-    /// `Name(X,Y,W,H,L=nullptr)`, `Name(W,H,L=nullptr)`, *and* a bare
-    /// `Name()` (which exists purely to supply this node's own stored
-    /// W/H/label as real values, since C++'s `L=nullptr` default can't
-    /// reach the .fl file's own configured label) -- three overloads,
-    /// plus a private `_Name()` helper method so all three share one
-    /// body. **Deliberate simplification, not a missing feature**: D's
-    /// default parameter values can reference this node's own literal
-    /// W/H/label directly, so `this(int w = <litW>, int h = <litH>,
-    /// string label = <litLabel>)` alone covers what FLTK needed
-    /// two overloads for (`Name(w,h,l)` *and* `Name()`), and D's own
-    /// `this(...)` constructor delegation (unlike C++, more statements
-    /// are allowed *after* the delegating call, not just an
-    /// initializer-list-only substitute) means the shared body needs no
-    /// separate private method either. One FLTK behavior
-    /// deliberately not ported: `clear_flag(16)` (Fl_Window's internal
-    /// "don't force this exact position" bit, cleared on the two
-    /// convenience constructors so the window manager can place an
-    /// unpositioned window) -- a narrow, cosmetic WM-placement hint, not
-    /// essential to a first real port; a named, documented gap, not a
-    /// silent one.
-    ///
-    /// **Non-Window-shaped base class -- one constructor**, matching
-    /// FLTK's own scope exactly (it never offers a convenience
-    /// overload for the `Fl_Group`-based case either), with `wcRelative`
-    /// substituted directly into the `super()` call's own arguments
-    /// (FLTK's equivalent branch, `write_code1()`'s own `else`), plus a
-    /// trailing `position(x, y)`/`resize(x, y, w, h)` after `end()` for
-    /// the two relative modes.
-    ///
-    /// **Deliberately guarded by `windowShaped`, a real deviation**:
-    /// FLTK's own `write_code2()` unconditionally casts `o` to
-    /// `Fl_Window*` to call `set_modal()`/`xclass()`/`border()` --
-    /// harmless there only because a real widget_class's base is
-    /// overwhelmingly a window in practice; C++'s cast doesn't actually
-    /// verify it. D's static typing can't get away with that: calling
-    /// `.setModal()`/`.xclass()`/`.sizeRange()` on a plain `Group`-based
-    /// generated class is a real compile error, not a silent risk, so
-    /// this function only emits those calls for the Window-shaped case.
-    private void writeWidgetClassNode(WidgetClassNode wcn)
-    {
-        immutable start = pos();
-        writeNodeComment(wcn);
-        string baseClass = (wcn.hasClassOverride && wcn.classOverride.length)
-            ? stripFlPrefix(wcn.classOverride) : "FlGroup";
-        bool windowShaped = baseClass.indexOf("Window") >= 0;
-        string name = wcn.instanceName;
-        string labelLit = wcn.hasLabel ? i18nWrap(wcn.label) : "null";
-
-        line(format("%sclass %s : %s", nestedClassPrefix(), name, baseClass));
-        line("{");
-        spanOpen(wcn, start);
-        indent_++;
-        classDepth_++;
-
-        // `decl {}`/`declblock {}` and `Function {}` children -- needed
-        // by `widget_panel_grid_tab.fl`/`widget_panel_grid_
-        // child_tab.fl`, which need their own plain-data state (which `Node`
-        // it's currently editing) and a real public method (`load()`)
-        // to populate it from outside, neither of which the widget-tree-
-        // only constructor body below can express. Mirrors
-        // `writeClassNode()`'s own identical support for a plain
-        // `ClassNode` exactly -- same two loops, same `writeDeclChild()`/
-        // `writeClassMethod()` calls -- `widget_class` gets the same treatment.
-        bool anyDecls;
-        foreach (c; wcn.children)
-            if (cast(DeclNode) c || cast(DeclBlockNode) c)
-            {
-                writeDeclChild(c);
-                anyDecls = true;
-            }
-        if (anyDecls)
-            blank();
-
-        if (writeClassFields(wcn.children))
-            blank();
-
-        if (windowShaped)
-        {
-            line(format("this(int x, int y, int w, int h, string label = %s)", labelLit));
-            line("{");
-            indent_++;
-            line("super(x, y, w, h, label);");
-            writeWidgetClassBody(wcn, windowShaped);
-            indent_--;
-            line("}");
-            blank();
-
-            line(format("this(int w = %d, int h = %d, string label = %s)", wcn.w, wcn.h, labelLit));
-            line("{");
-            indent_++;
-            line("this(0, 0, w, h, label);");
-            indent_--;
-            line("}");
-            blank();
-        }
-        else
-        {
-            line(format("this(int x, int y, int w, int h, string label = %s)", labelLit));
-            line("{");
-            indent_++;
-            final switch (wcn.wcRelative)
-            {
-            case 0: line("super(x, y, w, h, label);"); break;
-            case 1: line("super(0, 0, w, h, label);"); break;
-            case 2: line(format("super(0, 0, %d, %d, label);", wcn.w, wcn.h)); break;
-            }
-            writeWidgetClassBody(wcn, windowShaped);
-            // Children were laid out from 0,0 above; move (and for
-            // `position_relative_rescale`, resize) the finished group
-            // to where the caller asked for it, as FLTK's
-            // `Widget_Class_Node::write_code1()` does after `end()`.
-            final switch (wcn.wcRelative)
-            {
-            case 0: break;
-            case 1: line("position(x, y);"); break;
-            case 2: line("resize(x, y, w, h);"); break;
-            }
-            indent_--;
-            line("}");
-            blank();
-        }
-
-        foreach (c; wcn.children)
-            if (auto fn = cast(FunctionNode) c)
-                writeClassMethod(fn);
-        writeNestedClasses(wcn.children);
-
-        classDepth_--;
-        indent_--;
-        immutable closeStart = pos();
-        line("}");
-        spanClose(wcn, closeStart);
-        blank();
-    }
-
-    /// Shared tail of `writeWidgetClassNode()`'s constructor(s) -- the
-    /// widget tree itself, then FLTK's own `write_code2()`
-    /// postscript (modal/xclass/sizeRange only emitted for a
-    /// window-shaped base class, see `writeWidgetClassNode()`'s own doc
-    /// comment on why), then the universal `resizable(this)`/`end()`
-    /// every base class shape gets.
-    private void writeWidgetClassBody(WidgetClassNode wcn, bool windowShaped)
-    {
-        writeCommonProps(wcn, "this");
-        if (windowShaped)
-        {
-            if (wcn.modal_)
-                line("setModal();");
-            else if (wcn.nonModal_)
-                line("setNonModal();");
-            if (wcn.noBorder_)
-                line("border(false);");
-            if (wcn.xclass.length)
-                line(format(`xclass("%s");`, dStringEscape(wcn.xclass)));
-            if (wcn.hasSizeRange)
-                line(format("sizeRange(%d, %d, %d, %d);", wcn.sizeRangeMinW, wcn.sizeRangeMinH,
-                    wcn.sizeRangeMaxW, wcn.sizeRangeMaxH));
-        }
-        blank();
-        foreach (c; wcn.children)
-        {
-            // `decl {}`/`declblock {}`/`Function {}` children are
-            // handled separately by `writeWidgetClassNode()` (as class
-            // fields and methods, respectively) --
-            // skip them here so they aren't also fed to
-            // `writeWidgetTree()`, which has no case for any of the
-            // three and would otherwise silently drop them.
-            if (cast(DeclNode) c || cast(DeclBlockNode) c || cast(FunctionNode) c
-                || cast(ClassNode) c || cast(WidgetClassNode) c)
-                continue;
-            writeWidgetTree(c);
-        }
-        blank();
-        if (wcn.resizableFlag && !hasResizableChild(wcn))
-            line("resizable(this);");
-        writeFinalizeCode(wcn, "this");
-        line("end();");
-    }
-
     private void writeWidgetTree(Node n)
     {
         // A `code {}` among a window's or group's children runs in its
@@ -1838,7 +1370,7 @@ class Writer
             writeCodeNode(code);
             return;
         }
-        // A Comment node in a function body, code block or widget class:
+        // A Comment node in a function body or a Conditional node:
         // its text, in place, unless it is switched off for the source.
         if (auto comn = cast(CommentNode) n)
         {
@@ -1858,14 +1390,11 @@ class Writer
             if (n.setupSpan.start > commentStart)
                 n.setupSpan.start = commentStart;
         writeNodeComment(n);
-        // A `codeblock {}` can sit directly among a container's own
-        // widget-tree children too (not just at a function/method
-        // body's own top level, see `writeBodyChild()`), wrapping a
-        // conditionally-constructed child widget the same way FLTK
-        // allows a `CodeBlock_Node` anywhere a `Code_Node` could go.
-        if (auto cb = cast(CodeBlockNode) n)
+        // A Conditional node among a function's statements or a
+        // container's widgets.
+        if (auto cond = cast(ConditionalNode) n)
         {
-            writeCodeBlockNode(cb);
+            writeConditionalBody(cond);
             return;
         }
         if (auto wn = cast(WindowNode) n)
@@ -2347,7 +1876,7 @@ class Writer
         {
             line(format("MenuItem(%s, %s, (o) {", label, shortcut));
             indent_++;
-            writeTaggedBlock(Tag.menuCallback, mi.uid, mi.callback);
+            writeTaggedBlock(Tag.menuCallback, mi, mi.callback);
             indent_--;
             line(format("}, %s, %s, %s, %d, %s),", flags, labeltype, labelfont, labelsize, labelcolor));
             return;
@@ -2490,7 +2019,7 @@ class Writer
         if (n.callback.length)
             writeCallback(n, v);
         if (n.hasSetupCode && n.setupCode.length)
-            writeTaggedBlock(Tag.setup, n.uid, translateOwnSlot(n.setupCode, v));
+            writeTaggedBlock(Tag.setup, n, translateOwnSlot(n.setupCode, v));
     }
 
     /// A widget's `finalize` code: after its children and, for a group or
@@ -2501,7 +2030,7 @@ class Writer
     private void writeFinalizeCode(WidgetNode n, string v)
     {
         if (n.hasFinalizeCode && n.finalizeCode.length)
-            writeTaggedBlock(Tag.finalize, n.uid, translateOwnSlot(n.finalizeCode, v));
+            writeTaggedBlock(Tag.finalize, n, translateOwnSlot(n.finalizeCode, v));
     }
 
     private void writeCallback(WidgetNode n, string v)
@@ -2521,7 +2050,7 @@ class Writer
         {
             line("o.callback((raw_) {");
             indent_++;
-            writeTaggedBlock(Tag.widgetCallback, n.uid, n.callback);
+            writeTaggedBlock(Tag.widgetCallback, n, n.callback);
             indent_--;
             line("});");
             return;
@@ -2529,7 +2058,7 @@ class Writer
         line(format("%s.callback((raw) {", v));
         indent_++;
         line(format("auto o = cast(%s) raw;", className(n)));
-        writeTaggedBlock(Tag.widgetCallback, n.uid, n.callback);
+        writeTaggedBlock(Tag.widgetCallback, n, n.callback);
         indent_--;
         line("});");
     }
@@ -2547,36 +2076,34 @@ class Writer
     /// from every root-node-kind's own writer separately, since none
     /// of them share a single dispatch point the way the widget tree
     /// does: `writeWidgetTree()` (every `WidgetNode`-family node),
-    /// `writeClassNode()`, the module- and class-level `DeclNode` loops
-    /// (`generate()`/`writeClassNode()`), `writeDataNode()`, and all
+    /// `writeClassNode()`, `writeDeclChild()` and `writeCodeNode()` (Code
+    /// nodes at every scope), `writeConditionalDecl()`, and all
     /// three `FunctionNode`-writing shapes (`writePlainFunction()`,
     /// `writeFunctionBody()` for the
-    /// anonymous main Function, `writeClassMethod()`). Deliberately not
-    /// wired: a bare `CodeNode`'s own `.comment` (always a child inside
-    /// an already-commented Function/method body, so its own comment
-    /// would just be an inline comment mid-function -- the `.fl` author
-    /// can already write that directly into the code text itself, no
-    /// separate mechanism needed). Not to be confused with root
+    /// anonymous main Function, `writeClassMethod()`). Not to be confused with root
     /// *comment-type* nodes (FLTK's `Comment_Node`, a `.fl` file's
     /// own header comment), which are a separate thing entirely and are
-    /// handled in `generate()` itself, not here (see that function's
-    /// own `commentNodes` handling).
+    /// written by `writeRootComment()` and `writeWidgetTree()`.
     private void writeNodeComment(Node n)
     {
         writeCommentText(n.comment);
     }
 
     /// Shared by `writeNodeComment()` (a node's own `.comment`
-    /// property) and `generate()` (a root `Comment_Node`'s own
-    /// `instanceName`-captured text) -- same doc-comment formatting,
-    /// two different sources of the text.
+    /// property) and `generate()` (a Comment node's text): a block
+    /// comment with the text's lines as they are, so an editor can
+    /// rewrap them freely. Text that contains `*/` would end a `/* */`
+    /// comment early, so it goes in D's nesting `/+ +/` instead.
     private void writeCommentText(string text)
     {
+        import std.algorithm.searching : canFind;
+
         if (!text.length) return;
-        line("/*");
+        immutable nesting = text.canFind("*/");
+        line(nesting ? "/+" : "/*");
         foreach (ln; text.lineSplitter())
-            line(" * " ~ ln);
-        line(" */");
+            if (ln.length) line(ln); else blank();
+        line(nesting ? "+/" : "*/");
     }
 
     /// Real C preprocessor directives -- never legal D, so a line
@@ -2659,20 +2186,26 @@ class Writer
         tagStart_ = buf.data.length;
     }
 
-    /// Emits the user-editable text `s` (a `code {}` fragment or a
-    /// callback body). With MergeBack enabled the block is bracketed by
-    /// tag lines and written with its own indentation and blank lines
-    /// intact; otherwise it is emitted as plain `emitSnippetLines()`.
-    private void writeTaggedBlock(Tag kind, ushort uid, string s)
+    /// Emits the user-editable text `s` of node `n` (a `code {}`
+    /// fragment, a callback body, setup or finalize code) and records
+    /// where it went in `n.blockSpans[kind]`. With MergeBack enabled the
+    /// block is bracketed by tag lines and written with its own
+    /// indentation and blank lines intact; otherwise it is emitted as
+    /// plain `emitSnippetLines()`.
+    private void writeTaggedBlock(Tag kind, Node n, string s)
     {
         if (!settings_.writeMergebackData)
         {
+            immutable start = pos();
             emitSnippetLines(s);
+            n.blockSpans[kind] = TextSpan(start, pos());
             return;
         }
         tag(Tag.generic, kind, 0);
+        immutable start = pos();
         emitSnippetBlock(s);
-        tag(kind, Tag.generic, uid);
+        n.blockSpans[kind] = TextSpan(start, pos());
+        tag(kind, Tag.generic, n.uid);
     }
 
     private string translateBoxtype(string kw)
@@ -2888,36 +2421,9 @@ private string dStringEscape(string s)
         if (c == '"') a.put(`\"`);
         else if (c == '\\') a.put(`\\`);
         else if (c == '\n') a.put(`\n`);
+        else if (c == '\r') a.put(`\r`);
+        else if (c == '\t') a.put(`\t`);
         else a.put(c);
-    }
-    return a.data;
-}
-
-/// Escapes arbitrary bytes into the body of a D `"..."` string
-/// literal, one byte at a time -- unlike `dStringEscape()` (which
-/// `foreach`-iterates a `string` by decoded `dchar`, and so throws a
-/// `UTFException` on the first byte that isn't valid UTF-8), this never
-/// looks at more than one byte at once, so it's safe for `DataNode`'s
-/// own "as string" storage format embedding an arbitrary file's raw
-/// bytes -- not guaranteed to *be* valid UTF-8 just because the `.fl`
-/// author asked for `string` instead of `ubyte[]`. A genuine multi-byte
-/// UTF-8 character round-trips correctly either way (each of its bytes
-/// individually escaped, e.g. as two separate `\xNN` sequences), just
-/// less readable in the generated source than the literal character
-/// would be -- an acceptable trade for guaranteed-correct output on any
-/// input, over prettier output that can crash the code generator.
-private string dByteStringLiteral(const(ubyte)[] bytes)
-{
-    auto a = appender!string();
-    foreach (b; bytes)
-    {
-        if (b == '"') a.put(`\"`);
-        else if (b == '\\') a.put(`\\`);
-        else if (b == '\n') a.put(`\n`);
-        else if (b == '\r') a.put(`\r`);
-        else if (b == '\t') a.put(`\t`);
-        else if (b >= 0x20 && b < 0x7f) a.put(cast(char) b);
-        else a.put(format(`\x%02x`, b));
     }
     return a.data;
 }
@@ -2981,8 +2487,8 @@ private immutable string[] builtinClassNames = [
 /// living in its own module. D resolves an import by the *file's* own
 /// name, not any class or module declaration inside it, so this can
 /// only guess correctly when the file happens to be named after the
-/// class (a real, common convention, but not a guarantee). `declNodes`
-/// -- this file's own root-level `decl {}` entries -- gets first say:
+/// class (a real, common convention, but not a guarantee). `moduleCode`
+/// -- the text of this file's own root-level Code nodes -- gets first say:
 /// if one of them already imports a given class name explicitly (the
 /// `.fl` author's own choice, needed whenever the convention doesn't
 /// hold), this function leaves that class alone instead of also
@@ -2990,7 +2496,7 @@ private immutable string[] builtinClassNames = [
 /// Collects every distinct non-builtin, not-already-imported override
 /// across the whole tree (module-level import dedup, same as a
 /// hand-written file would only import a module once). **A wildcard
-/// `decl {}` import (`import fluid;`/`import fl;`, no `: sym, ...`
+/// Code-node import (`import fluid;`/`import fl;`, no `: sym, ...`
 /// restriction) disables guessing entirely for the whole file**
 /// (e.g. `widget_panel.fl`'s
 /// own many selective `fluid.*` imports, consolidated into one `import fluid;`,
@@ -3005,13 +2511,12 @@ private immutable string[] builtinClassNames = [
 /// none at all. A genuinely uncovered hand-
 /// written companion class still needs its own explicit import from
 /// the `.fl` author, same as always.
-private string[] collectClassOverrideImports(Node[] nodes, ClassNode[] localClasses,
-    WidgetClassNode[] localWidgetClasses, DeclNode[] declNodes)
+private string[] collectClassOverrideImports(Node[] nodes, bool[string] localClasses, string[] moduleCode)
 {
     import std.algorithm.searching : canFind;
 
     bool[string] explicitlyImported;
-    // A wildcard `import fluid;`/`import fl;`-shaped decl (no `: sym,
+    // A wildcard `import fluid;`/`import fl;`-shaped import (no `: sym,
     // ...` restriction at all) can't be resolved to a specific symbol
     // list the way a selective import can -- but it also makes
     // *guessing* strictly worse than doing nothing: a class-override
@@ -3026,40 +2531,37 @@ private string[] collectClassOverrideImports(Node[] nodes, ClassNode[] localClas
     // a genuinely uncovered hand-written companion class still needs
     // its own explicit import from the `.fl` author, same as always.
     bool haveWildcardImport;
-    foreach (dn; declNodes)
-    {
-        string text = dn.instanceName;
-        if (!text.canFind("import")) continue;
-        auto colon = text.indexOf(':');
-        auto semi = text.indexOf(';');
-        if (colon < 0 || semi <= colon)
+    import std.ascii : isWhite;
+
+    // Each import declaration in the module-scope code: `import x;`,
+    // `public import x;`, `import x : a, b;` (a string import,
+    // `import("file")`, is an expression and doesn't count).
+    foreach (text; moduleCode)
+        foreach (statement; text.split(";"))
         {
-            if (semi > 0) haveWildcardImport = true;
-            continue;
+            string st = statement.strip;
+            foreach (attr; ["public ", "private ", "package ", "static "])
+                if (st.startsWith(attr)) st = st[attr.length .. $].strip;
+            if (!st.startsWith("import") || st.length < 7 || !isWhite(st[6])) continue;
+            auto colon = st.indexOf(':');
+            if (colon < 0)
+            {
+                haveWildcardImport = true;
+                continue;
+            }
+            foreach (sym; st[colon + 1 .. $].split(","))
+                explicitlyImported[sym.strip] = true;
         }
-        foreach (sym; text[colon + 1 .. semi].split(","))
-            explicitlyImported[sym.strip] = true;
-    }
 
     if (haveWildcardImport) return [];
 
     bool[string] seen;
     string[] result;
-    // A `class X` override naming one of *this same file's* own
-    // Class_Nodes (e.g. terminal.fl's `Fl_Terminal tty { ... class
-    // MyTerminal }`, where `class MyTerminal : Fl_Terminal` is defined
-    // earlier in the same .fl file) needs no import either -- it's
-    // already in scope, same generated module, not a separate
-    // hand-written companion. Same reasoning as builtinClassNames just
-    // above, different source of "already in scope." A root-level
-    // `WidgetClassNode` (e.g. `widget_class MyDialog { ... }`) gets the
-    // identical treatment, for the identical reason -- a later widget
-    // elsewhere in the same file doing `class {MyDialog}` references a
-    // class this same generated file already defines.
-    foreach (cn; localClasses)
-        seen[cn.instanceName] = true;
-    foreach (wcn; localWidgetClasses)
-        seen[wcn.instanceName] = true;
+    // A `class X` override naming a class this same file defines (a
+    // Class node, or a class in a Code node, as in terminal.fl, where a
+    // Terminal widget uses `MyTerminal`) needs no import either.
+    foreach (name; localClasses.byKey)
+        seen[name] = true;
     foreach (name; explicitlyImported.byKey)
         seen[name] = true;
     void walk(Node[] ns)
@@ -3090,6 +2592,41 @@ private string[] collectClassOverrideImports(Node[] nodes, ClassNode[] localClas
     }
     walk(nodes);
     return result;
+}
+
+/// The text of every root-level Code node: the file's module-scope
+/// imports and declarations, for `collectClassOverrideImports()`.
+string[] moduleCodeTexts(Node[] roots)
+{
+    string[] texts;
+    foreach (r; roots)
+        if (cast(CodeNode) r)
+            texts ~= r.instanceName;
+    return texts;
+}
+
+/// The classes a file defines: its Class nodes, anywhere in the tree,
+/// and every `class`, `struct` or `interface` declared in a Code node's
+/// text, so a widget's `class` override naming one needs no import.
+bool[string] localClassNames(Node[] roots)
+{
+    import std.regex : matchAll, ctRegex;
+
+    bool[string] names;
+    void walk(Node[] ns)
+    {
+        foreach (n; ns)
+        {
+            if (cast(ClassNode) n)
+                names[n.instanceName] = true;
+            else if (cast(CodeNode) n)
+                foreach (m; n.instanceName.matchAll(ctRegex!`\b(?:class|struct|interface)\s+([A-Za-z_]\w*)`))
+                    names[m[1]] = true;
+            walk(n.children);
+        }
+    }
+    walk(roots);
+    return names;
 }
 
 /// Substitutes a bare `o` token (construction-time convention: "this
@@ -3149,21 +2686,18 @@ unittest
 
 unittest
 {
-    // `DeclBlockNode`/`CodeBlockNode`: a root-level `declblock {}` wrapping a
-    // plain `decl {}` child, and a `codeblock {}` sitting among a
-    // Window's own widget-tree children, wrapping a `code {}` fragment.
-    // Regression-tests the brace-injection behavior (see `DeclBlockNode`'s
-    // own doc comment): `.fl` grammar can't express an
-    // unmatched brace inside a single property value, so this writer
-    // injects real braces itself, unlike FLTK's own `DeclBlock_Node`.
+    // Conditional nodes: one at the top wrapping a Code node's
+    // declaration, and one among a window's widgets wrapping a Code
+    // node's statement. The writer supplies the braces around the
+    // children.
     import std.algorithm : canFind;
 
-    auto declBlock = new DeclBlockNode();
-    declBlock.typeName = "declblock";
+    auto declBlock = new ConditionalNode();
+    declBlock.typeName = "conditional";
     declBlock.instanceName = "version (Windows)";
 
-    auto decl = new DeclNode();
-    decl.typeName = "decl";
+    auto decl = new CodeNode();
+    decl.typeName = "code";
     decl.instanceName = "int winOnlyDecl;";
     declBlock.addChild(decl);
 
@@ -3173,8 +2707,8 @@ unittest
     win.x = 0; win.y = 0; win.w = 100; win.h = 100;
     win.hasXywh = true;
 
-    auto codeBlock = new CodeBlockNode();
-    codeBlock.typeName = "codeblock";
+    auto codeBlock = new ConditionalNode();
+    codeBlock.typeName = "conditional";
     codeBlock.instanceName = "if (someCondition())";
     win.addChild(codeBlock);
 
@@ -3193,9 +2727,6 @@ unittest
     assert(text.canFind("int winOnlyDecl;"));
     assert(text.canFind("if (someCondition()) {"));
     assert(text.canFind("writeln(\"inside\");"));
-    // The codeblock's own closing brace has no `afterText`, so it's a
-    // bare "}" -- distinguish it from the declblock's own closing brace
-    // by checking neither picked up the other's trailing text.
     assert(!text.canFind("} version"));
     assert(!text.canFind("} if"));
 }
@@ -3625,49 +3156,54 @@ unittest
 
 unittest
 {
-    // `DataNode.asString`/`.compressedFlag` (`data_node.d`'s own "Storage
-    // format" port) -- all 4 combinations against a real, small text
-    // fixture (`source/test/README.md`).
+    // An older file's code nodes in their new form: `decl` and `data`
+    // become Code nodes, `declblock` and `codeblock` Conditional nodes;
+    // a `class` stays a Class, its widgets' imports written at the top.
     import std.algorithm : canFind;
+    import fluid.project_reader : Reader;
 
-    Node[] rootsFor(bool asString, bool compressed)
-    {
-        auto dan = new DataNode();
-        dan.typeName = "data";
-        dan.instanceName = "readme";
-        dan.filename = "README.md";
-        dan.asString = asString;
-        dan.compressedFlag = compressed;
-        return [cast(Node) dan];
-    }
+    auto reader = new Reader("version 1.0000\n"
+        ~ "decl {int counter;} {private local}\n"
+        ~ "data readme_text {public local filename {README.md} textmode}\n"
+        ~ "data logo {filename {pictures/logo.png} compressed}\n"
+        ~ "declblock {version (Windows)} {after {}} {\n"
+        ~ "  decl {int winOnly;} {}\n"
+        ~ "}\n"
+        ~ "class Panel {: {Window}} {\n"
+        ~ "  decl {int clicks;} {}\n"
+        ~ "  Function {build()} {} {\n"
+        ~ "    Window {} {xywh {0 0 50 50}} {\n"
+        ~ "      Box shown {xywh {0 0 10 10} class Picture}\n"
+        ~ "    }\n"
+        ~ "  }\n"
+        ~ "}\n"
+        ~ "Function {} {} {\n"
+        ~ "  codeblock {if (counter > 0)} {after {while (false);}} {\n"
+        ~ "    code {counter--;} {}\n"
+        ~ "  }\n"
+        ~ "}\n");
+    auto roots = reader.readProject();
+    assert(roots.length == 6);
+    assert(cast(CodeNode) roots[0] && roots[0].typeName == "code");
+    assert(roots[1].instanceName == `immutable string readmeText = import("README.md");`);
+    assert(roots[2].instanceName
+        == `immutable ubyte[] logo = cast(immutable ubyte[]) import("pictures/logo.png");`);
+    assert(cast(ConditionalNode) roots[3] && roots[3].typeName == "conditional");
+    assert(cast(CodeNode) roots[3].children[0]);
+    assert(cast(ClassNode) roots[4] && roots[4].typeName == "class");
+    assert(cast(ConditionalNode) roots[5].children[0]);
+    // The end code the Conditional node has no place for.
+    assert(reader.notes.length == 1);
 
-    // Plain binary (the pre-existing, already-covered default) stays a
-    // byte array.
-    string binText = new Writer().generate(rootsFor(false, false), "source/test");
-    assert(binText.canFind("immutable ubyte[] readme = ["));
-
-    // Plain text: a `string` literal, byte-escaped (never dchar-decoded
-    // -- see `dByteStringLiteral()`'s own doc comment on why), built
-    // from the file's own real leading bytes so this only passes if the
-    // literal actually reflects the fixture's own content.
-    string strText = new Writer().generate(rootsFor(true, false), "source/test");
-    assert(strText.canFind(`immutable string readme = "`));
-    assert(!strText.canFind("immutable ubyte[] readme"));
-
-    // Compressed binary: the *compressed* bytes are the literal; the
-    // real variable is declared separately and populated by a `static
-    // this()` that decompresses it.
-    string zBinText = new Writer().generate(rootsFor(false, true), "source/test");
-    assert(zBinText.canFind("immutable ubyte[] readmeCompressed = ["));
-    assert(zBinText.canFind("immutable(ubyte)[] readme;"));
-    assert(zBinText.canFind("readme = cast(immutable(ubyte)[]) uncompress(readmeCompressed);"));
-    assert(!zBinText.canFind("immutable ubyte[] readme ="));
-
-    // Compressed text: same decompression shell, `string`-typed.
-    string zStrText = new Writer().generate(rootsFor(true, true), "source/test");
-    assert(zStrText.canFind("immutable ubyte[] readmeCompressed = ["));
-    assert(zStrText.canFind("string readme;"));
-    assert(zStrText.canFind("readme = cast(string) uncompress(readmeCompressed);"));
+    string text = new Writer().generate(roots);
+    assert(text.canFind("version (Windows) {"));
+    assert(text.canFind("if (counter > 0) {"));
+    assert(!text.canFind("while (false)"));
+    assert(text.canFind("import Picture : Picture;"));
+    assert(text.canFind("class Panel : Window"));
+    assert(text.canFind("    int clicks;"));
+    assert(text.canFind("    Picture shown;"));
+    assert(text.canFind("    void build()"));
 }
 
 unittest
@@ -3714,10 +3250,16 @@ unittest
     string text = new Writer().generate([cast(Node) note, cast(Node) mainFn], ".",
         I18nSettings.init, true);
     assert(text.startsWith("/+ dub.sdl:\n"));
-    assert(text.canFind("\nsubConfiguration \"fldtk\" \"program\"\n+/\n"));
+    assert(text.canFind("\nsubConfiguration \"fldtk\" \"program\"\nstringImportPaths \".\"\n+/\n"));
     assert(text.canFind("A file comment."));
 
     assert(!new Writer().generate([cast(Node) mainFn]).canFind("dub.sdl"));
+
+    // A code file in another folder names the design's folder from there.
+    auto w = new Writer();
+    w.outputDir = "source";
+    assert(w.generate([cast(Node) mainFn], ".", I18nSettings.init, true)
+        .canFind("\nstringImportPaths \"..\"\n+/\n"));
 }
 
 unittest
@@ -4127,12 +3669,12 @@ unittest
     import fluid.project_writer : ProjectWriter;
 
     string src = "version 1.0000\n"
-        ~ "class App {open : Fl_Window\n} {\n  Function {make()} {open\n  } {\n"
-        ~ "    Fl_Window w {open\n      xywh {0 0 100 50}\n    } {\n"
-        ~ "      Fl_Button hidden {\n        private\n        tooltip {tip}\n        xywh {5 5 40 20}\n      }\n"
-        ~ "      Fl_Box guarded {\n        protected\n        xywh {50 5 40 20}\n      }\n"
-        ~ "      Fl_Box open_ {\n        xywh {50 30 40 20}\n      }\n"
-        ~ "    }\n  }\n}\n"
+        ~ "class App {open\n} {\n  Function {make()} {open\n  } {\n"
+        ~ "  Fl_Window {} {open\n  xywh {0 0 100 50}\n} {\n"
+        ~ "  Fl_Button hidden {\n    private\n    tooltip {tip}\n    xywh {5 5 40 20}\n  }\n"
+        ~ "  Fl_Box guarded {\n    protected\n    xywh {50 5 40 20}\n  }\n"
+        ~ "  Fl_Box open_ {\n    xywh {50 30 40 20}\n  }\n"
+        ~ "}\n}\n}\n"
         ~ "Function {} {open\n} {\n  Fl_Window mw {open\n    xywh {0 0 100 50}\n  } {\n"
         ~ "    Fl_Box mine {\n      private\n      xywh {5 5 40 20}\n    }\n"
         ~ "    Fl_Box shared_ {\n      xywh {5 30 40 20}\n    }\n  }\n}\n";
@@ -4328,22 +3870,13 @@ unittest
         switch (kind)
         {
         case "code": return mk!CodeNode("code", "int " ~ marker ~ ";");
-        case "codeblock":
-            auto cb = mk!CodeBlockNode("codeblock", "if (true)");
-            cb.addChild(mk!CodeNode("code", "int " ~ marker ~ ";"));
-            return cb;
-        case "decl": return mk!DeclNode("decl", "int " ~ marker ~ ";");
-        case "declblock":
-            auto db = mk!DeclBlockNode("declblock", "version (all)");
-            db.addChild(mk!DeclNode("decl", "int " ~ marker ~ ";"));
-            return db;
+        case "conditional":
+            auto cond = mk!ConditionalNode("conditional", "version (all)");
+            cond.addChild(mk!CodeNode("code", "int " ~ marker ~ ";"));
+            return cond;
         case "comment": return mk!CommentNode("comment", marker);
         case "Function": return mk!FunctionNode("Function", marker ~ "()");
         case "class": return mk!ClassNode("class", marker);
-        case "widget_class":
-            auto wc = mk!WidgetClassNode("widget_class", marker);
-            wc.w = 50; wc.h = 50; wc.hasXywh = true;
-            return wc;
         case "Window": return win(marker);
         case "widget": return box(marker);
         default: assert(0, kind);
@@ -4354,7 +3887,7 @@ unittest
         switch (kind)
         {
         case "Window": case "widget": return marker ~ " = new ";
-        case "class": case "widget_class": return "class " ~ marker;
+        case "class": return "class " ~ marker;
         case "Function": return marker ~ "()\n";
         default: return marker;
         }
@@ -4384,11 +3917,11 @@ unittest
             m.addChild(w);
             return [cast(Node) f, m];
         },
-        "code block": (Node c) {
+        "conditional in a function": (Node c) {
             auto f = mk!FunctionNode("Function", "");
-            auto cb = mk!CodeBlockNode("codeblock", "if (true)");
-            cb.addChild(c);
-            f.addChild(cb);
+            auto cond = mk!ConditionalNode("conditional", "if (true)");
+            cond.addChild(c);
+            f.addChild(cond);
             return [cast(Node) f];
         },
         "method": (Node c) {
@@ -4415,40 +3948,40 @@ unittest
             f.addChild(w);
             return [cast(Node) f];
         },
-        "declaration block": (Node c) {
-            auto db = mk!DeclBlockNode("declblock", "version (all)");
-            db.addChild(c);
-            return [cast(Node) db];
+        "conditional at the top": (Node c) {
+            auto cond = mk!ConditionalNode("conditional", "version (all)");
+            cond.addChild(c);
+            return [cast(Node) cond];
         },
         "class": (Node c) {
-            auto k = mk!ClassNode("class", "Outer");
+            auto k = mk!ClassNode("class", "OuterClass");
             k.addChild(c);
             return [cast(Node) k];
         },
-        "widget class": (Node c) {
-            auto k = mk!WidgetClassNode("widget_class", "OuterWidget");
-            k.w = 50; k.h = 50; k.hasXywh = true;
-            k.addChild(c);
+        "conditional in a class": (Node c) {
+            auto k = mk!ClassNode("class", "OuterClass");
+            auto cond = mk!ConditionalNode("conditional", "version (all)");
+            cond.addChild(c);
+            k.addChild(cond);
             return [cast(Node) k];
         },
         "top level": (Node c) => [c],
     ];
 
-    enum codeBody = ["code", "codeblock", "comment", "Window"];
-    enum declBody = ["Function", "decl", "declblock", "class", "widget_class"];
+    enum statements = ["code", "conditional", "comment", "Window"];
+    enum declarations = ["Function", "code", "conditional", "comment", "class"];
     string[][string] allowed = [
-        "main()": codeBody,
-        "function": codeBody,
-        "callback function": codeBody,
-        "code block": codeBody,
-        "method": codeBody,
-        "window": ["code", "widget", "Window"],
-        "group": ["code", "widget"],
-        "declaration block": declBody,
-        "class": declBody,
-        "widget class": ["Function", "decl", "declblock", "class",
-            "code", "codeblock", "comment", "widget"],
-        "top level": declBody ~ "comment",
+        "main()": statements,
+        "function": statements,
+        "callback function": statements,
+        "conditional in a function": statements,
+        "method": statements,
+        "window": ["code", "conditional", "comment", "widget", "Window"],
+        "group": ["code", "conditional", "comment", "widget"],
+        "conditional at the top": declarations,
+        "class": declarations,
+        "conditional in a class": declarations,
+        "top level": declarations,
     ];
 
     string[] missing;
@@ -4504,4 +4037,66 @@ unittest
     assert(spanText(code.setupSpan).canFind("counter--;"));
     assert(spanText(mainFn.setupSpan).canFind("void main("));
     assert(spanText(mainFn.finalizeSpan).canFind("fl.run();"));
+}
+
+unittest
+{
+    // Every piece of code the user writes in the properties panel has a
+    // span holding exactly its text, with MergeBack on and off; a
+    // second generate() forgets a piece the node no longer has.
+    import std.algorithm : canFind;
+    import std.string : strip;
+    import fluid.mergeback : Tag;
+
+    static T mk(T)(string typeName, string name)
+    {
+        auto n = new T();
+        n.typeName = typeName;
+        n.instanceName = name;
+        return n;
+    }
+
+    foreach (mergeback; [false, true])
+    {
+        auto fn = mk!FunctionNode("Function", "");
+        auto code = mk!CodeNode("code", "int counter = 1;");
+        auto win = mk!WindowNode("Window", "win");
+        win.w = 100; win.h = 100; win.hasXywh = true;
+        win.finalizeCode = "o.label = \"done\";";
+        win.hasFinalizeCode = true;
+        auto btn = mk!WidgetNode("Button", "btn");
+        btn.w = 50; btn.h = 20; btn.hasXywh = true;
+        btn.callback = "counter++;";
+        btn.setupCode = "o.tooltip = \"tip\";";
+        btn.hasSetupCode = true;
+        fn.addChild(code);
+        fn.addChild(win);
+        win.addChild(btn);
+
+        ProjectSettings settings;
+        settings.writeMergebackData = mergeback;
+        auto writer = new Writer();
+        string text = writer.generate([cast(Node) fn], ".", I18nSettings.init, false, settings);
+
+        string block(Node n, Tag kind)
+        {
+            auto sp = kind in n.blockSpans;
+            assert(sp !is null, "no span");
+            return text[sp.start .. sp.end].strip;
+        }
+        assert(block(code, Tag.code) == "int counter = 1;");
+        assert(block(btn, Tag.widgetCallback) == "counter++;");
+        // Setup and finalize code name the widget instead of `o`.
+        assert(block(btn, Tag.setup) == "btn.tooltip = \"tip\";");
+        assert(block(win, Tag.finalize) == "win.label = \"done\";");
+        assert(Tag.widgetCallback !in win.blockSpans);
+        // The block lies inside its node's own code.
+        auto sp = btn.blockSpans[Tag.widgetCallback];
+        assert(sp.start >= btn.setupSpan.start && sp.end <= btn.setupSpan.end);
+
+        btn.callback = null;
+        text = writer.generate([cast(Node) fn], ".", I18nSettings.init, false, settings);
+        assert(Tag.widgetCallback !in btn.blockSpans);
+        assert(block(btn, Tag.setup) == "btn.tooltip = \"tip\";");
+    }
 }

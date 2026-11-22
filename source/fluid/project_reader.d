@@ -47,6 +47,7 @@
 module fluid.project_reader;
 
 import std.conv : to, ConvException;
+import std.format : format;
 
 import fluid.node;
 import fluid.factory;
@@ -125,6 +126,16 @@ class Reader
     /// merging this file into an open project (`File/Insert`) uses this
     /// to apply only what the file set, as FLTK's reader does.
     bool[string] optionsSeen;
+
+    /// What could not be carried over from an older file's code nodes,
+    /// one sentence each (see `convertLegacy()`). Fluid shows them when
+    /// it opens the file and prints them with `-c` and `-u`.
+    string[] notes;
+
+    /// The `.fl` file's folder, for the image files of an older file's
+    /// `class` node, which is converted as the file is read. Set by the
+    /// caller before `readProject()`; empty means the current folder.
+    string projectDir;
 
     this(string source)
     {
@@ -366,6 +377,7 @@ class Reader
         layoutCurrentPreset = 0;
         hasSnap = false;
         optionsSeen = null;
+        notes = null;
 
         // Leading Options: flat `key [value]` pairs, in any order,
         // ending the moment a word isn't a known Option keyword.
@@ -624,6 +636,33 @@ class Reader
             }
         }
 
+        return convertLegacy(node, parent);
+    }
+
+    /// An older file's code node in its new form: `decl` becomes a Code
+    /// node, `codeblock` and `declblock` Conditional nodes, and `data` a
+    /// Code node holding a string import, and `widget_class` a Class (see
+    /// `fluid.legacy_nodes`). Anything that can't be carried over is added
+    /// to `notes`.
+    private Node convertLegacy(Node node, Node parent)
+    {
+        import fluid.code_node : CodeNode;
+        import fluid.conditional_node : ConditionalNode;
+        import fluid.legacy_nodes : LegacyDataNode, LegacyWidgetClassNode, dataToCode, widgetClassToClass;
+
+        if (auto dn = cast(LegacyDataNode) node)
+            return dataToCode(dn, notes);
+        if (auto wc = cast(LegacyWidgetClassNode) node)
+            return widgetClassToClass(wc, notes);
+        if (cast(CodeNode) node)
+            node.typeName = "code";
+        if (auto cond = cast(ConditionalNode) node)
+        {
+            if (cond.legacyAfter.length)
+                notes ~= format("The code after the block \"%s\" was dropped: %s", cond.instanceName,
+                    cond.legacyAfter);
+            node.typeName = "conditional";
+        }
         return node;
     }
 }

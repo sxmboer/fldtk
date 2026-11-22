@@ -238,6 +238,7 @@ file:
     /+ dub.sdl:
     dependency "fldtk" path="."
     subConfiguration "fldtk" "program"
+    stringImportPaths "."
     +/
     import fl;
     ...
@@ -253,6 +254,9 @@ so edit it by hand.
 `subConfiguration "fldtk" "program"` selects fldtk's configuration for
 programs: the program links libfldtk.so in the fldtk folder and finds
 it there when it runs.
+`stringImportPaths` names the .fl file's folder, relative to the .d
+file, so a Code node's `import("file")` finds files kept next to the
+design.
 
 To turn it on, either:
 
@@ -286,7 +290,19 @@ File > Run (F5), or the Run button in the widget properties panel,
 saves the project, writes the code file, builds the program with `dub
 build` and starts it. The Run window shows the build's output and then
 the program's; Stop ends either, and the next Run ends a program still
-running from the last one. `dub` must be on the PATH.
+running from the last one. Double-clicking a compiler message about the
+generated code (`hello.d(12,5): Error: ...`, or gdc's `hello.d:12:5:
+error: ...`) selects the node that wrote that line, opens its
+properties, and shows the Code View scrolled to that line; a message
+about a hand-written module does nothing. When a build fails, Fluid
+does this by itself for the first error in the generated code. The Code View (Edit > Show
+Code View) marks the compiler's messages about the generated code: their
+line numbers are red and the word each one points at is red and
+underlined, until the design changes. The messages themselves, as the
+compiler wrote them, show in two ways, set in Settings > General >
+Errors, both on by default: as a tooltip with the mouse on such a line
+(Show as Tooltips), and among the code, each under the line it is about
+on a light red background (Show in Code View). `dub` must be on the PATH.
 
 What gets built depends on the dub header and on where the .fl file is:
 
@@ -308,8 +324,9 @@ File > Set Up dub Project does the setting up on its own. In a folder
 with no recipe it writes what `dub init -n -f sdl` would (`dub.sdl`,
 `.gitignore`), with the dub.sdl also holding the lines this design
 needs: `targetType "executable"`, the `fldtk` dependency with the full path of the fldtk folder,
-`subConfiguration "fldtk" "program"`, and the `preGenerateCommands`
-that run `fluid -c` on the design; an existing `dub.sdl` gets the lines it lacks, and is
+`subConfiguration "fldtk" "program"`, the `preGenerateCommands`
+that run `fluid -c` on the design, and `stringImportPaths` naming the
+design's folder; an existing `dub.sdl` gets the lines it lacks, and is
 left alone otherwise. It moves the Code File to `source/<name>.d`
 unless it already is in `source/` or `src/`, asking first when that
 file exists, and removes the untouched placeholder `source/app.d` of

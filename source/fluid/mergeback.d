@@ -60,7 +60,6 @@ import fluid.code_highlight : renameIdentifier;
 import fluid.code_node : CodeNode;
 import fluid.group_node : GroupNode;
 import fluid.node : Node;
-import fluid.widget_class_node : WidgetClassNode;
 import fluid.widget_node : WidgetNode;
 import fluid.window_node : WindowNode;
 
@@ -324,14 +323,12 @@ private string stripOneNewline(string s)
     return s;
 }
 
-/// What the code writer calls widget `n` in generated code: `this` for a
-/// Widget Class (its code is in the class's constructor), else its own
+/// What the code writer calls widget `n` in generated code: its own
 /// name, else `w` for a window, `g<depth>` for an unnamed group (depth
-/// counted in groups, `n` included), else `o`. See `selfRef()` and
-/// `writeWidgetClassBody()` in `code_writer.d`.
+/// counted in groups, `n` included), else `o`. See `selfRef()` in
+/// `code_writer.d`.
 private string generatedName(WidgetNode n)
 {
-    if (cast(WidgetClassNode) n) return "this";
     if (n.instanceName.length) return n.instanceName;
     if (cast(WindowNode) n) return "w";
     if (cast(GroupNode) n)

@@ -7,8 +7,6 @@ icon here is the SVG flask of fluid.flask_logo, rasterized at each size
 a desktop asks for, so it is sharp at every one of them.
 }
   {
-    in_source
-    in_header
   }
 Function {makeFluidIcon(Window win)}
   {

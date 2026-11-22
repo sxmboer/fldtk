@@ -27,7 +27,7 @@ module fl.d_syntax;
 import fl.enumerations : Fontsize, foregroundColor, courier, courierBold, courierItalic,
     courierBoldItalic;
 import fl.draw : rgbColor;
-import fl.text_display : StyleTableEntry;
+import fl.text_display : StyleTableEntry, attrBgcolorExt, attrUnderline;
 
 /// Style letters, in `styleTable()` order.
 enum : char
@@ -45,6 +45,8 @@ enum : char
     styleOpName = 'K',      /// opAdd, opIndex, ... (gray)
     styleOperator = 'L',    /// operators (yellow)
     styleDocSection = 'M',  /// Params:, Returns:, ... inside documentation comments (red)
+    styleError = 'N',       /// not set by `styleParse()`: a place a compiler reports (red, underlined)
+    styleMessage = 'O',     /// not set by `styleParse()`: a compiler message shown among the code (dark red on light red, the whole line)
 }
 
 // The words of each class, generated from nano's syntax/d.syntax.
@@ -455,6 +457,9 @@ StyleTableEntry[] styleTable(Fontsize size)
         StyleTableEntry(rgbColor(0x70, 0x70, 0x70), courier, size),               // K operator names
         StyleTableEntry(rgbColor(0x8a, 0x66, 0x00), courier, size),               // L operators
         StyleTableEntry(rgbColor(0xb0, 0x10, 0x10), courierBoldItalic, size),     // M doc sections
+        StyleTableEntry(rgbColor(0xe0, 0x00, 0x00), courierBold, size, attrUnderline), // N error
+        StyleTableEntry(rgbColor(0x90, 0x10, 0x10), courier, size, attrBgcolorExt,
+            rgbColor(0xff, 0xdd, 0xdd)),                                             // O compiler message
     ];
 }
 

@@ -18,8 +18,6 @@ point of use below:
    `fl.message()` instead.
 }
   {
-    in_source
-    in_header
   }
 Function makeAboutPanel()
   {
@@ -81,8 +79,8 @@ o.copyLabel(format("FLTK User\\nInterface Designer\\nVersion %d.%d.%d",
             label {(Copyright)}
             comment {Label edited dynamically:}
             xywh {135 90 200 45}
-            align 148
             labelsize 12
+            align 148
             setup {o.label(cbuf);}
           }
         Button {}

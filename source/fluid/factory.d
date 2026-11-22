@@ -14,17 +14,14 @@ module fluid.factory;
 import fluid.node;
 import fluid.widget_node;
 import fluid.window_node;
-import fluid.widget_class_node;
+import fluid.class_node;
 import fluid.group_node;
 import fluid.function_node;
 import fluid.code_node;
-import fluid.class_node;
+import fluid.conditional_node;
+import fluid.legacy_nodes;
 import fluid.menu_item_node;
 import fluid.menu_owner_node;
-import fluid.decl_node;
-import fluid.decl_block_node;
-import fluid.data_node;
-import fluid.code_block_node;
 import fluid.comment_node;
 import fluid.grid_node;
 import fluid.flex_node;
@@ -43,12 +40,16 @@ static this()
 {
     registry["Function"] = () => cast(Node) new FunctionNode();
     registry["code"] = () => cast(Node) new CodeNode();
-    registry["codeblock"] = () => cast(Node) new CodeBlockNode();
-    registry["class"] = () => cast(Node) new ClassNode();
+    registry["conditional"] = () => cast(Node) new ConditionalNode();
     registry["comment"] = () => cast(Node) new CommentNode();
-    registry["decl"] = () => cast(Node) new DeclNode();
-    registry["declblock"] = () => cast(Node) new DeclBlockNode();
-    registry["data"] = () => cast(Node) new DataNode();
+    registry["class"] = () => cast(Node) new ClassNode();
+    // Older files' node kinds. `Reader.parseNode()` gives the first three
+    // the new keyword, turns `data` into a Code node and `widget_class`
+    // into a Class.
+    registry["decl"] = () => cast(Node) new CodeNode();
+    registry["codeblock"] = () => cast(Node) new ConditionalNode();
+    registry["declblock"] = () => cast(Node) new ConditionalNode();
+    registry["data"] = () => cast(Node) new LegacyDataNode();
     registry["MenuItem"] = () => cast(Node) new MenuItemNode();
     // `CheckMenuItem`/`RadioMenuItem` are plain `MenuItemNode`s -- see
     // that class's own doc comment for why no dedicated D subclass is
@@ -57,7 +58,7 @@ static this()
     registry["CheckMenuItem"] = () => cast(Node) new MenuItemNode();
     registry["RadioMenuItem"] = () => cast(Node) new MenuItemNode();
     registry["Submenu"] = () => cast(Node) new SubmenuNode();
-    registry["widget_class"] = () => cast(Node) new WidgetClassNode();
+    registry["widget_class"] = () => cast(Node) new LegacyWidgetClassNode();
 
     reg("Window", () => cast(Node) new WindowNode());
     reg("Double_Window", () => cast(Node) new WindowNode());

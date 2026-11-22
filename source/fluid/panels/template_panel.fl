@@ -60,27 +60,18 @@ and each explained at its own point of use below:
    `fl.ask.alert()` (both already real ports).
 }
   {
-    in_source
-    in_header
   }
-data tmplFldtkLicenseFl
+code {immutable ubyte[] tmplFldtkLicenseFl = cast(immutable ubyte[]) import("fldtkLicense.fl");}
   {
-    private
-    local
-    filename {../templates/fldtkLicense.fl}
   }
-decl {private final class TemplatePathData \{
+code {private final class TemplatePathData \{
   string path;
   this(string p) \{ path = p; \}
 \}}
   {
-    private
-    local
   }
-decl {import fluid;}
+code {import fluid;}
   {
-    private
-    local
   }
 Function makeTemplatePanel()
   {

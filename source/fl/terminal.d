@@ -192,6 +192,10 @@ enum OutFlags outLfToCrlf = 0x04;
 
 class Terminal : FlGroup
 {
+    /// No widgets: the parts a Terminal is made of
+    /// (its scrollbars) are not listed (see `FlGroup.widgets`).
+    override Widget[] widgets() { return null; }
+
     /// Determines when Terminal calls redraw() as new text arrives.
     enum RedrawStyle
     {
@@ -2903,6 +2907,29 @@ class Terminal : FlGroup
         return cast(string) lines;
     }
 
+    /// The text of the line shown at window coordinate `y` (a line of
+    /// the scrollback history when the terminal is scrolled back),
+    /// without trailing spaces; null when `y` is above or below the
+    /// text area. For a program that acts on a clicked line:
+    /// `lineAt(fl.core.eventY())`.
+    string lineAt(int y) const
+    {
+        if (y < scrn_.y() || y > scrn_.b()) return null;
+        int grow = dispSrow() - cast(int) scrollbar.value()
+            + (y - scrn_.y()) / currentStyle_.fontheight();
+        char[] line;
+        size_t trim = 0;
+        const(Utf8Char)* u8c = utf8CharAtGlob(grow, 0);
+        for (int col = 0; col < ringCols(); col++, u8c++)
+        {
+            line ~= u8c.textUtf8();
+            if (u8c.length() == 1 && u8c.isChar(' ')) trim++;
+            else trim = 0;
+        }
+        line.length -= trim;
+        return cast(string) line;
+    }
+
     // ------------------------------------------------------------
     // API: Redraw style/rate, unknown-char, ansi mode
     // ------------------------------------------------------------
@@ -2961,11 +2988,8 @@ class Terminal : FlGroup
         refitDispToScreen();
     }
 
-    // ------------------------------------------------------------
-    // API: printf() -- uses std.format instead of a fixed 1024-byte
-    // vsnprintf() buffer; see the module comment.
-    // ------------------------------------------------------------
-
+    /// Formats `args` into `fmt` with `std.format.format` and appends
+    /// the text, escape sequences included, as `append()` does.
     void printf(Args...)(string fmt, Args args)
     {
         import std.format : format;

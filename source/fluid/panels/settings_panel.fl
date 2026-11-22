@@ -19,7 +19,8 @@ placed-but-unwired state; each tab's own top comment below
 names exactly what it's still missing.
 
 What's genuinely wired to real, working subsystems: General's Scheme/
-Tooltips/External-Editor controls (unchanged from before), "Show
+Tooltips/External-Editor controls (unchanged from before), the two
+Errors checkboxes (read by `gui_main.markBuildErrors()`), "Show
 Positioning Guides" (`gui_main.showGuides()`, applied to every open
 window's canvas at once -- a project-wide display preference, not any
 one window's own state, see that function's own doc comment), "Remember
@@ -53,9 +54,7 @@ narrower single-column dialog width -- every widget it names is
 unchanged, only `xywh` moved.
 
 Tab icons are SVG redrawings of FLTK's `icons/*_64.png`, in
-`fluid/panels/pixmaps/` (relative to this directory, like the images
-`about_panel.fl`/`fluid_icon.fl` embed), so they stay sharp at any
-scale.
+`fluid/panels/pixmaps/`, so they stay sharp at any scale.
 FLTK's custom `@fd_beaker`/`@fd_user`/`@fd_project`/`@fd_file` glyphs
 (`fluid/app/Snap_Action.cxx`) and `@fd_zoom` (`fluid/rsrcs/pixmaps.cxx`)
 are real `fl.symbols` glyphs (`fluid.pixmaps`'s own `fdBeaker()`/
@@ -72,18 +71,12 @@ Browser`'s real per-row `icon()`
 (`shell_settings.d`'s `shellRefreshList()`).
 }
   {
-    in_source
-    in_header
   }
-decl {import fluid;}
+code {import fluid;}
   {
-    private
-    local
   }
-decl {import shell_run_window : showShellRunWindow;}
+code {import shell_run_window : showShellRunWindow;}
   {
-    private
-    local
   }
 Function makeSettingsPanel()
   {
@@ -335,6 +328,40 @@ o.value(s);}
                     labelsize 12
                     setup {o.value(showGhostedOutline());}
                     tooltip {groups with no box type or flat boxtypes without contrast will be rendered with a dim outline in the editing window only}
+                  }
+                Box {}
+                  {
+                    label {Errors: }
+                    xywh {130 401 0 20}
+                    labelfont 1
+                    labelsize 12
+                    align 4
+                  }
+                CheckButton errorTooltipsButton
+                  {
+                    label {Show as Tooltips}
+                    callback {appPrefs.set("compiler_error_tooltips", errorTooltipsButton.value());
+markBuildErrors();}
+                    xywh {130 401 210 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {int b;
+appPrefs.get("compiler_error_tooltips", b, 1);
+o.value(b != 0);}
+                    tooltip {after a failed build, the mouse on a line the compiler reports in the Code View shows the compiler's messages about it}
+                  }
+                CheckButton errorsInlineButton
+                  {
+                    label {Show in Code View}
+                    callback {appPrefs.set("compiler_errors_inline", errorsInlineButton.value());
+markBuildErrors();}
+                    xywh {130 421 210 20}
+                    down_box DOWN_BOX
+                    labelsize 12
+                    setup {int b;
+appPrefs.get("compiler_errors_inline", b, 1);
+o.value(b != 0);}
+                    tooltip {after a failed build, the Code View shows the compiler's messages under the lines they are about}
                   }
               }
             Group projectTab
@@ -1593,7 +1620,7 @@ case I18nType.posix:
                         textsize 12
                         textfont 4
                         setup {o.value(projectI18n().gnuInclude);}
-                        tooltip {What to import for internationalization support, as a D import path such as fl.gettext. It must provide the translation function named below. Leave empty to import nothing and define the function yourself in a "decl" block.}
+                        tooltip {What to import for internationalization support, as a D import path such as fl.gettext. It must provide the translation function named below. Leave empty to import nothing and define the function yourself in a Code node.}
                       }
                     Input i18nGnuConditional
                       {
@@ -1649,7 +1676,7 @@ case I18nType.posix:
                         textsize 12
                         textfont 4
                         setup {o.value(projectI18n().posixInclude);}
-                        tooltip {What to import for internationalization support, as a D import path. It must provide the catgets function and the message catalog type. Leave empty to import nothing and define them yourself in a "decl" block.}
+                        tooltip {What to import for internationalization support, as a D import path. It must provide the catgets function and the message catalog type. Leave empty to import nothing and define them yourself in a Code node.}
                       }
                     Input i18nPosixConditional
                       {

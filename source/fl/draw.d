@@ -2289,6 +2289,185 @@ private void matrixConcat(double a, double b, double c, double d, double x, doub
     currentMatrix_ = o;
 }
 
+/// The arguments of the last `lineStyle()` call on any platform and
+/// driver, so `useLineStyle()` can put the line style back.
+private int lineStyleArg_, lineWidthArg_;
+private immutable(ubyte)[] lineDashesArg_;
+
+// ---------------------------------------------------------------------
+// Drawing state that restores itself: each function below changes one
+// part of the drawing state and returns a value that changes it back at
+// the end of the enclosing scope, however the scope is left (the end of
+// the block, an early return, an exception). Keep the value in a
+// variable, or it is gone, and the state with it, at once:
+//
+//     auto clip = clipTo(x, y, w, h);        // popClip() at the end
+//     auto line = useLineStyle(lineDash, 2); // the previous line style
+//     auto font = useFont(helveticaBold, 14);
+//     auto col  = useColor(red);
+//     auto m    = saveMatrix();              // popMatrix() at the end
+//
+// Discarding the value is a compile error (`@mustuse`). The values
+// can't be copied, so the state is restored exactly once.
+// ---------------------------------------------------------------------
+
+import core.attribute : mustuse;
+
+/// See `clipTo()`.
+@mustuse struct ClipScope
+{
+    @disable this();
+    @disable this(this);
+    private bool armed;
+    private this(bool armed) { this.armed = armed; }
+    ~this() { if (armed) popClip(); }
+}
+
+/// Clips drawing to the rectangle (intersected with the clip already in
+/// effect) until the end of the scope: `pushClip()`, and `popClip()` at
+/// the end.
+ClipScope clipTo(int x, int y, int w, int h)
+{
+    pushClip(x, y, w, h);
+    return ClipScope(true);
+}
+
+/// See `useColor()`.
+@mustuse struct ColorScope
+{
+    @disable this();
+    @disable this(this);
+    private bool armed;
+    private Color previous;
+    private this(Color previous) { armed = true; this.previous = previous; }
+    ~this() { if (armed) fl_color(previous); }
+}
+
+/// Draws in colour `c` until the end of the scope, then goes back to the
+/// colour in use before.
+ColorScope useColor(Color c)
+{
+    auto previous = fl_color();
+    fl_color(c);
+    return ColorScope(previous);
+}
+
+/// See `useFont()`.
+@mustuse struct FontScope
+{
+    @disable this();
+    @disable this(this);
+    private bool armed;
+    private Font face;
+    private Fontsize size;
+    private this(Font face, Fontsize size) { armed = true; this.face = face; this.size = size; }
+    ~this() { if (armed && face >= 0) fl_font(face, size); }
+}
+
+/// Draws text in `face` at `size` until the end of the scope, then goes
+/// back to the font in use before. When no font was set before, the new
+/// one stays.
+FontScope useFont(Font face, Fontsize size)
+{
+    auto previous = FontScope(fl_font(), fl_size());
+    fl_font(face, size);
+    return previous;
+}
+
+/// See `useLineStyle()`.
+@mustuse struct LineStyleScope
+{
+    @disable this();
+    @disable this(this);
+    private bool armed;
+    private int style, width;
+    private immutable(ubyte)[] dashes;
+    private this(int style, int width, immutable(ubyte)[] dashes)
+    {
+        armed = true;
+        this.style = style;
+        this.width = width;
+        this.dashes = dashes;
+    }
+    ~this() { if (armed) lineStyle(style, width, dashes); }
+}
+
+/// Draws lines with `lineStyle(style, width, dashes)` until the end of
+/// the scope, then goes back to the line style in use before.
+LineStyleScope useLineStyle(int style, int width = 0, const(ubyte)[] dashes = null)
+{
+    auto previous = LineStyleScope(lineStyleArg_, lineWidthArg_, lineDashesArg_);
+    lineStyle(style, width, dashes);
+    return previous;
+}
+
+/// See `saveMatrix()`.
+@mustuse struct MatrixScope
+{
+    @disable this();
+    @disable this(this);
+    private bool armed;
+    private this(bool armed) { this.armed = armed; }
+    ~this() { if (armed) popMatrix(); }
+}
+
+/// Keeps the transform matrix as it is now, so the `fl_translate()`,
+/// `fl_scale()`, `fl_rotate()` and `multMatrix()` calls after it last
+/// until the end of the scope: `pushMatrix()`, and `popMatrix()` at the
+/// end.
+MatrixScope saveMatrix()
+{
+    pushMatrix();
+    return MatrixScope(true);
+}
+
+unittest
+{
+    // Clip and matrix: one level pushed in the scope, gone after it.
+    auto clipDepth = clipStack_.length;
+    auto matrixDepth = matrixStack_.length;
+    {
+        auto clip = clipTo(10, 10, 50, 50);
+        auto m = saveMatrix();
+        assert(clipStack_.length == clipDepth + 1);
+        assert(matrixStack_.length == matrixDepth + 1);
+        fl_translate(5, 5);
+    }
+    assert(clipStack_.length == clipDepth);
+    assert(matrixStack_.length == matrixDepth);
+    assert(currentMatrix_ == Matrix.init);
+
+    // Colour, nested, and restored when the scope is left by a throw.
+    import fl.enumerations : blue, green;
+    fl_color(blue);
+    try
+    {
+        auto c1 = useColor(red);
+        {
+            auto c2 = useColor(green);
+            assert(fl_color() == green);
+        }
+        assert(fl_color() == red);
+        throw new Exception("leaving early");
+    }
+    catch (Exception) {}
+    assert(fl_color() == blue);
+
+    // Line style.
+    lineStyle(lineDot, 3);
+    {
+        auto line = useLineStyle(lineDash, 2);
+        assert(lineStyleArg_ == lineDash && lineWidthArg_ == 2);
+    }
+    assert(lineStyleArg_ == lineDot && lineWidthArg_ == 3);
+    lineStyle(lineSolid);
+
+    // The values must be kept and can't be copied.
+    static assert(!__traits(compiles, { clipTo(0, 0, 1, 1); }));
+    static assert(!__traits(compiles, { auto a = useColor(red); auto b = a; }));
+    static assert(!__traits(compiles, { ClipScope s; }));
+}
+
 /// Pushes a copy of the current transform matrix, so a later
 /// fl_pop_matrix() can restore it. Ported from
 /// Fl_Graphics_Driver::push_matrix(); FLTK errors on overflow of its
@@ -6700,6 +6879,9 @@ unittest
  */
 void lineStyle(int style, int width = 0, const(ubyte)[] dashes = null)
 {
+    lineStyleArg_ = style;
+    lineWidthArg_ = width;
+    lineDashesArg_ = dashes.idup;
     if (currentDriver !is null)
     {
         currentDriver.lineStyle(style, width, dashes);

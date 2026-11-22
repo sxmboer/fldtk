@@ -1,0 +1,67 @@
+# data file for fldtk fluid (Fast Light User Interface Designer)
+version 1.0000
+code_name source/fourbuttons.d
+dub_header 1
+Function {}
+  {
+  }
+  {
+    Window {}
+      {
+        label {Four Buttons}
+        xywh {186 66 325 163}
+      }
+      {
+        Group buttons
+          {
+            xywh {15 15 64 88}
+          }
+          {
+            Button {}
+              {
+                label {Button &1}
+                xywh {15 15 64 22}
+                value {1}
+                compact {1}
+                shortcut {0x31}
+                type Radio
+              }
+            Button {}
+              {
+                label {Button &2}
+                xywh {15 37 64 22}
+                compact {1}
+                shortcut {0x32}
+                type Radio
+              }
+            Button {}
+              {
+                label {Button &3}
+                xywh {15 59 64 22}
+                compact {1}
+                shortcut {0x33}
+                type Radio
+              }
+            Button {}
+              {
+                label {Button &4}
+                xywh {15 81 64 22}
+                compact {1}
+                shortcut {0x34}
+                type Radio
+              }
+          }
+        ReturnButton {}
+          {
+            label {Check}
+            callback {auto b = buttons.selectedRadioButton;
+if (b !is null)
+  message(format("%s is selected", b.label.replace("&", "")));
+else
+  message("no button is selected");
+}
+            xywh {117 69 86 22}
+            selected
+          }
+      }
+  }

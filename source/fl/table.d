@@ -118,6 +118,13 @@ enum : TableContext
  */
 class Table : FlGroup
 {
+    /// The widgets in the cells, without the Table's scrollbars (see
+    /// `FlGroup.widgets`).
+    override Widget[] widgets()
+    {
+        return table_ !is null ? table_.widgets() : super.widgets();
+    }
+
     private int rows_;
     private int cols_;
     private int rowHeaderW_ = 40;

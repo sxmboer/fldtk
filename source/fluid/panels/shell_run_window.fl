@@ -27,13 +27,9 @@ running (`gui_main.d`'s job, matching FLTK's own
 out from under a live process.
 }
   {
-    in_source
-    in_header
   }
-decl {import fluid;}
+code {import fluid;}
   {
-    private
-    local
   }
 Function makeShellRunWindow()
   {
@@ -43,6 +39,7 @@ Function makeShellRunWindow()
       {
         label {Shell Command Output}
         xywh {0 0 555 430}
+        type Double
         resizable
       }
       {

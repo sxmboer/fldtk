@@ -105,11 +105,7 @@ void loadPixmaps()
     pixmaps_["Fl_Group"] = load!"flGroup";
     pixmaps_["Function"] = load!"flFunction";
     pixmaps_["code"] = load!"flCode";
-    pixmaps_["codeblock"] = load!"flCodeBlock";
-    pixmaps_["decl"] = load!"flDeclaration";
-
-    pixmaps_["declblock"] = load!"flDeclarationBlock";
-    pixmaps_["class"] = load!"flClass";
+    pixmaps_["conditional"] = load!"flCodeBlock";
     pixmaps_["Fl_Tabs"] = load!"flTabs";
     pixmaps_["Fl_Input"] = load!"flInput";
     pixmaps_["Fl_Choice"] = load!"flChoice";
@@ -152,8 +148,7 @@ void loadPixmaps()
     pixmaps_["comment"] = load!"flComment";
 
     pixmaps_["Fl_Spinner"] = load!"flSpinner";
-    pixmaps_["widget_class"] = load!"flWidgetClass";
-    pixmaps_["data"] = load!"flData";
+    pixmaps_["class"] = load!"flClass";
     pixmaps_["Fl_Tree"] = load!"flTree";
     pixmaps_["Fl_Table"] = load!"flTable";
 

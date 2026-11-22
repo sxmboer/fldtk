@@ -1,6 +1,9 @@
 # data file for fldtk fluid (Fast Light User Interface Designer)
 version 1.0000
 code_name source/hello.d
+code {import actions;}
+  {
+  }
 Function {}
   {
   }
@@ -24,5 +27,3 @@ Function {}
           }
       }
   }
-decl {import actions;} {private local
-}

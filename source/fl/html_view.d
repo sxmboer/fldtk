@@ -661,6 +661,10 @@ package(fl) int quoteChar(string p)
  */
 class HtmlView : FlGroup
 {
+    /// No widgets: the parts an HtmlView is made of
+    /// (its scrollbars) are not listed (see `FlGroup.widgets`).
+    override Widget[] widgets() { return null; }
+
     // Widget.size(int,int) is hidden by this class's own 0-arg
     // size() getter below, and FlGroup.find(Widget) is hidden by
     // find(string,int) -- both need re-exposing, exactly as FLTK

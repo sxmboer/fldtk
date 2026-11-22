@@ -2,15 +2,17 @@
  * MarkdownDialog: a window for reading Markdown documents, such as a
  * program's README or its help pages.
  *
- * A toolbar (Back and Forward, smaller and larger text, a find field)
- * over a `fl.markdown_view.MarkdownView`. Clicking a link to another
+ * A toolbar (Back and Forward, smaller and larger text, Reload, a find
+ * field) over a `fl.markdown_view.MarkdownView`. Clicking a link to another
  * `.md` file opens it in the same window; Back and Forward go through
  * the pages visited, each at the scroll position it was left at. The
  * window's title is the page's title (`MarkdownView.title()`).
  *
  * Besides the toolbar's buttons: Alt+Left and Alt+Right, or the mouse's
- * back and forward side buttons, go back and forward; Ctrl with the
- * mouse wheel makes the text larger or smaller (`fl.browser_window`).
+ * back and forward side buttons, go back and forward; F5 reads the page
+ * again from its file, at the same scroll position, so edits to the
+ * file and its images show; Ctrl with the mouse wheel makes the text
+ * larger or smaller (`fl.browser_window`).
  *
  * ---
  * auto d = new MarkdownDialog();
@@ -42,7 +44,7 @@ class MarkdownDialog
     private int findPos_;
 
     private BrowserWindow window_;
-    private Button back_, forward_, smaller_, larger_;
+    private Button back_, forward_, smaller_, larger_, reload_;
     private Input find_;
     private MarkdownView view_;
 
@@ -84,6 +86,12 @@ class MarkdownDialog
         larger_.labelsize(16);
         larger_.callback((w) { textsize(cast(Fontsize)(view_.textsize() + 2)); });
 
+        reload_ = new Button(150, 10, 25, 25, "@reload");
+        reload_.tooltip("Read the page again from its file (F5).");
+        reload_.shortcut(f + 5);
+        reload_.labelcolor(cast(Color) 2);
+        reload_.callback((w) { reload(); });
+
         auto findGroup = new FlGroup(579, 10, 171, 25);
         findGroup.box(Boxtype.downBox);
         findGroup.color(background2Color);
@@ -95,7 +103,7 @@ class MarkdownDialog
         find_.when(whenEnterKeyAlways);
         findGroup.end();
 
-        auto spacer = new Box(150, 10, 420, 25);
+        auto spacer = new Box(185, 10, 385, 25);
         toolbar.resizable(spacer);
         toolbar.end();
 
@@ -120,6 +128,20 @@ class MarkdownDialog
         int ret = view_.load(f);
         window_.label(view_.title());
         return ret;
+    }
+
+    /// Reads the page on show again from its file and shows it at the
+    /// same scroll position, with its images read again too. The page
+    /// keeps its place in the history. Does nothing when the text is not
+    /// from a file.
+    void reload()
+    {
+        string file = view_.filename();
+        if (file is null) return;
+        int line = view_.topline();
+        view_.load(file);
+        view_.topline(line);
+        window_.label(view_.title());
     }
 
     /// Shows the Markdown text `md`. Text not from a file has no place
@@ -240,6 +262,11 @@ unittest
     assert(!d.back_.active() && d.forward_.active());
     d.go(1);
     assert(d.view().title() == "Page B");
+
+    write(b, "# Page B, edited\n");
+    d.reload();
+    assert(d.view().title() == "Page B, edited");
+    assert(d.back_.active() && !d.forward_.active()); // still one page ahead of A
 
     d.textsize(100);
     assert(d.textsize() == MarkdownDialog.maxTextSize && !d.larger_.active());

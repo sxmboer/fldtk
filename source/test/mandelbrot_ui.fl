@@ -20,8 +20,6 @@ in scope), D's own idiom for "add a method-shaped function to a class
 from outside its own definition."
 }
   {
-    in_source
-    in_header
   }
 class DrawingWindow
   {

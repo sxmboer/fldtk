@@ -120,6 +120,10 @@ private class InputMenuButton : MenuButton
 
 class InputChoice : FlGroup
 {
+    /// No widgets: the parts an InputChoice is made of
+    /// (its input and menu button) are not listed (see `FlGroup.widgets`).
+    override Widget[] widgets() { return null; }
+
     private Input input_;
     private InputMenuButton menu_;
 

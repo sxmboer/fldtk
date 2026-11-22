@@ -752,6 +752,25 @@ class Browser : Browser_
     }
 
     Object data(int line) const { return line < 1 || line > lines_ ? null : findLine(line).data; }
+
+    /// The text of every line, in order, as an array, so `foreach` and
+    /// Phobos work on it: `foreach (t; browser.lines)`. Line `n` (counting
+    /// from 1, as everywhere in a Browser) is `lines[n - 1]`.
+    string[] lines() const
+    {
+        string[] result;
+        foreach (i; 1 .. lines_ + 1) result ~= text(i).idup;
+        return result;
+    }
+
+    /// The numbers of the selected lines, counting from 1, in order.
+    int[] selectedLines() const
+    {
+        int[] result;
+        foreach (i; 1 .. lines_ + 1)
+            if (selected(i)) result ~= i;
+        return result;
+    }
     void data(int line, Object d) { if (line >= 1 && line <= lines_) findLine(line).data = d; }
 
     const(int)[] columnWidths() const { return columnWidths_; }
@@ -1070,4 +1089,18 @@ unittest
     assert(b.icon(1) is null);
 
     FlGroup.current(null);
+}
+
+unittest
+{
+    // lines and selectedLines.
+    import fl.group : FlGroup;
+    FlGroup.current(null);
+    auto b = new Browser(0, 0, 100, 100);
+    b.type(multiBrowser);
+    foreach (t; ["one", "two", "three"]) b.add(t);
+    assert(b.lines == ["one", "two", "three"]);
+    b.select(1);
+    b.select(3);
+    assert(b.selectedLines == [1, 3]);
 }

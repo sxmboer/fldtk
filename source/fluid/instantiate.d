@@ -63,7 +63,7 @@ import fluid.window_node : WindowNode;
 import fluid.group_node : GroupNode;
 import fluid.grid_node : GridNode, GridCellInfo;
 import fluid.flex_node : FlexNode;
-import fluid.code_block_node : CodeBlockNode;
+import fluid.conditional_node : ConditionalNode;
 import fluid.menu_item_node : MenuItemNode, SubmenuNode;
 import fluid.table_proxy : TableProxy;
 import fluid.scroll_proxy : ScrollProxy;
@@ -311,7 +311,7 @@ static this()
     });
     registry["InputChoice"] = registry["Input_Choice"];
 
-    // "Function"/"code"/"class"/"comment"/"decl"/"MenuItem" (factory.d's
+    // "Function"/"code"/"conditional"/"comment"/"MenuItem" (factory.d's
     // other non-widget entries) have no live-widget counterpart at all
     // -- callers only ever reach into this registry for a WidgetNode's
     // *children*, never for those node kinds.
@@ -568,7 +568,7 @@ Widget instantiateStandalone(Node n, ref LiveTree live, string projectDir = ".")
 
     auto leaf = cast(WidgetNode) n;
     if (leaf is null)
-        return null; // Function/code/class/comment/decl/declblock/MenuItem: nothing to build
+        return null; // Function, Code, Conditional, Comment, MenuItem: nothing to build
 
     auto ctor = leaf.typeName in registry;
     if (ctor is null)
@@ -686,16 +686,10 @@ package(fluid) void instantiateChild(Node n, ref LiveTree live, string projectDi
         return;
     }
 
-    // A `codeblock {}` has no live widget of its own (it's purely a
-    // `code_writer.d`-level codegen wrapper -- see `code_block_node.d`'s
-    // own doc comment), but its *children* can be real widgets (FLTK
-    // Fluid renders them on the canvas same as any other child; a
-    // codeblock is invisible at the FLTK-widget level, not a boundary
-    // that hides what's inside it). Recurse into its children directly,
-    // under whichever `FlGroup` is currently open -- same as walking a
-    // plain widget-tree node's own children would, just without an
-    // extra live widget/level of its own to instantiate first.
-    if (auto cb = cast(CodeBlockNode) n)
+    // A Conditional node has no live widget of its own, but its children
+    // can be widgets, shown on the canvas like any other child: they are
+    // instantiated under whichever `FlGroup` is open.
+    if (auto cb = cast(ConditionalNode) n)
     {
         foreach (child; cb.children)
             instantiateChild(child, live, projectDir);
@@ -704,7 +698,7 @@ package(fluid) void instantiateChild(Node n, ref LiveTree live, string projectDi
 
     auto wn = cast(WidgetNode) n;
     if (wn is null)
-        return; // Function/code/class/comment/decl/declblock/MenuItem: no live widget
+        return; // Function, Code, Comment, MenuItem: no live widget
 
     auto ctor = wn.typeName in registry;
     if (ctor is null)
@@ -1802,7 +1796,7 @@ package(fluid) void delegate(string) onImageLoadError;
 
 unittest
 {
-    // A `codeblock {}` sitting among a window's own widget-tree children
+    // A Conditional node sitting among a window's own widget-tree children
     // has no live widget of its own, but its own children still need to
     // be instantiated -- otherwise the interactive canvas would silently
     // fail to render (or hit-test) anything nested inside one, even
@@ -1818,8 +1812,8 @@ unittest
     rootNode.x = 0; rootNode.y = 0; rootNode.w = 100; rootNode.h = 100;
     rootNode.hasXywh = true;
 
-    auto cb = new CodeBlockNode();
-    cb.typeName = "codeblock";
+    auto cb = new ConditionalNode();
+    cb.typeName = "conditional";
     cb.instanceName = "if (test())";
     rootNode.addChild(cb);
 
@@ -1833,7 +1827,7 @@ unittest
     auto into = new Window(100, 100);
     auto live = instantiate(rootNode, into);
 
-    assert(cb !in live.widgetOf); // the codeblock itself has no live widget
+    assert(cb !in live.widgetOf); // the Conditional node itself has no live widget
     auto boxWidget = boxNode in live.widgetOf;
     assert(boxWidget !is null); // but its child widget was still instantiated
     assert((*boxWidget).parent() is into); // ...directly under the window, matching FLTK
@@ -2087,28 +2081,20 @@ package(fluid) string defaultLabelFor(string typeName)
     }
 }
 
-/// The name a newly-created code-group node of `typeName` (the `.fl`
-/// keyword) starts with, from each FLTK `..._Node::make()`
-/// (`fluid/nodes/Function_Node.cxx`, `Window_Node.cxx`). The C++ snippets
-/// are given in their D form: `make_window()` becomes `makeWindow()`,
-/// `printf("Hello, World!\n");` becomes `writeln("Hello, World!");`, and
-/// a declaration block's `#if 1` ... `#endif` becomes `version (all)`
-/// with no end code (`code_writer.d`'s `writeDeclBlockNode()` supplies
-/// the braces). Empty for every other type. A Function placed at the top
-/// of a project that has no `main()` yet loses this name and becomes
-/// `main()` (`gui_main.d`'s `nameNewFunction()`).
+/// The name a newly-created code node of `typeName` (the `.fl` keyword)
+/// starts with: an example of what goes there. Empty for every other
+/// type. A Function placed at the top of a project that has no `main()`
+/// yet loses this name and becomes `main()` (`gui_main.d`'s
+/// `nameNewFunction()`).
 package(fluid) string defaultNameFor(string typeName)
 {
     switch (typeName)
     {
     case "Function": return "makeWindow()";
     case "code": return `writeln("Hello, World!");`;
-    case "codeblock": return "if (test())";
-    case "decl": return "int x;";
-    case "declblock": return "version (all)";
-    case "data": return "myInlineData";
+    case "conditional": return "version (all)";
     case "comment": return "my comment";
-    case "class": case "widget_class": return "UserInterface";
+    case "class": return "UserInterface";
     default: return "";
     }
 }

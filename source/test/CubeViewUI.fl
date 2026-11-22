@@ -15,8 +15,6 @@ call and the real main()), since this port doesn't preserve that
 generated-UI/hand-written-driver file split.
 }
   {
-    in_source
-    in_header
   }
 Function makeWindow()
   {

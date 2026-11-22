@@ -1,14 +1,10 @@
 # data file for fldtk fluid (Fast Light User Interface Designer)
 version 1.0000
-comment {Widget Properties dialog for the fldtk Fluid editor -- the panel
-shown while editing an ordinary widget on the design canvas (as
-opposed to a non-widget project-tree entry like a Function/Class/Decl,
-each of which has its own separate, already-converted page in this
-same file).
+comment {Widget Properties dialog for the fldtk Fluid editor: one page for
+widgets, and one each for the Function, Class, Code, Conditional and
+Comment nodes.
 }
   {
-    in_source
-    in_header
   }
 Function makeImagePanel()
   {
@@ -325,9 +321,8 @@ fl.core.grab(previousGrab);}
       }
   }
 comment {Every page of `tabs_wizard` is converted to this port's D
-dialect (see TRANSLITERATION_GUIDE.md for the technique): code_tabs,
-codeblock_tabs, class_tabs, declblock_tabs, decl_tabs, comment_tabs,
-data_tabs, func_tabs (all 8 of tabs_wizard's non-widget-kind pages),
+dialect (see TRANSLITERATION_GUIDE.md for the technique): codeTabs,
+conditionalTabs, commentTabs and funcTabs (the non-widget-kind pages),
 widgetTabsRepo (the permanently-hidden vestigial page), the bottom bar
 (Live Resize/Hide Overlays/Close; `gui_main.d` supplies their
 implementations, see the comment near the end of this file), and
@@ -350,17 +345,13 @@ fields write `WidgetNode.scaleImageW`/etc; the edit hooks
 parent). The dimension readout reads the natural size of the image the
 live widget loaded.
 
-The two embedded Grid sub-panels (`widgetTabGrid`/`widgetTabGridChild`,
-`class GridTab`/`class GridChildTab`) live in their own files,
-`panels/widget_panel_grid_tab.fl`/`widget_panel_grid_child_tab.fl`,
-each a `widget_class` with its own public `load()` method -- imported
-explicitly by the two `decl` lines near this file's own top, since
-their file names don't match their class names (D resolves an import by
-file name, so an automatic class-name-based guess would be wrong here;
-see those two files' own top comments).
-`propagateLoadWidget()` reparents them into/out of `widgetTabs` and
-calls their `load()` based on whether the selection is a `GridNode` or
-a `GridNode`'s own child, matching FLTK's reparenting logic.
+The two Grid pages (`widgetTabGrid`, `widgetTabGridChild`) are Groups
+of class `GridTab` and `GridChildTab`, plain Classes in their own files,
+`widget_panel_grid_tab.fl` and `widget_panel_grid_child_tab.fl`, imported
+by the two Code nodes near the top of this file. They wait in
+`widgetTabsRepo`; `propagateLoadWidget()` moves them into `widgetTabs`
+and calls their `load()` when the selection is a `GridNode` or a
+`GridNode`'s child, as FLTK does.
 
 `gui_main.d` imports this file's own generated entry points directly
 (`make_widget_panel`/`load`/`current`/`refreshCodeFromNode`/
@@ -389,15 +380,11 @@ comment_tabs; it is wired into `fluid.factory`'s "comment" registry and
 round-tripped through `project_writer.d`.
 }
   {
-    in_source
-    in_header
   }
-decl {import fluid;}
+code {import fluid;}
   {
-    private
-    local
   }
-decl {/// FLTK's own `widget_vars[]` (`panels/widget_panel_callbacks.cxx`)
+code {/// FLTK's own `widget_vars[]` (`panels/widget_panel_callbacks.cxx`)
 /// -- the named variables available to the Position group's 4 Formula_
 /// Input fields: `i` (the widget's own zero-based index in this call's
 /// selection loop -- matches FLTK's own `widget_i`, a counter incremented
@@ -476,25 +463,17 @@ private FormulaVar[] positionVars(WidgetNode wn, int i)
   return vars;
 \}}
   {
-    private
-    local
   }
-decl {import widget_panel_grid_tab : GridTab;}
+code {import widget_panel_grid_tab : GridTab;}
   {
-    private
-    local
   }
-decl {import widget_panel_grid_child_tab : GridChildTab;}
+code {import widget_panel_grid_child_tab : GridChildTab;}
   {
-    private
-    local
   }
-decl {import std.algorithm : countUntil;}
+code {import std.algorithm : countUntil;}
   {
-    private
-    local
   }
-decl {/// Whether `w` is a check button or a round button: a check box or
+code {/// Whether `w` is a check button or a round button: a check box or
 /// radio dot has no frame to join into a compact bar, so the Compact
 /// setting is greyed out for them and not applied to them.
 private bool hasNoCompactFrame(Widget w)
@@ -502,53 +481,24 @@ private bool hasNoCompactFrame(Widget w)
   return cast(CheckButton) w !is null || cast(RoundButton) w !is null;
 \}}
   {
-    private
-    local
   }
-decl {private Node currentCodeNode_;}
+code {private Node currentCodeNode_;}
   {
-    private
-    local
   }
-decl {private Node currentCodeblockNode_;}
+code {private Node currentClassNode_;}
   {
-    private
-    local
   }
-decl {private Node currentClassNode_;}
+code {private Node currentConditionalNode_;}
   {
-    private
-    local
   }
-decl {private Node currentDeclblockNode_;}
+code {private Node currentCommentNode_;}
   {
-    private
-    local
   }
-decl {private Node currentDeclNode_;}
+code {private Node currentFuncNode_;}
   {
-    private
-    local
   }
-decl {private Node currentCommentNode_;}
+code {private Node currentWidgetNode_;}
   {
-    private
-    local
-  }
-decl {private Node currentDataNode_;}
-  {
-    private
-    local
-  }
-decl {private Node currentFuncNode_;}
-  {
-    private
-    local
-  }
-decl {private Node currentWidgetNode_;}
-  {
-    private
-    local
   }
 comment {---- gui_main.d integration surface ----
 
@@ -578,20 +528,14 @@ project, so this is a real, accepted imprecision, not a free
 simplification; `onEdited`'s own redraw/recalcTree/redraw is
 idempotent and costs nothing extra either way.}
   {
-    in_source
-    in_header
   }
-decl {private Node primaryNode_;}
+code {private Node primaryNode_;}
   {
-    private
-    local
   }
-decl {private Node[] selectedNodes_;}
+code {private Node[] selectedNodes_;}
   {
-    private
-    local
   }
-decl {/// FLTK: `Fluid.proj.tree.all_selected_widgets()` -- every currently
+code {/// FLTK: `Fluid.proj.tree.all_selected_widgets()` -- every currently
 /// selected node that derives from `WidgetNode`, in selection order. This
 /// is the real multi-apply set most of `widget_tabs`'s field callbacks
 /// loop over now -- see this file's own "---- widget_tabs ----" comment
@@ -607,12 +551,12 @@ private WidgetNode[] selectedWidgetNodes()
     return result;
 \}
 
-/// Whether `n` sits inside a class or widget class -- FLTK's
+/// Whether `n` sits inside a class -- FLTK's
 /// `Node::is_in_class()`. Decides which access choice the Name group shows.
 private bool widgetInClass(Node n)
 \{
     for (auto p = n.parent; p !is null; p = p.parent)
-        if (cast(ClassNode) p || cast(WidgetClassNode) p) return true;
+        if (cast(ClassNode) p) return true;
     return false;
 \}
 
@@ -720,16 +664,6 @@ private FlexNode[] selectedFlexNodes()
     return result;
 \}
 
-/// The `WidgetClassNode`-only subset -- FLTK's own
-/// `dynamic_cast<Widget_Class_Node*>(q)` guard inside `cb_Children()`.
-private WidgetClassNode[] selectedWidgetClassNodes()
-\{
-    WidgetClassNode[] result;
-    foreach (n; selectedNodes_)
-        if (auto wcn = cast(WidgetClassNode) n) result ~= wcn;
-    return result;
-\}
-
 /// The `MenuItemNode`-only subset -- FLTK's own
 /// `dynamic_cast<Menu_Item_Node*>(q)` guard inside `cb_Headline()`.
 private MenuItemNode[] selectedMenuItemNodes()
@@ -740,62 +674,40 @@ private MenuItemNode[] selectedMenuItemNodes()
     return result;
 \}}
   {
-    private
-    local
   }
-decl {private LiveTree liveTree_;}
+code {private LiveTree liveTree_;}
   {
-    private
-    local
   }
-decl {private string projectDir_ = ".";}
+code {private string projectDir_ = ".";}
   {
-    private
-    local
   }
-decl {void delegate() onBeforeEdit;}
+code {void delegate() onBeforeEdit;}
   {
-    public
-    local
   }
-decl {void delegate(Object) onBeforeTextEdit;}
+code {void delegate(Object) onBeforeTextEdit;}
   {
-    public
-    local
   }
-decl {private Object[Widget] editKeys_;}
+code {private Object[Widget] editKeys_;}
   {
-    private
-    local
   }
-decl {void delegate() onEdited;}
+code {void delegate() onEdited;}
   {
-    public
-    local
   }
-decl {/// Called once an edit is complete: right after any edit that isn't
+code {/// Called once an edit is complete: right after any edit that isn't
 /// typing, and for a text field once it loses the focus (pressing Enter
 /// closes the panel, which also takes the focus away). `onEdited` runs
 /// on every keystroke as well.
 void delegate() onEditSettled;}
   {
-    public
-    local
   }
-decl {private Widget settlePending_; // the text field being typed in, if any}
+code {private Widget settlePending_; // the text field being typed in, if any}
   {
-    private
-    local
   }
-decl {private bool settleCheckAdded_;}
+code {private bool settleCheckAdded_;}
   {
-    private
-    local
   }
-decl {void delegate(Node) onOpenExternalEditor;}
+code {void delegate(Node) onOpenExternalEditor;}
   {
-    public
-    local
   }
 comment {---- widget_tabs (the GUI/Style/C++ property-editing tabs) ----
 
@@ -845,16 +757,14 @@ in this file:
     are greyed or hidden by node kind at the end of
     `propagateLoadWidget()`.
   - `widget_tab_grid`/`widget_tab_grid_child` (the two embedded
-    Grid-specific sub-panels, `GridTab`/`GridChildTab`) are real and
+    Grid-specific sub-panels) are real and
     placed into/out of `widgetTabs` by `propagateLoadWidget()`'s own
     reparenting logic, matching FLTK. The "Values:" group's
     Grid_Node hide check is ported too (cheap, needs only the type, not
     an instance).}
   {
-    in_source
-    in_header
   }
-decl {/// FLTK: `wp_gui_alignment`'s Position `Fl_Choice` menu. The *names*
+code {/// FLTK: `wp_gui_alignment`'s Position `Fl_Choice` menu. The *names*
 /// (`wpGuiAlignPosChoice`'s own menu text) are literal `MenuItem \{\}`
 /// children, not a `setup\{\}` snippet -- `fluid.instantiate.applyMenuItems()` only
 /// ever populates a Choice from real, declarative `MenuItem \{\}`
@@ -976,10 +886,8 @@ private int boxtypeAtMenuIndex(const(int)[] menuIdx, int mi)
     return -1;
 \}}
   {
-    private
-    local
   }
-decl {/// FLTK: `wp_gui_values`'s own LOAD-side field population.
+code {/// FLTK: `wp_gui_values`'s own LOAD-side field population.
 ///
 /// In FLTK, the Values group must correctly activate/deactivate per
 /// selected widget: `cb_
@@ -1135,10 +1043,8 @@ private static int shortcutRawToInt(string raw)
         return 0;
 \}}
   {
-    private
-    local
   }
-decl {/// FLTK: the Hotspot light-button's own store branch -- walks
+code {/// FLTK: the Hotspot light-button's own store branch -- walks
 /// up to the containing window and clears `hotspot()` on every other
 /// descendant widget (only one widget in a window can be the hotspot).
 private Node topWindowOf(Node n)
@@ -1161,10 +1067,8 @@ private void clearOtherHotspots(Node subtree, WidgetNode except)
     \}
 \}}
   {
-    private
-    local
   }
-decl {/// FLTK gives each of the four Size Range `Fl_Value_Input`s its own
+code {/// FLTK gives each of the four Size Range `Fl_Value_Input`s its own
 /// independent callback (touching only its own one of `sr_min_w`/
 /// `sr_min_h`/`sr_max_w`/`sr_max_h`), so this stays one shared function --
 /// but each of FLTK's own 4 real callbacks writes the *same* new value to
@@ -1212,10 +1116,8 @@ private void onFlexMarginChanged(int which)
         \}
 \}}
   {
-    private
-    local
   }
-decl {/// FLTK: `Flex_Node::size(idx)` -- reads `FlexNode.fixedSizeTuples`'s
+code {/// FLTK: `Flex_Node::size(idx)` -- reads `FlexNode.fixedSizeTuples`'s
 /// own `[idx, size, idx, size, ...]` encoding.
 private int flexFixedSizeOf(FlexNode fn, int idx)
 \{
@@ -1241,10 +1143,8 @@ private void flexSetFixedSize(FlexNode fn, int idx, int size)
         fn.fixedSizeTuples ~= [idx, size];
 \}}
   {
-    private
-    local
   }
-decl {/// FLTK's `align_cb`, parameterized on `bit` (the button's own
+code {/// FLTK's `align_cb`, parameterized on `bit` (the button's own
 /// `user_data()`) instead -- this dialect has no
 /// per-`MenuItem`/per-button `user_data` payload mechanism, so each
 /// Clip/Wrap/Inside button's own callback passes its bit directly. Loops
@@ -1288,10 +1188,8 @@ private void showInside(int a, bool editable)
     else alignInsideBtn.deactivate();
 \}}
   {
-    private
-    local
   }
-decl {/// FLTK: `labeltypemenu[]` (`nodes/Widget_Node.cxx`) -- 5 real
+code {/// FLTK: `labeltypemenu[]` (`nodes/Widget_Node.cxx`) -- 5 real
 /// entries, matching `WidgetNode.labeltype`'s own raw-.fl-keyword
 /// convention (same shape as `boxtype`/`downBoxtype`). The *names*
 /// (`wpGuiLabeltype`'s own menu text) are literal `MenuItem \{\}`
@@ -1302,8 +1200,6 @@ decl {/// FLTK: `labeltypemenu[]` (`nodes/Widget_Node.cxx`) -- 5 real
 private immutable string[5] labeltypeKeywords =
     ["NORMAL_LABEL", "SHADOW_LABEL", "ENGRAVED_LABEL", "EMBOSSED_LABEL", "NO_LABEL"];}
   {
-    private
-    local
   }
 Function {propagateLoadFunc(Node n)}
   {
@@ -1395,17 +1291,6 @@ int posIdx = cast(int) alignPositionChoiceValues[].countUntil(align_ & alignPosi
 if (posIdx >= 0) wpGuiAlignPosChoice.value(posIdx);
 int imgIdx = cast(int) alignImageChoiceValues[].countUntil(align_ & alignImageMask);
 if (imgIdx >= 0) wpGuiAlignImageChoice.value(imgIdx);
-
-auto wcn = cast(WidgetClassNode) wn;
-if (wcn !is null)
-  \{
-    widgetChildrenChoice.value(wcn.wcRelative);
-    widgetChildrenChoice.show();
-  \}
-else
-  \{
-    widgetChildrenChoice.hide();
-  \}
 
 auto winNode = cast(WindowNode) wn;
 auto flexNode = cast(FlexNode) wn;
@@ -1816,7 +1701,7 @@ else
       {
       }
   }
-decl {/// FLTK: `Widget_Node::textstuff()` returns non-zero (the widget has a
+code {/// FLTK: `Widget_Node::textstuff()` returns non-zero (the widget has a
 /// text font/size/color of its own, separate from its label) only for
 /// the node kinds overriding it: inputs, text displays, value inputs/
 /// outputs/sliders, spinners, counters, browsers, HTML and Markdown views, terminals,
@@ -1838,10 +1723,8 @@ private bool widgetHasTextStuff(Widget w)
         || cast(Menu_) w !is null;
 \}}
   {
-    private
-    local
   }
-decl {/// FLTK's own `whenmenu[]` (`Widget_Node.cxx`) is a single
+code {/// FLTK's own `whenmenu[]` (`Widget_Node.cxx`) is a single
 /// Fl_Menu_Button popup mixing 5 individually-toggleable bits
 /// (Changed/Not Changed/Release/Enter Key/Closed, `menuToggle`) with 4
 /// non-toggle presets that set the whole value at once (Never/Release
@@ -1933,34 +1816,6 @@ private void onUserDataWhenChanged()
     wn.whenRaw = n;
 \}}
   {
-    private
-    local
-  }
-Function {propagateLoadData(Node n)}
-  {
-    return_type void
-    open
-  }
-  {
-    code {currentDataNode_ = n;
-auto nd = cast(DataNode) n;
-if (nd is null) return;
-tabsWizard.value(dataTabs);
-// nd.visibility_/staticFlag_ deliberately have no UI here, same as
-// DeclNode's own (DataNode : DeclNode) -- see decl_node.d's own doc
-// comment: this port has no header/source-file split to preserve, so
-// these fields carry no D-codegen meaning at all. They exist purely so
-// a data \{\} node round-trips through project_writer.d's save path
-// without dropping flags a real .fl author wrote. Same "real, dead
-// feature" shape already applied to the Decl tab.
-dataStorageFormatChoice.value(nd.asString ? 0 : 1);
-dataCompressedCheck.value(nd.compressedFlag);
-dataName.value(nd.instanceName);
-dataFilename.value(nd.filename);
-dataComment.buffer().text(nd.comment);
-thePanel.label("Inline Data Properties");}
-      {
-      }
   }
 Function {propagateLoadComment(Node n)}
   {
@@ -1976,51 +1831,6 @@ commentText.buffer().text(nd.instanceName);
 commentInSource.value(nd.inSource_);
 reloadPredefinedMenu(commentPredefined);
 thePanel.label("Comment Properties");}
-      {
-      }
-  }
-Function {propagateLoadDecl(Node n)}
-  {
-    return_type void
-    open
-  }
-  {
-    code {currentDeclNode_ = n;
-auto nd = cast(DeclNode) n;
-if (nd is null) return;
-tabsWizard.value(declTabs);
-// nd.visibility_/staticFlag_ deliberately have no UI here: DeclNode's
-// own doc comment (fluid.decl_node) confirms they carry no D-codegen
-// meaning at all -- this port has no header/source-file split to
-// preserve -- they exist purely so a decl \{\} node round-trips through
-// project_writer.d's save path without dropping flags a real .fl
-// author wrote. Same "real, dead feature" shape as the Class/Function
-// tabs' own skipped Visibility groups, just documented at the field's
-// own declaration instead of here.
-declText.buffer().text(nd.instanceName);
-declComment.buffer().text(nd.comment);
-thePanel.label("Declaration Properties");}
-      {
-      }
-  }
-Function {propagateLoadDeclblock(Node n)}
-  {
-    return_type void
-    open
-  }
-  {
-    code {currentDeclblockNode_ = n;
-auto nd = cast(DeclBlockNode) n;
-if (nd is null) return;
-tabsWizard.value(declblockTabs);
-declblockStart.value(nd.instanceName);
-declblockEnd.value(nd.afterText);
-declblockImpl.value((nd.writeMap_ & DeclBlockNode.codeInSource) != 0);
-declblockStaticSrc.value((nd.writeMap_ & DeclBlockNode.staticInSource) != 0);
-declblockFwd.value((nd.writeMap_ & DeclBlockNode.codeInHeader) != 0);
-declblockStaticHdr.value((nd.writeMap_ & DeclBlockNode.staticInHeader) != 0);
-declblockComment.buffer().text(nd.comment);
-thePanel.label("Declaration Block Properties");}
       {
       }
   }
@@ -2042,20 +1852,19 @@ thePanel.label("Class Properties");}
       {
       }
   }
-Function {propagateLoadCodeblock(Node n)}
+Function {propagateLoadConditional(Node n)}
   {
     return_type void
     open
   }
   {
-    code {currentCodeblockNode_ = n;
-auto nd = cast(CodeBlockNode) n;
+    code {currentConditionalNode_ = n;
+auto nd = cast(ConditionalNode) n;
 if (nd is null) return;
-tabsWizard.value(codeblockTabs);
-codeblockStart.value(nd.instanceName);
-codeblockEnd.value(nd.afterText);
-codeblockComment.buffer().text(nd.comment);
-thePanel.label("Code Block Properties");}
+tabsWizard.value(conditionalTabs);
+conditionalHeader.value(nd.instanceName);
+conditionalComment.buffer().text(nd.comment);
+thePanel.label("Conditional Properties");}
       {
       }
   }
@@ -2070,7 +1879,8 @@ auto nd = cast(CodeNode) n;
 if (nd is null) return;
 tabsWizard.value(codeTabs);
 codeText.buffer().text(nd.instanceName);
-thePanel.label("Code Editor");
+codeComment.buffer().text(nd.comment);
+thePanel.label("Code Properties");
 // FLTK also restores cursor_position()/scroll row+col here -- see
 // codeText's own callback comment for why that's not ported.}
       {
@@ -2101,12 +1911,6 @@ without disturbing the rest of the dialog's own load state. Matches
 if (auto con = cast(CodeNode) primaryNode_)
   \{
     codeText.buffer().text(con.instanceName);
-    return;
-  \}
-if (cast(DataNode) primaryNode_ !is null) return; // DataNode's own Name field is separate, not a code body
-if (auto den = cast(DeclNode) primaryNode_)
-  \{
-    declText.buffer().text(den.instanceName);
   \}}
       {
       }
@@ -2289,13 +2093,6 @@ if (auto wn = cast(WidgetNode) n)
     propagateLoadWidget(n);
     return;
   \}
-// DataNode : DeclNode, so it must be checked before the plain DeclNode
-// case below -- matches FLTK: `class Data_Node : public Decl_Node`.
-if (auto dn = cast(DataNode) n)
-  \{
-    propagateLoadData(n);
-    return;
-  \}
 if (auto cn = cast(CommentNode) n)
   \{
     propagateLoadComment(n);
@@ -2311,21 +2108,9 @@ if (auto clsn = cast(ClassNode) n)
     propagateLoadClass(n);
     return;
   \}
-// DeclBlockNode is a sibling kind, not a subclass of DeclNode --
-// matches FLTK: `class DeclBlock_Node : public Node`.
-if (auto dbn = cast(DeclBlockNode) n)
+if (auto cond = cast(ConditionalNode) n)
   \{
-    propagateLoadDeclblock(n);
-    return;
-  \}
-if (auto decln = cast(DeclNode) n)
-  \{
-    propagateLoadDecl(n);
-    return;
-  \}
-if (auto cbn = cast(CodeBlockNode) n)
-  \{
-    propagateLoadCodeblock(n);
+    propagateLoadConditional(n);
     return;
   \}
 if (auto con = cast(CodeNode) n)
@@ -2870,39 +2655,6 @@ if (any) widgetHInput.value(v);}
                             tooltip {The height of the widget as a number or formula.
 Formulas can be simple math, including the variables
 h, ph, sh, ch, and i}
-                          }
-                        Choice widgetChildrenChoice
-                          {
-                            label {Children:}
-                            callback {int v = widgetChildrenChoice.value();
-foreach (wcn; selectedWidgetClassNodes())
-  wcn.wcRelative = v;}
-                            xywh {335 150 64 20}
-                            down_box BORDER_BOX
-                            labelsize 11
-                            textsize 11
-                            align 5
-                            tooltip {When instantiating a widget class, the children can either be fixed in their original position, automatically be repositioned, or both repsositioned and resized to fit the container.}
-                          }
-                          {
-                            MenuItem {}
-                              {
-                                label {Fixed}
-                                xywh {10 10 100 20}
-                                labelsize 11
-                              }
-                            MenuItem {}
-                              {
-                                label {Reposition}
-                                xywh {10 10 100 20}
-                                labelsize 11
-                              }
-                            MenuItem {}
-                              {
-                                label {Resize}
-                                xywh {10 10 100 20}
-                                labelsize 11
-                              }
                           }
                         Box {}
                           {
@@ -4141,8 +3893,6 @@ o.menu(whenMenuItems_[]);}
                                 comment {The "Type:" user-data-type Fl_Input_Choice is not placed --
 Node has no user-data-type field at all to back it yet.}
                                   {
-                                    in_source
-                                    in_header
                                   }
                               }
                           }
@@ -4167,169 +3917,6 @@ Node has no user-data-type field at all to back it yet.}
                     hide
                   }
                   {
-                  }
-              }
-            Tabs dataTabs
-              {
-                xywh {10 10 400 350}
-                selection_color 12
-                labelsize 11
-                labelcolor 255
-                hide
-              }
-              {
-                Group dataTabsData
-                  {
-                    label {Inline Data}
-                    xywh {10 30 400 330}
-                    labelsize 11
-                    resizable
-                  }
-                  {
-                    Group {}
-                      {
-                        label {Storage Type:}
-                        xywh {95 75 310 20}
-                        labelfont 1
-                        labelsize 11
-                        align 4
-                      }
-                      {
-                        Choice dataStorageFormatChoice
-                          {
-                            callback {if (currentDataNode_ is null) return;
-auto nd = cast(DataNode) currentDataNode_;
-if (nd is null) return;
-bool asString = o.value() == 0;
-if (nd.asString != asString)
-  \{
-    nd.asString = asString;
-  \}}
-                            xywh {95 75 100 20}
-                            down_box BORDER_BOX
-                            labelsize 11
-                            textsize 11
-                            tooltip {How the embedded data is declared in the generated file: a `string` (UTF-8 text) or a `ubyte[]` (raw bytes).}
-                          }
-                          {
-                            MenuItem {}
-                              {
-                                label {string}
-                                xywh {10 10 100 20}
-                                labelsize 11
-                              }
-                            MenuItem {}
-                              {
-                                label {ubyte[]}
-                                xywh {10 10 100 20}
-                                labelsize 11
-                              }
-                          }
-                        CheckButton dataCompressedCheck
-                          {
-                            label {Compressed}
-                            callback {if (currentDataNode_ is null) return;
-auto nd = cast(DataNode) currentDataNode_;
-if (nd is null) return;
-nd.compressedFlag = o.value() != 0;}
-                            xywh {210 75 110 20}
-                            labelsize 11
-                            tooltip {zlib-compress the embedded data; decompressed once at program startup.}
-                          }
-                        Box {}
-                          {
-                            xywh {363 75 42 20}
-                            resizable
-                          }
-                      }
-                    Input dataName
-                      {
-                        label {Name:}
-                        callback {if (currentDataNode_ is null) return;
-if (currentDataNode_.instanceName != o.value())
-  \{
-    currentDataNode_.instanceName = o.value();
-  \}}
-                        xywh {95 100 310 20}
-                        labelfont 1
-                        labelsize 11
-                        textsize 11
-                        textfont 4
-                        align 132
-                        tooltip {Inline Data variables are declared `string`/`immutable ubyte[]` in the generated file, per the Storage Type above.}
-                      }
-                    Group {}
-                      {
-                        xywh {95 125 310 20}
-                      }
-                      {
-                        Input dataFilename
-                          {
-                            label {Filename:}
-                            callback {if (currentDataNode_ is null) return;
-auto nd = cast(DataNode) currentDataNode_;
-if (nd is null) return;
-if (nd.filename != o.value())
-  \{
-    nd.filename = o.value();
-  \}}
-                            xywh {95 125 270 20}
-                            labelfont 1
-                            labelsize 11
-                            textsize 11
-                            textfont 4
-                            align 132
-                            tooltip {name and path of file that will be inlined}
-                            resizable
-                          }
-                        Button {}
-                          {
-                            label {@fileopen}
-                            callback {if (currentDataNode_ is null) return;
-auto nd = cast(DataNode) currentDataNode_;
-if (nd is null) return;
-// FLTK: Fluid.proj.enter_project_dir()/leave_project_dir()/
-// projectfile_path() -- project-directory-relative resolution has no
-// free-function accessor yet, same "gui_main.d integration not wired
-// in yet" gap as commentImport's own presetPath above.
-string fn = filechooser(
-  FileChooserType.loadFile,
-  FileChooserPath.relativePath,
-  "Load Inline Data File",
-  "Can't open inline data file.",
-  dataFilename.value(),
-  "",
-  ""
-);
-if (fn.length && fn != dataFilename.value())
-  \{
-    nd.filename = fn;
-    dataFilename.value(fn);
-  \}}
-                            xywh {365 125 40 20}
-                            labelcolor 134
-                          }
-                      }
-                    TextEditor dataComment
-                      {
-                        label {Comment:}
-                        callback {if (currentDataNode_ is null) return;
-string c = o.buffer().text();
-if (currentDataNode_.comment != c)
-  \{
-    currentDataNode_.comment = c;
-  \}}
-                        xywh {95 150 310 105}
-                        box DOWN_BOX
-                        labelfont 1
-                        labelsize 11
-                        textsize 11
-                        textfont 6
-                        textcolor 59
-                        align 4
-                        setup {o.buffer(new TextBuffer());}
-                        resizable
-                      }
                   }
               }
             Tabs commentTabs
@@ -4417,20 +4004,6 @@ if (fname.length)
                             xywh {190 285 90 20}
                             labelsize 11
                           }
-                        comment {FLTK's own "output to header file" checkbox
-(`in_h`) has no port here, and correctly so: this
-dialect has no header/`.cxx` split for it to mean anything about at
-all (unlike "output to source file" just below, still genuinely
-meaningful for the one file this dialect does generate). `CommentNode.
-inHeader_` itself stays real (`project_writer.d` still round-trips
-`in_header`/`not_in_header` for a real FLTK-authored `.fl` file
-that sets it), just with no property-panel control to edit it from --
-same "keep the field, drop only the now-meaningless UI" treatment
-`DeclNode.visibility_`/`.staticFlag_` already got.}
-                          {
-                            in_source
-                            in_header
-                          }
                         CheckButton commentInSource
                           {
                             label {output to source file}
@@ -4473,15 +4046,6 @@ if (nd.inSource_ != o.value())
                     resizable
                   }
                   {
-                    comment {FLTK also has a "Visibility:" choice (private/public/protected)
-sharing the y=50 slot with the Attribute input. It is FLTK's own dead
-feature (its own comment: "hidden because we don't support a class
-inside a class at this point" -- always hidden, never shown), so it is
-not placed.}
-                      {
-                        in_source
-                        in_header
-                      }
                     Input classAttributeInput
                       {
                         label {Attribute:}
@@ -4560,7 +4124,7 @@ if (currentClassNode_.comment != c)
                       }
                   }
               }
-            Tabs declblockTabs
+            Tabs conditionalTabs
               {
                 xywh {10 10 400 350}
                 selection_color 12
@@ -4569,19 +4133,19 @@ if (currentClassNode_.comment != c)
                 hide
               }
               {
-                Group declblockTabsMain
+                Group conditionalTabsMain
                   {
-                    label {Declaration Block}
+                    label {Conditional}
                     xywh {10 30 400 330}
                     labelsize 11
                     resizable
                   }
                   {
-                    Input declblockStart
+                    Input conditionalHeader
                       {
-                        label {Start Code:}
-                        callback {if (currentDeclblockNode_ is null) return;
-auto nd = cast(DeclBlockNode) currentDeclblockNode_;
+                        label {Condition:}
+                        callback {if (currentConditionalNode_ is null) return;
+auto nd = cast(ConditionalNode) currentConditionalNode_;
 if (nd is null) return;
 if (nd.instanceName != o.value())
   \{
@@ -4592,320 +4156,18 @@ if (nd.instanceName != o.value())
                         labelsize 11
                         textsize 11
                         textfont 4
-                        tooltip {`version()` or similar conditional declaration block}
+                        tooltip {The condition: `if (x == 1)`, `else`, `static if (...)`, `debug`, `version (Windows)`. The children are only there when it holds.}
                       }
-                    Input declblockEnd
-                      {
-                        label {End Code:}
-                        callback {if (currentDeclblockNode_ is null) return;
-auto nd = cast(DeclBlockNode) currentDeclblockNode_;
-if (nd is null) return;
-if (nd.afterText != o.value())
-  \{
-    nd.afterText = o.value();
-  \}}
-                        xywh {95 75 305 20}
-                        labelfont 1
-                        labelsize 11
-                        textsize 11
-                        textfont 4
-                        tooltip {closing `\}` for the `version()`/`static if` block above, or similar}
-                      }
-                    Group {}
-                      {
-                        xywh {95 100 305 120}
-                      }
-                      {
-                        comment {FLTK's write_map() bitmask (which of header/
-source, static/non-static this decl block's own children get emitted
-into) is round-tripped for real (fluid.decl_block_node.DeclBlockNode's
-own writeMap_ field, see its own doc comment) but has "no codegen
-meaning" here yet -- generated D has no header/source split at all for
-it to steer (see CONVENTIONS.md's Build-commands section on `-h`). Ported
-faithfully anyway: a project's own saved flags round-trip correctly
-even though this port's own code_writer.d doesn't consult them yet.}
-                          {
-                            in_source
-                            in_header
-                          }
-                        Box {}
-                          {
-                            label {Enclose code generated by children in source file:}
-                            xywh {95 100 270 20}
-                            labelsize 11
-                            align 20
-                          }
-                        CheckButton declblockImpl
-                          {
-                            label {implementations}
-                            callback {if (currentDeclblockNode_ is null) return;
-auto nd = cast(DeclBlockNode) currentDeclblockNode_;
-if (nd is null) return;
-bool f = (nd.writeMap_ & DeclBlockNode.codeInSource) != 0;
-if (f != o.value())
-  \{
-    if (o.value())
-      nd.writeMap_ = nd.writeMap_ | DeclBlockNode.codeInSource;
-    else
-      nd.writeMap_ = nd.writeMap_ & ~DeclBlockNode.codeInSource;
-  \}}
-                            xywh {105 120 260 20}
-                            down_box DOWN_BOX
-                            labelsize 11
-                          }
-                        CheckButton declblockStaticSrc
-                          {
-                            label {static initializations and callbacks}
-                            callback {if (currentDeclblockNode_ is null) return;
-auto nd = cast(DeclBlockNode) currentDeclblockNode_;
-if (nd is null) return;
-bool f = (nd.writeMap_ & DeclBlockNode.staticInSource) != 0;
-if (f != o.value())
-  \{
-    if (o.value())
-      nd.writeMap_ = nd.writeMap_ | DeclBlockNode.staticInSource;
-    else
-      nd.writeMap_ = nd.writeMap_ & ~DeclBlockNode.staticInSource;
-  \}}
-                            xywh {105 140 260 20}
-                            down_box DOWN_BOX
-                            labelsize 11
-                          }
-                        Box {}
-                          {
-                            label {Enclose code in header file:}
-                            xywh {95 160 270 20}
-                            labelsize 11
-                            align 20
-                          }
-                        CheckButton declblockFwd
-                          {
-                            label {forward declarations}
-                            callback {if (currentDeclblockNode_ is null) return;
-auto nd = cast(DeclBlockNode) currentDeclblockNode_;
-if (nd is null) return;
-bool f = (nd.writeMap_ & DeclBlockNode.codeInHeader) != 0;
-if (f != o.value())
-  \{
-    if (o.value())
-      nd.writeMap_ = nd.writeMap_ | DeclBlockNode.codeInHeader;
-    else
-      nd.writeMap_ = nd.writeMap_ & ~DeclBlockNode.codeInHeader;
-  \}}
-                            xywh {105 180 260 20}
-                            down_box DOWN_BOX
-                            labelsize 11
-                          }
-                        CheckButton declblockStaticHdr
-                          {
-                            label {preprocessor and callback declarations}
-                            callback {if (currentDeclblockNode_ is null) return;
-auto nd = cast(DeclBlockNode) currentDeclblockNode_;
-if (nd is null) return;
-bool f = (nd.writeMap_ & DeclBlockNode.staticInHeader) != 0;
-if (f != o.value())
-  \{
-    if (o.value())
-      nd.writeMap_ = nd.writeMap_ | DeclBlockNode.staticInHeader;
-    else
-      nd.writeMap_ = nd.writeMap_ & ~DeclBlockNode.staticInHeader;
-  \}}
-                            xywh {105 200 260 20}
-                            down_box DOWN_BOX
-                            labelsize 11
-                          }
-                        Box {}
-                          {
-                            xywh {365 100 35 120}
-                            labelsize 11
-                            hide
-                            resizable
-                          }
-                      }
-                    TextEditor declblockComment
+                    TextEditor conditionalComment
                       {
                         label {Comment:}
-                        callback {if (currentDeclblockNode_ is null) return;
+                        callback {if (currentConditionalNode_ is null) return;
 string c = o.buffer().text();
-if (currentDeclblockNode_.comment != c)
+if (currentConditionalNode_.comment != c)
   \{
-    currentDeclblockNode_.comment = c;
+    currentConditionalNode_.comment = c;
   \}}
-                        xywh {95 225 305 117}
-                        box DOWN_BOX
-                        labelfont 1
-                        labelsize 11
-                        textsize 11
-                        textfont 6
-                        textcolor 59
-                        align 4
-                        setup {o.buffer(new TextBuffer());}
-                        resizable
-                      }
-                  }
-              }
-            Tabs declTabs
-              {
-                xywh {10 10 400 350}
-                selection_color 12
-                labelsize 11
-                labelcolor 255
-                hide
-              }
-              {
-                Group declTabsMain
-                  {
-                    label {Declaration}
-                    xywh {10 30 400 330}
-                    labelsize 11
-                    resizable
-                  }
-                  {
-                    comment {The "Visibility:" choice (private/public/protected, or -- for a
-declaration outside any class -- source/header/static/extern file
-placement) is deliberately not placed here. See fluid.decl_node's own
-doc comment: DeclNode.visibility_/staticFlag_ carry no D-codegen
-meaning at all (this port has no header/source-file split to
-preserve) -- they exist purely so a decl \{\} node round-trips through
-project_writer.d's save path without dropping flags a real .fl author
-wrote. Same "real, dead feature" shape as the Class/Function tabs' own
-skipped Visibility groups just above/below this one.}
-                      {
-                        in_source
-                        in_header
-                      }
-                    Tile {}
-                      {
-                        xywh {15 75 390 210}
-                        setup {o.sizeRange(0, 25, 55);
-o.sizeRange(1, 25, 55);}
-                        resizable
-                      }
-                      {
-                        Group {}
-                          {
-                            xywh {15 75 390 105}
-                            box FLAT_BOX
-                            labelfont 1
-                            labelsize 11
-                            align 4
-                          }
-                          {
-                            TextEditor declText
-                              {
-                                label {Declaration:}
-                                callback {if (currentDeclNode_ is null) return;
-string c = o.buffer().text();
-if (currentDeclNode_.instanceName != c)
-  \{
-    currentDeclNode_.instanceName = c;
-  \}}
-                                xywh {95 75 310 100}
-                                labelfont 1
-                                labelsize 11
-                                textsize 11
-                                textfont 4
-                                align 132
-                                setup {o.buffer(new TextBuffer());
-enableHighlighting(o);
-enableAutoIndent(o);}
-                                tooltip {a declaration: `int x;`, an external symbol: `extern int foo();`,
-a `\#` directive: `\#include <foo.h>`, a typedef `typedef char byte;`,
- or a `using` statement, etc.}
-                                resizable
-                              }
-                          }
-                        Group {}
-                          {
-                            xywh {15 180 390 105}
-                            box FLAT_BOX
-                          }
-                          {
-                            TextEditor declComment
-                              {
-                                label {Comment:}
-                                callback {if (currentDeclNode_ is null) return;
-string c = o.buffer().text();
-if (currentDeclNode_.comment != c)
-  \{
-    currentDeclNode_.comment = c;
-  \}}
-                                xywh {95 185 310 100}
-                                box DOWN_BOX
-                                labelfont 1
-                                labelsize 11
-                                textsize 11
-                                textfont 6
-                                textcolor 59
-                                align 4
-                                setup {o.buffer(new TextBuffer());}
-                                resizable
-                              }
-                          }
-                      }
-                  }
-              }
-            Tabs codeblockTabs
-              {
-                xywh {10 10 400 350}
-                selection_color 12
-                labelsize 11
-                labelcolor 255
-                hide
-              }
-              {
-                Group codeblockTabsMain
-                  {
-                    label {Code Block}
-                    xywh {10 30 400 330}
-                    labelsize 11
-                    resizable
-                  }
-                  {
-                    Input codeblockStart
-                      {
-                        label {Start Code:}
-                        callback {if (currentCodeblockNode_ is null) return;
-auto nd = cast(CodeBlockNode) currentCodeblockNode_;
-if (nd is null) return;
-if (nd.instanceName != o.value())
-  \{
-    nd.instanceName = o.value();
-  \}}
-                        xywh {95 50 305 20}
-                        labelfont 1
-                        labelsize 11
-                        textsize 11
-                        textfont 4
-                        tooltip {condition statement: `if (x==1)`, or empty}
-                      }
-                    Input codeblockEnd
-                      {
-                        label {End Code:}
-                        callback {if (currentCodeblockNode_ is null) return;
-auto nd = cast(CodeBlockNode) currentCodeblockNode_;
-if (nd is null) return;
-if (nd.afterText != o.value())
-  \{
-    nd.afterText = o.value();
-  \}}
-                        xywh {95 75 305 20}
-                        labelfont 1
-                        labelsize 11
-                        textsize 11
-                        textfont 4
-                        tooltip {condition end: `while (x==1);`, or empty}
-                      }
-                    TextEditor codeblockComment
-                      {
-                        label {Comment:}
-                        callback {if (currentCodeblockNode_ is null) return;
-string c = o.buffer().text();
-if (currentCodeblockNode_.comment != c)
-  \{
-    currentCodeblockNode_.comment = c;
-  \}}
-                        xywh {95 100 305 117}
+                        xywh {95 75 305 142}
                         box DOWN_BOX
                         labelfont 1
                         labelsize 11
@@ -4921,7 +4183,7 @@ if (currentCodeblockNode_.comment != c)
 // anything beyond that -- returning 0 from an Fl_Text_Editor key
 // binding means "not handled, use the default"), so this key binding
 // has no real effect to port at all.}
-                        tooltip {code block comment}
+                        tooltip {A comment written before the block in the generated code}
                         resizable
                       }
                   }
@@ -4966,7 +4228,7 @@ if (currentCodeNode_.instanceName != c)
 // section already has (the editor just opens at the top instead of
 // wherever it was last left).
 }
-                        xywh {15 65 390 290}
+                        xywh {15 65 390 205}
                         box DOWN_BOX
                         labelsize 11
                         textsize 11
@@ -4978,6 +4240,26 @@ enableAutoIndent(o);
 o.linenumberWidth(60);
 o.linenumberSize(11);}
                         resizable
+                      }
+                    TextEditor codeComment
+                      {
+                        label {Comment:}
+                        callback {if (currentCodeNode_ is null) return;
+string c = o.buffer().text();
+if (currentCodeNode_.comment != c)
+  \{
+    currentCodeNode_.comment = c;
+  \}}
+                        xywh {95 280 310 75}
+                        box DOWN_BOX
+                        labelfont 1
+                        labelsize 11
+                        textsize 11
+                        textfont 6
+                        textcolor 59
+                        align 4
+                        setup {o.buffer(new TextBuffer());}
+                        tooltip {A comment written before the code in the generated code}
                       }
                   }
               }
@@ -5275,38 +4557,24 @@ pressed. `liveModeCb` runs Live Resize (ported from FLTK's
 runs File > Run (`runProject()`), `helpCb` shows the selected widget's
 section of the Technical Reference, and `okCb` closes the panel.}
   {
-    in_source
-    in_header
   }
-decl {void delegate(Widget) liveModeCb;}
+code {void delegate(Widget) liveModeCb;}
   {
-    public
-    global
   }
-decl {void delegate(Widget) runCb;}
+code {void delegate(Widget) runCb;}
   {
-    public
-    global
   }
-decl {void delegate(Widget) helpCb;}
+code {void delegate(Widget) helpCb;}
   {
-    public
-    global
   }
-decl {void delegate(Widget) overlayCb;}
+code {void delegate(Widget) overlayCb;}
   {
-    public
-    global
   }
-decl {void delegate(Widget) okCb;}
+code {void delegate(Widget) okCb;}
   {
-    public
-    global
   }
-decl {/// Changes the selected widgets into the given kind (`fluid.change_type`);
+code {/// Changes the selected widgets into the given kind (`fluid.change_type`);
 /// set by `gui_main.d`, which also reloads the panel afterwards.
 void delegate(string) changeTypeCb;}
   {
-    public
-    global
   }

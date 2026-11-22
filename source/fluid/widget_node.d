@@ -88,7 +88,7 @@ class WidgetNode : Node
     // the D keyword). The first two only choose what goes into
     // the C++ header file; D has no header, so they have no counterpart
     // here: an import goes in a parent widget's `setup` code (local
-    // scope) or a Declaration node (module scope). See
+    // scope) or a top-level Code node (module scope). See
     // `FLUID_DIALECT.md`.
     //
     // `setup` runs once this widget is constructed and its attributes
@@ -124,7 +124,7 @@ class WidgetNode : Node
     bool usesColorMenu;
 
     // "image"/"deimage" -- a file path (resolved relative to the `.fl`
-    // file's own directory, same convention as `DataNode.filename`),
+    // file's own directory),
     // ported from FLTK's `Widget_Image` (see `code_writer.d`'s own
     // `writeWidgetImage()` doc comment for the full scope). `compress_
     // image`/`compress_deimage` (FLTK's `Widget_Image::compress`,
@@ -375,8 +375,7 @@ class WidgetNode : Node
             // to consume, so that defensive read would eat the *next*
             // property's own name instead, desyncing the whole rest of
             // that node's property list (the same failure class already
-            // documented in `function_node.d`'s own "private" case and
-            // `class_node.d`'s own ":" case).
+            // documented in `function_node.d`'s own "private" case).
             hotspotFlag = true;
             return true;
         case "private":

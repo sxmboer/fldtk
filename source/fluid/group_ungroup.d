@@ -35,7 +35,7 @@ import fluid.menu_owner_node : MenuOwnerNode;
 /// `PORTING.md`'s `fluid/nodes/` row), so both casts are needed to
 /// match FLTK's real acceptance set. Deliberately narrower than
 /// `Node.canHaveChildren()`: that's also `true` for `FunctionNode`/
-/// `ClassNode`/`CodeBlockNode`/`DeclBlockNode`/`MenuOwnerNode`, none of
+/// `ConditionalNode`/`MenuOwnerNode`, none of
 /// which are widget containers a `Group`/`Ungroup` should ever promote
 /// a widget into or out of -- `MenuOwnerNode` in particular holds menu
 /// items, which FLTK groups through the separate

@@ -55,6 +55,10 @@ private class SpinnerInput : Input
 
 class Spinner : FlGroup
 {
+    /// No widgets: the parts a Spinner is made of
+    /// (its input and buttons) are not listed (see `FlGroup.widgets`).
+    override Widget[] widgets() { return null; }
+
     private
     {
         double value_ = 1.0;

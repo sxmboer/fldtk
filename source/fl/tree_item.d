@@ -238,6 +238,28 @@ class TreeItem
     int children() const { return cast(int) children_.length; }
     /// Return the child item for the given index.
     TreeItem child(int index) { return children_[index]; }
+
+    /// This item's children, in order, as an array, so `foreach` and
+    /// Phobos work on them. It is a copy, so adding or removing items
+    /// while going through it is safe.
+    TreeItem[] items() { return children_.dup; }
+
+    /// Every item below this one, depth first: each child, followed by
+    /// the items below it. This item itself is not included.
+    TreeItem[] allItems()
+    {
+        TreeItem[] result;
+        void walk(TreeItem item)
+        {
+            foreach (c; item.children_)
+            {
+                result ~= c;
+                walk(c);
+            }
+        }
+        walk(this);
+        return result;
+    }
     /// See if this item has children.
     bool hasChildren() const { return children_.length != 0; }
 

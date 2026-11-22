@@ -4,18 +4,16 @@ comment {The output window of File > Run.
 
 `runTerminal` shows what `dub build` and then the program print, as
 `gui_main.d`'s `runProject()` streams it in through `fluid.run_program`.
+It is a `fluid.compiler_errors.RunTerminal`: double-clicking a compiler
+message selects the node that wrote that line (`showCompilerMessage()`).
 Stop ends the build or the program (`runStop()`), and is active only
 while one of them runs. Close only hides the window: a running program
 keeps running.
 }
   {
-    in_source
-    in_header
   }
-decl {import fluid;}
+code {import fluid;}
   {
-    private
-    local
   }
 Function makeRunWindow()
   {
@@ -25,11 +23,13 @@ Function makeRunWindow()
       {
         label {Run}
         xywh {0 0 600 400}
+        type Double
         resizable
       }
       {
         Terminal runTerminal
           {
+            class RunTerminal
             xywh {10 10 580 345}
             setup {o.ansi(true);
 o.historyLines(5000);}
@@ -79,7 +79,7 @@ Function showRunWindow()
   }
   {
     code {if (runWindow is null)
-{
+\{
     makeRunWindow();
     auto pos = new Preferences(appPrefs, "run_window_pos");
     int x, y, w, h;
@@ -89,7 +89,7 @@ Function showRunWindow()
     pos.get("h", h, 400);
     if (x != -1)
         runWindow.resize(x, y, w, h);
-}
+\}
 runWindow.show();}
       {
       }

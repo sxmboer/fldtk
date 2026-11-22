@@ -1,10 +1,8 @@
 # data file for fldtk fluid (Fast Light User Interface Designer)
 version 1.0000
-decl {int gCbCounter = 0;}
+code {int gCbCounter = 0;}
   {
     comment {Global callback event counter}
-    private
-    local
   }
 Function {reasonAsName(CallbackReason reason)}
   {

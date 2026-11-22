@@ -46,10 +46,8 @@ The driver's own polling loop (replacing fl.run() entirely) is:
     \}
 }
   {
-    in_source
-    in_header
   }
-decl {struct KeyBtn
+code {struct KeyBtn
   \{
     Button btn;
     Keysym code;
@@ -74,8 +72,6 @@ void regShift(Button b, EventState bit)
     shiftButtons_ ~= ShiftBtn(b, bit);
   \}}
   {
-    private
-    local
   }
 Function make_window()
   {

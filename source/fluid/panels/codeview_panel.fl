@@ -89,48 +89,65 @@ translation:
    imports this module and a reverse import would cycle.
 }
   {
-    in_source
-    in_header
   }
-decl {import fluid;}
+code {import fluid;}
   {
-    private
-    local
   }
-decl {Node[] cvRoots_;}
+code {Node[] cvRoots_;}
   {
-    private
-    local
   }
-decl {I18nSettings cvI18n_;}
+code {I18nSettings cvI18n_;}
   {
-    private
-    local
   }
-decl {bool cvDubHeader_;}
+code {bool cvDubHeader_;}
   {
-    private
-    local
   }
-decl {ProjectSettings cvSettings_;}
+code {ProjectSettings cvSettings_;}
   {
-    private
-    local
   }
-decl {Node cvCurrent_;}
+code {Node cvCurrent_;}
   {
-    private
-    local
   }
-decl {/// Set once by gui_main.d during startup; called by the "Reveal"
+code {/// The project's folder, which image files are read from, and the
+/// folder of its code file, for the dub header: the Source tab
+/// generates the same text File > Run writes. Set by `cvLoadProject`.
+string cvProjectDir_ = ".";
+string cvOutputDir_;}
+  {
+  }
+code {/// Set once by gui_main.d during startup; called whenever the Source
+/// tab gets new text, so the compiler errors of the last Run can be
+/// marked in it again.
+void delegate() cvOnSourceChanged;}
+  {
+  }
+code {/// Set once by gui_main.d during startup; called by the "Reveal"
 /// button with the node found at the clicked text position and
 /// whether the click was a double-click (matching FLTK's own
 /// select_only(node); reveal_in_browser(node); if
 /// (Fl::event_clicks()==1) node->open(); sequence in cb_Reveal()).
 void delegate(Node, bool) cvOnReveal;}
   {
-    public
-    global
+  }
+code {/// Set once by gui_main.d during startup: copies the project on
+/// screen (its roots, i18n, dub header, settings and folders) into
+/// `cvRoots_` and the other `cv*_` variables. The project's list of top-level nodes is a
+/// new array whenever one is added or removed, so a refresh fetches it
+/// again instead of keeping the one it was first given.
+void delegate() cvLoadProject;}
+  {
+  }
+Function codeviewRefreshCurrent()
+  {
+    comment {Refreshes the panel with the project as it is now: what the Refresh
+and Auto-Refresh buttons and every automatic refresh call.}
+    return_type void
+  }
+  {
+    code {if (cvLoadProject !is null) cvLoadProject();
+codeviewRefresh(cvRoots_, cvI18n_, cvDubHeader_, cvSettings_);}
+      {
+      }
   }
 Function makeCodeviewPanel()
   {
@@ -273,7 +290,7 @@ if (ok)
                 label {Reveal}
                 callback {Node node;
 if (cvSource.visibleR())
-    node = findInText(0, cvSource.insertPosition());
+    node = findInText(0, (cast(CodeViewer) cvSource).toCode(cvSource.insertPosition()));
 else if (cvProject.visibleR())
     node = findInText(1, cvProject.insertPosition());
 if (node !is null && cvOnReveal !is null)
@@ -295,14 +312,14 @@ if (node !is null && cvOnReveal !is null)
             Button {}
               {
                 label {Refresh}
-                callback {codeviewRefresh(cvRoots_, cvI18n_, cvDubHeader_, cvSettings_);}
+                callback {codeviewRefreshCurrent();}
                 xywh {10 485 61 20}
                 labelsize 11
               }
             LightButton cvAutorefresh
               {
                 label {Auto-Refresh}
-                callback {codeviewRefresh(cvRoots_, cvI18n_, cvDubHeader_, cvSettings_);}
+                callback {codeviewRefreshCurrent();}
                 xywh {78 485 91 20}
                 labelsize 11
                 value {1}
@@ -372,14 +389,17 @@ cvSettings_ = settings;
 // editor over a single unrecognized keyword.
 try
   \{
-    cvSource.buffer().text(new Writer().generate(roots, ".", i18n, dubHeader, settings));
+    auto writer = new Writer();
+    writer.outputDir = cvOutputDir_;
+    (cast(CodeViewer) cvSource).code(writer.generate(roots, cvProjectDir_, i18n, dubHeader, settings));
   \}
 catch (Exception e)
   \{
-    cvSource.buffer().text("// fluid: could not generate D source:
+    (cast(CodeViewer) cvSource).code("// fluid: could not generate D source:
 // " ~ e.msg);
   \}
 cvSource.scroll(0, 0);
+if (cvOnSourceChanged !is null) cvOnSourceChanged();
 cvProject.buffer().text(new ProjectWriter().generate(roots, i18n, [], "", null, false, dubHeader, settings));
 cvProject.scroll(0, 0);
 codeviewUpdatePosition(cvCurrent_);}
@@ -400,7 +420,7 @@ anything, while the "Refresh" button (unconditional) still works.}
   {
     code {if (codeviewPanel is null || !codeviewPanel.shown()) return;
 if (cvAutorefresh.value() == 0) return;
-codeviewRefresh(cvRoots_, cvI18n_, cvDubHeader_, cvSettings_);}
+codeviewRefreshCurrent();}
       {
       }
   }
@@ -419,7 +439,7 @@ if (codeviewPanel.shown())
 else
 \{
     codeviewPanel.show();
-    codeviewRefresh(roots, i18n, dubHeader, settings);
+    codeviewRefreshCurrent();
 \}}
       {
       }
@@ -447,6 +467,9 @@ if (cvSource.visibleR())
     if (pos0 >= 0)
     \{
         auto b = cvSource.buffer();
+        auto viewer = cast(CodeViewer) cvSource;
+        pos0 = viewer.toView(pos0);
+        pos1 = viewer.toView(pos1);
         if (pos1 < pos0) pos1 = b.lineEnd(pos0);
         b.highlight(pos0, pos1);
         cvSource.scroll(b.countLines(0, pos0), 0);

@@ -31,9 +31,9 @@
  * widget deleted while it handles a pen event ends the dispatch on
  * every platform (FLTK checks only on Windows).
  *
- * Drivers: `fl.wayland_pen_driver` (the tablet protocol) and
- * `fl.win32_pen_driver` (Windows' pointer input, Windows 8 and later).
- * On X11 there is none, as in FLTK: pens act as mice there.
+ * Drivers: `fl.wayland_pen_driver` (the tablet protocol),
+ * `fl.win32_pen_driver` (Windows' pointer input, Windows 8 and later)
+ * and `fl.x11_pen_driver` (XInput2).
  */
 module fl.pen;
 
@@ -221,7 +221,7 @@ package(fl) class PenTool
     int penId;
     Pen.Trait capabilities;
     bool isNew = true;      // until it first comes near
-    bool eraser;            // the tool is an eraser (Wayland)
+    bool eraser;            // the tool is an eraser (Wayland, X11)
     Window focusWin;        // the toplevel window under it
     PenEventData ev;        // its data now
     Pen.State prevState;    // ev.state after the last dispatch
@@ -595,12 +595,16 @@ private Pen.Trait platformTraits()
         import fl.win32_pen_driver : traits;
         return traits();
     }
-    else version (FLDTK_HAVE_WAYLAND)
+    else version (linux)
     {
-        import platform = fl.platform;
-        import fl.wayland_pen_driver : traits;
-        if (platform.backend() == platform.Backend.wayland) return traits();
-        return Pen.Trait.none;
+        version (FLDTK_HAVE_WAYLAND)
+        {
+            import platform = fl.platform;
+            import fl.wayland_pen_driver : traits;
+            if (platform.backend() == platform.Backend.wayland) return traits();
+        }
+        import x11Pen = fl.x11_pen_driver;
+        return x11Pen.traits();
     }
     else
         return Pen.Trait.none;
@@ -613,12 +617,16 @@ private Pen.Trait platformPenTraits(int penId)
         import fl.win32_pen_driver : penTraits;
         return penTraits(penId);
     }
-    else version (FLDTK_HAVE_WAYLAND)
+    else version (linux)
     {
-        import platform = fl.platform;
-        import fl.wayland_pen_driver : penTraits;
-        if (platform.backend() == platform.Backend.wayland) return penTraits(penId);
-        return Pen.Trait.none;
+        version (FLDTK_HAVE_WAYLAND)
+        {
+            import platform = fl.platform;
+            import fl.wayland_pen_driver : penTraits;
+            if (platform.backend() == platform.Backend.wayland) return penTraits(penId);
+        }
+        import x11Pen = fl.x11_pen_driver;
+        return x11Pen.penTraits(penId);
     }
     else
         return Pen.Trait.none;
@@ -626,11 +634,20 @@ private Pen.Trait platformPenTraits(int penId)
 
 private void platformFirstSubscriber()
 {
-    version (FLDTK_HAVE_WAYLAND)
+    version (linux)
     {
-        import platform = fl.platform;
-        import fl.wayland_pen_driver : startTablets;
-        if (platform.backend() == platform.Backend.wayland) startTablets();
+        version (FLDTK_HAVE_WAYLAND)
+        {
+            import platform = fl.platform;
+            import fl.wayland_pen_driver : startTablets;
+            if (platform.backend() == platform.Backend.wayland)
+            {
+                startTablets();
+                return;
+            }
+        }
+        import x11Pen = fl.x11_pen_driver;
+        x11Pen.start();
     }
 }
 

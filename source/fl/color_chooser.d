@@ -342,6 +342,10 @@ private final class ChooserValueInput : ValueInput
  */
 class ColorChooser : FlGroup
 {
+    /// No widgets: the parts a ColorChooser is made of
+    /// (its boxes, choice and inputs) are not listed (see `FlGroup.widgets`).
+    override Widget[] widgets() { return null; }
+
     private HueBox huebox_;
     private ValueBox valuebox_;
     private Choice choice_;

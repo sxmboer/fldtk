@@ -18,7 +18,9 @@ in the tutorials is typed there.
 
 ## 2. Starting Fluid
 
-    dub run fldtk:fluid
+```
+dub run fldtk:fluid
+```
 
 The first time, dub asks whether to fetch fldtk; answer `y`. It then
 downloads fldtk, builds the fldtk library and Fluid, and starts Fluid.
@@ -80,7 +82,9 @@ shows its new label at once:
 Then, on the D tab, click "callback" and type the code to run when the
 button is clicked:
 
-    writeln("Hello, World!");
+```D
+writeln("Hello, World!");
+```
 
 ![The first button's callback](tutorial01/fig08.png)
 
@@ -95,7 +99,9 @@ will change to edit the second button: give it the Label
 
 Change the callback function for the second button to:
 
-    message("Goodbye to you as well");
+```D
+message("Goodbye to you as well");
+```
 
 This function will open a message dialog when the button is clicked.
 
@@ -190,6 +196,18 @@ Click Bye. The program shows the expected message:
 Close the program's window to end it; i.e. press Esc, X-out with the mouse, or
 click Stop in the Run window.
 
+The finished design is the same as [`hello.fl`](tutorial01/hello.fl) in
+fldtk's `docs/tutorial01` folder. When you read this tutorial in Fluid
+(Help > fldtk README..., then the tutorials), clicking the file's name
+opens the design in Fluid; [Where fldtk and the tutorials
+are](TUTORIALS.md#where-fldtk-and-the-tutorials-are) explains where the
+folder is. To experiment with a design opened this way, first save it
+in a folder of your own with File > Save As..., for instance a
+temporary one: Fluid then works on the copy, and the tutorial's own
+file stays as it is for the next time you open it. F5 saves the design
+before building it, so trying things out on the original would change
+it. This goes for the finished designs of all the tutorials.
+
 ## 8. Changing it and running it again
 
 Change anything in the design: a label, a callback, the size of the window.
@@ -201,16 +219,22 @@ stopped, so there is never more than one instance to avoid any confusion.
 If the Run window shows error messages from the compiler instead of
 starting the program, check the callbacks: Fluid copies each one into
 `hello.d` exactly as typed, so it has to be correct D, exactly as above.
+Fluid then selects the item the first error is about, opens its
+properties and shows the D code at that line, marked in red, with the
+compiler's message under it; a
+double-click on another error message does the same for that one.
 Correct it in Fluid and press F5 again. (Edit > Show Code View shows the
 D code Fluid writes, with the part belonging to the selected item
-shaded.)
+highlighted.)
 
 ## What is in the folder
 
-    $ ls -l
-    -rwxr-xr-x 1 you users 71632 Nov  8 22:37 hello
-    -rw-r--r-- 1 you users   597 Nov  8 22:37 hello.d
-    -rw-r--r-- 1 you users   515 Nov  8 22:37 hello.fl
+```
+$ ls -l
+-rwxr-xr-x 1 you users 71632 Nov  8 22:37 hello
+-rw-r--r-- 1 you users   597 Nov  8 22:37 hello.d
+-rw-r--r-- 1 you users   515 Nov  8 22:37 hello.fl
+```
 
 - `hello.fl`: the design, made with Fluid
 - `hello.d`: the D code, written from `hello.fl` on every F5
@@ -218,18 +242,23 @@ shaded.)
 
 `hello.d` starts with a comment that tells dub how to build it:
 
-    /+ dub.sdl:
-    dependency "fldtk" path="/home/you/.dub/packages/fldtk/1.1.0/fldtk"
-    subConfiguration "fldtk" "program"
-    +/
-    import fl;
-    ...
+```D
+/+ dub.sdl:
+dependency "fldtk" path="/home/you/.dub/packages/fldtk/1.1.0/fldtk"
+subConfiguration "fldtk" "program"
+stringImportPaths "."
++/
+import fl;
+...
+```
 
 It says that the program needs fldtk, found in the folder dub fetched
 it into, and how to use it. The folder is written as a full path (on
 Windows, for instance,
 `C:/Users/you/AppData/Local/dub/packages/fldtk/1.1.0/fldtk`), so
-`tutorial01` can be moved anywhere.
+`tutorial01` can be moved anywhere. The `stringImportPaths` line lets
+the program read files from its own folder while it is compiled
+(Tutorial 2 says more).
 Fluid adds it because of the Single File choice, which it keeps in the
 design (Edit > Settings..., Project tab, "Dub single-file-package
 header").
@@ -240,8 +269,10 @@ place. Started from a terminal,
 the program should launch and when clicking the `Hi` button,
 it prints its output there:
 
-    $ ./hello
-    Hello, World!
+```
+$ ./hello
+Hello, World!
+```
 
 ## Rebuilding and launching a project manually
 
@@ -249,14 +280,16 @@ To build and run an application directly from a Fluid project file, the
 following commands can be used (the same as what Fluid does when hitting F5).
 Assuming you are in the project folder:
 
-    $ dub run fldtk:fluid -- -c hello.fl
-    ...
-    fluid: hello.fl -> hello.d
-    $ dub build --single hello.d
-        Starting Performing "debug" build using /usr/bin/dmd for x86_64.
-        Building hello ~master: building configuration [application]
-         Linking hello
-    $ ./hello
+```
+$ dub run fldtk:fluid -- -c hello.fl
+...
+fluid: hello.fl -> hello.d
+$ dub build --single hello.d
+    Starting Performing "debug" build using /usr/bin/dmd for x86_64.
+    Building hello ~master: building configuration [application]
+     Linking hello
+$ ./hello
+```
 
 dub passes everything after `--` on to Fluid, and `-c` makes Fluid
 write the code without opening its window. `--single` tells dub to

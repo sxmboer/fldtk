@@ -1,16 +1,12 @@
 # data file for fldtk fluid (Fast Light User Interface Designer)
 version 1.0000
-decl {MyTerminal gTty;}
+code {MyTerminal gTty;}
   {
     comment {Global access to tty}
-    private
-    local
   }
-decl {Application gApp;}
+code {Application gApp;}
   {
     comment {Global access to application}
-    private
-    local
   }
 class MyTerminal
   {
@@ -19,20 +15,14 @@ class MyTerminal
     open
   }
   {
-    decl {DoubleWindow ringDebugWin;}
+    code {DoubleWindow ringDebugWin;}
       {
-        private
-        local
       }
-    decl {Terminal debugTty;}
+    code {Terminal debugTty;}
       {
-        private
-        local
       }
-    decl {bool interactivecursor;}
+    code {bool interactivecursor;}
       {
-        private
-        local
       }
     Function {this(int X, int Y, int W, int H, string L = null)}
       {
@@ -259,21 +249,17 @@ return super.handle(e);}
           }
       }
   }
-decl {////// APPLICATION CLASS //////}
+code {////// APPLICATION CLASS //////}
   {
-    private
-    local
   }
 class Application
   {
     open
   }
   {
-    decl {int gLines;}
+    code {int gLines;}
       {
         comment {Line counter for +50 line test}
-        private
-        local
       }
     Function this()
       {
@@ -316,10 +302,8 @@ if (gApp.stdoutRadio.value())
           {
           }
       }
-    decl {////// ESC SELF TESTS //////}
+    code {////// ESC SELF TESTS //////}
       {
-        private
-        local
       }
     Function {nextEscapeTest(int dir)}
       {
@@ -1355,10 +1339,8 @@ return showTest(test, index);}
           {
           }
       }
-    decl {////// OTHER SELF TESTS //////}
+    code {////// OTHER SELF TESTS //////}
       {
-        private
-        local
       }
     Function {showFile(string filename)}
       {
@@ -1553,10 +1535,8 @@ gTty.redraw();}
           {
           }
       }
-    decl {////// GUI LAYOUT //////}
+    code {////// GUI LAYOUT //////}
       {
-        private
-        local
       }
     Function {parseColor(string valStr, ref Color col)}
       {
@@ -2502,10 +2482,8 @@ updateInputs();}
           }
       }
   }
-decl {////// MAIN //////}
+code {////// MAIN //////}
   {
-    private
-    local
   }
 Function {}
   {

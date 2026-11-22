@@ -1,63 +1,44 @@
 # data file for fldtk fluid (Fast Light User Interface Designer)
 version 1.0000
-comment {The Grid Child sub-panel of widget_panel.fl's own widget_tabs --
-shown in place of the ordinary GUI/Style/C++ tabs when the selected
-widget's own *parent* is a Fl_Grid (GridNode). Ported from FLTK's
-fluid/panels/widget_panel/Grid_Child_Tab.fl.
+comment {The Grid Child page of widget_panel.fl's property panel, shown in place
+of the GUI/Style/C++ tabs when the selected widget's parent is a Grid
+(GridNode). Ported from FLTK's fluid/panels/widget_panel/
+Grid_Child_Tab.fl.
 
-Named `widget_panel_grid_tab.fl`/`widget_panel_grid_child_tab.fl`
-rather than `GridTab.fl`/`GridChildTab.fl` so this file groups with
-`widget_panel.fl` in a directory listing; `widget_panel.fl`'s own
-top-level `decl` block imports this file's class explicitly, since its
-file name doesn't match its class name.
+GridChildTab is a Group, built the same way as GridTab in
+widget_panel_grid_tab.fl: widget_panel.fl creates it as its
+`widgetTabGridChild` group (with class GridChildTab), and the
+constructor builds the widgets inside 400x330, then moves and scales
+the group to x, y, w, h.
 
-Same shape and same standing simplifications as this file's own
-sibling, widget_panel_grid_tab.fl (real public `load(Node child)`
-method instead of FLTK's own live `Grid_Node::selected()`-style
-lookup, no live-canvas-widget access) -- see that file's own top
-comment for the full reasoning, not repeated here.
+widget_panel.fl calls load() with the selected child. The fields read
+and write the child's cell, `GridNode.cellOf[child]` (a GridCellInfo:
+row, col, rowspan, colspan, alignRaw, minW, minH). The page shows the
+cell as stored in the project; it does not query the live grid on the
+canvas.
 
-Every field reads/writes `GridNode.cellOf[child]`, a `GridCellInfo`
-struct (`row`/`col`/`rowspan`/`colspan`/`alignRaw`/`minW`/`minH`) --
-already real, ported data (`fluid.grid_node`'s own `parent_properties`
-mechanism), not a live `Fl_Grid::Cell` query. This drops FLTK's
-"TRANSIENT"/"UNLINKED" indicator boxes outright (not merely
-simplified): both depend on `Fl_Grid_Proxy::cell()`/`transient_cell()`
-live layout queries with no equivalent here at all, and no other field
-in this port's own load/store logic needs the distinction.}
+The file is named after widget_panel.fl so the two sort together;
+widget_panel.fl imports it as `widget_panel_grid_child_tab : GridChildTab`.}
   {
-    in_source
-    in_header
   }
-decl {import fluid;}
+code {import fluid;}
   {
-    private
-    local
   }
-decl {import std.algorithm : countUntil;}
+code {import std.algorithm : countUntil;}
   {
-    private
-    local
   }
-widget_class GridChildTab
+class GridChildTab
   {
-    xywh {0 0 400 330}
-    labelsize 11
-    resizable
-    position_relative_rescale
+    : {Group}
   }
   {
-    decl {private GridNode gn_;}
+    code {private GridNode gn_;}
       {
-        private
-        local
       }
-    decl {private Node child_;}
+    code {private Node child_;}
       {
-        private
-        local
       }
-    decl {/// FLTK: `wp_gridc_align`'s Horizontal `Fl_Choice` -- real
+    code {/// FLTK: `wp_gridc_align`'s Horizontal `Fl_Choice` -- real
 /// entries only, matching `GRID_LEFT`/`GRID_CENTER`/`GRID_RIGHT`/
 /// `GRID_FILL` menu item order.
 private immutable string[4] gridAlignHNames =
@@ -71,307 +52,320 @@ private immutable string[4] gridAlignVNames =
 private immutable int[4] gridAlignVValues =
     [gridTop, gridCenter, gridBottom, gridVertical];}
       {
-        private
-        local
       }
-    Group {}
+    Function {this(int x, int y, int w, int h, string label = null)}
       {
-        label {Location:}
-        xywh {85 30 315 20}
-        box FLAT_BOX
-        labelfont 1
-        labelsize 11
-        align 4
+        comment {Builds the page at its design size, then moves and scales it to x, y, w, h.}
+        open
       }
       {
-        Input widgetGridRowInput
+        code {super(0, 0, 400, 330, label);
+labelsize(11);}
           {
-            label {Row:}
-            callback {auto cell = cellOrDefault();
+          }
+        Group {}
+          {
+            label {Location:}
+            xywh {85 30 315 20}
+            box FLAT_BOX
+            labelfont 1
+            labelsize 11
+            align 4
+          }
+          {
+            Input widgetGridRowInput
+              {
+                label {Row:}
+                callback {auto cell = cellOrDefault();
 try cell.row = to!int(widgetGridRowInput.value()); catch (ConvException) cell.row = 0;
 storeCell(cell);
 load(child_);}
-            xywh {85 30 40 20}
-            labelsize 11
-            textsize 11
-            align 5
-          }
-        Group {}
-          {
-            xywh {125 30 30 20}
-          }
-          {
-            Button {}
+                xywh {85 30 40 20}
+                labelsize 11
+                textsize 11
+                align 5
+              }
+            Group {}
               {
-                label {−}
-                callback {int m;
+                xywh {125 30 30 20}
+              }
+              {
+                Button {}
+                  {
+                    label {−}
+                    callback {int m;
 try m = to!int(widgetGridRowInput.value()); catch (ConvException) m = 0;
 widgetGridRowInput.value(to!string(m - 1));
 widgetGridRowInput.doCallback();}
-                xywh {125 30 15 20}
-                labelsize 11
-                compact {1}
-                setup {o.clearVisibleFocus();}
-              }
-            Button {}
-              {
-                label {+}
-                callback {int m;
+                    xywh {125 30 15 20}
+                    labelsize 11
+                    compact {1}
+                    setup {o.clearVisibleFocus();}
+                  }
+                Button {}
+                  {
+                    label {+}
+                    callback {int m;
 try m = to!int(widgetGridRowInput.value()); catch (ConvException) m = 0;
 widgetGridRowInput.value(to!string(m + 1));
 widgetGridRowInput.doCallback();}
-                xywh {140 30 15 20}
-                labelsize 11
-                compact {1}
-                setup {o.clearVisibleFocus();}
+                    xywh {140 30 15 20}
+                    labelsize 11
+                    compact {1}
+                    setup {o.clearVisibleFocus();}
+                  }
               }
-          }
-        Input widgetGridColInput
-          {
-            label {Column:}
-            callback {auto cell = cellOrDefault();
+            Input widgetGridColInput
+              {
+                label {Column:}
+                callback {auto cell = cellOrDefault();
 try cell.col = to!int(widgetGridColInput.value()); catch (ConvException) cell.col = 0;
 storeCell(cell);
 load(child_);}
-            xywh {165 30 40 20}
-            labelsize 11
-            textsize 11
-            align 5
-          }
-        Group {}
-          {
-            xywh {205 30 30 20}
-          }
-          {
-            Button {}
+                xywh {165 30 40 20}
+                labelsize 11
+                textsize 11
+                align 5
+              }
+            Group {}
               {
-                label {−}
-                callback {int m;
+                xywh {205 30 30 20}
+              }
+              {
+                Button {}
+                  {
+                    label {−}
+                    callback {int m;
 try m = to!int(widgetGridColInput.value()); catch (ConvException) m = 0;
 widgetGridColInput.value(to!string(m - 1));
 widgetGridColInput.doCallback();}
-                xywh {205 30 15 20}
-                labelsize 11
-                compact {1}
-                setup {o.clearVisibleFocus();}
-              }
-            Button {}
-              {
-                label {+}
-                callback {int m;
+                    xywh {205 30 15 20}
+                    labelsize 11
+                    compact {1}
+                    setup {o.clearVisibleFocus();}
+                  }
+                Button {}
+                  {
+                    label {+}
+                    callback {int m;
 try m = to!int(widgetGridColInput.value()); catch (ConvException) m = 0;
 widgetGridColInput.value(to!string(m + 1));
 widgetGridColInput.doCallback();}
-                xywh {220 30 15 20}
-                labelsize 11
-                compact {1}
-                setup {o.clearVisibleFocus();}
+                    xywh {220 30 15 20}
+                    labelsize 11
+                    compact {1}
+                    setup {o.clearVisibleFocus();}
+                  }
+              }
+            Box {}
+              {
+                xywh {385 30 1 20}
+                hide
+                resizable
               }
           }
-        Box {}
+        Group {}
           {
-            xywh {385 30 1 20}
-            hide
-            resizable
+            label {Align:}
+            xywh {85 70 315 20}
+            labelfont 1
+            labelsize 11
+            align 4
           }
-      }
-    Group {}
-      {
-        label {Align:}
-        xywh {85 70 315 20}
-        labelfont 1
-        labelsize 11
-        align 4
-      }
-      {
-        Choice alignHChoice
           {
-            label {Horizontal}
-            callback {auto cell = cellOrDefault();
+            Choice alignHChoice
+              {
+                label {Horizontal}
+                callback {auto cell = cellOrDefault();
 int idx = alignHChoice.value();
 if (idx < 0 || idx >= gridAlignHValues.length) return;
 int mask = gridLeft | gridRight | gridHorizontal;
 cell.alignRaw = (cell.alignRaw & ~mask) | gridAlignHValues[idx];
 storeCell(cell);}
-            xywh {85 70 115 20}
-            down_box BORDER_BOX
-            labelsize 11
-            textsize 11
-            align 5
-            setup {foreach (name; gridAlignHNames) o.add(name, 0, null);}
-          }
-          {
-          }
-        Choice alignVChoice
-          {
-            label {Vertical}
-            callback {auto cell = cellOrDefault();
+                xywh {85 70 115 20}
+                down_box BORDER_BOX
+                labelsize 11
+                textsize 11
+                align 5
+                setup {foreach (name; gridAlignHNames) o.add(name, 0, null);}
+              }
+              {
+              }
+            Choice alignVChoice
+              {
+                label {Vertical}
+                callback {auto cell = cellOrDefault();
 int idx = alignVChoice.value();
 if (idx < 0 || idx >= gridAlignVValues.length) return;
 int mask = gridTop | gridBottom | gridVertical;
 cell.alignRaw = (cell.alignRaw & ~mask) | gridAlignVValues[idx];
 storeCell(cell);}
-            xywh {205 70 115 20}
-            down_box BORDER_BOX
+                xywh {205 70 115 20}
+                down_box BORDER_BOX
+                labelsize 11
+                textsize 11
+                align 5
+                setup {foreach (name; gridAlignVNames) o.add(name, 0, null);}
+              }
+              {
+              }
+            Box {}
+              {
+                xywh {385 70 1 20}
+                hide
+                resizable
+              }
+          }
+        Group {}
+          {
+            label {Min. Size:}
+            xywh {85 105 315 20}
+            labelfont 1
             labelsize 11
-            textsize 11
-            align 5
-            setup {foreach (name; gridAlignVNames) o.add(name, 0, null);}
+            align 4
           }
           {
-          }
-        Box {}
-          {
-            xywh {385 70 1 20}
-            hide
-            resizable
-          }
-      }
-    Group {}
-      {
-        label {Min. Size:}
-        xywh {85 105 315 20}
-        labelfont 1
-        labelsize 11
-        align 4
-      }
-      {
-        Input widgetGridMinW
-          {
-            label {Width:}
-            callback {auto cell = cellOrDefault();
+            Input widgetGridMinW
+              {
+                label {Width:}
+                callback {auto cell = cellOrDefault();
 try cell.minW = to!int(widgetGridMinW.value()); catch (ConvException) cell.minW = 0;
 storeCell(cell);}
-            xywh {85 105 55 20}
-            labelsize 11
-            textsize 11
-            align 5
-          }
-        Input widgetGridMinH
-          {
-            label {Height:}
-            callback {auto cell = cellOrDefault();
+                xywh {85 105 55 20}
+                labelsize 11
+                textsize 11
+                align 5
+              }
+            Input widgetGridMinH
+              {
+                label {Height:}
+                callback {auto cell = cellOrDefault();
 try cell.minH = to!int(widgetGridMinH.value()); catch (ConvException) cell.minH = 0;
 storeCell(cell);}
-            xywh {145 105 55 20}
+                xywh {145 105 55 20}
+                labelsize 11
+                textsize 11
+                align 5
+              }
+            Box {}
+              {
+                xywh {385 105 1 20}
+                hide
+                resizable
+              }
+          }
+        Group {}
+          {
+            label {Span:}
+            xywh {85 140 315 20}
+            labelfont 1
             labelsize 11
-            textsize 11
-            align 5
+            align 4
           }
-        Box {}
           {
-            xywh {385 105 1 20}
-            hide
-            resizable
-          }
-      }
-    Group {}
-      {
-        label {Span:}
-        xywh {85 140 315 20}
-        labelfont 1
-        labelsize 11
-        align 4
-      }
-      {
-        Input widgetGridRowspanInput
-          {
-            label {Row Span:}
-            callback {auto cell = cellOrDefault();
+            Input widgetGridRowspanInput
+              {
+                label {Row Span:}
+                callback {auto cell = cellOrDefault();
 try cell.rowspan = to!int(widgetGridRowspanInput.value()); catch (ConvException) cell.rowspan = 0;
 storeCell(cell);
 load(child_);}
-            xywh {85 140 40 20}
-            labelsize 11
-            textsize 11
-            align 5
-          }
-        Group {}
-          {
-            xywh {125 140 30 20}
-          }
-          {
-            Button {}
+                xywh {85 140 40 20}
+                labelsize 11
+                textsize 11
+                align 5
+              }
+            Group {}
               {
-                label {−}
-                callback {int m;
+                xywh {125 140 30 20}
+              }
+              {
+                Button {}
+                  {
+                    label {−}
+                    callback {int m;
 try m = to!int(widgetGridRowspanInput.value()); catch (ConvException) m = 0;
 widgetGridRowspanInput.value(to!string(m - 1));
 widgetGridRowspanInput.doCallback();}
-                xywh {125 140 15 20}
-                labelsize 11
-                compact {1}
-                setup {o.clearVisibleFocus();}
-              }
-            Button {}
-              {
-                label {+}
-                callback {int m;
+                    xywh {125 140 15 20}
+                    labelsize 11
+                    compact {1}
+                    setup {o.clearVisibleFocus();}
+                  }
+                Button {}
+                  {
+                    label {+}
+                    callback {int m;
 try m = to!int(widgetGridRowspanInput.value()); catch (ConvException) m = 0;
 widgetGridRowspanInput.value(to!string(m + 1));
 widgetGridRowspanInput.doCallback();}
-                xywh {140 140 15 20}
-                labelsize 11
-                compact {1}
-                setup {o.clearVisibleFocus();}
+                    xywh {140 140 15 20}
+                    labelsize 11
+                    compact {1}
+                    setup {o.clearVisibleFocus();}
+                  }
               }
-          }
-        Input widgetGridColspanInput
-          {
-            label {Col. Span:}
-            callback {auto cell = cellOrDefault();
+            Input widgetGridColspanInput
+              {
+                label {Col. Span:}
+                callback {auto cell = cellOrDefault();
 try cell.colspan = to!int(widgetGridColspanInput.value()); catch (ConvException) cell.colspan = 0;
 storeCell(cell);
 load(child_);}
-            xywh {165 140 40 20}
-            labelsize 11
-            textsize 11
-            align 5
-          }
-        Group {}
-          {
-            xywh {205 140 30 20}
-          }
-          {
-            Button {}
+                xywh {165 140 40 20}
+                labelsize 11
+                textsize 11
+                align 5
+              }
+            Group {}
               {
-                label {−}
-                callback {int m;
+                xywh {205 140 30 20}
+              }
+              {
+                Button {}
+                  {
+                    label {−}
+                    callback {int m;
 try m = to!int(widgetGridColspanInput.value()); catch (ConvException) m = 0;
 widgetGridColspanInput.value(to!string(m - 1));
 widgetGridColspanInput.doCallback();}
-                xywh {205 140 15 20}
-                labelsize 11
-                compact {1}
-                setup {o.clearVisibleFocus();}
-                selected
-              }
-            Button {}
-              {
-                label {+}
-                callback {int m;
+                    xywh {205 140 15 20}
+                    labelsize 11
+                    compact {1}
+                    setup {o.clearVisibleFocus();}
+                    selected
+                  }
+                Button {}
+                  {
+                    label {+}
+                    callback {int m;
 try m = to!int(widgetGridColspanInput.value()); catch (ConvException) m = 0;
 widgetGridColspanInput.value(to!string(m + 1));
 widgetGridColspanInput.doCallback();}
-                xywh {220 140 15 20}
-                labelsize 11
-                compact {1}
-                setup {o.clearVisibleFocus();}
+                    xywh {220 140 15 20}
+                    labelsize 11
+                    compact {1}
+                    setup {o.clearVisibleFocus();}
+                  }
+              }
+            Box {}
+              {
+                xywh {385 140 1 20}
+                hide
+                resizable
               }
           }
         Box {}
           {
-            xywh {385 140 1 20}
+            xywh {85 320 300 5}
+            labelsize 11
             hide
             resizable
           }
-      }
-    Box {}
-      {
-        xywh {85 320 300 5}
-        labelsize 11
-        hide
-        resizable
+        code {end();
+resize(x, y, w, h);}
+          {
+          }
       }
     Function {load(Node child)}
       {

@@ -384,16 +384,16 @@ a bare `Node` in a `.fl` file always means `fluid.node.Node` and needs no
 disambiguating import.
 
 `fluid/package.d` is an aggregator module, matching `fl/package.d`'s own
-pattern: a single top-level `decl {import fluid;} {private local}` (once per
+pattern: a single top-level `code {import fluid;}` (once per
 `.fl` file, not once per type) reaches *any* `fluid.*` type or function.
 Every real panel (`widget_panel.fl`, `settings_panel.fl`, ...) does it this
 way.
 
 The aggregator does not cover two things: `fluid.app`/`fluid.bootstrap`
-(both real `void main()` entry points, deliberately excluded) and a
-sibling *generated* panel module (`widget_panel_grid_tab` and similar
-aren't under the `fluid.*` namespace at all — they're bare top-level
-modules, imported by their own file name).
+(both real `void main()` entry points, deliberately excluded) and the
+*generated* panel modules (`widget_panel`, `codeview_panel` and the
+others aren't under the `fluid.*` namespace at all — they're bare
+top-level modules, imported by their own file name).
 
 If a similarly bogus-looking type error ever recurs for a bare,
 unqualified type name, `pragma(msg, __traits(fullyQualifiedName,
@@ -492,8 +492,8 @@ specifically matters for what you're converting.
 
 ### A literal `#` needs `\#`, anywhere, not just `#include` lines
 
-`decl {\#include "Foo.h"}`'s escaped hash is the example every already-
-converted panel shows, which makes it easy to assume the escaping is
+FLTK's `decl {\#include "Foo.h"}` shows the escaped hash in every
+panel, which makes it easy to assume the escaping is
 specifically an `#include`/preprocessor-directive thing. It isn't —
 it's about the `.fl` format's own value grammar, and it applies to
 *any* literal `#` inside *any* property value, including a plain D
@@ -526,40 +526,32 @@ state) has no D equivalent to port at all — see CONVENTIONS.md's
 uses `user_data()` to smuggle context through a trampoline, the D
 version just captures that context directly in a closure.
 
-### `Class_Node`: only for a real base-class relationship, or genuine multiple instances
+### Code nodes: what FLTK's nine kinds become
 
-- `class Name : Base { ... }` (a genuine base-class relationship, e.g.
-  a window subclass overriding a virtual method) always becomes a
-  real D class. The biggest simplification lands here too: FLTK
-  needs a `static` trampoline method forwarding to a real virtual
-  method purely because a C++ callback can't close over `this`; a D
-  closure created inside a real method body (typically the
-  constructor) already captures its enclosing instance, so the
-  trampoline is simply gone.
-- A base-less `class Name { ... }` is not automatic just because
-  FLTK wrote a class. **The real rule is "does the driver need
-  more than one instance," not whether it has a base class.** If
-  something FLTK wrapped in a class purely as a C++ workaround
-  (e.g. so several small static+inline trampoline functions could
-  reach a shared sibling widget) is only ever instantiated once, it
-  flattens cleanly into plain module-level widget globals plus a named
-  builder `Function`. If the driver genuinely constructs more than one
-  instance of it, it needs a real (if base-less) D class after all —
-  perfectly valid D syntax (`class Name { ... }`, implicit `Object`
-  base). Check the driver's own intent, or how many times the class
-  is meaningfully reusable, before assuming either way.
+Fluid reads FLTK's `decl`, `declblock`, `codeblock` and `data` nodes and
+turns them into Code and Conditional nodes (see `FLUID_DIALECT.md`'s "The
+five code nodes"), so their bodies only need their C++ turned into D. A
+`declblock`'s `#if`/`#endif` becomes a Conditional node's header,
+`version (...)` or `static if (...)`, with the braces written by Fluid; a
+`data` node becomes a string import, and the file it names has to be in
+the project's folder.
 
-### Grammar: the base class goes *inside* the properties block
+FLTK's `class` nodes stay Classes, and FLTK's `widget_class` nodes
+become Classes whose `make()` method builds the widgets in a window.
+For each class, decide what it is for:
 
-`class App : Window { ... }` is wrong — a class node's base class is
-introduced by a bare `:` *property* inside the first (properties)
-block: `class App {: Window\n} { ... }`. **The properties block is
-required even when empty**: write `class Name {} { ... }` for a
-base-less class, never `class Name { ... }` — omitting the empty `{}`
-makes the reader's tolerant-of-unknown-properties fallback silently
-swallow the entire children block as a bogus property value instead of
-erroring, producing a class with fields but no methods and no warning
-at all.
+- A class with real methods, such as a window subclass or a class that
+  owns a window built in a method, stays a Class. The biggest
+  simplification lands here: FLTK needs a `static` trampoline method
+  forwarding to a real virtual method purely because a C++ callback
+  can't close over `this`; a D closure in a method already captures its
+  instance, so the trampoline is simply gone.
+- Something FLTK wrapped in a class only as a C++ workaround (so several
+  small trampoline functions could reach a shared sibling widget), and
+  that is only ever instantiated once, flattens into plain module-level
+  widgets plus a named builder `Function`.
+- A class that has nothing to do with widgets belongs in a `.d` module of
+  the program's own.
 
 ### Naming: verbatim for named widgets, a small fixed scheme for anonymous ones
 
@@ -689,7 +681,7 @@ never fires as a result.
 Concretely, `label_cb` above becomes:
 
 ```
-decl {private Node currentNode_;} {private local}
+code {private Node currentNode_;} {}
 
 Function {propagateLoadLabel(Node n)} {open return_type void
 } {
@@ -713,7 +705,7 @@ tree.first; ...) if (o->selected...)` loop — and undo/dirty-flag
 bookkeeping both still need a real connection to `gui_main.d`'s own
 state once this is wired in for real, not just piloted in isolation:
 matching how already-converted flat panels reach out to the host
-application today (`settings_panel.fl`'s own `decl {import fluid.
+application today (`settings_panel.fl`'s own `code {import fluid.
 gui_main : ...;}`, calling free functions directly) is the established,
 flat-design-compatible mechanism — no delegate/callback-field
 indirection needed, unlike `widget_panel.d`'s own `onBeforeEdit`/

@@ -48,12 +48,11 @@ source on every supported platform. Bugs inherited from FLTK are fixed, not
 copied. The conventions below are the established deviations. In a few areas
 going beyond FLTK is the agreed direction:
 
-- **Pen/touch input beyond X11.** FLTK's `Fl::Pen` namespace
-  (`FL/core/pen_events.H`) has real driver implementations for Wayland and
-  Windows but none for X11. fldtk has both (`fl.wayland_pen_driver`,
-  `fl.win32_pen_driver`); the Windows one has proven the pen-event
-  model on a real pen, so adding equivalent support to the X11 driver via the
-  XInput2 extension is in scope.
+- **Pen input on X11.** FLTK's `Fl::Pen` namespace
+  (`FL/core/pen_events.H`) has drivers for Wayland and Windows but none
+  for X11. fldtk has all three (`fl.wayland_pen_driver`,
+  `fl.win32_pen_driver`, and `fl.x11_pen_driver` through the XInput2
+  extension; see `docs/X11_PEN_DRIVER.md`).
 - **Touch and gestures.** `fl.touch`: one finger acts as the mouse on
   every platform, two make zoom, rotate and scroll gestures, touchpads
   add swipes, and subscribed widgets can take raw contacts; FLTK has only

@@ -34,7 +34,129 @@ which produces a window with a clickable button.
 
 ![A window with a clickable button](https://raw.githubusercontent.com/sxmboer/fldtk/main/docs/button.png)
 
-## New since v1.1.0: ready to use straight from dub
+## What is in the box
+
+- **Widgets:** buttons, valuators and sliders, menus, text input and editing,
+  browsers, tables, trees, tabs, scroll, pack, flex and grid layouts, an HTML
+  and a native Markdown viewer, a terminal widget, file choosers, dialogs, and
+  the rest of FLTK's widget set, with FLTK's box types and schemes (base, gtk+,
+  gleam, plastic, oxy).
+- **Images**, decoded natively in D: PNG, JPEG, GIF (including animated), SVG,
+  BMP, ICO, XPM, XBM and PNM.
+- **OpenGL** windows (with FLTK widgets drawn over them) and the GLUT
+  compatibility layer.
+- **Platform services:** clipboard, drag and drop, multi-monitor and scaling
+  support, input methods, pen and touch input, printing, and output to
+  PDF, PostScript, SVG and images.
+- **Cairo and Pango:** `CairoWindow` and the full Cairo and Pango APIs, built
+  in on Linux and optional on Windows (see [`docs/BUILDING.md`](docs/BUILDING.md)).
+  fldtk itself draws through Cairo, with text through Pango, on Wayland,
+  and on X11 when asked to (`FLDTK_GRAPHICS=cairo`).
+- **Fluid**, both the interactive designer and the headless
+  `fluid -c file.fl` converter that writes D source. Besides the
+  familiar FLTK designer, fldtk:fluid:
+  - **runs your program with F5**: it saves the design, writes the D
+    code, builds it with dub and starts the program, in seconds. It sets
+    up a single-file program or a full dub project for you, or joins an
+    existing one;
+  - **leads you to compiler errors**: a failed build selects the widget
+    or code node the first error is about, opens its properties and
+    shows its line in the Code View, with the compiler's messages in red
+    under the lines they are about and in tooltips; a double-click on any
+    other message in the Run window does the same for that one;
+  - **shows the code it writes** in the Code View, exactly as F5 writes
+    it, with D syntax highlighting and the selected widget's part
+    highlighted;
+  - **keeps code simple**: five code nodes (Code, Function, Class,
+    Conditional, Comment) for everything that isn't a widget, a
+    Conditional wrapped around any selection, and files built into your
+    program with D's `import("file")`;
+  - **writes code that reads like hand-written code**, with names such
+    as `alignLeft` and `whenRelease` and without default settings;
+  - **edits faster**: Change To turns a widget into another kind in
+    place, Ctrl-drag copies, and new widgets can stack below the
+    selected one;
+  - **has its documentation built in**: the README, the tutorials and
+    the Technical Reference open in Fluid's own viewer, Help on a node
+    opens the reference at that kind of widget or code node, and a click
+    on a tutorial's design opens it in Fluid.
+
+[`docs/PORTING.md`](docs/PORTING.md) tracks the port file by file: what is complete, what
+is partial and why, what is deliberately left out, and what a platform such
+as Wayland doesn't allow; nearly every module is complete. Suspected bugs
+in FLTK itself, found while porting, are collected in
+the `FLTK_ISSUES_n.md` files at the repository root; the highest `n` is
+the latest batch.
+
+## New since v1.1.2: Fluid shows you where the compiler found the error
+
+- **Compiler errors point at the design.** When F5's build fails, Fluid
+  selects the node that wrote the line the first error is about, opens
+  its properties and shows the Code View scrolled to that line. The
+  Code View marks the compiler's messages in red, the line numbers and
+  the word each message points at, until the design changes, and shows
+  the messages themselves, as the compiler wrote them, under the lines
+  they are about and in a tooltip on those lines (Settings > General >
+  Errors). Double-clicking any other message about the generated code
+  in the Run window does the same for that one; this works with dmd's
+  and gdc's messages.
+
+  ![The Code View with the compiler's messages under the lines they are about](https://raw.githubusercontent.com/sxmboer/fldtk/main/docs/tutorial02/fig09.png)
+- **Five code nodes instead of nine.** Besides widgets, a design now has
+  just Function, Class, Code, Conditional and Comment nodes. A Code node
+  is raw D written where it stands: imports and module variables at the
+  top, fields in a Class, statements in a Function or among a window's
+  widgets. A Conditional wraps its children in `if`, `else`,
+  `static if`, `version` or `debug`, at any level. Older `.fl` files are
+  converted as Fluid reads them. See
+  [`docs/FLUID_DIALECT.md`](docs/FLUID_DIALECT.md#the-five-code-nodes).
+- **Files built into your program.** Fluid's dub projects name the
+  design's folder as a string import path, so a Code node can embed a
+  file with D's `import("logo.png")` or `enum help = import("help.md");`.
+- **Enums for choices.** Name the options of a radio-button group, a
+  Choice or a menu in an enum, and read and set the choice as a member of
+  that enum: `sizes.selectedRadioButton!Size`, `choice.add!Size()`,
+  `choice.selected!Size`, `menubar.add!Size("View/Size")`. An
+  `@ItemText("Extra large")` on a member gives its item a text of its
+  own. `selectedButtons` gives a group's check buttons that are on.
+- **`foreach` over widgets and items.** `group.widgets`,
+  `window.allWidgets`, `browser.lines`, `tree.allItems`,
+  `menubar.items("File")` and `grid.rowWidgets(0)` are arrays, so
+  `foreach` and Phobos work on them:
+  `window.allWidgets.filter!(w => w.changed)`.
+- **Work in the background.** `runInBackground()` runs a slow
+  computation on another thread and hands its result to a function on
+  the GUI thread, greys out the button that started it until it is done,
+  and can report progress to a progress bar
+  (`examples/howto_run_in_background.d`).
+- **Drawing that cleans up after itself.** `useColor()`, `useFont()`,
+  `useLineStyle()`, `clipTo()` and `saveMatrix()` change the drawing
+  state until the end of the block, then put it back, also on an early
+  `return` or an exception.
+- **Pen support for Windows, Wayland, and X11.** Pressure, tilt and the
+  eraser now reach programs on X11 too.
+- **Smoother windows.** Windows made in Fluid are double buffered, so
+  they don't flicker while they are redrawn.
+- **A native Markdown viewer.** A Markdown View widget, with D code
+  highlighted, shows documents in your own programs, with Back, Forward,
+  find, text size and Reload (F5).
+- **Documentation inside Fluid.** Fluid shows Help > fldtk README, the
+  tutorials and the new [Technical Reference](docs/TECHNICAL_REFERENCE.md)
+  in that viewer. The Technical Reference describes every widget with a
+  picture of it (taken from `test/widget_gallery`); right-click a node in
+  the tree and choose Help on it to open the reference at that kind of
+  widget or code node. A link to a `.fl` file opens that design in
+  Fluid, so the tutorials' finished designs open with a click.
+  Tutorials 1 to 4 are updated, and Tutorial 3 now ends with the chosen
+  option kept as a member of an enum.
+
+## Status
+
+The library and Fluid run stably on **Linux/X11**, **Linux/Wayland** and
+**Windows**; Linux binaries pick Wayland or X11 at run time. macOS is out
+of scope for now because I don't have the hardware to test it.
+
+Earlier highlights (v1.1.1 and v1.1.2): ready to use straight from dub
 
 - **Fluid in one command.** `dub run fldtk:fluid` fetches fldtk, builds
   Fluid and starts it, from any folder. Fluid's own dialogs are generated
@@ -50,7 +172,7 @@ which produces a window with a clickable button.
   `DC=gdc` to switch. LDC and GDC also build optimized releases. See
   [Choosing the compiler](docs/BUILDING.md#choosing-the-compiler).
 
-## New in v1.1.0: press F5 to run the compiled application almost instantly
+Earlier highlights (v1.1.0): press F5 to run the compiled application almost instantly
 
 Fluid is now fully integrated with the dub infrastructure for a seamless,
 truly **lightning-fast** workflow.
@@ -122,12 +244,6 @@ Also new in v1.1.0:
   `dub build` in the fldtk folder once: a program's build no longer
   rebuilds the library.
 
-## Status
-
-The library and Fluid run stably on **Linux/X11**, **Linux/Wayland** and
-**Windows**; Linux binaries pick Wayland or X11 at run time. macOS is out
-of scope for now because I don't have the hardware to test it.
-
 Earlier highlights (v1.0.5):
 
 - **Tutorials.** [`docs/TUTORIALS.md`](docs/TUTORIALS.md) starts a series of
@@ -185,33 +301,6 @@ Earlier highlights (v1.0.3 and v1.0.4):
   (`pen_test`, `touch_test`, `svg_animation`, `gl_text`, `value_wheel`,
   ...).
 
-What is in the box:
-
-- **Widgets:** buttons, valuators and sliders, menus, text input and editing,
-  browsers, tables, trees, tabs, scroll, pack, flex and grid layouts, a help
-  viewer, a terminal widget, file choosers, dialogs, and the rest of FLTK's
-  widget set, with FLTK's box types and schemes (base, gtk+, gleam, plastic, oxy).
-- **Fluid**, both the interactive designer and the headless
-  `fluid -c file.fl` converter that writes D source.
-- **Images**, decoded natively in D: PNG, JPEG, GIF (including animated), SVG,
-  BMP, ICO, XPM, XBM and PNM.
-- **OpenGL** windows (with FLTK widgets drawn over them) and the GLUT
-  compatibility layer.
-- **Platform services:** clipboard, drag and drop, multi-monitor and scaling
-  support, input methods, pen and touch input, printing, and output to
-  PDF, PostScript, SVG and images.
-- **Cairo and Pango:** `CairoWindow` and the full Cairo and Pango APIs, built
-  in on Linux and optional on Windows (see [`docs/BUILDING.md`](docs/BUILDING.md)).
-  fldtk itself draws through Cairo, with text through Pango, on Wayland,
-  and on X11 when asked to (`FLDTK_GRAPHICS=cairo`).
-
-[`docs/PORTING.md`](docs/PORTING.md) tracks the port file by file: what is complete, what
-is partial and why, what is deliberately left out, and what a platform such
-as Wayland doesn't allow; nearly every module is complete. Suspected bugs
-in FLTK itself, found while porting, are collected in
-the `FLTK_ISSUES_n.md` files at the repository root; the highest `n` is
-the latest batch.
-
 ## Direction
 
 Release **v1.0.2** is the version that resembles FLTK as closely as
@@ -258,6 +347,7 @@ but not yet released. See
 
 - [`docs/BUILDING.md`](docs/BUILDING.md): building and using the library, Fluid and the samples
 - [`docs/TUTORIALS.md`](docs/TUTORIALS.md): step-by-step tutorials, from a first Fluid program on
+- [`docs/TECHNICAL_REFERENCE.md`](docs/TECHNICAL_REFERENCE.md): every widget, code node and library function a program uses
 - [`docs/PORTING.md`](docs/PORTING.md): porting status, module by module
 - [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md): how FLTK maps onto D, and the design decisions behind it
 - [`docs/FLUID_DIALECT.md`](docs/FLUID_DIALECT.md): the `.fl` dialect Fluid reads and writes for D

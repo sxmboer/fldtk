@@ -68,6 +68,10 @@ alias MarkdownLinkFunc = bool delegate(MarkdownView view, string url);
 
 class MarkdownView : FlGroup
 {
+    /// No widgets: the parts a MarkdownView is made of
+    /// (its scrollbars) are not listed (see `FlGroup.widgets`).
+    override Widget[] widgets() { return null; }
+
     // FlGroup.find(Widget) is hidden by find(string, int) below.
     alias find = FlGroup.find;
 
@@ -805,8 +809,17 @@ class MarkdownView : FlGroup
 
     private void freeImages()
     {
+        freeScaled();
         foreach (img; images_) img.release();
         images_ = null;
+    }
+
+    // The scaled copies are shared images too, each holding on to its
+    // original in the pool: released here, so that an image file changed
+    // on disk is read again the next time the document is loaded.
+    private void freeScaled()
+    {
+        foreach (img; scaled_) img.release();
         scaled_ = null;
     }
 
@@ -873,7 +886,7 @@ class MarkdownView : FlGroup
         anchors_ = null;
         lineMarks_ = null;
         plain_ = null;
-        scaled_ = null;
+        freeScaled();
         linkcolor_ = linkcolor();
         curColor_ = textcolor_;
 
@@ -1815,4 +1828,44 @@ unittest
         if (v.topline() >= v.size() - v.h() + 4) break; // the end: can't scroll further
         assert(v.topSourceLine() == line, line.to!string ~ " -> " ~ v.topSourceLine().to!string);
     }
+}
+
+unittest
+{
+    // An image changed on disk shows when the document is loaded again,
+    // also when the view shows it scaled down.
+    import fl.shared_image : SharedImage;
+    import std.file : write, remove, tempDir;
+    import std.path : buildPath;
+    FlGroup.current(null);
+    scope (exit) FlGroup.current(null);
+
+    auto pic = buildPath(tempDir(), "fldtk-markdown-view-reload.ppm");
+    auto page = buildPath(tempDir(), "fldtk-markdown-view-reload.md");
+    void writePic(int w) { write(pic, "P3\n" ~ (w == 600 ? "600" : "500") ~ " 1\n255\n" ~ repeatPixel(w)); }
+    writePic(600);
+    write(page, "# Page\n\n![a picture](fldtk-markdown-view-reload.ppm)\n");
+    scope (exit) { remove(pic); remove(page); }
+
+    int originalWidth()
+    {
+        foreach (im; SharedImage.images())
+            if (im.name() == pic && im.original()) return im.dataW();
+        return 0;
+    }
+
+    auto v = new MarkdownView(0, 0, 300, 200);  // narrower: drawn scaled down
+    v.load(page);
+    assert(originalWidth() == 600);
+    writePic(500);
+    v.load(page);
+    assert(originalWidth() == 500);
+    v.value("# No pictures\n");
+    assert(originalWidth() == 0);               // nothing left in the pool
+}
+
+version (unittest) private string repeatPixel(int w)
+{
+    import std.array : replicate;
+    return replicate("0 0 0 ", w) ~ "\n";
 }

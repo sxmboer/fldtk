@@ -88,6 +88,16 @@ import fl.enumerations : Boxtype, Font, Fontsize, Color, When, CallbackReason,
 static import fl.enumerations;
 static import fl.core;
 
+/// Gives an enum member a text of its own for the menu item `add!E()`
+/// makes from it, instead of the member's name:
+/// `enum Size { small, @ItemText("Extra large") extraLarge }`. The text
+/// is a menu label, so `&` underlines the next letter and `/` would
+/// start a submenu.
+struct ItemText
+{
+    string text;
+}
+
 abstract class Menu_ : Widget
 {
     // Fl_Menu_::test_shortcut() (no-arg, returns a MenuItem pointer)
@@ -539,6 +549,163 @@ abstract class Menu_ : Widget
 
     /// The label of the last item picked, or null.
     string text() const { return value_ ? value_.text : null; }
+
+    // ---- items made from an enum ---------------------------------------
+
+    /**
+     * Adds one item for each member of the enum `E`, labelled with the
+     * member's name, or its `ItemText`. Without `submenu`, the items are
+     * plain items at the top level, the way a Choice holds them. With
+     * `submenu` (a path such as `"View/Size"`, made if it doesn't exist
+     * yet), they are radio items in that submenu, the way a menu bar
+     * offers a choice. The first member's item is selected.
+     *
+     *     enum Size { small, medium, large }
+     *     size.add!Size();                    // a Choice
+     *     menubar.add!Size("View/Size");      // a menu bar
+     */
+    void add(E)(string submenu = null) if (is(E == enum))
+    {
+        import std.traits : EnumMembers, getUDAs;
+        static foreach (name; __traits(allMembers, E))
+        {{
+            static if (getUDAs!(__traits(getMember, E, name), ItemText).length)
+                string text = getUDAs!(__traits(getMember, E, name), ItemText)[0].text;
+            else
+                string text = name;
+            if (submenu.length) add(submenu ~ "/" ~ text, 0, null, menuRadio);
+            else add(text, 0, null);
+        }}
+        select(EnumMembers!E[0], submenu);
+    }
+
+    /**
+     * Which item is selected, as a member of the enum `E`: the first item
+     * stands for `E`'s first member, the second for its second, and so
+     * on. Without `submenu`, the items are the top-level ones and the
+     * selected one is `value()`, as in a Choice; with it, they are the
+     * submenu's items and the selected one is its radio item that is on.
+     * Returns `E.init` when none is selected. Throws when there are a
+     * different number of items than `E` has members.
+     */
+    E selected(E)(string submenu = null) if (is(E == enum))
+    {
+        import std.traits : EnumMembers;
+        static immutable E[] members = [EnumMembers!E];
+        auto items = levelItems(submenu, members.length, E.stringof);
+        foreach (i, at; items)
+            if (submenu.length ? menu_[at].value() != 0 : at == value())
+                return members[i];
+        return E.init;
+    }
+
+    /// Selects the item that stands for `value` (see `selected`): it
+    /// becomes `value()`, or, in a submenu, the radio item that is on.
+    /// No callback is called.
+    void select(E)(E value, string submenu = null) if (is(E == enum))
+    {
+        import std.traits : EnumMembers;
+        static immutable E[] members = [EnumMembers!E];
+        auto items = levelItems(submenu, members.length, E.stringof);
+        foreach (i, m; members)
+            if (m == value)
+            {
+                if (submenu.length) setonly(&menu_[items[i]]);
+                else this.value(items[i]);
+                return;
+            }
+    }
+
+    /**
+     * The item that stands for `value` (see `selected`), to grey it out,
+     * hide it or change it like any other item.
+     *
+     *     menubar.item(Size.extraLarge, "View/Size").deactivate();
+     *
+     * Valid until items are added or removed, as `items`' are. Throws
+     * when there are a different number of items than `E` has members.
+     */
+    MenuItem* item(E)(E value, string submenu = null) if (is(E == enum))
+    {
+        import std.traits : EnumMembers;
+        static immutable E[] members = [EnumMembers!E];
+        auto items = levelItems(submenu, members.length, E.stringof);
+        foreach (i, m; members)
+            if (m == value) return &menu_[items[i]];
+        assert(false, "not a member of " ~ E.stringof);
+    }
+
+    // The indexes of the items directly in `submenu` (the top level when
+    // it is empty), not those of submenus inside it, checked against the
+    // number of members of the enum `enumName`.
+    private int[] levelItems(string submenu, size_t members, string enumName)
+    {
+        import std.format : format;
+        auto items = levelIndexes(submenu);
+        if (items.length != members)
+            throw new Exception(format("%s has %d members, but the menu has %d items%s",
+                enumName, members, items.length, submenu.length ? " in " ~ submenu : ""));
+        return items;
+    }
+
+    // The indexes of the items directly in `submenu` (the top level when
+    // it is empty), not those of submenus inside it.
+    private int[] levelIndexes(string submenu)
+    {
+        import std.format : format;
+        int start = 0;
+        if (submenu.length)
+        {
+            int title = findIndex(submenu);
+            if (title < 0 || !(menu_[title].flags & menuSubmenu))
+                throw new Exception(format("there is no submenu %s", submenu));
+            start = title + 1;
+        }
+        int[] items;
+        int nest = 0;
+        foreach (i; start .. cast(int) menu_.length)
+        {
+            if (menu_[i].text is null)
+            {
+                if (nest == 0) break;
+                nest--;
+                continue;
+            }
+            if (nest == 0) items ~= i;
+            if (menu_[i].flags & menuSubmenu) nest++;
+        }
+        return items;
+    }
+
+    // ---- items as arrays ----------------------------------------------
+
+    /**
+     * The items directly in `submenu` (a path such as `"File"`; the top
+     * level when it is empty), in order, as an array, so `foreach` and
+     * Phobos work on them: `foreach (item; menubar.items("File"))`. A
+     * submenu's title is one item; the items inside it are not. Throws
+     * when there is no such submenu.
+     *
+     * The items are the menu's own, so changing one (`item.set()`,
+     * `item.label(...)`) changes the menu; they stay valid until items
+     * are added or removed.
+     */
+    MenuItem*[] items(string submenu = null)
+    {
+        MenuItem*[] result;
+        foreach (i; levelIndexes(submenu)) result ~= &menu_[i];
+        return result;
+    }
+
+    /// Every item of the menu, depth first: each submenu's title,
+    /// followed by the items inside it. Valid as long as `items`' are.
+    MenuItem*[] allItems()
+    {
+        MenuItem*[] result;
+        foreach (ref item; menu_)
+            if (item.text !is null) result ~= &item;
+        return result;
+    }
 
     /// The label of item i.
     string text(int i) const { return menu_[i].text; }
@@ -1003,4 +1170,73 @@ unittest
     assert(quitIdx2 == wsIdx2 + 1); // Quit still directly follows it
 
     FlGroup.current(null);
+}
+
+unittest
+{
+    // add!E, selected!E and select(), at the top level (a Choice) and
+    // in a submenu of radio items (a menu bar).
+    import fl.choice : Choice;
+    import fl.menu_bar : MenuBar;
+    import fl.group : FlGroup;
+    import std.exception : assertThrown;
+    FlGroup.current(null);
+
+    enum Size { small = 2, medium = 4, @ItemText("Extra large") extraLarge = 8 }
+    enum Two { a, b }
+
+    auto choice = new Choice(0, 0, 100, 25);
+    choice.add!Size();
+    assert(choice.size() == 4); // three items and the end marker
+    assert(choice.text(2) == "Extra large");
+    assert(choice.selected!Size == Size.small); // the first is selected
+    choice.value(1);                            // as the user would pick it
+    assert(choice.selected!Size == Size.medium);
+    choice.select(Size.extraLarge);
+    assert(choice.value() == 2);
+    assertThrown(choice.selected!Two);
+
+    auto bar = new MenuBar(0, 0, 300, 25);
+    bar.add("File/Quit", 0, null);
+    bar.add!Size("View/Size");
+    bar.add("View/Zoom", 0, null);
+    assert(bar.selected!Size("View/Size") == Size.small);
+    bar.select(Size.medium, "View/Size");
+    assert(bar.selected!Size("View/Size") == Size.medium);
+    int small = bar.findIndex("View/Size/small");
+    assert(bar.menu()[small].value() == 0);
+    assertThrown(bar.selected!Size("View"));    // Size and Zoom: 2 items
+    assertThrown(bar.selected!Size("Nowhere"));
+
+    // item(): the menu's own item, by member, also with enum values of
+    // its own; greying one out keeps the mapping.
+    assert(choice.item(Size.extraLarge).label() == "Extra large");
+    auto large = bar.item(Size.extraLarge, "View/Size");
+    assert(large.label() == "Extra large");
+    large.deactivate();
+    assert(!bar.menu()[bar.findIndex("View/Size/Extra large")].active());
+    bar.select(Size.small, "View/Size");
+    assert(bar.selected!Size("View/Size") == Size.small);
+    assertThrown(bar.item(Size.small, "View"));
+}
+
+unittest
+{
+    // items(submenu) and allItems.
+    import fl.menu_bar : MenuBar;
+    import fl.group : FlGroup;
+    import std.algorithm : map;
+    import std.array : array;
+    import std.exception : assertThrown;
+    FlGroup.current(null);
+    auto bar = new MenuBar(0, 0, 300, 25);
+    bar.add("File/Open", 0, null);
+    bar.add("File/Recent/a", 0, null);
+    bar.add("File/Quit", 0, null);
+    bar.add("Edit/Copy", 0, null);
+    assert(bar.items.map!(i => i.label()).array == ["File", "Edit"]);
+    assert(bar.items("File").map!(i => i.label()).array == ["Open", "Recent", "Quit"]);
+    assert(bar.allItems.map!(i => i.label()).array
+        == ["File", "Open", "Recent", "a", "Quit", "Edit", "Copy"]);
+    assertThrown(bar.items("Nowhere"));
 }

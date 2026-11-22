@@ -1,6 +1,7 @@
 # data file for fldtk fluid (Fast Light User Interface Designer)
 version 1.0000
 code_name source/fourbuttons.d
+dub_header 1
 Function {}
   {
   }
@@ -9,6 +10,7 @@ Function {}
       {
         label {Four Buttons}
         xywh {186 66 325 163}
+        selected
       }
       {
         Group {}
@@ -61,7 +63,6 @@ foreach (i, b; [b1, b2, b3, b4])
 message(format("Button %s is selected", selected));
 }
             xywh {117 69 86 22}
-            selected
           }
       }
   }

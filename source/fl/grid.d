@@ -579,6 +579,39 @@ class Grid : FlGroup
         return null;
     }
 
+    /// The widgets in row `row` (counting from 0), left to right, as an
+    /// array: `foreach (w; grid.rowWidgets(0))`. A widget that spans
+    /// several rows is in each of them.
+    Widget[] rowWidgets(int row)
+    {
+        import std.algorithm : sort;
+        Cell[] found;
+        foreach (ref r; rowArray_)
+            foreach (c; r.cells_)
+                if (c.widget_ !is null && c.row_ <= row && row < c.row_ + c.rowspan_)
+                    found ~= c;
+        found.sort!((a, b) => a.col_ < b.col_);
+        Widget[] result;
+        foreach (c; found) result ~= c.widget_;
+        return result;
+    }
+
+    /// The widgets in column `col` (counting from 0), top to bottom, as
+    /// an array. A widget that spans several columns is in each of them.
+    Widget[] columnWidgets(int col)
+    {
+        import std.algorithm : sort;
+        Cell[] found;
+        foreach (ref r; rowArray_)
+            foreach (c; r.cells_)
+                if (c.widget_ !is null && c.col_ <= col && col < c.col_ + c.colspan_)
+                    found ~= c;
+        found.sort!((a, b) => a.row_ < b.row_);
+        Widget[] result;
+        foreach (c; found) result ~= c.widget_;
+        return result;
+    }
+
     Cell widget(Widget wi, int row, int col, GridAlign align_ = gridFill)
     {
         return widget(wi, row, col, 1, 1, align_);
@@ -1072,4 +1105,26 @@ unittest
     assert(g.computedColWidth(1) == 100);
 
     FlGroup.current(null);
+}
+
+unittest
+{
+    // rowWidgets and columnWidgets, with a widget spanning two columns.
+    import fl.box : Box;
+    FlGroup.current(null);
+    auto g = new Grid(0, 0, 300, 200);
+    g.layout(2, 3);
+    auto a = new Box(0, 0, 10, 10, "a");
+    auto b = new Box(0, 0, 10, 10, "b");
+    auto c = new Box(0, 0, 10, 10, "c");
+    auto d = new Box(0, 0, 10, 10, "d");
+    g.end();
+    g.widget(b, 0, 2);
+    g.widget(a, 0, 0, 1, 2); // spans columns 0 and 1
+    g.widget(c, 1, 0);
+    g.widget(d, 1, 1);
+    assert(g.rowWidgets(0) == [a, b]);
+    assert(g.rowWidgets(1) == [c, d]);
+    assert(g.columnWidgets(1) == [a, d]);
+    assert(g.columnWidgets(2) == [b]);
 }

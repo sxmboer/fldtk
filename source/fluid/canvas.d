@@ -804,7 +804,7 @@ final class ProjectCanvas : OverlayWindow
     ///
     /// **Also skips `TextDisplay`** (covers `TextEditor` too, a
     /// subclass): without this, a
-    /// widget_panel.fl `Comment:`/`Declaration:`/etc. field would hatch
+    /// property panel's `Comment:` or other text field would hatch
     /// across the whole panel's own upper-left corner from `(0,0)`
     /// outward. Root cause: FLTK's own `draw_out_of_bounds()`
     /// walks *Fluid's own project-node tree*, a data structure that

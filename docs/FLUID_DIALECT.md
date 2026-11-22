@@ -154,7 +154,7 @@ Button {}
 ```
 
 `o` has the widget's own class, so the parameter can be `Widget` or the
-widget's class. A delegate variable (`decl {void delegate(Widget)
+widget's class. A delegate variable (`code {void delegate(Widget)
 okCb;}`) is called the same way, `okCb(o);`: the button calls whatever
 the variable holds when it is pressed, which is how the panels'
 `liveModeCb`/`overlayCb`/`okCb` work. In code text, pass a function on
@@ -166,56 +166,78 @@ A `.fl` file whose callback field holds just a name (`callback
 buttonCB`) is read as `buttonCB(o);`; saving the file writes it that
 way.
 
-## `Class_Node`: only for a real base-class relationship
+## The five code nodes
 
-- **`class Name : Base { ... }`** (a genuine base class) becomes a real
-  D class. This is also where the biggest FLTK/C++ simplification lands:
-  FLTK needs a `static` trampoline method forwarding to a real
-  virtual method purely because a C++ callback can't close over `this`;
-  a D closure created inside a real method body already captures its
-  enclosing instance, so the trampoline is simply gone — the
-  constructor's own closure calls the virtual method directly. (`delete
-  this` inside a callback still needs `fl.core.deleteWidget(this)`, not
-  `destroy(this)` — D's closures remove the need for the trampoline, not
-  the deferred-deletion hazard.)
-- **`class Name { ... }`** with no base: the real rule isn't "has a base
-  or not," it's **"does the driver need more than one instance."** A
-  base-less class whose driver only ever constructs one instance
-  flattens cleanly into plain module-level widget globals plus a named
-  builder Function — no `Class_Node` needed at all. A base-less class
-  instantiated more than once still needs a real (if base-less) D class:
-  `class Name { ... }`, no `: Base`, which is valid D (implicit `Object`
-  base). Check the driver's own intent (or how many times the class is
-  meaningfully reusable) before assuming either way.
+Besides widgets, a project has five kinds of node:
 
-### Grammar note: the base class goes *inside* the properties block
+- **`Function {signature} {properties} {children}`**: `main()` when the
+  signature is empty, else an ordinary function, or a method inside a
+  Class. Its children are its body: Code nodes, Conditional nodes and
+  widget trees.
+- **`class Name {properties} {children}`**: a Class, a plain D class.
+  `: {Base}` in the properties gives its base (`: {Window}`,
+  `: {Terminal}`), and a word before the name an attribute (`class final
+  Name`). Fluid writes `class Name : Base { ... }` with the children in
+  tree order: a Code child is a field, a Function child a method (a
+  Function `this(...)` is a constructor, `~this()` the destructor), a
+  Conditional child holds fields or methods under a condition, and a
+  Class child is a nested class. A method can build a Window with
+  widgets; every named widget in it becomes a field of the class, so
+  each instance of the class has its own. A Class holds no widgets
+  directly: a class that is a widget of your own (`class MyButton :
+  Button`) is written with its methods, and used by placing that widget
+  in a window and typing the class's name in its `class` property. A
+  group of your own builds its widgets in its constructor: `this(int x,
+  int y, int w, int h, string label = null)` calls `super(...)`, the
+  widgets follow as children of the Function, and a final Code node calls
+  `end();` (see `source/fluid/panels/widget_panel_grid_tab.fl`). A base
+  of `Group` or `Clock` is written as fl's `FlGroup`/`FlClock`, as for a
+  widget.
+- **`code {text} {properties}`**: raw D, written where the node stands;
+  top-level nodes are written in tree order. At the top of the file it holds
+  imports, module variables and helper types; directly in a Class, fields;
+  in a Function or among a window's widgets, statements, run in their
+  place. The text keeps its indentation, and a `comment` property is
+  written before it.
+- **`conditional {header} {properties} {children}`**: its children inside
+  `{ ... }` after the header, which is the condition: `if (...)`, `else`,
+  `static if (...)`, `debug`, `version (...)`. It works at every scope;
+  in a Class it holds fields and methods. An `else` is a node of its
+  own, after the `if`. Fluid
+  writes the header as given, and the compiler reports one that doesn't
+  fit its scope (`if` and `else` only work inside a function).
+- **`comment {text} {properties}`**: a comment in the generated code where
+  the node stands; `not_in_source` keeps it in the `.fl` file only.
 
-`class App : Window { ... }` looks natural but is wrong — the reader
-expects `TypeName instance_name { properties } [{ children }]`
-uniformly, and a class node's base class is introduced by a bare `:`
-*property* inside that first block: `class App {: Window\n} { ... }` (or
-with other flags: `class App {open : Window\n} { ... }`).
+A class that has nothing to do with widgets works as a Class, but
+belongs in a `.d` module of the program's own.
 
-**The properties block is required even when empty**: write `class Name
-{} { ... }` for a base-less class, never `class Name { ... }` — without
-the empty `{}`, the reader's tolerant-of-unknown-properties fallback
-silently swallows the entire children block as a bogus property value of
-the class itself (no error, just a class with fields but no methods).
-The same applies to any container node with no real children: write
-`Group {} { ... } {}` (the trailing `{}` for editor flags), not `Group
-{} { ... }` — omitting it doesn't parse.
+To embed a file, a Code node uses D's string import:
+`immutable ubyte[] logo = cast(immutable ubyte[]) import("logo.png");`,
+or `enum help = import("help.md");` for text. The compiler finds the file
+through the string import paths (dmd's `-J`), which name the `.fl`
+file's folder: Fluid writes them in the dub single-file-package header
+and in the `dub.sdl` of Set Up dub Project. A file in a subfolder is
+named with its path, `import("pictures/logo.png")`, and a path can't
+leave that folder (`..`).
 
-## Class fields, and a method whose body is a widget tree
+**The properties block is required even when empty**: write `conditional
+{version (all)} {} { ... }`, never `conditional {version (all)} { ... }`:
+without the empty `{}`, the reader takes the children block for the
+properties. The same applies to any container node with no real children:
+write `Group {} { ... } {}`, not `Group {} { ... }`.
 
-- A named widget declared *inside* a class's own method becomes a class
-  **field**, not a module-level global.
-- A named Function can have a real widget
-  tree as its body instead of a bare `code { ... }` block, walked the
-  same way any other widget tree is.
-- A Window inside a class method never gets an automatic `.show(args)`
-  call the way the top-level main Function's own window does — `args`
-  isn't even in scope inside a class method. `.show()` is the calling
-  driver code's own job there.
+Older files' `decl`, `declblock`, `codeblock`, `data` and `widget_class`
+nodes are converted as Fluid reads them (see `PORTING.md`'s `fluid/nodes/`
+section), and saving writes the new form.
+
+## Class fields
+
+- A named widget anywhere in a Class's methods becomes a field of the
+  class, not a module-level variable.
+- A Window inside a method never gets an automatic `.show(args)` call the
+  way the main Function's window does: `args` isn't in scope there.
+  `.show()` is the calling code's job.
 
 ## A window's own "resizable" isn't always self-referential
 
@@ -278,13 +300,6 @@ already-available fldtk built-in rather than a hand-written companion
 class `source/fl/*.d` exports) is checked first, and skips generating an
 import for those, since `import fl;` already covers them.
 
-## `decl` nodes: raw D text at module scope
-
-A top-level `decl { ... }` node emits its raw D text (struct/global/
-helper-function definitions) verbatim at module scope, right after the
-generated file's fixed imports — for text that doesn't belong inside any
-one widget's own construction code.
-
 ## Per-widget code: `setup` and `finalize`
 
 A widget has two code slots besides its callback:
@@ -314,7 +329,7 @@ them. Where an import goes instead:
   widget's own `setup` is too late for that widget's own `class`
   override and its own callback: both are generated before its `setup`
   code, and a local import is only visible after the line it is on.
-- **Module scope:** a `decl {import ...;}` node, for anything outside
+- **Module scope:** a `code {import ...;}` node at the top, for anything outside
   the widget-building function (other Functions, class members, the
   outermost widget's own `class` override).
 
@@ -330,11 +345,3 @@ them. Where an import goes instead:
   call as already-valid D syntax — no translation table, no runtime
   string-to-number parse. Write it exactly as it should appear in the
   generated D call.
-
-## Known dialect gaps (deliberately deferred, not bugs)
-
-- **No per-widget member-field declaration inside a `class` body.** A
-  `ClassNode`'s children are only ever `Function` nodes (methods) today;
-  there's no node type for "add a plain field to the enclosing class."
-  The module-scope equivalent (`decl {}`, see above) already has a home;
-  this is specifically about a field that must live *on the class*.

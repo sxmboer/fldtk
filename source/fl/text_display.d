@@ -322,6 +322,10 @@ private int utf8Len1(char c)
  */
 class TextDisplay : FlGroup
 {
+    /// No widgets: the parts a TextDisplay is made of
+    /// (its scrollbars) are not listed (see `FlGroup.widgets`).
+    override Widget[] widgets() { return null; }
+
     private
     {
         int damageRange1Start_ = -1, damageRange1End_ = -1;
@@ -2339,6 +2343,22 @@ class TextDisplay : FlGroup
         return cast(int) (picked - &items[0]) + 1;
     }
 
+    /// The colour of line number `line` (counted from 1): the
+    /// `linenumberFgcolor()` for every line. A subclass overrides it to
+    /// mark lines, such as the lines a compiler reports errors on.
+    protected Color linenumberColor(int line)
+    {
+        return linenumberFgcolor_;
+    }
+
+    /// The text drawn as line number `line` (counted from 1): `line` in
+    /// the `linenumberFormat()`. A subclass overrides it to number lines
+    /// its own way, or to leave a line unnumbered with an empty string.
+    protected string linenumberText(int line)
+    {
+        return format(linenumberFormat_, line);
+    }
+
     void drawLineNumbers(bool clearAll)
     {
         if (lineNumWidth_ <= 0 || !visibleR()) return;
@@ -2350,7 +2370,6 @@ class TextDisplay : FlGroup
         int xoff = fl.core.boxDx(box());
         int yoff = textArea_.y - y();
 
-        Color fgcolor = isActive ? linenumberFgcolor_ : inactive(linenumberFgcolor_);
         Color bgcolor = isActive ? linenumberBgcolor_ : inactive(linenumberBgcolor_);
 
         pushClip(x() + xoff, y() + fl.core.boxDy(box()), lineNumWidth_, h() - fl.core.boxDh(box()));
@@ -2363,7 +2382,6 @@ class TextDisplay : FlGroup
         int Y = y() + yoff;
         int line = getAbsoluteTopLineNumber();
 
-        fl_color(fgcolor);
         foreach (visLine; 0 .. nVisibleLines_)
         {
             int lineStartPos = lineStarts_[visLine];
@@ -2371,7 +2389,9 @@ class TextDisplay : FlGroup
             {
                 if (linenumberFormat_.length > 0)
                 {
-                    string numStr = format(linenumberFormat_, line);
+                    Color c = linenumberColor(line);
+                    fl_color(isActive ? c : inactive(c));
+                    string numStr = linenumberText(line);
                     int xx = x() + xoff + 3;
                     int ww = lineNumWidth_ - 6;
                     fl_draw(numStr, xx, Y, ww, lineHeight, linenumberAlign_);

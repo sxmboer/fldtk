@@ -79,6 +79,10 @@ enum ubyte browserBothAlways        = 7;
 
 abstract class Browser_ : FlGroup
 {
+    /// No widgets: the parts a browser is made of
+    /// (its scrollbars) are not listed (see `FlGroup.widgets`).
+    override Widget[] widgets() { return null; }
+
     // State of the current mouse selection, from push to release.
     private Object handleInitsel_;
     private bool handleChange_;

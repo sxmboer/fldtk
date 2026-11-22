@@ -57,6 +57,7 @@ import core.memory : GC;
 import fl.enumerations;
 import fl.rect : Rect;
 import fl.widget;
+import fl.button : Button;
 import fl.widget_tracker : WidgetTracker;
 import fl.window : Window;
 import fl.draw;
@@ -377,6 +378,145 @@ class FlGroup : Widget
     }
 
     int children() const { return cast(int) child_.length; }
+
+    /**
+     * The widgets in this group, in order, as an array, so they work with
+     * `foreach` and with Phobos: `foreach (w; group.widgets)`,
+     * `group.widgets.filter!(w => w.visible)`. It is a copy, so adding
+     * or removing widgets while going through it is safe.
+     *
+     * Only the widgets a program puts in the group are listed, not the
+     * parts a widget is made of: a Scroll's scrollbars, a Spinner's
+     * input and buttons and a Browser's scrollbars are left out, and
+     * such widgets list no widgets at all.
+     */
+    Widget[] widgets() { return child_.dup; }
+
+    /**
+     * Every widget inside this group, depth first: each widget of
+     * `widgets`, followed by the widgets inside it. For a form that is
+     * checked or reset as a whole:
+     * `window.allWidgets.filter!(w => w.changed)`.
+     */
+    final Widget[] allWidgets()
+    {
+        Widget[] result;
+        void walk(FlGroup g)
+        {
+            foreach (w; g.widgets)
+            {
+                result ~= w;
+                if (auto inner = w.asGroup()) walk(inner);
+            }
+        }
+        walk(this);
+        return result;
+    }
+
+    /**
+     * The group's radio button that is down, or `null` when none is.
+     * Only the group's own children are looked at, in the order of
+     * `widgets`; other widgets in the group are passed over. The buttons
+     * are asked each time, so the answer is right however a button was
+     * put down.
+     *
+     *     message(format("%s is selected", sizes.selectedRadioButton.label));
+     */
+    Button selectedRadioButton()
+    {
+        foreach (b; allRadioButtons())
+            if (b.value())
+                return b;
+        return null;
+    }
+
+    /**
+     * Which of the group's radio buttons is down, as a member of the enum
+     * `E`: the first radio button stands for `E`'s first member, the
+     * second for its second, and so on, in the order of `widgets`. That
+     * is the order the group holds them in (the order of Fluid's widget
+     * tree, which Earlier and Later change), not where they are on the
+     * screen.
+     *
+     *     enum Size { small, medium, large }
+     *     Size s = sizes.selectedRadioButton!Size;
+     *
+     * The buttons are asked each time, so the answer is right however a
+     * button was put down. Other widgets in the group are passed over.
+     * When no radio button is down, it returns `E.init`. Throws when the
+     * group has a different number of radio buttons than `E` has members.
+     */
+    E selectedRadioButton(E)() if (is(E == enum))
+    {
+        import std.traits : EnumMembers;
+        static immutable E[] members = [EnumMembers!E];
+        auto buttons = radioButtons(members.length, E.stringof);
+        foreach (i, b; buttons)
+            if (b.value())
+                return members[i];
+        return E.init;
+    }
+
+    /**
+     * Puts down the radio button that stands for `value` (see
+     * `selectedRadioButton!E`) and releases the group's other radio
+     * buttons, as a click would, but without calling any callback.
+     */
+    void selectRadioButton(E)(E value) if (is(E == enum))
+    {
+        import std.traits : EnumMembers;
+        static immutable E[] members = [EnumMembers!E];
+        auto buttons = radioButtons(members.length, E.stringof);
+        foreach (i, m; members)
+            if (m == value)
+            {
+                buttons[i].setonly();
+                return;
+            }
+    }
+
+    /**
+     * The group's buttons that are on: every button of any kind (check,
+     * round, light, toggle, radio...) whose `value()` is set, in the
+     * order of `widgets`. Only the group's own children are looked at;
+     * other widgets are passed over. Empty when none is on.
+     *
+     *     foreach (b; options.selectedButtons)
+     *         writeln(b.label, " is on");
+     */
+    Button[] selectedButtons()
+    {
+        Button[] result;
+        foreach (w; widgets)
+            if (auto b = cast(Button) w)
+                if (b.value())
+                    result ~= b;
+        return result;
+    }
+
+    // The group's own radio buttons, in the order of `widgets`.
+    private Button[] allRadioButtons()
+    {
+        import fl.button : radioButton;
+        Button[] buttons;
+        foreach (w; widgets)
+            if (auto b = cast(Button) w)
+                if (b.type() == radioButton)
+                    buttons ~= b;
+        return buttons;
+    }
+
+    // The group's radio buttons, in order, checked against the number of
+    // members of the enum `enumName`.
+    private auto radioButtons(size_t members, string enumName)
+    {
+        import std.format : format;
+        auto buttons = allRadioButtons();
+        if (buttons.length != members)
+            throw new Exception(format("%s has %d members, but the group has %d radio buttons",
+                enumName, members, buttons.length));
+        return buttons;
+    }
 
     /**
      * The group's own real, structural child list/count -- deliberately
@@ -1321,4 +1461,122 @@ unittest
     popClip();
 
     FlGroup.current(null);
+}
+
+unittest
+{
+    // widgets: the group's own widgets, as a copy; allWidgets: depth
+    // first; a composite widget's parts are not listed.
+    import fl.box : Box;
+    import fl.scroll : Scroll;
+    import fl.spinner : Spinner;
+    import std.algorithm : map;
+    import std.array : array;
+    FlGroup.current(null);
+
+    auto outer = new FlGroup(0, 0, 300, 300);
+    auto a = new Box(0, 0, 10, 10, "a");
+    auto inner = new FlGroup(0, 20, 100, 100, "inner");
+    auto b = new Box(0, 20, 10, 10, "b");
+    inner.end();
+    auto scroll = new Scroll(100, 0, 100, 100, "scroll");
+    auto c = new Box(100, 0, 10, 10, "c");
+    scroll.end();
+    auto spin = new Spinner(200, 0, 60, 25, "spin");
+    outer.end();
+
+    assert(outer.widgets == [a, inner, scroll, spin]);
+    assert(scroll.widgets == [c]);
+    assert(spin.widgets.length == 0);
+    assert(outer.allWidgets.map!(w => w.label).array
+        == ["a", "inner", "b", "scroll", "c", "spin"]);
+
+    // Removing while going through the copy is safe.
+    foreach (w; outer.widgets)
+        outer.remove(w);
+    assert(outer.children == 0);
+}
+
+unittest
+{
+    // selectedRadioButton!E and selectRadioButton(): radio buttons stand
+    // for the enum's members
+    // in order; other widgets are passed over.
+    import fl.box : Box;
+    import fl.button : Button, radioButton;
+    import std.exception : assertThrown;
+    FlGroup.current(null);
+
+    enum Size { small = 1, medium = 5, large = 9 } // values needn't be 0, 1, 2
+    enum Two { a, b }
+
+    auto g = new FlGroup(0, 0, 300, 100);
+    Button[] b;
+    foreach (i; 0 .. 3)
+    {
+        if (i == 1) new Box(0, 0, 10, 10, "not a button");
+        b ~= new Button(i * 50, 0, 40, 25);
+        b[$ - 1].type(radioButton);
+    }
+    auto plain = new Button(200, 0, 40, 25); // not a radio button
+    g.end();
+
+    assert(g.selectedRadioButton!Size == Size.init);    // none down yet
+    b[1].value(true);                        // put down without a click
+    assert(g.selectedRadioButton!Size == Size.medium);
+    g.selectRadioButton(Size.large);
+    assert(!b[1].value() && b[2].value());
+    assert(g.selectedRadioButton!Size == Size.large);
+    assertThrown(g.selectedRadioButton!Two);            // 3 radio buttons, 2 members
+    assertThrown(g.selectRadioButton(Two.a));
+}
+
+unittest
+{
+    // selectedRadioButton: the radio button that is down, or null.
+    import fl.box : Box;
+    import fl.button : Button, radioButton;
+    FlGroup.current(null);
+
+    auto g = new FlGroup(0, 0, 300, 100);
+    new Box(0, 0, 10, 10, "not a button");
+    auto plain = new Button(0, 0, 40, 25);  // down, but not a radio button
+    plain.value(true);
+    Button[] b;
+    foreach (i; 0 .. 3)
+    {
+        b ~= new Button(i * 50, 30, 40, 25);
+        b[$ - 1].type(radioButton);
+    }
+    g.end();
+
+    assert(g.selectedRadioButton is null);  // no radio button down yet
+    b[2].value(true);                       // put down without a click
+    assert(g.selectedRadioButton is b[2]);
+    b[0].setonly();
+    assert(g.selectedRadioButton is b[0]);
+}
+
+unittest
+{
+    // selectedButtons: every button that is on, of any kind, in order.
+    import fl.box : Box;
+    import fl.button : Button;
+    import fl.check_button : CheckButton;
+    import fl.light_button : LightButton;
+    FlGroup.current(null);
+
+    auto g = new FlGroup(0, 0, 300, 100);
+    auto c1 = new CheckButton(0, 0, 80, 25, "one");
+    new Box(0, 30, 10, 10, "not a button");
+    auto c2 = new CheckButton(0, 50, 80, 25, "two");
+    auto l = new LightButton(100, 0, 80, 25, "light");
+    g.end();
+
+    assert(g.selectedButtons.length == 0);
+    c2.value(true);
+    l.value(true);
+    assert(g.selectedButtons == [cast(Button) c2, l]);
+    c1.value(true);
+    assert(g.selectedButtons == [cast(Button) c1, c2, l]);
 }

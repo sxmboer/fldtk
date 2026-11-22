@@ -34,10 +34,10 @@ import fluid.node : Node;
 import fluid.pixmaps : pixmapFor, lockPixmap, protectedPixmap, invisiblePixmap;
 import fluid.widget_node : WidgetNode;
 import fluid.window_node : WindowNode;
-import fluid.node : Access;
 import fluid.class_node : ClassNode;
+import fluid.node : Access;
 import fluid.function_node : FunctionNode;
-import fluid.code_block_node : CodeBlockNode;
+import fluid.conditional_node : ConditionalNode;
 import fluid.comment_node : CommentNode;
 import std.utf : decode;
 
@@ -232,8 +232,8 @@ void pickColor(ref Color field, Button swatch)
 /// here.
 ///
 /// Non-widget row shapes are real too: a
-/// `Function`/`Comment`/`Decl`/`Code`/`CodeBlock`/`DeclBlock`/`Data`
-/// node draws its own distinct row -- see `rowKind()`/`nodeTitle()`
+/// Function, Code, Conditional or Comment node draws its own distinct
+/// row -- see `rowKind()`/`nodeTitle()`
 /// below, ported from FLTK's own `item_draw()` else-branch
 /// (`l->is_widget() || l->is_class()` false) and `Node::title()`/
 /// `Function_Node::title()`. `func`/`code` are consulted by
@@ -259,12 +259,11 @@ final class NodeBrowserItem : TreeItem
     /// its own dispatch: `is_widget() || is_class()` (`widgetOrClass`,
     /// the existing class-name-plus-instance-name format above), else
     /// `is_code_block() && (level == 0 || parent->is_class())` (`func`
-    /// -- a top-level `Function`/`CodeBlock`, or one that's a method
-    /// inside a `class {}`), else a `Comment_Node` (`comment`, drawn on
-    /// the main line, distinct from the optional above-line comment
-    /// every row kind can also have), else everything left over
-    /// (`code`: `Code`/`Decl`/`DeclBlock`/`Data`, and a `CodeBlock` not
-    /// meeting the `func` condition above). `level == 0` is `node_.
+    /// -- a Function or Conditional node at the top level or directly in
+    /// a Class), else a Comment node (`comment`, drawn on the main line,
+    /// distinct from the optional above-line comment every row kind can
+    /// also have), else everything left over (`code`: a Code node, and a
+    /// Function or Conditional node not meeting the `func` condition). `level == 0` is `node_.
     /// parent is null` here -- this project's `Node` tracks a real
     /// `parent` reference instead of FLTK's own flat-list `level`
     /// integer (see `fluid.node`'s own top comment).
@@ -274,8 +273,8 @@ final class NodeBrowserItem : TreeItem
     {
         if (cast(WidgetNode) node_ !is null || cast(ClassNode) node_ !is null)
             return RowKind.widgetOrClass;
-        bool isFuncOrCodeBlock = cast(FunctionNode) node_ !is null || cast(CodeBlockNode) node_ !is null;
-        if (isFuncOrCodeBlock && (node_.parent is null || cast(ClassNode) node_.parent !is null))
+        bool isFuncOrConditional = cast(FunctionNode) node_ !is null || cast(ConditionalNode) node_ !is null;
+        if (isFuncOrConditional && (node_.parent is null || cast(ClassNode) node_.parent !is null))
             return RowKind.func;
         if (cast(CommentNode) node_ !is null)
             return RowKind.comment;
@@ -284,7 +283,7 @@ final class NodeBrowserItem : TreeItem
 
     /// FLTK: `Node::title()`/`Function_Node::title()` -- `name()`
     /// (this project's `instanceName`, the field every non-widget node
-    /// kind's own raw text is captured into, see `fluid.decl_node`'s
+    /// kind's own raw text is captured into, see `fluid.code_node`'s
     /// own top comment) if set, else `type_name()` (`Function`'s own
     /// override falls back to `"main()"` instead, matching FLTK's
     /// own special case for the anonymous top-level function).
@@ -322,9 +321,8 @@ final class NodeBrowserItem : TreeItem
 
     /// FLTK: `Node::is_public()` -- 0 private, 1 public, 2 protected. Only
     /// private and protected get an icon (`drawOverlayIcons()`). Only a
-    /// widget or a function has an access level here: FLTK's declaration and
-    /// declaration-block visibility picks the header or source file for the
-    /// code, and generated D has no such split, so those rows are public.
+    /// widget or a function has an access level; every other row counts
+    /// as public.
     private static int publicLevel(Node n)
     {
         if (auto w = cast(WidgetNode) n) return cast(int) w.access;
@@ -451,8 +449,8 @@ final class NodeBrowserItem : TreeItem
         }
         else
         {
-            // -- Function/CodeBlock ("func"), Comment ("comment"), or
-            // Code/Decl/DeclBlock/Data/other-CodeBlock ("code") --
+            // -- Function/Conditional ("func"), Comment ("comment"), or
+            // Code and any other Function/Conditional ("code") --
             // FLTK's own single-segment `func_font+func_color`/
             // `comment_font+comment_color`/`code_font+code_color` row,
             // no separate class-name segment (see `rowKind()`'s own doc
@@ -588,7 +586,7 @@ final class NodeBrowser : Tree
     /// item itself intact, which is all a rebuild actually needs.
     /// `roots` is the project's whole top-level forest (`gui_main.d`'s
     /// `projectRoots_`) -- a real project is never just one window, it's
-    /// a window plus whatever top-level `Function`/`decl`/`comment`/...
+    /// a window plus whatever top-level `Function`/`code`/`comment`/...
     /// siblings the project has (every hand-authored `.fl` file in this
     /// repo has at least an anonymous `Function {} {}` wrapping its
     /// window). Takes the whole forest, not a single `Node root`: a

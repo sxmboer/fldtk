@@ -2,7 +2,7 @@
 // Build: rdmd buildsamples.d test penpal
 //
 // The Penpal test app is here to test pen/stylus/tablet event distribution
-// in the Fl::Pen driver. Our main window has three canvases for drawing.
+// in the pen driver. Our main window has three canvases for drawing.
 // The first canvas is a child of the main window. The second canvas is
 // inside a group. The third canvas is a subwindow inside the main window.
 // A second application window is itself yet another canvas.
@@ -10,8 +10,8 @@
 // We can test if the events are delivered to the right receiver, if the
 // mouse and pen offsets are correct. The pen implementation also reacts
 // to pen pressure and angles. If handle() returns 1 when receiving
-// Fl::Pen::ENTER, the event handler should not send any mouse events until
-// Fl::Pen::LEAVE.
+// Event.penEnter, the event handler should not send any mouse events until
+// Event.penLeave.
 //
 // FLTK mixes Fl_Widget/Fl_Window with a plain CanvasInterface base via
 // C++ multiple inheritance; D classes only support single inheritance, so

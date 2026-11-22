@@ -22,8 +22,6 @@ Use fluid interactively to open this fluid (.fl) file and
 double-click on items to see how they are defined.
 }
   {
-    in_source
-    in_header
   }
 class App
   {

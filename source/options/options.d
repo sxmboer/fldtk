@@ -18,7 +18,8 @@
  * preferences: `~/.config/fldtk/options.prefs` and
  * `/etc/fldtk/fldtk/options.prefs` on Linux, `%APPDATA%` and the common
  * application data folder on Windows. A value that can't be written (the
- * system file, usually) is shown but can't be changed. A change applies
+ * system file, unless the program runs as root or, on Windows, as an
+ * administrator) is shown but can't be changed. A change applies
  * to programs started afterwards.
  *
  * Started with switches it changes or prints values without opening a
@@ -203,11 +204,25 @@ bool parseNumber(string s, out float f)
         return false;
 }
 
+version (Windows)
+{
+    // shell32: true only in an elevated process, when UAC is on.
+    private extern (Windows) int IsUserAnAdmin() nothrow @nogc;
+}
+
 /// Whether the settings file for `ctx` can be written: the file itself
 /// if it exists, otherwise the nearest folder above it that exists (the
 /// missing folders are created when the file is first written).
+///
+/// On Windows the system settings are writable only to a program running
+/// as an administrator. The common application data folder they live in
+/// lets every user create files, so trying one would wrongly say yes.
 bool canWrite(Context ctx)
 {
+    version (Windows)
+    {
+        if (ctx == Context.system) return IsUserAnAdmin() != 0;
+    }
     import std.file : exists, isDir, remove;
     import std.path : dirName, buildPath;
     import std.stdio : File;

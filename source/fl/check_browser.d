@@ -326,6 +326,24 @@ class CheckBrowser : Browser_
         return p !is null ? p.text : null;
     }
 
+    /// The text of every line, in order, as an array, so `foreach` and
+    /// Phobos work on it. Line `n` (counting from 1) is `lines[n - 1]`.
+    string[] lines() const
+    {
+        string[] result;
+        foreach (i; 1 .. nitems_ + 1) result ~= text(i).idup;
+        return result;
+    }
+
+    /// The numbers of the checked lines, counting from 1, in order.
+    int[] checkedLines() const
+    {
+        int[] result;
+        foreach (i; 1 .. nitems_ + 1)
+            if (checked(i)) result ~= i;
+        return result;
+    }
+
     override int handle(Event event)
     {
         if (event == Event.push)
@@ -472,4 +490,17 @@ unittest
 
     fl.core.resetForTest();
     FlGroup.current(null);
+}
+
+unittest
+{
+    // lines and checkedLines.
+    import fl.group : FlGroup;
+    FlGroup.current(null);
+    auto b = new CheckBrowser(0, 0, 100, 100);
+    b.add("one");
+    b.add("two", true);
+    b.add("three", true);
+    assert(b.lines == ["one", "two", "three"]);
+    assert(b.checkedLines == [2, 3]);
 }

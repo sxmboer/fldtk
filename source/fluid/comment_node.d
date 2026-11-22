@@ -1,21 +1,10 @@
 /*
- * A standalone `comment { ... }` project-tree node -- a raw comment
- * block emitted into generated code output as its own tree entry,
- * independent of any other node's own `comment` property (every node
- * type already has one of those, via the generic `Node.comment` field
- * -- this is a different thing: an explicit, selectable "Comment" row
- * a Fluid user can insert directly, matching FLTK's `Comment_Node`
- * (`fluid/nodes/Function_Node.h`/`.cxx`) exactly).
- *
- * `instanceName` (captured generically by `Reader.parseNode()`, the
- * same mechanism `CodeNode`/`DeclNode` use for their own raw text)
- * holds the comment's own text (FLTK's `name()`). `inHeader_`/
- * `inSource_` mirror FLTK's `in_h_`/`in_c_` (both default `true`,
- * matching FLTK's own `Comment_Node()` field initializers) --
- * round-trip only for now, same "no D-codegen meaning yet" category as
- * `fluid.decl_block_node.DeclBlockNode`'s own `writeMap_` (this port's
- * code generator doesn't split output between a header and a source
- * file at all).
+ * A Comment node: notes in the project tree, and a comment in the
+ * generated `.d` file where the node sits. `instanceName` holds the text.
+ * `inSource_` false keeps the comment in the project file only (the
+ * `.fl` flag `not_in_source`). Older files also carry `in_source`,
+ * `in_header` and `not_in_header`, which are read and dropped; there is
+ * no header file.
  */
 module fluid.comment_node;
 
@@ -24,7 +13,6 @@ import fluid.project_reader : Reader;
 
 class CommentNode : Node
 {
-    bool inHeader_ = true;
     bool inSource_ = true;
 
     override bool readProperty(Reader r, string name)
@@ -33,8 +21,9 @@ class CommentNode : Node
         {
         case "in_source": inSource_ = true; return true;
         case "not_in_source": inSource_ = false; return true;
-        case "in_header": inHeader_ = true; return true;
-        case "not_in_header": inHeader_ = false; return true;
+        case "in_header":
+        case "not_in_header":
+            return true;
         default: return super.readProperty(r, name);
         }
     }

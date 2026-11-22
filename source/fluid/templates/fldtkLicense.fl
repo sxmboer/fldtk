@@ -1,6 +1,6 @@
 # data file for fldtk fluid (Fast Light User Interface Designer)
 version 1.0000
-comment {// @INSTANCE@ for fldtk (Full-D-tick), a D port of the Fast Light Tool Kit (FLTK).
+comment {// @INSTANCE@ for fldtk (Full-D-toolkit), a D port of the Fast Light Tool Kit (FLTK).
 //
 // Copyright 2026 by Steef Boerrigter.
 //
@@ -10,6 +10,4 @@ comment {// @INSTANCE@ for fldtk (Full-D-tick), a D port of the Fast Light Tool 
 //
 }
   {
-    in_source
-    in_header
   }

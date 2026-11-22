@@ -21,10 +21,8 @@ In this small example, gettext is only emulated -- see gettext()
 below.
 }
   {
-    in_source
-    in_header
   }
-decl {int gLanguage = 0;
+code {int gLanguage = 0;
 // Current languages: 0 = English, 1 = German.
 
 immutable string project = "fldtk";
@@ -75,8 +73,6 @@ immutable string[2][] translationTable = [
     ["with milk", "mit Milch"],
 ];}
   {
-    private
-    local
   }
 Function {gettext(string text)}
   {

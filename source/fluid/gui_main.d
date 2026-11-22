@@ -51,7 +51,7 @@
  * page, or `fl.openUri()` to fltk.org).
  *
  * `topLevelSelection()` reaches a
- * selected top-level `Function`/`decl`/`comment`/... project root for
+ * selected top-level `Function`/`code`/`comment`/... project root for
  * Cut/Copy/Duplicate/Delete: selecting one in the browser has no
  * enclosing `WindowNode` to resolve `activeWindow_` from, so
  * `allSelectedNodes()` merges the canvas's own selection with the
@@ -83,6 +83,7 @@ module fluid.gui_main;
 
 import std.file : readText, write;
 import std.stdio : stderr, writefln;
+import std.path : absolutePath, baseName, dirName;
 
 import fl;
 
@@ -130,8 +131,10 @@ import about_panel : makeAboutPanel, aboutPanel;
 import template_panel : makeTemplatePanel, templatePanel, templateBrowser,
     templateInstance, templateDelete, templateSubmit,
     templateName, templateClear, templateLoad, templateSelectedPath;
-import codeview_panel : codeviewToggleVisibility, codeviewRefresh, codeviewPanel,
-    codeviewUpdatePosition, codeviewAutoRefresh, cvOnReveal;
+import fluid.compiler_errors : CompilerMessage;
+import codeview_panel : codeviewToggleVisibility, codeviewRefresh, codeviewRefreshCurrent, codeviewPanel,
+    codeviewUpdatePosition, codeviewAutoRefresh, cvOnReveal, cvLoadProject,
+    cvRoots_, cvI18n_, cvDubHeader_, cvSettings_, cvProjectDir_, cvOutputDir_, cvOnSourceChanged, cvSource;
 import settings_panel : settingsRefreshProject, settingsToggleVisibility, settingsShowShellTab, settingsShowLayoutTab,
     layoutRefreshTabIfOpen, layoutSaveUser;
 import function_panel : makeWidgetBin, widgetBinPanel, binButtonCb, codeButtonCb, widgetBinToggleVisibility;
@@ -144,14 +147,10 @@ import fluid.run_program : runStart, runKill, runRunning, onRunOutput;
 import fluid.shell_command;
 import fluid.shell_settings : onProjectShellCommandChanged, onShellListChanged;
 import fluid.code_node : CodeNode;
-import fluid.decl_node : DeclNode;
-import fluid.data_node : DataNode;
 import fluid.comment_node : CommentNode;
 import fluid.function_node : FunctionNode;
-import fluid.code_block_node : CodeBlockNode;
-import fluid.decl_block_node : DeclBlockNode;
+import fluid.conditional_node : ConditionalNode;
 import fluid.class_node : ClassNode;
-import fluid.widget_class_node : WidgetClassNode;
 import fluid.external_code_editor : ExternalCodeEditor;
 import fluid.pixmaps : loadPixmaps, pixmapFor;
 
@@ -303,7 +302,7 @@ private DoubleWindow liveResizeWindow_;
 
 /// `n`'s own enclosing top-level `WindowNode`, found by walking
 /// `n.parent` (`n` itself if it's already one) -- `null` for a node
-/// with no `WindowNode` ancestor at all (a bare `Function`/`decl`/...
+/// with no `WindowNode` ancestor at all (a bare `Function`/`code`/...
 /// project root, or anything hanging off one that isn't inside any
 /// window yet).
 private WindowNode enclosingWindowNode(Node n)
@@ -477,7 +476,7 @@ void runEditor(string[] args)
     // display one (the widget palette, the node browser) gets built.
     loadPixmaps();
 
-    shelf_ = new Window(SHELF_W, SHELF_H, "Fluid");
+    shelf_ = new DoubleWindow(SHELF_W, SHELF_H, "Fluid");
     makeFluidIcon(shelf_);
     // Matches FLTK's own `main_window->callback(exit_cb)` -- the
     // window-manager close box quits through the same path (confirm-
@@ -695,13 +694,9 @@ void runEditor(string[] args)
     // rule, which differs from `addWidget()`'s widget-only version).
     newNodeItem("&New/&Code/&Function", "Function");
     newNodeItem("&New/&Code/C&lass", "class");
-    newNodeItem("&New/&Code/Co&mment", "comment");
     newNodeItem("&New/&Code/&Code", "code");
-    newNodeItem("&New/&Code/Code Bloc&k", "codeblock");
-    newNodeItem("&New/&Code/&Widget Class", "widget_class");
-    newNodeItem("&New/&Code/&Declaration", "decl");
-    newNodeItem("&New/&Code/Declaration &Block", "declblock");
-    newNodeItem("&New/&Code/&Inline Data", "data");
+    newNodeItem("&New/&Code/Co&nditional", "conditional");
+    newNodeItem("&New/&Code/Co&mment", "comment");
     // Order matches FLTK's own `New_Menu[]` "Group" category
     // exactly: Window, Group, Pack, Flex, Tabs, Scroll, Tile, Wizard,
     // Grid.
@@ -1021,15 +1016,14 @@ void runEditor(string[] args)
     // Threads `widgetPanelOnBeforeEdit`/`widgetPanelOnEdited` through
     // every property-editing widget under `tabsWizard` -- every tab
     // page (`widgetTabs`, both Grid sub-panels included, plus
-    // `commentTabs`/`funcTabs`/`classTabs`/`codeTabs`/`codeblockTabs`/
-    // `declTabs`/`declblockTabs`/`dataTabs`), not just `widgetTabs`
+    // `commentTabs`/`funcTabs`/`codeTabs`/`conditionalTabs`), not just `widgetTabs`
     // alone: `wireEditHooks()`'s own generic model->live-widget re-sync
     // only ever touches `selectedWidgetNodes()`, so it's already a
     // harmless no-op for a Function/Comment/Code/... field's own
     // callback -- the checkpoint/dirty-flag/tree-refresh half of
     // `onBeforeEdit`/`onEdited` is what those node kinds were actually
-    // missing (see `widget_panel.fl`'s `codeText`/`codeblockEnd`
-    // callback comments -- "Fluid.proj.set_modflag(1);
+    // missing (see `widget_panel.fl`'s `codeText`
+    // callback comment -- "Fluid.proj.set_modflag(1);
     // redraw_browser();" -- real via this). Not
     // `thePanel` itself, since the bottom bar's own
     // `wLiveMode`/`overlayButton`/the Close `ReturnButton` are
@@ -1065,8 +1059,8 @@ void runEditor(string[] args)
         else if (isMenuItemTypeName(btn.typeName())) addNode(btn.typeName());
         else addWidget(btn.typeName());
     };
-    // The palette's "Code" group (Function/Class/comment/Code/
-    // CodeBlock/widget_class/decl/declblock/data) reuses `BinButton`
+    // The palette's "Code" group (Function/Class/Code/Conditional/
+    // Comment) reuses `BinButton`
     // purely for its `typeName()` storage/tooltip -- these buttons are
     // never dragged onto the canvas (there's no live widget to drop),
     // matching FLTK's own real split: the widget-tree buttons use
@@ -1089,6 +1083,16 @@ void runEditor(string[] args)
     // reveals and highlights, per its own doc comment) in one call, the
     // same pair of effects a plain tree-browser click already produces
     // for any other node.
+    cvLoadProject = () {
+        import std.path : dirName;
+        cvRoots_ = projectRoots_;
+        cvI18n_ = projectI18n_;
+        cvDubHeader_ = projectDubHeader_;
+        cvSettings_ = projectSettings_;
+        cvProjectDir_ = projectDir_();
+        cvOutputDir_ = projectPath_.length ? dirName(codeFilePath_()) : null;
+    };
+    cvOnSourceChanged = () { markBuildErrors(); };
     cvOnReveal = (n, doubleClick) {
         selectFromBrowser([n]);
         if (doubleClick)
@@ -1151,7 +1155,7 @@ void runEditor(string[] args)
     // against `fluid.app_prefs.appPrefs` the same way every other
     // persisted UI setting in this app already works. Defaults chosen
     // to tile the same way FLTK's own do, just resized for this
-    // port's own `shelf_`/`widgetBinPanel` dimensions (280x400/624x102
+    // port's own `shelf_`/`widgetBinPanel` dimensions (280x400/599x102
     // here vs FLTK's 300x525/600x102) rather than copying FLTK's
     // literal pixel values verbatim.
     bool shelfVisible = positionWindow(shelf_, "main_window_pos", true, 10, 30);
@@ -1684,6 +1688,7 @@ private void mergeProject(string path)
     try
     {
         reader = new Reader(source);
+        reader.projectDir = dirName(absolutePath(path));
         roots = reader.readProject();
     }
     catch (Exception e)
@@ -1693,6 +1698,7 @@ private void mergeProject(string path)
         return;
     }
 
+    showReaderNotes(path, reader.notes);
     checkpoint();
 
     // Options the file sets are applied to the open project, as in FLTK's
@@ -1762,10 +1768,13 @@ private void loadProject(string path, bool asTemplate = false, string instance =
     string layoutCurrentSuite;
     int layoutCurrentPreset;
     bool hasSnap;
+    string[] notes;
     try
     {
         auto reader = new Reader(source);
+        reader.projectDir = dirName(absolutePath(path));
         roots = reader.readProject();
+        notes = reader.notes;
         i18n = reader.i18n;
         shellCommands = reader.shellCommands;
         codeFileName = reader.codeFileName;
@@ -1782,12 +1791,13 @@ private void loadProject(string path, bool asTemplate = false, string instance =
         fl.message(format("Can't read %s: %s", path, e.msg));
         return;
     }
+    showReaderNotes(path, notes);
 
     auto windowRoots = findAllWindowRoots(roots);
     if (windowRoots.length == 0)
     {
         // A real, expected case, not an error: this project's own
-        // source/examples/fluid-callback.fl has no WindowNode at all
+        // source/examples/fluid_callback.fl has no WindowNode at all
         // (its window is built entirely from `code {}` text at runtime,
         // e.g. `super(x,y,l);` inside a hand-written constructor) --
         // structurally outside what this editor can render at all (it
@@ -2084,6 +2094,20 @@ private void redo()
 /// did nothing); the rewritten flow below handles it for free, since
 /// closing every previous window with no counterpart needs no special
 /// case for "there happen to be none left".
+/// Tells the user what reading an older `.fl` file changed or could
+/// not carry over (`Reader.notes`): on stderr, and in a message.
+private void showReaderNotes(string path, string[] notes)
+{
+    import std.array : join;
+    import std.format : format;
+
+    if (notes.length == 0) return;
+    foreach (n; notes)
+        stderr.writefln("fluid: %s: %s", path, n);
+    fl.message(format("%s uses older code nodes. Fluid converted them:\n\n%s\n\n"
+        ~ "Saving the project writes the new form.", baseName(path), notes.join("\n")));
+}
+
 private void restoreFromText(string text)
 {
     Node[] roots;
@@ -2953,8 +2977,8 @@ private void insertIntoGroup(FlGroup parentGroup, Widget widget, int x, int y, b
 }
 
 /// Creates a new non-widget project-structure node -- the widget
-/// palette's "Code" group (`Function`/`Class`/`comment`/`Code`/
-/// `CodeBlock`/`widget_class`/`decl`/`declblock`/`data`) -- and inserts
+/// palette's "Code" group (Function, Class, Code, Conditional,
+/// Comment) -- and inserts
 /// it into the project tree. The non-widget counterpart to
 /// `insertWidget()`: these types are never `WidgetNode`s (no live
 /// `fl.widget.Widget`, no xywh, no canvas placement), so there's no
@@ -2967,8 +2991,8 @@ private void insertIntoGroup(FlGroup parentGroup, Widget widget, int x, int y, b
 ///
 /// Target, matching FLTK's own `AS_LAST_CHILD`/`AFTER_CURRENT`
 /// strategy split (`Node::add_new_widget_from_user()`): if the current
-/// selection can itself hold children (a `Function`/`Class`/
-/// `widget_class`/`declblock`/`codeblock`), the new node becomes its
+/// selection can itself hold children (a Function, Class or Conditional
+/// node), the new node becomes its
 /// last child. Otherwise the new node becomes a top-level project root
 /// -- spliced in right after the selection's own top-level ancestor if
 /// something is selected, or appended at the end if nothing is.
@@ -3016,34 +3040,58 @@ private bool isMenuItemTypeName(string typeName)
         || typeName == "RadioMenuItem" || typeName == "Submenu";
 }
 
-/// Whether `p` may hold a new node of `typeName` (a `.fl` keyword), from
-/// each FLTK `..._Node::make()`'s placement walk (`nodes/Function_Node.
-/// cxx`, `Window_Node.cxx`, `Menu_Node.cxx`). FLTK's `is_code_block()`
-/// is true for a Function, Code Block or Widget Class, and
-/// `is_decl_block()` for a Declaration Block, Class or Widget Class.
+/// Whether `p` holds declarations: a Class, or a Conditional node at
+/// module or class scope.
+private bool holdsDeclarations(Node p)
+{
+    if (cast(ClassNode) p !is null) return true;
+    if (cast(ConditionalNode) p is null) return false;
+    Node up = p.parent;
+    while (cast(ConditionalNode) up !is null) up = up.parent;
+    return up is null || cast(ClassNode) up !is null;
+}
+
+/// Whether `p` holds statements: a Function, or a Conditional node in
+/// one or among a window's widgets.
+private bool holdsStatements(Node p)
+{
+    if (cast(FunctionNode) p !is null) return true;
+    return cast(ConditionalNode) p !is null && !holdsDeclarations(p);
+}
+
+/// Whether `p` holds widgets: a group widget or window, or a Conditional
+/// node among one's widgets. A Flex or Grid lays out its own children by
+/// their place among them, so a Conditional in one holds no widgets.
+private bool holdsWidgets(Node p)
+{
+    if (isContainerNode(p)) return true;
+    if (cast(ConditionalNode) p is null) return false;
+    Node up = p.parent;
+    while (cast(ConditionalNode) up !is null) up = up.parent;
+    return up !is null && isContainerNode(up) && cast(FlexNode) up is null && cast(GridNode) up is null;
+}
+
+/// Whether `p` may hold a new node of `typeName` (a `.fl` keyword). Code,
+/// Conditional and Comment nodes go anywhere: at the top, in a Class, a
+/// Function, a Conditional node or among a container's widgets. A
+/// Function goes where declarations do (a method in a Class), and so
+/// does a Class (a nested class in another Class). A window goes where
+/// statements do, or into another window (a subwindow). A widget goes
+/// where widgets do (`holdsWidgets()`).
 private bool acceptsNewNode(string typeName, Node p)
 {
-    bool codeBlock = cast(FunctionNode) p !is null || cast(CodeBlockNode) p !is null
-        || cast(WidgetClassNode) p !is null;
-    bool declBlock = cast(DeclBlockNode) p !is null || cast(ClassNode) p !is null
-        || cast(WidgetClassNode) p !is null;
     switch (typeName)
     {
-    case "Function": case "decl": case "data": case "declblock": case "class":
-        return declBlock;
-    case "widget_class":
-        return declBlock && cast(WidgetClassNode) p is null;
-    case "comment": case "codeblock":
-        return codeBlock;
-    case "code":
-        return codeBlock || isContainerNode(p);
+    case "Function":
+        return holdsDeclarations(p);
+    case "class":
+        return holdsDeclarations(p);
+    case "code": case "conditional": case "comment":
+        return holdsDeclarations(p) || holdsStatements(p) || isContainerNode(p);
     case "Window":
-        // `Window_Node` counts as a code block, so a window can go
-        // inside another window (a subwindow), but not inside a widget class.
-        return (codeBlock || cast(WindowNode) p !is null) && cast(WidgetClassNode) p is null;
+        return holdsStatements(p) || cast(WindowNode) p !is null;
     case "widget":
-        // `Widget_Node::make()`: a group widget or window.
-        return isContainerNode(p);
+        return holdsWidgets(p);
     default:
         if (isMenuItemTypeName(typeName))
             return cast(MenuOwnerNode) p !is null || cast(SubmenuNode) p !is null;
@@ -3053,12 +3101,11 @@ private bool acceptsNewNode(string typeName, Node p)
 
 /// Whether a new node of `typeName` can only be created inside a parent
 /// `acceptsNewNode()` allows (`assistNodeCreation()` offers to create the
-/// missing container, and nothing is created if the user declines); every other kind goes to the top level when no such parent
-/// exists.
+/// missing container, and nothing is created if the user declines); every
+/// other kind goes to the top level when no such parent exists.
 private bool newNodeNeedsParent(string typeName)
 {
-    return typeName == "code" || typeName == "codeblock" || typeName == "Window"
-        || typeName == "widget" || isMenuItemTypeName(typeName);
+    return typeName == "Window" || typeName == "widget" || isMenuItemTypeName(typeName);
 }
 
 /// Where a new node goes: the result of FLTK's `..._Node::make()`
@@ -3131,16 +3178,12 @@ private bool placeNewNode(Node newNode, bool delegate(Node) accepts, bool needsP
 private string nodeKind(Node n)
 {
     if (cast(MenuItemNode) n !is null) return n.typeName.length ? n.typeName : "MenuItem";
-    if (cast(WidgetClassNode) n !is null) return "widget_class";
+    if (cast(ClassNode) n !is null) return "class";
     if (cast(WindowNode) n !is null) return "Window";
     if (cast(WidgetNode) n !is null) return "widget";
     if (cast(FunctionNode) n !is null) return "Function";
-    if (cast(CodeBlockNode) n !is null) return "codeblock";
+    if (cast(ConditionalNode) n !is null) return "conditional";
     if (cast(CodeNode) n !is null) return "code";
-    if (cast(DataNode) n !is null) return "data";
-    if (cast(DeclNode) n !is null) return "decl";
-    if (cast(DeclBlockNode) n !is null) return "declblock";
-    if (cast(ClassNode) n !is null) return "class";
     if (cast(CommentNode) n !is null) return "comment";
     return "";
 }
@@ -3161,7 +3204,7 @@ private string noParentMessage(string kind)
 /// creates doesn't start an assistant of its own or clear the override.
 private bool assistRunning_;
 
-/// The `ClassNode` containing `n` (or `n` itself), or null.
+/// The Class containing `n` (or `n` itself), or null.
 private ClassNode enclosingClassNode(Node n)
 {
     for (; n !is null; n = n.parent)
@@ -3223,10 +3266,10 @@ private void nameNewFunction(FunctionNode fn)
 /// Ported from `Code_Node`/`CodeBlock_Node`/`Window_Node`/`Widget_Node`/
 /// `Menu_Item_Node::node_creation_assistant()`: when a new node of
 /// `typeName` has no allowed parent, asks whether to create the missing
-/// containers instead of just refusing. A code, code block or window
-/// needs a Function (or a method of the selected class); a widget needs a
-/// Window, which needs a Function; a menu item needs a Menu Button, which
-/// needs a Window and a Function.
+/// containers instead of just refusing. A window needs a Function (or a
+/// method of the selected class); a widget needs a Window, which needs a
+/// Function; a menu item needs a Menu Button, which needs a Window and a
+/// Function.
 ///
 /// Returns true when the containers exist; `selectionOverride_` then names
 /// the one the node goes into, and the caller must clear it. The whole
@@ -3245,9 +3288,8 @@ private bool assistNodeCreation(string typeName)
     string text, create, createMethod;
     switch (typeName == "widget" ? 1 : menuItem ? 2 : 0)
     {
-    case 0: // code, code block, window
-        string what = typeName == "Window" ? "A window" : typeName == "code" ? "A code node" : "A code block";
-        text = what ~ " can only be created inside a function or a class method.\n\n"
+    case 0: // window
+        text = "A window can only be created inside a function or a class method.\n\n"
             ~ "Would you like to create a new function for it, or cancel and select an existing container?";
         create = "Create a &Function";
         createMethod = inClass ? format("Create a &Method in %s", enclosingClassNode(cur).instanceName) : null;
@@ -3284,7 +3326,7 @@ private bool assistNodeCreation(string typeName)
 
     if (typeName != "widget" && !menuItem)
     {
-        // code, code block, window: just the function
+        // code, conditional, window: just the function
         selectionOverride_ = createFunctionFor(cur, ret == 2);
     }
     else
@@ -3314,6 +3356,232 @@ private bool assistNodeCreation(string typeName)
     return true;
 }
 
+/// When two or more nodes are selected in the tree, a new Function,
+/// Class or Conditional node takes the place of the first of them (in
+/// tree order) and they all become its children, in tree order, wherever
+/// they stood (the selected nodes inside another selected node move along
+/// with it). Returns false, changing nothing, for any other kind of node,
+/// for fewer than two selected nodes, when one of them cannot go into the
+/// new node (a widget in a Class, a Function in a Function), or when a
+/// widget would leave its window or a Flex or Grid; `addNode()` then
+/// places the new node as usual. A design window whose widgets moved is
+/// rebuilt, since they may now sit in another group.
+private bool wrapSelectionIn(Node newNode, string typeName)
+{
+    import std.algorithm : all, canFind, countUntil, remove, sort;
+
+    if (typeName != "Function" && typeName != "class" && typeName != "conditional")
+        return false;
+    auto sel = browser_.selectedNodes();
+    Node[] picked;
+    foreach (n; sel)
+    {
+        bool inner;
+        for (Node up = n.parent; up !is null && !inner; up = up.parent)
+            inner = sel.canFind(up);
+        if (!inner) picked ~= n;
+    }
+    if (picked.length < 2) return false;
+
+    int[Node] order;
+    int next;
+    void number(Node[] ns)
+    {
+        foreach (n; ns)
+        {
+            order[n] = next++;
+            number(n.children);
+        }
+    }
+    number(projectRoots_);
+    picked.sort!((a, b) => order.get(a, int.max) < order.get(b, int.max));
+    Node first = picked[0];
+    Node parent = first.parent;
+    if (parent !is null && !acceptsNewNode(typeName, parent)) return false;
+
+    // Whether each node may go into the new node, judged with the new
+    // node standing where it will be.
+    newNode.parent = parent;
+    bool fits = picked.all!(n => acceptsNewNode(nodeKind(n), newNode));
+    newNode.parent = null;
+    if (!fits) return false;
+
+    // Widgets stay in their own window, and out of a Flex or Grid, which
+    // keep their children by their place among them.
+    bool bearsWidgets(Node n)
+    {
+        if (cast(WidgetNode) n !is null) return true;
+        foreach (c; n.children)
+            if (bearsWidgets(c)) return true;
+        return false;
+    }
+    WindowNode target = parent is null ? null : enclosingWindowNode(parent);
+    bool widgetsMove;
+    foreach (n; picked)
+        if (bearsWidgets(n))
+        {
+            if ((n.parent is null ? null : enclosingWindowNode(n.parent)) !is target) return false;
+            if (cast(FlexNode) n.parent !is null || cast(GridNode) n.parent !is null) return false;
+            widgetsMove = true;
+        }
+
+    checkpoint();
+    if (parent !is null)
+    {
+        parent.addChild(newNode);
+        newNode.moveBefore(first);
+    }
+    else
+    {
+        auto at = projectRoots_.countUntil(first);
+        projectRoots_ = projectRoots_[0 .. at] ~ newNode ~ projectRoots_[at .. $];
+    }
+    foreach (n; picked)
+    {
+        if (n.parent !is null)
+            n.parent.removeChild(n);
+        else
+            projectRoots_ = projectRoots_.remove(projectRoots_.countUntil(n));
+        newNode.addChild(n);
+    }
+    if (widgetsMove && target !is null)
+    {
+        auto top = outermostWindow(target);
+        if (auto cv = canvases_.get(top, null))
+        {
+            dropNestedCanvases(top);
+            cv.rebuildFrom(top, projectDir_());
+            registerNestedCanvases(cv);
+        }
+    }
+    return true;
+}
+
+unittest
+{
+    // Wrapping selected nodes in a new Conditional, at the first one's
+    // place, and unwrapping it again.
+    import fluid.code_node : CodeNode;
+    import fluid.function_node : FunctionNode;
+    import fluid.group_node : GroupNode;
+
+    auto savedRoots = projectRoots_;
+    auto savedBrowser = browser_;
+    auto savedUndo = undoStack_;
+    scope (exit)
+    {
+        projectRoots_ = savedRoots;
+        browser_ = savedBrowser;
+        undoStack_ = savedUndo;
+        FlGroup.current(null);
+    }
+    FlGroup.current(null);
+    make_widget_panel();
+    FlGroup.current(null);
+    browser_ = new NodeBrowser(0, 0, 200, 300);
+    FlGroup.current(null);
+
+    T mk(T)(string type, string name, Node parent)
+    {
+        auto n = new T();
+        n.typeName = type;
+        n.instanceName = name;
+        if (parent !is null) parent.addChild(n);
+        return n;
+    }
+    auto fn = mk!FunctionNode("Function", "", null);
+    auto a = mk!CodeNode("code", "int a;", fn);
+    auto win = mk!WindowNode("Window", "win", fn);
+    auto grp = mk!GroupNode("Group", "grp", win);
+    auto b1 = mk!WidgetNode("Button", "b1", grp);
+    auto b2 = mk!WidgetNode("Button", "b2", win);
+    auto c = mk!CodeNode("code", "int c;", fn);
+    projectRoots_ = [cast(Node) fn];
+
+    Node wrapNew(Node[] select)
+    {
+        browser_.build(projectRoots_);
+        browser_.syncSelection(select);
+        auto n = createNode("conditional");
+        n.typeName = "conditional";
+        return wrapSelectionIn(n, "conditional") ? n : null;
+    }
+
+    // Two nodes of one parent, not next to each other.
+    auto cond = wrapNew([c, a]);
+    assert(cond !is null);
+    assert(fn.children == [cond, cast(Node) win]);
+    assert(cond.children == [cast(Node) a, c]);
+
+    // Unwrap puts them back where the Conditional was.
+    browser_.build(projectRoots_);
+    browser_.syncSelection([cond]);
+    unwrapSelected();
+    assert(fn.children == [cast(Node) a, c, win]);
+    assert(a.parent is fn && c.parent is fn);
+
+    // Widgets at different levels of one window go where the first is.
+    cond = wrapNew([b2, b1]);
+    assert(cond !is null);
+    assert(grp.children == [cond]);
+    assert(cond.children == [cast(Node) b1, b2]);
+    assert(win.children == [cast(Node) grp]);
+
+    // A widget can't go into a Conditional among a function's statements.
+    assert(wrapNew([a, b1]) is null);
+    assert(fn.children == [cast(Node) a, c, win]);
+}
+
+/// Unwrap, in the project tree's right-click menu: every selected
+/// Conditional node is replaced by its children, which move up to its
+/// place, in order. One undo step; the children are selected afterwards.
+/// A Conditional node has no live widget, and its widgets already sit in
+/// the group around it, so the design windows need no rebuilding.
+private void unwrapSelected()
+{
+    import std.algorithm : canFind, countUntil, filter, remove;
+    import std.array : array;
+
+    flushTextWidgets();
+    ConditionalNode[] conds;
+    foreach (n; allSelectedNodes())
+        if (auto c = cast(ConditionalNode) n) conds ~= c;
+    if (conds.length == 0) return;
+
+    checkpoint();
+    Node[] freed;
+    foreach (c; conds)
+    {
+        Node parent = c.parent;
+        foreach (k; c.children.dup)
+        {
+            c.removeChild(k);
+            if (parent !is null)
+            {
+                parent.addChild(k);
+                k.moveBefore(c);
+            }
+            else
+            {
+                auto at = projectRoots_.countUntil(c);
+                projectRoots_ = projectRoots_[0 .. at] ~ k ~ projectRoots_[at .. $];
+            }
+            freed ~= k;
+        }
+        if (parent !is null)
+            parent.removeChild(c);
+        else
+            projectRoots_ = projectRoots_.remove(projectRoots_.countUntil(c));
+    }
+    // A selected Conditional inside another one was freed, then unwrapped.
+    freed = freed.filter!(k => !conds.canFind(k)).array;
+
+    browser_.build(projectRoots_);
+    browser_.syncSelection(freed);
+    selectFromBrowser(freed);
+    codeviewAutoRefresh();
+}
+
 private void addNode(string typeName)
 {
     auto newNode = createNode(typeName);
@@ -3324,14 +3592,10 @@ private void addNode(string typeName)
     // so `code_writer.d`'s `writePlainFunction()` infers it from the
     // function's first widget child.
     newNode.instanceName = defaultNameFor(typeName);
-    // `Data_Node::make()` makes new inline data public.
-    if (auto dn = cast(DataNode) newNode) dn.visibility_ = 1;
-    // A widget class is a window too, so it gets a window's geometry
-    // (`add_new_widget_from_user()` resizes every `Window_Node`).
-    if (auto wcn = cast(WidgetClassNode) newNode) placeNewWindowGeometry(wcn);
 
     scope(exit) selectionOverride_ = null;
-    if (!placeNewNode(newNode, (Node p) => acceptsNewNode(typeName, p), newNodeNeedsParent(typeName)))
+    if (!wrapSelectionIn(newNode, typeName)
+        && !placeNewNode(newNode, (Node p) => acceptsNewNode(typeName, p), newNodeNeedsParent(typeName)))
     {
         // No allowed parent: offer to create the missing containers, then
         // place the node in the last one created.
@@ -3358,8 +3622,6 @@ private void addNode(string typeName)
     }
 
     browser_.build(projectRoots_);
-    // A widget class has its own canvas, so it exists before the selection is synced.
-    if (auto wcn = cast(WidgetClassNode) newNode) showWindowCanvas(wcn);
     if (auto cv = canvasFor(newNode)) cv.syncSelectionFrom([newNode]);
     browser_.syncSelection([newNode]);
     openNode(newNode);
@@ -3367,7 +3629,7 @@ private void addNode(string typeName)
     codeviewAutoRefresh();
 }
 
-/// Gives a new window-shaped node (a `Window` or a `widget_class`) its
+/// Gives a new window its
 /// starting geometry, ported from `Window_Node::ideal_size()` plus the
 /// window branch of `add_new_widget_from_user()`: 480x320, at most 3/4 of
 /// the work area, snapped to the layout grid, centered on the shelf's
@@ -3388,10 +3650,14 @@ private void placeNewWindowGeometry(WindowNode win)
 
 /// Ported from `Window_Node::make()` (`nodes/Window_Node.cxx`) --
 /// `&New/&Group/&Window`'s and the widget bin's own dedicated
-/// callback. A window goes into a code block that isn't a widget class
-/// (a Function or Code Block, `acceptsNewNode()`), placed by
+/// callback. A window goes where statements go (a Function, or a
+/// Conditional node in one, `acceptsNewNode()`), placed by
 /// `placeNewNode()`; with none above the selection, `assistNodeCreation()`
 /// offers to create a function (or method) for it.
+///
+/// A new window is double-buffered ("Double" in its type choice), so it
+/// never shows its drawing while it happens; a single-buffered one is
+/// still a choice there.
 ///
 /// Default geometry follows FLTK's `Window_Node::ideal_size()`: 480x320,
 /// capped at 3/4 of the work area, snapped to the layout grid and
@@ -3410,6 +3676,7 @@ private WindowNode createWindowNode()
     // browser row.
     auto win = new WindowNode();
     win.typeName = "Window";
+    win.typeWord = "Double";
     win.instanceName = "";
     placeNewWindowGeometry(win);
 
@@ -3509,7 +3776,7 @@ private void openNode(Node n)
 
     // `canvasFor(n)` is legitimately `null` here whenever `n` has no
     // `WindowNode` ancestor at all (a brand-new project's bare
-    // `Function`/`decl`/... project root) -- its own non-widget
+    // `Function`/`code`/... project root) -- its own non-widget
     // properties page must still load without crashing on a live-widget
     // lookup that has nothing to look up yet. `LiveTree.init` (empty
     // AAs) is exactly what `openLoadedProject()`'s own "no top-level
@@ -3589,7 +3856,7 @@ private void deleteSelected()
 
 /// Shared tail of `deleteSelected()`/`cutSelected()`: removes each of
 /// `roots` from its own parent's `Node.children` (or, for a top-level
-/// project root with no parent -- a `Function`/`decl`/`comment`/... the
+/// project root with no parent -- a `Function`/`code`/`comment`/... the
 /// widget palette's "Code" group added directly to `projectRoots_`,
 /// see `addNode()` -- splices it out of `projectRoots_` itself instead)
 /// and destroys its live widget (if any). Callers own checkpointing and
@@ -3663,7 +3930,7 @@ private void removeNodes(Node[] roots)
 /// (`NodeBrowser.selectedNodes()`'s own doc comment: "the source of
 /// truth for what is selected"), appending any browser-selected node
 /// the canvas doesn't already have. The two diverge specifically when a
-/// selected top-level Code-group node (a bare `Function`/`decl`/
+/// selected top-level Code-group node (a bare `Function`/`code`/
 /// `comment`/... project root the widget palette's "Code" group adds
 /// directly to `projectRoots_`, see `addNode()`) is the browser's own
 /// primary selection: `selectFromBrowser()` resolves `activeWindow_`
@@ -3953,7 +4220,7 @@ private bool duplicateSelected()
 /// duplicated subtree can be an arbitrarily deep Group. A no-op if
 /// `parentNode`'s window has no canvas, `parentNode` itself has no live
 /// widget, or `n` isn't
-/// itself `WidgetNode`-shaped (a bare `Function`/`decl`/`class`
+/// itself `WidgetNode`-shaped (a bare `Function`/`code`
 /// selection has nothing to instantiate) -- the node still lands in
 /// the tree either way, just without a live counterpart, matching how
 /// an unregistered widget type is already handled elsewhere in this
@@ -4228,7 +4495,8 @@ private MenuItem[] changeToMenuItems()
 
 /// The project tree's right-click menu: help on the selected node (its
 /// section of the Technical Reference), "Change To" for a widget that
-/// can change kind, then the Edit menu's commands for the selection.
+/// can change kind, the Edit menu's commands for the selection, and
+/// Unwrap for a Conditional node (`unwrapSelected()`).
 private void showTreeContextMenu()
 {
     MenuItem[] items = changeToMenuItems();
@@ -4239,7 +4507,8 @@ private void showTreeContextMenu()
         MenuItem("Duplicate", stateCtrl + 'u', (w) { duplicateSelected(); }),
         MenuItem("Delete", deleteKey, (w) { deleteSelected(); }, menuDivider),
         MenuItem("Earlier", fl.enumerations.f + 2, (w) { earlierSelectedCmd(); }),
-        MenuItem("Later", fl.enumerations.f + 3, (w) { laterSelectedCmd(); }),
+        MenuItem("Later", fl.enumerations.f + 3, (w) { laterSelectedCmd(); }, menuDivider),
+        MenuItem("Unwrap", 0, (w) { unwrapSelected(); }, canUnwrap() ? 0 : menuInactive),
     ];
     if (items.length)
         items[0].flags |= menuDivider;
@@ -4251,6 +4520,14 @@ private void showTreeContextMenu()
     popupMenuItems_ = items;
     auto m = fl.popup(popupMenuItems_.ptr, fl.core.eventXRoot(), fl.core.eventYRoot());
     if (m !is null) m.doCallback(browser_);
+}
+
+/// Whether Unwrap has something to do: a Conditional node is selected.
+private bool canUnwrap()
+{
+    foreach (n; allSelectedNodes())
+        if (cast(ConditionalNode) n !is null) return true;
+    return false;
 }
 
 /// Keeps the items of a right-click menu built on the fly alive while it
@@ -4772,9 +5049,6 @@ private bool generateCodeFile(bool quiet)
         fl.message(format("Could not generate %s:\n%s", outPath, e.msg));
         return false;
     }
-    foreach (err; writer.dataErrors)
-        fl.alert(err);
-
     try
     {
         import std.file : mkdirRecurse;
@@ -5263,8 +5537,18 @@ private void startRun(string[] buildArgs, string[] describeArgs, string workDir)
     import std.path : baseName;
 
     showRunWindow();
+    runWorkDir_ = workDir;
+    runTerminal.onLineDoubleClick = (line) { showCompilerMessage(line); };
     runTerminal.append("\x1b[2J\x1b[3J\x1b[H"); // each Run starts with a clear window
-    onRunOutput = (text) { runTerminal.append(text); };
+    buildOutput_ = null;
+    buildErrors_ = null;
+    builtCode_ = null;
+    markBuildErrors();
+    bool building = true;
+    onRunOutput = (text) {
+        runTerminal.append(text);
+        if (building) buildOutput_ ~= text;
+    };
 
     void ended(string text)
     {
@@ -5281,8 +5565,23 @@ private void startRun(string[] buildArgs, string[] describeArgs, string workDir)
 
     runTerminal.append("\033[0;32m" ~ buildArgs.join(" ") ~ "\033[0m\n");
     bool ok = runStart(buildArgs, workDir, (status, stopped) {
+        building = false;
+        collectBuildErrors();
+        markBuildErrors();
         if (stopped) { ended("\033[1;31mStopped.\033[0m\n"); return; }
-        if (status != 0) { ended("\033[1;31mThe build failed.\033[0m\n"); return; }
+        if (status != 0)
+        {
+            ended("\033[1;31mThe build failed.\033[0m\n");
+            // Go to the first error in the generated code, as a
+            // double-click on it does.
+            foreach (m; buildErrors_)
+                if (m.error)
+                {
+                    showCompilerMessage(m);
+                    break;
+                }
+            return;
+        }
 
         string exe = programPath(describeArgs, workDir);
         if (exe is null)
@@ -5300,6 +5599,158 @@ private void startRun(string[] buildArgs, string[] describeArgs, string workDir)
     });
     if (ok) started("building");
     else ended("");
+}
+
+/// The folder the last Run built in, which the file names in compiler
+/// messages are relative to.
+private string runWorkDir_;
+
+/// What the last Run's build printed (`startRun()`), the compiler
+/// messages in it about the generated code file (`collectBuildErrors()`),
+/// and that file's text as the build read it.
+private string buildOutput_;
+private CompilerMessage[] buildErrors_; /// ditto
+private string builtCode_;              /// ditto
+
+/// Finds the compiler messages about the generated code file in the last
+/// build's output, and keeps the file's text they refer to.
+private void collectBuildErrors()
+{
+    import std.file : exists, readText;
+    import std.path : absolutePath, buildNormalizedPath, dirName, filenameCmp;
+    import std.regex : ctRegex, replaceAll;
+    import fluid.compiler_errors : parseCompilerMessages;
+
+    buildErrors_ = null;
+    builtCode_ = null;
+    if (projectPath_.length == 0) return;
+    string codePath = buildNormalizedPath(absolutePath(codeFilePath_()));
+    string base = absolutePath(runWorkDir_.length ? runWorkDir_ : dirName(codePath));
+    foreach (m; parseCompilerMessages(buildOutput_.replaceAll(ctRegex!"\x1b\\[[0-9;]*[A-Za-z]", "")))
+        if (filenameCmp(buildNormalizedPath(absolutePath(m.file, base)), codePath) == 0)
+            buildErrors_ ~= m;
+    if (buildErrors_.length && exists(codePath))
+    {
+        try builtCode_ = readText(codePath);
+        catch (Exception) buildErrors_ = null;
+    }
+}
+
+/// Marks the last build's compiler messages in the Code View's Source
+/// tab: red line numbers, the word each message points at red and
+/// underlined, and, as the Settings say, the messages in a tooltip on
+/// their lines and among the code (`CodeViewer.markErrors()`). Only
+/// while the tab shows the text the build read; after a change to the
+/// design the marks go. Also called when those Settings change.
+void markBuildErrors()
+{
+    import fluid.code_viewer : CodeViewer, ErrorMark;
+    import fluid.compiler_errors : lineOffset;
+    import std.ascii : isAlphaNum;
+
+    if (codeviewPanel is null) return;
+    auto view = cast(CodeViewer) cvSource;
+    if (view is null) return;
+    string text = view.code();
+    ErrorMark[] marks;
+    if (buildErrors_.length && text == builtCode_)
+        foreach (m; buildErrors_)
+        {
+            auto mark = ErrorMark(m.line, -1, -1, m.text);
+            int s = m.column == 0 ? -1 : lineOffset(text, m.line, m.column);
+            if (s >= 0)
+            {
+                int e = s;
+                while (e < text.length && (isAlphaNum(text[e]) || text[e] == '_')) e++;
+                if (e == s && s < text.length && text[s] != '\n') e = s + 1;
+                mark.start = s;
+                mark.end = e;
+            }
+            marks ~= mark;
+        }
+    int tooltips, inline;
+    appPrefs.get("compiler_error_tooltips", tooltips, 1);
+    appPrefs.get("compiler_errors_inline", inline, 1);
+    view.markErrors(marks, tooltips != 0, inline != 0);
+}
+
+/// The Run window's double-click on a line (`fluid.compiler_errors`):
+/// when it is a compiler message about the generated code file, selects
+/// the node that wrote that line, opens its properties, and shows the
+/// Code View scrolled to that line (also done for the first error when a
+/// build fails, `startRun()`), where the build's errors are marked
+/// (`markBuildErrors()`). A message about another file, or a line
+/// no node wrote (an import, a module-level widget variable), does
+/// nothing. The line numbers are those of the code file as the build read
+/// it, so the code is generated again to find the nodes; when the design
+/// has changed since, Fluid says so instead of selecting a wrong node.
+private void showCompilerMessage(string line)
+{
+    import fluid.compiler_errors : parseCompilerMessage;
+
+    CompilerMessage m;
+    if (!parseCompilerMessage(line, m)) return;
+    // Without a column, the same message of the last build may have one
+    // from dmd's `^` line (`parseCompilerMessages()`).
+    if (m.column == 0)
+        foreach (b; buildErrors_)
+            if (b.file == m.file && b.line == m.line && b.column > 0)
+            {
+                m.column = b.column;
+                break;
+            }
+    showCompilerMessage(m);
+}
+
+/// `showCompilerMessage()` for the message `m`, already read from its
+/// line: also called with the first error of a failed build.
+private void showCompilerMessage(CompilerMessage m)
+{
+    import std.file : exists, readText;
+    import std.path : absolutePath, buildNormalizedPath, dirName, filenameCmp;
+    import fluid.code_writer : Writer;
+    import fluid.code_viewer : CodeViewer;
+    import fluid.compiler_errors : lineOffset, nodeAt;
+
+    if (projectRoots_.length == 0 || projectPath_.length == 0) return;
+    string codePath = buildNormalizedPath(absolutePath(codeFilePath_()));
+    string file = buildNormalizedPath(absolutePath(m.file, absolutePath(runWorkDir_.length ? runWorkDir_ : dirName(codePath))));
+    if (filenameCmp(file, codePath) != 0 || !exists(codePath)) return;
+
+    flushTextWidgets();
+    string code, onDisk;
+    try
+    {
+        auto writer = new Writer();
+        writer.outputDir = dirName(codePath);
+        code = writer.generate(projectRoots_, projectDir_(), projectI18n_, projectDubHeader_, projectSettings_);
+        onDisk = readText(codePath);
+    }
+    catch (Exception) return;
+    if (code != onDisk)
+    {
+        fl.message("The design has changed since this build, so its line numbers no longer match.\n"
+            ~ "Run it again (F5) to find the line.");
+        return;
+    }
+    Node n = nodeAt(projectRoots_, lineOffset(code, m.line, m.column));
+    if (n is null) return;
+    browser_.syncSelection([n]);
+    selectFromBrowser([n]);
+    openNode(n);
+
+    // The Code View, with the error marked, scrolled to the error's line
+    // with a few lines above it.
+    if (codeviewPanel is null || !codeviewPanel.shown())
+        codeviewToggleVisibility(projectRoots_, projectI18n_, projectDubHeader_, projectSettings_);
+    else
+    {
+        if ((cast(CodeViewer) cvSource).code() != code)
+            codeviewRefreshCurrent();
+        codeviewPanel.show();
+    }
+    auto viewer = cast(CodeViewer) cvSource;
+    cvSource.scroll(viewer.viewLine(m.line > 4 ? m.line - 4 : 1), 0);
 }
 
 /// The program `dub build` made, from `dub describe`'s target path and
@@ -5619,8 +6070,8 @@ private void externalEditorTimer()
 }
 
 /// Recursive half of `externalEditorTimer()` -- for every code-bearing
-/// node (`CodeNode`, or a `DeclNode` that isn't a `DataNode`, matching
-/// `panels/widget_panel.fl`'s own `isCodeBody` check) with an open editor:
+/// node (`CodeNode`, matching
+/// `panels/widget_panel.fl`'s Code page) with an open editor:
 /// pulls in a changed file's text (`ExternalCodeEditor.handleChanges()`,
 /// writing straight to `n.instanceName` -- Save reads the in-memory
 /// tree directly, so this alone is enough for the change to survive a
@@ -5636,11 +6087,7 @@ private bool pollExternalEditors(Node n)
 {
     bool modified;
 
-    auto codeNode = cast(CodeNode) n;
-    auto declNode = cast(DeclNode) n;
-    auto dataNode = cast(DataNode) n;
-    bool isCodeBody = codeNode !is null || (declNode !is null && dataNode is null);
-    if (isCodeBody)
+    if (cast(CodeNode) n !is null)
     {
         auto existing = n in externalEditors_;
         if (existing !is null)
@@ -6009,8 +6456,8 @@ private void showHelp(string name)
             ~ "in <code>.fl</code> files. These files are text, and you can (with care) "
             ~ "edit them in a text editor, perhaps to get some special effects.<p>\n"
             ~ "FLUID can \"compile\" the <code>.fl</code> file into a single <code>.d</code> "
-            ~ "module that builds all the objects from the <code>.fl</code> file. Images and "
-            ~ "inline data files are embedded in it. There is no header file: other modules "
+            ~ "module that builds all the objects from the <code>.fl</code> file. Images "
+            ~ "are embedded in it. There is no header file: other modules "
             ~ "simply <code>import</code> the generated one. <code>.fl</code> files and the "
             ~ "generated code are UTF-8, so labels can be written in any language directly.<p>\n"
             ~ "A simple program can be made by putting all your code (including a <code>"
@@ -6044,6 +6491,41 @@ private void showHelp(string name)
 /// Technical Reference), made on first use.
 private MarkdownDialog docDialog_;
 
+/// The design a link in `docDialog_` points to, as an absolute path: a
+/// link to a local `.fl` file (`tutorial03/fourbuttons_1.fl`), relative
+/// to `dir`, the folder of the page it is on. Null for any other link,
+/// which the view follows itself. Clicking such a link opens the design
+/// in Fluid, so the tutorials' finished designs open from wherever
+/// fldtk is, dub's package folder included.
+private string designLinkPath(string url, string dir)
+{
+    import std.algorithm.searching : canFind, startsWith;
+    import std.path : absolutePath, buildNormalizedPath, extension, isAbsolute;
+    import std.uni : toLower;
+    import std.uri : decodeComponent;
+
+    if (url.startsWith("file://")) url = url[7 .. $];
+    else if (url.startsWith("file:")) url = url[5 .. $];
+    else if (url.canFind("://") || url.startsWith("mailto:")) return null;
+    if (extension(url).toLower() != ".fl") return null;
+    try url = decodeComponent(url);
+    catch (Exception) {}
+    if (isAbsolute(url)) return buildNormalizedPath(url);
+    return buildNormalizedPath(dir.length ? absolutePath(url, dir) : absolutePath(url));
+}
+
+unittest
+{
+    import std.path : buildPath;
+    version (Windows) enum dir = `C:\fldtk\docs`;
+    else enum dir = "/fldtk/docs";
+    assert(designLinkPath("tutorial03/fourbuttons_1.fl", dir) == buildPath(dir, "tutorial03", "fourbuttons_1.fl"));
+    assert(designLinkPath("../hello%20world.FL", dir) == buildPath(dir[0 .. $ - 5], "hello world.FL"));
+    assert(designLinkPath("TUTORIAL03.md", dir) is null);
+    assert(designLinkPath("fig01.png", dir) is null);
+    assert(designLinkPath("https://example.org/x.fl", dir) is null);
+}
+
 /// Shows the document `name` (a path relative to the folder Fluid was
 /// started from, the fldtk folder where `dub build :fluid` puts it) in
 /// `docDialog_`, scrolled to the heading `anchor` if one is given.
@@ -6062,7 +6544,16 @@ private void showDocument(string name, string anchor = null)
         fl.message("There is no " ~ name ~ " in " ~ (dir.length ? dir : "Fluid's folder") ~ ".");
         return;
     }
-    if (docDialog_ is null) docDialog_ = new MarkdownDialog();
+    if (docDialog_ is null)
+    {
+        docDialog_ = new MarkdownDialog();
+        docDialog_.view().link((v, url) {
+            string design = designLinkPath(url, v.directory());
+            if (design is null) return false;
+            if (confirmDiscardChanges()) loadProject(design);
+            return true;
+        });
+    }
     if (docDialog_.view().filename() != path || anchor.length)
         docDialog_.load(anchor.length ? path ~ "#" ~ anchor : path);
     docDialog_.show();
@@ -6079,8 +6570,8 @@ private enum referenceDoc = "docs/TECHNICAL_REFERENCE.md";
 
 /// The section of the Technical Reference about nodes of type
 /// `typeName`: the anchor and text of the heading that shows the type's
-/// Fluid icon (`pixmaps_svg/flButton.svg` for a Button). Both are null
-/// when the type has no section, as for code nodes.
+/// Fluid icon (`pixmaps_svg/flButton.svg` for a Button, `flCode.svg`
+/// for a Code node). Both are null when the type has no section.
 private string[2] referenceSection(string typeName, string referenceText)
 {
     import fl.markdown : MdBlock, MdBlockKind, MdInlineKind, parseMarkdown, plainText;
@@ -6116,8 +6607,10 @@ unittest
     loadPixmaps();
     string md = "# Reference\n\n## 4. Buttons\n\n"
         ~ "### ![](../source/fluid/pixmaps_svg/flButton.svg) Button\n\ntext\n\n"
-        ~ "### ![](../source/fluid/pixmaps_svg/flReturnButton.svg) Return Button\n";
+        ~ "### ![](../source/fluid/pixmaps_svg/flReturnButton.svg) Return Button\n\n"
+        ~ "## 3. Code\n\n### ![](../source/fluid/pixmaps_svg/flCodeBlock.svg) Conditional\n";
     assert(referenceSection("Button", md) == ["button", "Button"]);
+    assert(referenceSection("conditional", md) == ["conditional", "Conditional"]);
     assert(referenceSection("ReturnButton", md) == ["return-button", "Return Button"]);
     assert(referenceSection("Fl_Slider", md) == [null, null]);
     assert(referenceSection("Function", md) == [null, null]);

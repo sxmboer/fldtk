@@ -2203,13 +2203,33 @@ private WindowRecord* find(Window xid)
     return null;
 }
 
+/// The window whose X window is `xid`, or null (for the pen driver).
+package(fl) FlWindow windowOfXid(Window xid)
+{
+    auto rec = find(xid);
+    return rec !is null ? rec.widget : null;
+}
+
+/// The X windows of the toplevel windows shown (for the pen driver).
+package(fl) Window[] toplevelXids()
+{
+    Window[] list;
+    for (auto rec = first_; rec !is null; rec = rec.next)
+        if (rec.widget.window() is null) list ~= rec.xid;
+    return list;
+}
+
 // ---- touch and gestures (XInput2): beyond FLTK, see fl.touch
 
 import fl.xinput2;
 import touchEngine = fl.touch;
+import x11Pen = fl.x11_pen_driver;
 
 private int xiOpcode_;              // the XInput extension's opcode; 0 without it
 private bool xiTouch_, xiGestures_; // XInput 2.2 (touch) and 2.4 (touchpad gestures)
+
+/// The server has the XInput extension, version 2 or later.
+package(fl) bool xinput2Available() { return xiOpcode_ != 0; }
 
 /// Finds out what the server's XInput extension offers.
 private void initXInput2()
@@ -2221,7 +2241,11 @@ private void initXInput2()
         return;
     }
     int major = 2, minor = 4;
-    if (XIQueryVersion(display_, &major, &minor) != 0) return; // Success is 0
+    if (XIQueryVersion(display_, &major, &minor) != 0) // Success is 0; else no XInput 2
+    {
+        xiOpcode_ = 0;
+        return;
+    }
     xiTouch_ = major > 2 || (major == 2 && minor >= 2);
     xiGestures_ = major > 2 || (major == 2 && minor >= 4);
 }
@@ -2268,6 +2292,13 @@ private bool handleXInput2(XEvent* ev)
         x = ex / f;
         y = ey / f;
         return rec.widget;
+    }
+
+    // a pen's events (fl.x11_pen_driver)
+    if (x11Pen.isPenEventType(cookie.evtype))
+    {
+        x11Pen.handle(cookie.evtype, cookie.data);
+        return true;
     }
 
     switch (cookie.evtype)
@@ -2754,7 +2785,11 @@ void createWindow(FlWindow win, XVisualInfo* visual = null, Colormap colormap = 
     rec.next = first_;
     first_ = rec;
 
-    if (!isSubwindow) selectTouch(xid);
+    if (!isSubwindow)
+    {
+        selectTouch(xid);
+        x11Pen.selectWindow(xid);
+    }
 
     if (!isSubwindow)
     {
@@ -5509,8 +5544,14 @@ private void processNextEvent()
     // placement here, before the switch.
     if (ximIc_ !is null && XFilterEvent(&ev, 0)) return;
 
-    // touchscreen contacts and touchpad gestures (XInput2, fl.touch)
+    // touchscreen contacts and touchpad gestures (XInput2, fl.touch),
+    // and pens (fl.x11_pen_driver)
     if (ev.type == GenericEvent && handleXInput2(&ev)) return;
+
+    // the mouse events the X server sends for a pen a subscriber handles
+    if ((ev.type == ButtonPress || ev.type == ButtonRelease) && x11Pen.isClaimedCopy(ev.xbutton.time))
+        return;
+    if (ev.type == MotionNotify && x11Pen.isClaimedCopy(ev.xmotion.time)) return;
 
     // Ported from fl_handle()'s own trailing `switch (xevent.type -
     // xfixes_event_base) { case XFixesSelectionNotify: ... }` (Fl_x.cxx)

@@ -19,14 +19,15 @@ Contents:
 
 1. [Introduction](#1-introduction)
 2. [Every widget](#2-every-widget)
-3. [Groups](#3-groups)
-4. [Buttons](#4-buttons)
-5. [Valuators](#5-valuators)
-6. [Text](#6-text)
-7. [Menus](#7-menus)
-8. [Browsers](#8-browsers)
-9. [Misc](#9-misc)
-10. [Beyond widgets](#10-beyond-widgets)
+3. [Code](#3-code)
+4. [Groups](#4-groups)
+5. [Buttons](#5-buttons)
+6. [Valuators](#6-valuators)
+7. [Text](#7-text)
+8. [Menus](#8-menus)
+9. [Browsers](#9-browsers)
+10. [Misc](#10-misc)
+11. [Beyond widgets](#11-beyond-widgets)
 
 ## 1. Introduction
 
@@ -100,11 +101,12 @@ window can't be resized.
 
 ### Reading this reference
 
-Sections 3 to 9 follow Fluid's widget bin, group by group, in the bin's
-order. Each widget has its bin icon, a picture, what it is for, how to
-make one in code, its member functions, and the constants its
-properties take. Section 2 holds what every widget has in common, and
-section 10 the parts of the library that aren't widgets.
+Sections 3 to 10 follow Fluid's widget bin, group by group, in the
+bin's order. Section 3 is the code a design holds besides its widgets.
+From section 4 on, each widget has its bin icon, a picture, what it is
+for, how to make one in code, its member functions, and the constants
+its properties take. Section 2 holds what every widget has in common,
+and section 11 the parts of the library that aren't widgets.
 
 ## 2. Every widget
 
@@ -163,11 +165,164 @@ take a `Color`: one of these, an index into the colour map, or
 
 @enum CallbackReason
 
-## 3. Groups
+## 3. Code
+
+Besides widgets, a design holds code: the first group of Fluid's widget
+bin. Fluid writes each node's code into the generated `.d` file where the
+node stands in the widget tree, top to bottom, so the tree is also an
+outline of the file. Every one of these nodes has a Comment field on its
+properties page, written as a comment above its code.
+
+Where a node stands decides what its code can be:
+
+| Place in the tree | What goes there |
+|---|---|
+| At the top, not inside anything (the file itself, D's *module scope*) | imports, variables and types the whole file shares, functions, classes |
+| Directly in a Class | fields and methods |
+| In a Function, or among a window's widgets | statements, run one after the other when the function runs |
+
+### ![](../source/fluid/pixmaps_svg/flFunction.svg) Function
+
+A function. With its Function field left blank, it is the program's
+`main()`: Fluid writes `void main(string[] args)`, builds the widgets
+inside it, shows its windows and starts `fl.run()`. A design has one
+such Function.
+
+With a name and parameters, such as `makeWindow()` or `buttonCB(Button
+b)`, it is an ordinary function that the program calls itself; inside a
+Class it is a method, `this(...)` a constructor and `~this()` the
+destructor. Its children are its body: Code nodes, Conditional nodes and
+widgets, in order.
+
+- **Return Type**: blank in a function that builds widgets gives the
+  type of its first widget, and the function returns that widget; so a
+  `makeWindow()` holding a window returns the window, and the program
+  shows it with `makeWindow().show();`. Blank otherwise, and in a
+  method, is `void`.
+- **Visibility**: `static` makes a top-level function `private` to the
+  generated file; `global` and `local` leave it public. In a Class, the
+  choice is `private`, `public` or `protected`.
+- **declare "C"**: writes the function as `extern (C)`, for a function
+  that C code calls. It has no effect on a method.
+
+Several widgets can share one callback: write it as a named Function and
+call it from each widget's callback with the widget, `buttonCB(o);`.
+
+### ![](../source/fluid/pixmaps_svg/flClass.svg) Class
+
+A D class. **Class Name** is its name, **Base Class** what it is based
+on (often a widget type, such as `Window` or `Group`; blank for none),
+and **Attribute** words written before `class`, such as `final` or
+`abstract`.
+
+Its children make up the class, in order: a Code node is a field, a
+Function a method, a Conditional fields or methods under a condition,
+and a Class a class inside it. A named widget that one of its methods
+builds becomes a field, so each object of the class has its own.
+
+A widget of your own, `class MyButton : Button` with methods that change
+how it behaves, is used by placing a Button in a window and typing
+`MyButton` in its `class` property. A group of your own builds its
+widgets in its constructor:
+
+```
+class Counter : Group
+    Function this(int x, int y, int w, int h, string label = null)
+        Code     super(x, y, w, h, label);
+        Button   minus
+        Output   count
+        Button   plus
+        Code     end();
+```
+
+A class that has nothing to do with widgets works too, but belongs in a
+`.d` module of the program's own.
+
+### ![](../source/fluid/pixmaps_svg/flCode.svg) Code
+
+D code, written as it is where the node stands. What it can hold depends
+on the place:
+
+| Place | Example |
+|---|---|
+| At the top | `import std.stdio;`, `int clicks;`, `enum Size { small, medium, large }` |
+| In a Class | `int count;` |
+| In a Function, among widgets | `writeln("ready");`, `clicks++;` |
+
+A Code node can also put a file into the program when it is compiled,
+with D's `import("file")`: `enum help = import("help.md");` for text,
+`immutable ubyte[] logo = cast(immutable ubyte[])
+import("pictures/logo.png");` for anything else. The file is named by
+its path from the folder of the `.fl` file and must be inside that
+folder; Fluid tells the compiler to look there.
+
+**Edit Externally...** opens the code in your own text editor, the one
+named in Edit > Settings..., General, External Editor, once Use for Code
+Nodes is checked there. Each time you save in that editor, the node
+takes the new text.
+
+### ![](../source/fluid/pixmaps_svg/flCodeBlock.svg) Conditional
+
+Code and widgets that are only there when a condition holds. The
+**Condition** is written as given, and the node's children inside `{
+... }` after it. An `else` is a Conditional node of its own, placed
+directly after the `if` (or `static if`, `version`, `debug`) node it
+belongs to. Fluid doesn't check the condition or where it stands; the
+compiler reports one that doesn't fit.
+
+| Condition | Example | Works | Decided |
+|---|---|---|---|
+| `if (...)` | `if (args.length > 1)` | in a Function | when the program runs |
+| `else` | `else` | after an `if`, `static if`, `version` or `debug` node | as that node |
+| `static if (...)` | `static if (size_t.sizeof == 8)` | everywhere | when the program is compiled |
+| `version (...)` | `version (Windows)` | everywhere | when the program is compiled |
+| `debug` | `debug` | everywhere | when the program is compiled |
+
+- `version` names the system or the compiler: `Windows`, `linux`,
+  `Posix`, `X86_64`, `DigitalMars` (dmd), `LDC`, `GNU` (gdc).
+  `version (none)` switches code off without deleting it, and `version
+  (unittest)` keeps it for `dub test` only.
+- `debug` code is in the everyday build, `dub build` and Fluid's Run, and
+  left out of `dub build -b release`: a place for checks and messages
+  the finished program doesn't need.
+- `static if` tests anything the compiler knows, such as a type's size or
+  whether a module is there.
+
+To put existing nodes under a condition, select them in the tree (two
+or more, with Ctrl-click) and add a Conditional, from the New menu or
+the widget bin: it takes the place of the first selected node, and the
+selected nodes move into it, in their order, wherever they were. Widgets
+can be wrapped among the widgets of their own window, not in a Flex or
+Grid. When the nodes can't go into a Conditional there, it is added as
+usual instead. A Function or a Class wraps nodes the same way. **Unwrap**,
+in the tree's right-click menu, does the reverse: the selected
+Conditional node's children move up to its place, and it is removed.
+Each is one step for Undo.
+
+### ![](../source/fluid/pixmaps_svg/flComment.svg) Comment
+
+A note in the widget tree, also written as a comment in the generated
+code where it stands. With **output to source file** unchecked, it stays
+in the `.fl` file only. **Predefined** keeps comment texts you use often,
+such as a licence: Edit, Add current comment... saves the text, and it
+can then be chosen in any project. **Import...** reads the text from a
+file.
+
+## 4. Groups
 
 A group holds other widgets: it moves them, draws them, and hands them
 events. Each group below is an `FlGroup`, with these members as well as
 those of `Widget`.
+
+To go through a group's widgets, use `widgets`; `allWidgets` also
+takes the widgets inside the groups inside it. Both are arrays, so
+Phobos works on them:
+
+```D
+foreach (w; group.widgets)
+    w.deactivate();
+auto edited = window.allWidgets.filter!(w => w.changed).array;
+```
 
 @members FlGroup
 
@@ -296,7 +451,7 @@ How a child sits in its cell:
 
 @constants fl.grid
 
-## 4. Buttons
+## 5. Buttons
 
 Each button is a `Button`, with these members as well as those of
 `Widget`. `value()` is 1 when the button is on.
@@ -308,6 +463,37 @@ button stays on or off, and of the radio buttons in one group only one
 is on.
 
 @constants fl.button
+
+To find out which radio button of a group is on, name the options in an
+enum and ask the group: the first radio button stands for the enum's
+first member, the second for its second, and so on. "First" means first
+in the group, as in Fluid's widget tree, not where the button is in the
+window: after moving buttons around in the tree with Earlier and Later
+(F2, F3), put them back in the order of the enum. `selectRadioButton()`
+sets the choice from the program.
+
+```D
+enum Size { small, medium, large }
+
+Size s = sizes.selectedRadioButton!Size;
+sizes.selectRadioButton(Size.large);
+```
+
+Without an enum, `selectedRadioButton` gives the radio button that is
+down itself, or `null` when none is, so its label or any other property
+can be read:
+
+```D
+message(format("%s is selected", sizes.selectedRadioButton.label));
+```
+
+For buttons that are on or off each by themselves, such as check
+buttons, `selectedButtons` gives every button of the group that is on:
+
+```D
+foreach (b; options.selectedButtons)
+    writeln(b.label, " is on");
+```
 
 ### ![](../source/fluid/pixmaps_svg/flButton.svg) Button
 
@@ -363,7 +549,7 @@ of several.
 
 @constructor RoundButton
 
-## 5. Valuators
+## 6. Valuators
 
 A valuator holds a number between a minimum and a maximum, in steps.
 Each is a `Valuator`, with these members as well as those of `Widget`.
@@ -494,7 +680,7 @@ A number field the user types in, or drags over to change.
 
 @members ValueInput
 
-## 6. Text
+## 7. Text
 
 The one-line text widgets (Input, Output, File Input) are each an
 `Input_`, with these members as well as those of `Widget`.
@@ -573,12 +759,30 @@ program's log or the output of a command.
 
 @members Terminal
 
-## 7. Menus
+## 8. Menus
 
 A menu is a list of `MenuItem`s. Each widget below that shows one is a
 `Menu_`, with these members as well as those of `Widget`; `add()` adds
 items, with a `/` in the label for a submenu (`"&File/&Open..."`) and a
 `&` before the letter that picks it from the keyboard.
+
+For a choice between fixed options, name them in an enum: `add!E()`
+makes one item per member, and `selected!E` reads which one is picked.
+In a Choice the items are its own; in a menu bar they are radio items in
+a submenu. An `@ItemText("...")` on a member gives its item a text other
+than the member's name. `item()` gives a member's item, to grey it out
+or hide it like any other item.
+
+```D
+enum Size { small, medium, @ItemText("Extra large") extraLarge }
+
+size.add!Size();                    // a Choice
+Size s = size.selected!Size;
+
+menubar.add!Size("View/Size");      // radio items in View > Size
+menubar.select(Size.medium, "View/Size");
+menubar.item(Size.extraLarge, "View/Size").deactivate();
+```
 
 @members Menu_
 
@@ -637,7 +841,7 @@ Shows the item that is picked, and opens the menu to pick another.
 
 @members Choice
 
-## 8. Browsers
+## 9. Browsers
 
 ### ![](../source/fluid/pixmaps_svg/flBrowser.svg) Browser
 
@@ -711,7 +915,7 @@ text size and find.
 Shows Markdown documents, such as a README, formatted: headings,
 emphasis, lists, block quotes, code, tables, links and images. Links to
 other `.md` files open them. `MarkdownDialog` is a window with a
-Markdown View and Back, Forward, text size and find; Fluid's Help menu
+Markdown View and Back, Forward, text size, Reload (F5) and find; Fluid's Help menu
 shows fldtk's README in one.
 
 @constructor MarkdownView
@@ -748,7 +952,7 @@ What `drawCell()` is asked to draw:
 
 @constants fl.table
 
-## 9. Misc
+## 10. Misc
 
 ### ![](../source/fluid/pixmaps_svg/flBox.svg) Box
 
@@ -785,7 +989,7 @@ A bar that fills as work gets done, between `minimum()` and
 
 @members Progress
 
-## 10. Beyond widgets
+## 11. Beyond widgets
 
 ### The program: `fl.core`
 
@@ -793,6 +997,41 @@ The event loop, timers, threads, the clipboard, drag and drop, the
 screens, the scheme, and the state of the event being handled.
 
 @functions fl.core
+
+### Work in the background: `fl.background`
+
+A slow computation in a callback freezes the window until it ends.
+`runInBackground()` runs it on another thread instead and hands the
+result to a second function on the GUI thread, where it is safe to
+change widgets. The work itself must not touch widgets. Give the
+button that starts the work as the third argument, and it is greyed
+out until the work is done, so it can't be started twice:
+
+```D
+button.callback((w) {
+    runInBackground({ return countPrimes(10_000_000); },
+                    (int n) { result.value(format("%d primes", n)); },
+                    w);
+});
+```
+
+To show how far the work is, let it take a `Report` and call it with
+the fraction done, and set the job's `onProgress`, right after starting
+it, to show that fraction:
+
+```D
+auto job = runInBackground((Report report) { return countPrimes(10_000_000, report); },
+                           (int n) { result.value(format("%d primes", n)); });
+job.onProgress = (fraction) { bar.value(fraction * 100); };
+```
+
+`examples/howto_run_in_background.d` shows both, with a list of progress
+bars for counts started over and over, next to a callback that freezes
+the window.
+
+@functions fl.background
+
+@members Job
 
 ### Messages and questions: `fl.ask`
 
@@ -818,6 +1057,25 @@ way to show it: set what to choose, call `show()`, read `filename()`.
 
 For a widget that draws itself: a subclass overrides `draw()` and uses
 these. Positions are in the window's coordinates.
+
+A `draw()` that changes the clip, the colour, the font, the line style
+or the transform should put it back, or whatever is drawn after it is
+spoiled. The easy way is a `use...` function: it makes the change and
+undoes it at the end of the block, also on an early `return` or an
+exception. Keep the value it returns in a variable (`auto` will do);
+the compiler refuses to let it be thrown away.
+
+```D
+override void draw()
+{
+    auto clip = clipTo(x, y, w, h);      // drawing stays inside the widget
+    auto line = useLineStyle(lineDash, 2);
+    auto font = useFont(helveticaBold, 14);
+    auto col  = useColor(red);
+    auto m    = saveMatrix();            // translate, scale, rotate freely
+    ...
+}                                        // everything is as it was before
+```
 
 @functions fl.draw
 

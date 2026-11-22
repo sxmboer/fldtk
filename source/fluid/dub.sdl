@@ -46,16 +46,17 @@ stringImportPaths "pixmaps_svg"
 //     "panels/generated" itself as its own, separate import path.
 // `panels/*.fl` (the real source) and `templates/` both sit alongside
 // `panels/generated/` here but must NOT be compiled in -- `.fl` isn't D
-// source at all. `templates/fldtkLicense.fl` is embedded into
-// `panels/generated/template_panel.d` when that panel is generated.
+// source at all. `templates/fldtkLicense.fl` is embedded into the
+// program by `panels/generated/template_panel.d`'s string import.
 configuration "fluid" {
     targetType "executable"
     targetName "fluid"
     sourcePaths "."
     importPaths ".." "panels/generated"
     // `documentation/fluid_flow_chart_paths.svg`, embedded by `gui_main.d`'s
-    // `showHelp()` with a string import.
-    stringImportPaths "documentation"
+    // `showHelp()` with a string import, and `templates/fldtkLicense.fl`,
+    // embedded by `panels/template_panel.fl`.
+    stringImportPaths "documentation" "templates"
     mainSourceFile "app.d"
     // Generates panels/generated/*.d first when they are missing or stale
     // (see buildpanels.d), so a plain `dub build :fluid` works

@@ -25,7 +25,7 @@ full build model, including how a helper module shared between several
 examples (there are currently none in this directory, unlike
 `source/test/`) gets pulled in automatically.
 
-One example, `fluid-callback.fl`, is Fluid source rather than a
+One example, `fluid_callback.fl`, is Fluid source rather than a
 hand-written `.d` file. Its D output is regenerated into
 `generated/fluid_callback.d` (gitignored) as needed, the same way
 Fluid-backed programs under `source/test/` work.

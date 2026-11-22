@@ -220,6 +220,14 @@ private string projectText(Reader reader, Node[] roots)
         layout, false, reader.dubHeader, reader.settings);
 }
 
+/// Prints on stderr what reading an older `.fl` file changed or could not
+/// carry over (`Reader.notes`).
+void printReaderNotes(string path, string[] notes)
+{
+    foreach (n; notes)
+        stderr.writefln("fluid: %s: %s", path, n);
+}
+
 /// Headless `.fl -> .d` conversion -- `-c`'s (and `-cs`'s) entire
 /// real body. `outPath` may be empty, meaning "resolve it the same
 /// way FLTK does" (see the body below); `alsoWriteStrings` is
@@ -241,7 +249,9 @@ bool compileFile(string inPath, string outPath, bool alsoWriteStrings, bool forc
 
     auto source = readText(inPath);
     auto reader = new Reader(source);
+    reader.projectDir = dirName(absolutePath(inPath));
     auto roots = reader.readProject();
+    printReaderNotes(inPath, reader.notes);
 
     // FLTK: `-o` (`outPathFromCommandLine`) always wins, matching
     // `code_file_set`'s own "command-line override beats whatever the
@@ -271,10 +281,6 @@ bool compileFile(string inPath, string outPath, bool alsoWriteStrings, bool forc
         stderr.writefln("fluid: %s: %s", inPath, e.msg);
         return false;
     }
-    // FLTK's batch-mode report of an unreadable inline-data file.
-    foreach (err; writer.dataErrors)
-        stderr.writef("FLUID ERROR: %s", err);
-
     // The code file's folder (a dub project's `source/`) is made when
     // missing.
     try
@@ -309,7 +315,9 @@ bool normalizeProject(string path)
 {
     auto source = readText(path);
     auto reader = new Reader(source);
+    reader.projectDir = dirName(absolutePath(path));
     auto roots = reader.readProject();
+    printReaderNotes(path, reader.notes);
     if (looksLikeRawCpp(roots))
     {
         stderr.writefln("fluid: %s: contains raw FLTK C++, not this project's D-embedded `.fl` "

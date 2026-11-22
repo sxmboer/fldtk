@@ -344,6 +344,21 @@ class ValuePanel : Widget
     }
 }
 
+// Why there is no pen driver, as far as the program can tell.
+string noDriverReason()
+{
+    version (Windows)
+        return "No pen driver here (Windows before 8): the pen acts as a mouse.";
+    else
+    {
+        import platform = fl.platform;
+        if (platform.backend() == platform.Backend.x11)
+            return "No pen driver: the X server has no XInput 2 extension. The pen acts as a mouse.";
+        return "No pen driver: the Wayland compositor doesn't offer the tablet protocol "
+             ~ "(zwp_tablet_manager_v2), or there is no seat. The pen acts as a mouse.";
+    }
+}
+
 void main(string[] args)
 {
     auto window = new DoubleWindow(980, 640, "Pen test");
@@ -396,7 +411,7 @@ void main(string[] args)
 
     log(Pen.driverTraits(Pen.Trait.driverAvailable)
         ? "This platform has a pen driver; bring the pen near the tablet."
-        : "No pen driver here (X11, or Windows before 8): the pen acts as a mouse.");
+        : noDriverReason());
     window.show(args);
     sub.show();
     fl.run();

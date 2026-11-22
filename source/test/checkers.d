@@ -8,11 +8,9 @@
 // really built matches this project's own established convention
 // (see e.g. `mandelbrot`/`keyboard`'s own driver files).
 //
-// The 4 checkers-piece PNGs (`checkers_pieces.fl`'s own `data { filename
-// ... }` blocks, FLTK Fluid-generated into `checkers_pieces.h`/
-// `.cxx` as raw C byte arrays) are ported as `checkers_pieces.d`
-// (script-generated from the real PNG files, byte-for-byte -- see that
-// file's own top comment) and decoded here via `fl.png_image.PngImage`.
+// The 4 checkers-piece PNGs are compiled in with D's `import("...")`
+// expressions (see `make_pieces()`) and decoded via
+// `fl.png_image.PngImage`.
 //
 // Deliberate simplifications vs. FLTK, both narrow and documented
 // at their point of use below:
@@ -69,7 +67,6 @@
 module checkers;
 
 import fl;
-import checkers_pieces;
 import std.format : format;
 import std.math : abs;
 import std.stdio : writefln;
@@ -691,6 +688,11 @@ bool didabort()
 
 //----------------------------------------------------------------
 // Checkers pieces with built in transparency/drop shadows
+
+immutable ubyte[] pixmapsBlackCheckerPng = cast(immutable ubyte[]) import("pixmaps/black_checker.png");
+immutable ubyte[] pixmapsWhiteCheckerPng = cast(immutable ubyte[]) import("pixmaps/white_checker.png");
+immutable ubyte[] pixmapsBlackCheckerKingPng = cast(immutable ubyte[]) import("pixmaps/black_checker_king.png");
+immutable ubyte[] pixmapsWhiteCheckerKingPng = cast(immutable ubyte[]) import("pixmaps/white_checker_king.png");
 
 PngImage[4] png;
 

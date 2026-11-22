@@ -15,6 +15,7 @@
 module fluid.node;
 
 import fluid.project_reader : Reader;
+import fluid.mergeback : Tag;
 import std.conv : to;
 
 /// A half-open `[start, end)` character-offset range into one generated
@@ -125,6 +126,18 @@ class Node
     /// panel treats as untracked: no highlight, no pan.
     TextSpan setupSpan;
     TextSpan finalizeSpan;
+
+    /// The generated source position of each piece of this node's code
+    /// that the user writes in the properties panel: a Code node's text,
+    /// a widget's callback, setup and finalize code, a menu item's
+    /// callback, keyed by its MergeBack kind (`fluid.mergeback.Tag`). The
+    /// span holds the text as the generated code has it, without the
+    /// MergeBack tag lines around it: indented to its place, and in setup
+    /// and finalize code with the widget's own name where the panel's
+    /// text has `o`. Set by `fluid.code_writer.Writer`;
+    /// a piece the node doesn't have, or that wasn't written, has no
+    /// entry.
+    TextSpan[Tag] blockSpans;
 
     /// This node's own entry in the generated `.fl` project text
     /// (`fluid.project_writer.ProjectWriter`) -- FLTK's `proj1`/

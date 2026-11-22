@@ -5348,33 +5348,33 @@ int lock()
 {
     if (fltkMutex_ is null)
     {
+        initThreads();
         fltkMutex_ = new Mutex();
-        // Eagerly construct ringMutex()/pipeMutex() here too, rather
-        // than leaving them purely lazy-initialized: the documented
-        // usage pattern is "main thread calls lock() once before
-        // spawning any worker threads" (matching FLTK's own
-        // documented contract), so doing it here means no two worker
-        // threads can ever race the lazy-init `if (x is null) x = new
-        // Mutex();` check in ringMutex()/pipeMutex() below by both
-        // calling awake(handler) at once right after being spawned
-        // (exactly what source/test/threads.d's six worker threads
-        // do) -- a real race those lazy accessors would otherwise be
-        // exposed to that FLTK's own `lock_ring()` doesn't have to
-        // worry about in quite the same way (its own equivalent
-        // unguarded `if (!ring_mutex)` check is normally only ever
-        // first-hit after Fl::lock() too, but this makes it structural
-        // rather than incidental). The lazy accessors stay as a
-        // fallback for the (out-of-contract) case of awake() being
-        // called before lock() ever runs.
-        ringMutex();
-        version (linux)
-        {
-            pipeMutex();
-            initAwakePipe();
-        }
     }
     fltkMutex_.lock();
     return 0;
+}
+
+private __gshared bool threadsReady_; // set by initThreads()
+
+/// Sets up what `awake()` needs the first time it is called: the
+/// queue's lock and, on Linux, the pipe that wakes the event loop. It
+/// doesn't create or take the UI lock, which only `lock()` does, so the
+/// event loop doesn't release a lock nobody holds. `lock()` calls it,
+/// and so does `fl.background.runInBackground()`, which needs `awake()`
+/// but not the lock. Both run on the GUI thread before any worker
+/// thread calls `awake()`, so two workers never race to create the
+/// queue's lock or the pipe.
+package(fl) void initThreads()
+{
+    if (threadsReady_) return;
+    threadsReady_ = true;
+    ringMutex();
+    version (linux)
+    {
+        pipeMutex();
+        initAwakePipe();
+    }
 }
 
 /// Releases the lock acquired by `lock()`. A no-op if `lock()` was
@@ -7551,6 +7551,17 @@ unittest
 
     assert(lock() == 0);
     unlock();
+
+    // initThreads() leaves the UI lock alone: the event loop releases it
+    // before every wait whenever it exists, so creating it without
+    // taking it would make that release fail.
+    auto uiLock = fltkMutex_;
+    fltkMutex_ = null;
+    initThreads();
+    assert(fltkMutex_ is null);
+    unlockForWait();
+    lockForWait();
+    fltkMutex_ = uiLock;
 
     resetForTest();
 }

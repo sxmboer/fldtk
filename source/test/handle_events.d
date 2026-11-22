@@ -29,7 +29,7 @@ class App : WindowType
         int scrNum = screenNum();
         int scale = cast(int)(screenScale(scrNum) * 100.0 + 0.5);
         eventname = eventNames[ev];
-        stderr.writef("[%3d, win(%d,%d,%d,%d), screen %d, scale %3d%%] %-18.18s at (%4d, %4d)",
+        stderr.writef("[%3d, win(%d,%d,%d,%d), screen %d, scale %3d%%] %-24.24s at (%4d, %4d)",
                 eventnum, x(), y(), w(), h(), scrNum, scale, eventname, ex, ey);
         eventnum %= 999;
     }

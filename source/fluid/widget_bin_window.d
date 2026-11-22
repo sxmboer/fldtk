@@ -5,13 +5,16 @@
 // A hand-written companion to a Fluid-generated panel, not itself
 // Fluid-generated -- `function_panel.fl`'s own `widgetBinPanel` window
 // node uses `class {WidgetBinWindow}` to opt into this.
+//
+// Double-buffered: the bin draws 60 buttons with icons, and drawn
+// straight to the screen they would appear one by one.
 
 module fluid.widget_bin_window;
 
 import fl;
 import fluid.app_prefs : appPrefs;
 
-final class WidgetBinWindow : Window
+final class WidgetBinWindow : DoubleWindow
 {
     // `Window` node codegen (`code_writer.d`'s `writeWindowNode()`)
     // always emits the plain `(w, h, label)` constructor for a window
